@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 400px;
+      min-height: 300px;
+      padding: 15px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      margin: 0;
+      background: #1a1a1a;
+      color: #e0e0e0;
+    }
+    
+    h2 {
+      margin: 0 0 15px 0;
+      font-size: 18px;
+      color: #4CAF50;
+    }
+    
+    .stats {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 15px;
+      padding: 10px;
+      background: #252525;
+      border-radius: 5px;
+    }
+    
+    .stat {
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #4CAF50;
+    }
+    
+    .stat-label {
+      font-size: 12px;
+      color: #999;
+    }
+    
+    .articles-list {
+      max-height: 300px;
+      overflow-y: auto;
+      margin-bottom: 15px;
+    }
+    
+    .article-item {
+      padding: 10px;
+      margin-bottom: 8px;
+      background: #252525;
+      border-radius: 5px;
+      border-left: 3px solid #4CAF50;
+    }
+    
+    .article-title {
+      font-weight: 500;
+      margin-bottom: 5px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    .article-url {
+      font-size: 11px;
+      color: #888;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    .article-meta {
+      font-size: 10px;
+      color: #666;
+      margin-top: 5px;
+    }
+    
+    .buttons {
+      display: flex;
+      gap: 10px;
+    }
+    
+    button {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    
+    .export-btn {
+      background: #4CAF50;
+      color: white;
+    }
+    
+    .export-btn:hover {
+      background: #45a049;
+    }
+    
+    .clear-btn {
+      background: #f44336;
+      color: white;
+    }
+    
+    .clear-btn:hover {
+      background: #da190b;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #666;
+    }
+    
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h2>📚 QuantMindX Article Collector</h2>
+  
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-value" id="totalCount">0</div>
+      <div class="stat-label">Total Saved</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value" id="uncategorizedCount">0</div>
+      <div class="stat-label">Uncategorized</div>
+    </div>
+  </div>
+  
+  <div class="articles-list" id="articlesList"></div>
+  
+  <div class="buttons">
+    <button class="export-btn" id="exportBtn">Export JSON</button>
+    <button class="clear-btn" id="clearBtn">Clear All</button>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
