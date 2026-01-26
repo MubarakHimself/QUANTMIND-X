@@ -1,0 +1,13 @@
+{
+  "raw_response": "",
+  "meta": {
+    "model": "google/gemini-2.0-flash-lite-001",
+    "title": "Everything You Need to Know About ORB and How I Use It - Webinar",
+    "model_used": "google/gemini-2.0-flash-lite-001",
+    "chunk_index": 1,
+    "total_chunks": 4,
+    "processed_at": "2026-01-23T19:23:45.007012"
+  },
+  "video_id": "SunW-hRFGzY",
+  "source_url": "https://youtu.be/SunW-hRFGzY"
+}
