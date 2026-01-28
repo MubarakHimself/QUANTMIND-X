@@ -101,3 +101,81 @@ class TestPropCommander:
 
         result = cmd.run_auction(SimpleNamespace(regime="RISK_ON"))
         assert isinstance(result, list)
+
+
+    def test_preservation_mode_includes_boundary_kelly(self, monkeypatch):
+        cmd = DummyCommander()
+        # Target reached
+        cmd.set_metrics(daily_start_balance=100_000.0, current_equity=110_000.0, trading_days=7)
+
+        # Base returns a bot exactly at the boundary 0.8
+        def base_auction(_self, regime_report):
+            return [
+                {"name": "Boundary", "kelly_score": 0.8},
+                {"name": "Below", "kelly_score": 0.79},
+            ]
+        monkeypatch.setattr(PropCommander.__mro__[1], "run_auction", base_auction)
+
+        result = cmd.run_auction(SimpleNamespace(regime="ANY"))
+        names = [b["name"] for b in result]
+        assert names == ["Boundary"]
+
+    def test_preservation_mode_drops_missing_kelly(self, monkeypatch):
+        cmd = DummyCommander()
+        # Target reached
+        cmd.set_metrics(daily_start_balance=50_000.0, current_equity=55_000.0, trading_days=6)
+
+        # One bot has no kelly_score -> treated as 0 and dropped
+        def base_auction(_self, regime_report):
+            return [
+                {"name": "NoKelly"},
+                {"name": "High", "kelly_score": 0.95},
+            ]
+        monkeypatch.setattr(PropCommander.__mro__[1], "run_auction", base_auction)
+
+        result = cmd.run_auction(SimpleNamespace(regime="RISK_ON"))
+        names = [b["name"] for b in result]
+        assert names == ["High"]
+
+    def test_preservation_mode_handles_empty_base_output(self, monkeypatch):
+        cmd = DummyCommander()
+        # Target reached and enough trading days
+        cmd.set_metrics(daily_start_balance=10_000.0, current_equity=10_900.0, trading_days=9)
+
+        def base_auction(_self, regime_report):
+            return []
+        monkeypatch.setattr(PropCommander.__mro__[1], "run_auction", base_auction)
+
+        result = cmd.run_auction(SimpleNamespace(regime="RISK_OFF"))
+        assert result == []
+
+    @pytest.mark.parametrize("start_balance", [0.0, None])
+    def test_no_preservation_when_start_balance_falsy(self, start_balance, monkeypatch):
+        cmd = DummyCommander()
+        # Falsy start balance should not trigger preservation
+        cmd.set_metrics(daily_start_balance=start_balance, current_equity=999_999.0, trading_days=99)
+
+        called = {"count": 0}
+        def base_auction(_self, regime_report):
+            called["count"] += 1
+            return [{"name": "Any"}]
+        monkeypatch.setattr(PropCommander.__mro__[1], "run_auction", base_auction)
+
+        result = cmd.run_auction(SimpleNamespace(regime="ANY"))
+        assert called["count"] == 1
+        assert result == [{"name": "Any"}]
+
+    def test_no_coin_flip_when_not_in_preservation(self, monkeypatch):
+        cmd = DummyCommander()
+        # Below target but trading days also below min -> should still call base and not coin flip
+        cmd.set_metrics(daily_start_balance=100_000.0, current_equity=103_000.0, trading_days=1)
+
+        def base_auction(_self, regime_report):
+            return [
+                {"name": "NormalBot", "kelly_score": 0.5}
+            ]
+        monkeypatch.setattr(PropCommander.__mro__[1], "run_auction", base_auction)
+
+        result = cmd.run_auction(SimpleNamespace(regime="ANY"))
+        assert isinstance(result, list) and len(result) == 1
+        assert result[0]["name"] == "NormalBot"

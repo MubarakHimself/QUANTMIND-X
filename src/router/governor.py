@@ -21,30 +21,35 @@ class Governor:
         self.max_portfolio_risk = 0.20  # 20% Hard Cap
         self.correlation_threshold = 0.80
 
-    def calculate_risk(self, trade_proposal: dict) -> RiskMandate:
+    def calculate_risk(self, regime_report: 'RegimeReport', trade_proposal: dict) -> RiskMandate:
         """
-        Calculates the Tier 2 Risk Scalar.
+        Calculates the Tier 2 Risk Scalar based on Market Physics.
         
         Args:
-            trade_proposal: Dict containing 'symbol', 'regime', 'correlation'
+            regime_report: Current market state from Sentinel
+            trade_proposal: Dict containing 'bot_id', 'symbol', etc.
             
         Returns:
             RiskMandate object with authorized scalar.
         """
         mandate = RiskMandate()
         
-        # 1. Swarm Check (Correlation)
-        # If Systemic Correlation is high, we clamp risk globally.
-        correlation_score = trade_proposal.get('systemic_correlation', 0.0)
-        
-        if correlation_score > self.correlation_threshold:
-            mandate.allocation_scalar = 0.5  # Clamp to 50%
+        # 1. Physics-Based Throttling
+        # If Chaos is High, we clamp the entire swarm.
+        if regime_report.chaos_score > 0.6:
+            mandate.allocation_scalar = 0.2  # Intense clamping 
             mandate.risk_mode = "CLAMPED"
-            mandate.notes = "Systemic Risk Detected (Swarm)"
+            mandate.notes = f"Extreme Chaos ({regime_report.chaos_score:.2f}) - Tier 2 Emergency Clamp"
+        elif regime_report.chaos_score > 0.3:
+            mandate.allocation_scalar = 0.7  # Moderate clamp
+            mandate.risk_mode = "CLAMPED"
+            mandate.notes = "Moderate Chaos - Smoothing activated."
             
-        # 2. Portfolio VaR Check (Simplified)
-        # In a real impl, this checks total exposure. 
-        # For Base V1, we trust the scalar.
+        # 2. Systemic Correlation (Stub for RMT Eigenvalue)
+        if regime_report.is_systemic_risk:
+            mandate.allocation_scalar = min(mandate.allocation_scalar, 0.4)
+            mandate.risk_mode = "CLAMPED"
+            mandate.notes = (mandate.notes or "") + " Systemic Swarm Coupling detected."
             
         return mandate
 

@@ -39,9 +39,14 @@ class Commander:
 
     def _get_bots_for_regime(self, regime) -> List[dict]:
         """
-        Placeholder: Returns bots aimed at this physics state.
+        Returns bots that are authorized to trade in this physics state.
+        For V1: All bots are authorize for all regimes (except high chaos).
         """
-        return []
+        if regime == "HIGH_CHAOS":
+            return []
+            
+        # Return all active bots as candidates
+        return list(self.active_bots.values())
 
     def dispatch(self, bot_id: str, instruction: str):
         """

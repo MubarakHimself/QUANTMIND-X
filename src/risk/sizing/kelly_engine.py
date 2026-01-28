@@ -1,452 +1,367 @@
 """
-Physics-Aware Kelly Engine
+Physics-Aware Kelly Engine for Enhanced Kelly Position Sizing.
 
-Implements the physics-aware Kelly position sizing engine that combines:
-1. Base Kelly formula: f* = (p*b - q) / b
-2. Physics multipliers (Lyapunov, Ising, Eigen)
-3. Weakest link aggregation: M_physics = min(P_λ, P_χ, P_E)
-
-The formula: S = B × f_base × M_physics where M_physics = min(P_λ, P_χ, P_E)
-
-Physics multipliers:
-- P_λ (Lyapunov): 0.25 (EXTREME), 0.5 (HIGH), 0.75 (MODERATE), 1.0 (LOW)
-- P_χ (Ising): Same scale based on susceptibility
-- P_E (Eigen): Signal strength multiplier based on RMT
+Implements Kelly criterion with econophysics-based risk adjustments:
+- Base Kelly: f* = (p*b - q) / b
+- Half-Kelly: f_base = f* * 0.5
+- Physics multipliers from Lyapunov, Ising, and Eigenvalue indicators
+- Weakest link aggregation: M_physics = min(P_λ, P_χ, P_E)
 
 Reference: docs/trds/enhanced_kelly_position_sizing_v1.md
 """
-import logging
-import math
-from dataclasses import dataclass, field
-from typing import Optional, List, Tuple
 
-from src.position_sizing.kelly_config import EnhancedKellyConfig
-from src.risk.models.market_physics import MarketPhysics, RiskLevel
+import logging
+from typing import Optional
+
+from src.risk.models.market_physics import MarketPhysics
+from src.risk.models.strategy_performance import StrategyPerformance
+from src.risk.models.sizing_recommendation import SizingRecommendation
+from src.risk.sizing.monte_carlo_validator import MonteCarloValidator
 
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class PhysicsMultiplier:
-    """Physics multiplier configuration for each indicator."""
-    lyapunov: float = 1.0  # Lyapunov exponent multiplier
-    ising: float = 1.0     # Ising model multiplier
-    eigen: float = 1.0     # Eigenvalue/RMT multiplier
-
-
-@dataclass
-class PhysicsAwareKellyResult:
-    """
-    Result of Physics-Aware Kelly calculation with physics breakdown.
-
-    Attributes:
-        position_size: Final position size in lots (rounded to broker precision)
-        base_kelly_f: Raw Kelly fraction before physics adjustments
-        physics_multipliers: Applied physics multipliers
-        aggregated_multiplier: Final physics multiplier (min of individual multipliers)
-        risk_amount: Dollar amount at risk (account_balance × kelly_f)
-        adjustments_applied: List of adjustment descriptions for audit trail
-        status: Calculation status - 'calculated', 'fallback', or 'zero'
-        physics_risk_level: Overall physics risk level
-    """
-    position_size: float
-    base_kelly_f: float
-    physics_multipliers: PhysicsMultiplier
-    aggregated_multiplier: float
-    risk_amount: float
-    adjustments_applied: List[str] = field(default_factory=list)
-    status: str = 'calculated'
-    physics_risk_level: RiskLevel = RiskLevel.LOW
-
-    def to_dict(self) -> dict:
-        """Convert result to dictionary for serialization."""
-        return {
-            "position_size": self.position_size,
-            "base_kelly_fraction": self.base_kelly_f,
-            "physics_multipliers": {
-                "lyapunov": self.physics_multipliers.lyapunov,
-                "ising": self.physics_multipliers.ising,
-                "eigen": self.physics_multipliers.eigen
-            },
-            "aggregated_multiplier": self.aggregated_multiplier,
-            "risk_amount": self.risk_amount,
-            "adjustments": self.adjustments_applied,
-            "status": self.status,
-            "physics_risk_level": self.physics_risk_level.value
-        }
-
-
 class PhysicsAwareKellyEngine:
     """
-    Physics-Aware Kelly Position Sizing Engine.
+    Physics-Aware Kelly Engine for position sizing.
 
-    Implements the physics-aware Kelly formula:
-    S = B × f_base × M_physics where M_physics = min(P_λ, P_χ, P_E)
+    Combines traditional Kelly criterion with econophysics indicators
+    for dynamic risk adjustment based on market regime.
 
-    Physics multipliers:
-    - P_λ (Lyapunov): 0.25 (EXTREME), 0.5 (HIGH), 0.75 (MODERATE), 1.0 (LOW)
-    - P_χ (Ising): Same scale based on susceptibility
-    - P_E (Eigen): Signal strength multiplier based on RMT
+    Formula:
+        f* = (p*b - q) / b
+        f_base = f* * 0.5
+        M_physics = min(P_λ, P_χ, P_E)
+        final_risk_pct = f_base * M_physics
 
-    Attributes:
-        config: EnhancedKellyConfig instance with all parameters
-        physics_config: Physics multiplier configuration
+    Where:
+        p = win_rate
+        b = payoff_ratio (avg_win / avg_loss)
+        q = 1 - p
+        P_λ = Lyapunov multiplier
+        P_χ = Ising multiplier
+        P_E = Eigenvalue multiplier
 
     Example:
         >>> engine = PhysicsAwareKellyEngine()
-        >>> result = engine.calculate(
-        ...     account_balance=10000.0,
-        ...     win_rate=0.55,
-        ...     avg_win=400.0,
-        ...     avg_loss=200.0,
-        ...     market_physics=MarketPhysics(...),
-        ...     stop_loss_pips=20.0,
-        ...     pip_value=10.0
-        ... )
-        >>> print(f"Position: {result.position_size} lots with physics multiplier {result.aggregated_multiplier}")
+        >>> perf = StrategyPerformance(win_rate=0.55, avg_win=100, avg_loss=50, total_trades=100)
+        >>> physics = MarketPhysics(lyapunov_exponent=-0.5, ising_susceptibility=0.5, ...)
+        >>> result = engine.calculate_position_size(perf, physics)
+        >>> print(f"Risk: {result.final_risk_pct:.2%}")
     """
 
     def __init__(
         self,
-        config: Optional[EnhancedKellyConfig] = None,
-        physics_config: Optional[PhysicsMultiplier] = None
+        kelly_fraction: float = 0.5,
+        enable_monte_carlo: bool = True,
+        monte_carlo_threshold: float = 0.005
     ):
         """
-        Initialize Physics-Aware Kelly Engine.
+        Initialize the Physics-Aware Kelly Engine.
 
         Args:
-            config: EnhancedKellyConfig instance. Uses defaults if None.
-            physics_config: PhysicsMultiplier configuration. Uses defaults if None.
+            kelly_fraction: Fraction of full Kelly to use (default: 0.5 for half-Kelly)
+            enable_monte_carlo: Whether to enable Monte Carlo validation
+            monte_carlo_threshold: Minimum risk percentage to trigger MC validation (default: 0.5%)
 
         Raises:
-            ValueError: If configuration is invalid
+            ValueError: If parameters are invalid
         """
-        self.config = config or EnhancedKellyConfig()
-        self.config.validate()
-        self.physics_config = physics_config or PhysicsMultiplier()
-        self._last_kelly_f: Optional[float] = None
+        if not 0 < kelly_fraction <= 1.0:
+            raise ValueError(f"kelly_fraction must be between 0 and 1, got {kelly_fraction}")
+        if not 0 < monte_carlo_threshold <= 1.0:
+            raise ValueError(f"monte_carlo_threshold must be between 0 and 1, got {monte_carlo_threshold}")
+
+        self.kelly_fraction = kelly_fraction
+        self.enable_monte_carlo = enable_monte_carlo
+        self.monte_carlo_threshold = monte_carlo_threshold
 
         logger.info(
             "PhysicsAwareKellyEngine initialized",
             extra={
-                "kelly_fraction": self.config.kelly_fraction,
-                "max_risk_pct": self.config.max_risk_pct,
-                "physics_multipliers": {
-                    "lyapunov": self.physics_config.lyapunov,
-                    "ising": self.physics_config.ising,
-                    "eigen": self.physics_config.eigen
-                }
+                "kelly_fraction": kelly_fraction,
+                "enable_monte_carlo": enable_monte_carlo,
+                "monte_carlo_threshold": monte_carlo_threshold
             }
         )
 
-    def calculate(
+    def calculate_position_size(
         self,
-        account_balance: float,
-        win_rate: float,
-        avg_win: float,
-        avg_loss: float,
-        market_physics: MarketPhysics,
-        stop_loss_pips: float,
-        pip_value: float = 10.0
-    ) -> PhysicsAwareKellyResult:
+        perf: StrategyPerformance,
+        physics: MarketPhysics,
+        validator: Optional[MonteCarloValidator] = None
+    ) -> SizingRecommendation:
         """
-        Calculate optimal position size using Physics-Aware Kelly.
+        Calculate position size using Physics-Aware Kelly criterion.
 
-        The calculation follows these steps:
-
-        1. **Validate Inputs**: Ensure all parameters are valid
-        2. **Calculate Risk-Reward Ratio**: B = avg_win / avg_loss
-        3. **Calculate Base Kelly**: f* = (B + 1)P - 1) / B
-        4. **Apply Kelly Fraction**: Multiply by safety factor (default 50%)
-        5. **Calculate Physics Multipliers**:
-           - P_λ from Lyapunov exponent
-           - P_χ from Ising susceptibility
-           - P_E from RMT eigenvalue
-        6. **Aggregate Multipliers**: M_physics = min(P_λ, P_χ, P_E)
-        7. **Apply Physics Adjustment**: f_final = f_base × M_physics
-        8. **Apply Hard Risk Cap**: Cap at maximum risk percentage
-        9. **Calculate Risk Amount**: risk = balance × f_final
-        10. **Calculate Position Size**: lots = risk / (SL × pip_value)
-        11. **Round to Broker Precision**: Round down to lot step
+        Calculation steps:
+        1. Calculate base Kelly: f* = (p*b - q) / b
+        2. Apply Kelly fraction: f_base = f* * kelly_fraction
+        3. Calculate physics multipliers:
+           - P_λ = max(0, 1.0 - (2.0 × λ))
+           - P_χ = 0.5 if χ > 0.8 else 1.0
+           - P_E = min(1.0, 1.5 / λ_max) if λ_max > 1.5 else 1.0
+        4. Aggregate using weakest link: M_physics = min(P_λ, P_χ, P_E)
+        5. Apply physics adjustment: final_risk_pct = f_base * M_physics
+        6. Optional Monte Carlo validation if final_risk_pct > threshold
 
         Args:
-            account_balance: Current account balance in base currency
-            win_rate: Historical win rate from 0 to 1
-            avg_win: Average winning trade profit in currency
-            avg_loss: Average losing trade loss in currency (positive)
-            market_physics: MarketPhysics instance with physics indicators
-            stop_loss_pips: Stop loss distance in pips/points
-            pip_value: Value per pip for 1 standard lot (default $10)
+            perf: Strategy performance metrics (win_rate, avg_win, avg_loss)
+            physics: Market physics indicators (Lyapunov, Ising, Eigenvalue)
+            validator: Optional Monte Carlo validator for risk assessment
 
         Returns:
-            PhysicsAwareKellyResult containing:
-            - position_size: Final position size in lots
-            - base_kelly_f: Raw Kelly before adjustments
-            - physics_multipliers: Applied physics multipliers
-            - aggregated_multiplier: Final physics multiplier
-            - risk_amount: Dollar amount at risk
+            SizingRecommendation with:
+            - raw_kelly: Base Kelly fraction
+            - physics_multiplier: Aggregated multiplier M_physics
+            - final_risk_pct: Final risk percentage
+            - position_size_lots: 0.0 (must be calculated separately with stop loss)
             - adjustments_applied: List of calculation steps
-            - status: 'calculated', 'fallback', or 'zero'
-            - physics_risk_level: Overall physics risk level
+            - validation_passed: True if MC validation passed or not run
 
         Raises:
             ValueError: If inputs are invalid
         """
         adjustments = []
 
-        # Step 1: Input Validation
-        self._validate_inputs(win_rate, avg_win, avg_loss, stop_loss_pips, market_physics)
+        # Step 1: Calculate payoff ratio (b)
+        b = perf.payoff_ratio
+        adjustments.append(f"Payoff ratio (b): {b:.2f}")
 
-        # Step 2: Calculate Risk-Reward Ratio (B)
-        risk_reward_ratio = avg_win / avg_loss
-        adjustments.append(f"R:R ratio = {risk_reward_ratio:.2f}")
+        # Step 2: Calculate base Kelly: f* = (p*b - q) / b
+        p = perf.win_rate
+        q = 1.0 - p
+        f_star = (p * b - q) / b
+        adjustments.append(f"Base Kelly (f*): {f_star:.4f} ({f_star*100:.2f}%)")
 
-        # Step 3: Calculate Base Kelly Formula
-        # f = ((B + 1) × P - 1) / B
-        base_kelly_f = ((risk_reward_ratio + 1) * win_rate - 1) / risk_reward_ratio
-        adjustments.append(f"Base Kelly = {base_kelly_f:.4f} ({base_kelly_f*100:.2f}%)")
-
-        # Handle negative expectancy
-        if base_kelly_f <= 0:
-            adjustments.append("NEGATIVE EXPECTANCY - No edge detected")
+        # Handle negative Kelly (no edge)
+        if f_star <= 0:
             logger.warning(
-                "Negative expectancy detected",
+                "Negative Kelly detected - no edge",
                 extra={
-                    "win_rate": win_rate,
-                    "avg_win": avg_win,
-                    "avg_loss": avg_loss,
-                    "base_kelly": base_kelly_f
+                    "win_rate": p,
+                    "payoff_ratio": b,
+                    "kelly": f_star
                 }
             )
-            if self.config.allow_zero_position:
-                return PhysicsAwareKellyResult(
-                    position_size=0.0,
-                    base_kelly_f=base_kelly_f,
-                    physics_multipliers=PhysicsMultiplier(),
-                    aggregated_multiplier=0.0,
-                    risk_amount=0.0,
-                    adjustments_applied=adjustments,
-                    status='zero',
-                    physics_risk_level=market_physics.risk_level()
-                )
+            adjustments.append("Negative expectancy - returning zero position")
+            return SizingRecommendation(
+                raw_kelly=0.0,
+                physics_multiplier=0.0,
+                final_risk_pct=0.0,
+                position_size_lots=0.0,
+                constraint_source="negative_expectancy",
+                validation_passed=False,
+                adjustments_applied=adjustments
+            )
+
+        # Step 3: Apply half-Kelly (or configured fraction)
+        f_base = f_star * self.kelly_fraction
+        adjustments.append(f"Half-Kelly (f_base = f* × {self.kelly_fraction}): {f_base:.4f} ({f_base*100:.2f}%)")
+
+        # Step 4: Calculate Lyapunov multiplier
+        # P_λ = max(0, 1.0 - (2.0 × λ))
+        lyapunov_lambda = physics.lyapunov_exponent
+        p_lambda = max(0.0, 1.0 - (2.0 * lyapunov_lambda))
+        adjustments.append(f"Lyapunov multiplier (P_λ = max(0, 1 - 2×{lyapunov_lambda:.2f})): {p_lambda:.2f}")
+
+        # Step 5: Calculate Ising multiplier
+        # P_χ = 0.5 if χ > 0.8 else 1.0
+        ising_chi = physics.ising_susceptibility
+        p_chi = 0.5 if ising_chi > 0.8 else 1.0
+        adjustments.append(f"Ising multiplier (P_χ = 0.5 if χ={ising_chi:.2f} > 0.8): {p_chi:.2f}")
+
+        # Step 6: Calculate Eigenvalue multiplier
+        # P_E = min(1.0, 1.5 / λ_max) if λ_max > 1.5 else 1.0
+        if physics.rmt_max_eigenvalue is not None:
+            lambda_max = physics.rmt_max_eigenvalue
+            if lambda_max > 1.5:
+                p_eigen = min(1.0, 1.5 / lambda_max)
+                adjustments.append(f"Eigen multiplier (P_E = min(1, 1.5/{lambda_max:.2f})): {p_eigen:.2f}")
             else:
-                # Use fallback risk
-                base_kelly_f = self.config.fallback_risk_pct
-                adjustments.append(f"Using fallback: {base_kelly_f*100:.1f}%")
-
-        kelly_f = base_kelly_f
-
-        # Step 4: Apply Kelly Fraction
-        kelly_f = kelly_f * self.config.kelly_fraction
-        adjustments.append(f"Kelly fraction (×{self.config.kelly_fraction}): {kelly_f:.4f}")
-
-        # Step 5: Calculate Physics Multipliers
-        physics_multipliers = self._calculate_physics_multipliers(market_physics)
-        adjustments.append(
-            f"Physics multipliers: Lyapunov={physics_multipliers.lyapunov:.2f}, "
-            f"Ising={physics_multipliers.ising:.2f}, "
-            f"Eigen={physics_multipliers.eigen:.2f}"
-        )
-
-        # Step 6: Aggregate Multipliers (Weakest Link Principle)
-        aggregated_multiplier = min(
-            physics_multipliers.lyapunov,
-            physics_multipliers.ising,
-            physics_multipliers.eigen
-        )
-        adjustments.append(f"Aggregated multiplier (min): {aggregated_multiplier:.2f}")
-
-        # Step 7: Apply Physics Adjustment
-        kelly_f = kelly_f * aggregated_multiplier
-        adjustments.append(f"Physics adjustment (×{aggregated_multiplier}): {kelly_f:.4f}")
-
-        # Step 8: Apply Hard Risk Cap
-        if kelly_f > self.config.max_risk_pct:
-            kelly_f = self.config.max_risk_pct
-            adjustments.append(f"Risk cap (capped at {self.config.max_risk_pct*100:.1f}%): {kelly_f:.4f}")
+                p_eigen = 1.0
+                adjustments.append(f"Eigen multiplier (P_E = 1.0 since λ_max={lambda_max:.2f} ≤ 1.5): {p_eigen:.2f}")
         else:
-            adjustments.append(f"Risk cap (no cap needed): {kelly_f:.4f}")
+            # No RMT data available - assume no reduction
+            p_eigen = 1.0
+            adjustments.append("Eigen multiplier (P_E = 1.0, no RMT data): {p_eigen:.2f}")
 
-        # Store for portfolio scaling
-        self._last_kelly_f = kelly_f
+        # Step 7: Weakest link aggregation
+        # M_physics = min(P_λ, P_χ, P_E)
+        m_physics = min(p_lambda, p_chi, p_eigen)
+        adjustments.append(f"Weakest link (M_physics = min({p_lambda:.2f}, {p_chi:.2f}, {p_eigen:.2f})): {m_physics:.2f}")
 
-        # Step 9: Calculate Risk Amount
-        risk_amount = account_balance * kelly_f
-        adjustments.append(f"Risk amount = ${risk_amount:.2f}")
+        # Step 8: Apply physics adjustment
+        final_risk_pct = f_base * m_physics
+        adjustments.append(f"Final risk (f_base × M_physics = {f_base:.4f} × {m_physics:.2f}): {final_risk_pct:.4f} ({final_risk_pct*100:.2f}%)")
 
-        # Step 10: Calculate Position Size
-        risk_per_lot = stop_loss_pips * pip_value
-        position_size = risk_amount / risk_per_lot
-        adjustments.append(f"Raw position = {position_size:.4f} lots")
+        # Step 8.5: Apply hard cap at 10% (conservative limit)
+        max_risk_cap = 0.10
+        if final_risk_pct > max_risk_cap:
+            final_risk_pct = max_risk_cap
+            adjustments.append(f"Risk capped at {max_risk_cap*100:.1f}%: {final_risk_pct:.4f}")
 
-        # Step 11: Round to Broker Precision
-        position_size = self._round_to_lot_size(position_size)
-        adjustments.append(f"Rounded position = {position_size:.2f} lots")
+        # Step 9: Optional Monte Carlo validation
+        validation_passed = True
+        if self.enable_monte_carlo and final_risk_pct > self.monte_carlo_threshold:
+            if validator is None:
+                logger.warning(
+                    "Monte Carlo validation requested but no validator provided - skipping",
+                    extra={"risk_pct": final_risk_pct}
+                )
+                adjustments.append(f"MC validation skipped (no validator, risk={final_risk_pct:.2%})")
+            else:
+                adjustments.append(f"Running MC validation (risk={final_risk_pct:.2%} > {self.monte_carlo_threshold:.2%})")
+                try:
+                    mc_result = validator.validate_risk(perf, risk_pct=final_risk_pct, runs=1000)
+                    validation_passed = mc_result.passed
+
+                    if not mc_result.passed:
+                        # Apply Monte Carlo adjustment
+                        final_risk_pct = final_risk_pct * mc_result.adjusted_risk
+                        adjustments.append(
+                            f"MC validation failed (ruin={mc_result.risk_of_ruin:.2%}) - "
+                            f"adjusting by ×{mc_result.adjusted_risk:.2f}"
+                        )
+                    else:
+                        adjustments.append(f"MC validation passed (ruin={mc_result.risk_of_ruin:.2%})")
+
+                    logger.info(
+                        "Monte Carlo validation complete",
+                        extra={
+                            "risk_of_ruin": mc_result.risk_of_ruin,
+                            "passed": mc_result.passed,
+                            "adjusted_risk_pct": final_risk_pct
+                        }
+                    )
+                except Exception as e:
+                    logger.error(
+                        "Monte Carlo validation failed",
+                        extra={"error": str(e)},
+                        exc_info=True
+                    )
+                    adjustments.append(f"MC validation error: {str(e)} - proceeding without adjustment")
+        elif self.enable_monte_carlo:
+            adjustments.append(f"MC validation not needed (risk={final_risk_pct:.2%} ≤ {self.monte_carlo_threshold:.2%})")
+
+        # Determine constraint source
+        constraint_source = None
+        if m_physics < 1.0:
+            if p_lambda == m_physics:
+                constraint_source = "physics_lyapunov"
+            elif p_chi == m_physics:
+                constraint_source = "physics_ising"
+            elif p_eigen == m_physics:
+                constraint_source = "physics_eigen"
+
+        # Create recommendation
+        # Note: position_size_lots requires stop_loss_pips and pip_value, so set to 0.0 here
+        # The caller can calculate lots as: position_size_lots = (account_balance * final_risk_pct) / (stop_loss_pips * pip_value)
+        recommendation = SizingRecommendation(
+            raw_kelly=f_base,
+            physics_multiplier=m_physics,
+            final_risk_pct=final_risk_pct,
+            position_size_lots=0.0,  # To be calculated by caller with stop loss
+            constraint_source=constraint_source,
+            validation_passed=validation_passed,
+            adjustments_applied=adjustments
+        )
 
         logger.info(
             "Physics-Aware Kelly calculation complete",
             extra={
-                "position_size": position_size,
-                "kelly_fraction": kelly_f,
-                "risk_amount": risk_amount,
-                "account_balance": account_balance,
-                "physics_risk_level": market_physics.risk_level().value,
-                "aggregated_multiplier": aggregated_multiplier
+                "raw_kelly": f_base,
+                "physics_multiplier": m_physics,
+                "final_risk_pct": final_risk_pct,
+                "constraint_source": constraint_source,
+                "validation_passed": validation_passed
             }
         )
 
-        return PhysicsAwareKellyResult(
-            position_size=position_size,
-            base_kelly_f=base_kelly_f,
-            physics_multipliers=physics_multipliers,
-            aggregated_multiplier=aggregated_multiplier,
-            risk_amount=risk_amount,
-            adjustments_applied=adjustments,
-            status='calculated',
-            physics_risk_level=market_physics.risk_level()
-        )
+        return recommendation
 
-    def _calculate_physics_multipliers(self, market_physics: MarketPhysics) -> PhysicsMultiplier:
-        """
-        Calculate individual physics multipliers based on market physics indicators.
-
-        Multiplier logic:
-        - EXTREME: 0.25 (75% reduction)
-        - HIGH: 0.5 (50% reduction)
-        - MODERATE: 0.75 (25% reduction)
-        - LOW: 1.0 (no reduction)
-
-        Args:
-            market_physics: MarketPhysics instance with indicators
-
-        Returns:
-            PhysicsMultiplier with individual multipliers
-        """
-        # Get individual risk levels
-        lyapunov_risk = self._get_risk_level_from_lyapunov(market_physics.lyapunov_exponent)
-        ising_risk = self._get_risk_level_from_ising(market_physics.ising_susceptibility)
-        eigen_risk = self._get_risk_level_from_eigen(market_physics)
-
-        # Convert risk levels to multipliers
-        multipliers = PhysicsMultiplier()
-        multipliers.lyapunov = self._risk_level_to_multiplier(lyapunov_risk)
-        multipliers.ising = self._risk_level_to_multiplier(ising_risk)
-        multipliers.eigen = self._risk_level_to_multiplier(eigen_risk)
-
-        return multipliers
-
-    def _get_risk_level_from_lyapunov(self, lyapunov_exponent: float) -> RiskLevel:
-        """Determine risk level from Lyapunov exponent."""
-        if lyapunov_exponent > 2.0:
-            return RiskLevel.EXTREME
-        elif lyapunov_exponent > 0:
-            return RiskLevel.HIGH
-        elif lyapunov_exponent > -1.0:
-            return RiskLevel.MODERATE
-        else:
-            return RiskLevel.LOW
-
-    def _get_risk_level_from_ising(self, ising_susceptibility: float) -> RiskLevel:
-        """Determine risk level from Ising susceptibility."""
-        if ising_susceptibility > 5.0:
-            return RiskLevel.EXTREME
-        elif ising_susceptibility > 2.0:
-            return RiskLevel.HIGH
-        elif ising_susceptibility > 1.0:
-            return RiskLevel.MODERATE
-        else:
-            return RiskLevel.LOW
-
-    def _get_risk_level_from_eigen(self, market_physics: MarketPhysics) -> RiskLevel:
-        """Determine risk level from Eigenvalue (RMT) analysis."""
-        if market_physics.rmt_max_eigenvalue is None or market_physics.rmt_noise_threshold is None:
-            # No RMT data - assume low risk (no reduction)
-            return RiskLevel.LOW
-
-        if market_physics.rmt_max_eigenvalue > market_physics.rmt_noise_threshold * 1.5:
-            # Strong signal - low risk
-            return RiskLevel.LOW
-        elif market_physics.rmt_max_eigenvalue > market_physics.rmt_noise_threshold:
-            # Weak signal - moderate risk
-            return RiskLevel.MODERATE
-        else:
-            # No signal (noise) - high risk
-            return RiskLevel.HIGH
-
-    def _risk_level_to_multiplier(self, risk_level: RiskLevel) -> float:
-        """Convert risk level to multiplier."""
-        multipliers = {
-            RiskLevel.EXTREME: 0.25,
-            RiskLevel.HIGH: 0.5,
-            RiskLevel.MODERATE: 0.75,
-            RiskLevel.LOW: 1.0
-        }
-        return multipliers.get(risk_level, 1.0)
-
-    def _validate_inputs(
+    def calculate_kelly_fraction(
         self,
-        win_rate: float,
-        avg_win: float,
-        avg_loss: float,
-        stop_loss_pips: float,
-        market_physics: MarketPhysics
-    ) -> None:
-        """Validate all input parameters."""
-        if not 0 <= win_rate <= 1:
-            raise ValueError(f"win_rate must be between 0 and 1, got {win_rate}")
-        if avg_win <= 0:
-            raise ValueError(f"avg_win must be positive, got {avg_win}")
-        if avg_loss <= 0:
-            raise ValueError(f"avg_loss must be positive, got {avg_loss}")
-        if stop_loss_pips <= 0:
-            raise ValueError(f"stop_loss_pips must be positive, got {stop_loss_pips}")
-        if not isinstance(market_physics, MarketPhysics):
-            raise ValueError(f"market_physics must be MarketPhysics instance, got {type(market_physics)}")
-
-    def _round_to_lot_size(self, position_size: float) -> float:
-        """Round position size to broker lot step."""
-        if position_size < self.config.min_lot_size:
-            return self.config.min_lot_size if not self.config.allow_zero_position else 0.0
-
-        if position_size > self.config.max_lot_size:
-            return self.config.max_lot_size
-
-        # Round down to nearest lot step
-        steps = math.floor(position_size / self.config.lot_step)
-        return round(steps * self.config.lot_step, 2)
-
-    def get_current_f(self) -> float:
-        """Get the last calculated Kelly fraction (for portfolio scaling)."""
-        return getattr(self, '_last_kelly_f', self.config.fallback_risk_pct)
-
-    def set_fraction(self, scaled_f: float) -> None:
-        """Set Kelly fraction from portfolio scaler."""
-        self._scaled_kelly_f = scaled_f
-
-    @staticmethod
-    def calculate_base_kelly(
         win_rate: float,
         avg_win: float,
         avg_loss: float
     ) -> float:
         """
-        Calculate base Kelly fraction without any adjustments.
+        Calculate raw Kelly fraction without adjustments.
 
         Args:
-            win_rate: Historical win rate from 0 to 1
+            win_rate: Historical win rate (0 to 1)
             avg_win: Average winning trade profit
-            avg_loss: Average losing trade loss
+            avg_loss: Average losing trade loss (positive)
 
         Returns:
-            Base Kelly fraction (f*)
-        """
-        if avg_loss <= 0:
-            raise ValueError("avg_loss must be positive")
-        if avg_win <= 0:
-            raise ValueError("avg_win must be positive")
-        if not 0 <= win_rate <= 1:
-            raise ValueError("win_rate must be between 0 and 1")
+            Kelly fraction f* = (p*b - q) / b
 
-        risk_reward_ratio = avg_win / avg_loss
-        return ((risk_reward_ratio + 1) * win_rate - 1) / risk_reward_ratio
+        Raises:
+            ValueError: If inputs are invalid
+        """
+        if not 0 < win_rate < 1:
+            raise ValueError(f"win_rate must be between 0 and 1 (exclusive), got {win_rate}")
+        if avg_win <= 0:
+            raise ValueError(f"avg_win must be positive, got {avg_win}")
+        if avg_loss <= 0:
+            raise ValueError(f"avg_loss must be positive, got {avg_loss}")
+
+        b = avg_win / avg_loss  # Payoff ratio
+        p = win_rate
+        q = 1.0 - p
+
+        return (p * b - q) / b
+
+    def calculate_lyapunov_multiplier(self, lyapunov_exponent: float) -> float:
+        """
+        Calculate Lyapunov physics multiplier.
+
+        Formula: P_λ = max(0, 1.0 - (2.0 × λ))
+
+        Args:
+            lyapunov_exponent: Lyapunov exponent value
+
+        Returns:
+            Multiplier from 0 to 1
+        """
+        return max(0.0, 1.0 - (2.0 * lyapunov_exponent))
+
+    def calculate_ising_multiplier(self, ising_susceptibility: float) -> float:
+        """
+        Calculate Ising physics multiplier.
+
+        Formula: P_χ = 0.5 if χ > 0.8 else 1.0
+
+        Args:
+            ising_susceptibility: Ising susceptibility value
+
+        Returns:
+            0.5 if high susceptibility (> 0.8), else 1.0
+        """
+        return 0.5 if ising_susceptibility > 0.8 else 1.0
+
+    def calculate_eigen_multiplier(
+        self,
+        max_eigenvalue: Optional[float]
+    ) -> float:
+        """
+        Calculate Eigenvalue physics multiplier.
+
+        Formula: P_E = min(1.0, 1.5 / λ_max) if λ_max > 1.5 else 1.0
+
+        Args:
+            max_eigenvalue: Maximum eigenvalue from correlation matrix
+
+        Returns:
+            Multiplier from 0 to 1
+        """
+        if max_eigenvalue is None:
+            # No RMT data - assume no reduction
+            return 1.0
+
+        if max_eigenvalue > 1.5:
+            return min(1.0, 1.5 / max_eigenvalue)
+        else:
+            return 1.0

@@ -24,26 +24,33 @@ class ChaosSensor:
         return self._calculate_lyapunov()
 
     def _calculate_lyapunov(self) -> ChaosReport:
-        if len(self.prices) < self.window_size:
-            return ChaosReport(0.0, "STABLE") # Not enough data
-            
-        # Simplified Lyapunov proxy for real-time speed
-        # Real implementation would use nolds or similar lib
-        # Here we use Log Variance of Returns as a proxy
-        
-        returns = np.diff(self.prices)
-        if len(returns) == 0:
+        if len(self.prices) < 20:
              return ChaosReport(0.0, "STABLE")
-
-        volatility = np.std(returns)
+             
+        # Lyapunov Proxy: Rate of separation of nearby points in Phase Space
+        # Calculate log-divergence of returns over the window
+        returns = np.diff(self.prices)
+        if len(returns) < 5:
+            return ChaosReport(0.0, "STABLE")
+            
+        # Reshape into "delay coordinates" to see phase space (simplified)
+        # We look at how |x(t+1) - x(t)| grows
+        dists = np.abs(np.diff(returns))
+        # Rate of growth of divergence
+        # Small noise floor to avoid log(0)
+        log_dists = np.log(dists + 1e-9)
         
-        # Arbitrary scaling for prototype
-        # 0.0001 vol = 0.1 score
-        # 0.0010 vol = 0.8 score
-        score = min(1.0, volatility * 1000)
+        # Mean of log-divergence is an estimate of the largest Lyapunov exponent (LLE)
+        # λ > 0 implies chaos
+        lambda_proxy = np.mean(log_dists)
+        
+        # Normalize score: lambda_proxy often ranges from -10 to 0 for stable systems
+        # and moves towards positive for chaotic ones.
+        # We'll map -10 -> 0.0 and -2 -> 1.0 (empirical mapping for FX)
+        score = np.clip((lambda_proxy + 10) / 8, 0.0, 1.0)
         
         label = "STABLE"
-        if score > 0.3: label = "NOISY"
-        if score > 0.6: label = "CHAOTIC"
+        if score > 0.4: label = "NOISY"
+        if score > 0.7: label = "CHAOTIC"
         
         return ChaosReport(score, label)

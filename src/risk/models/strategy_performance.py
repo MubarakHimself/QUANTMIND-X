@@ -7,7 +7,7 @@ Validates win rates, average wins/losses, and calculates expectancy.
 Reference: docs/trds/enhanced_kelly_position_sizing_v1.md
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -68,7 +68,7 @@ class StrategyPerformance(BaseModel):
     )
 
     last_updated: Optional[datetime] = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp of last performance update"
     )
 

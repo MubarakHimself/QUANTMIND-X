@@ -19,11 +19,22 @@ def make_trade_proposal(**kwargs):
     base = {
         "symbol": "EURUSD",
         "systemic_correlation": 0.0,
-        "news_state": None,
         "current_balance": 100_000.0,
     }
     base.update(kwargs)
     return base
+
+
+def make_regime_report(**kwargs):
+    base = {
+        "regime": "TREND_STABLE",
+        "chaos_score": 0.1,
+        "regime_quality": 0.9,
+        "news_state": "SAFE",
+        "is_systemic_risk": False
+    }
+    base.update(kwargs)
+    return SimpleNamespace(**base)
 
 
 @pytest.mark.router
@@ -32,7 +43,8 @@ class TestPropGovernor:
         gov = DummyGovernor()
         # No daily_start_balance set -> falls back to current_balance, resulting in 0 loss
         trade = make_trade_proposal()
-        mandate = gov.calculate_risk(trade)
+        report = make_regime_report()
+        mandate = gov.calculate_risk(report, trade)
         assert isinstance(mandate, RiskMandate)
         assert mandate.allocation_scalar == pytest.approx(1.0)
         assert mandate.risk_mode == "STANDARD"
@@ -40,8 +52,9 @@ class TestPropGovernor:
 
     def test_news_guard_halts_risk(self):
         gov = DummyGovernor()
-        trade = make_trade_proposal(news_state="KILL_ZONE")
-        mandate = gov.calculate_risk(trade)
+        trade = make_trade_proposal()
+        report = make_regime_report(news_state="KILL_ZONE")
+        mandate = gov.calculate_risk(report, trade)
         assert mandate.allocation_scalar == 0.0
         assert mandate.risk_mode == "HALTED_NEWS"
         assert "News" in (mandate.notes or "")
@@ -52,7 +65,8 @@ class TestPropGovernor:
         gov.prop_state.daily_start_balance = 100_000.0
         current_balance = 98_000.0  # 2% loss
         trade = make_trade_proposal(current_balance=current_balance)
-        mandate = gov.calculate_risk(trade)
+        report = make_regime_report()
+        mandate = gov.calculate_risk(report, trade)
         # Effective limit = 4%, so throttle should be between (0,1)
         assert 0.0 < mandate.allocation_scalar < 1.0
         assert mandate.risk_mode == "THROTTLED"
@@ -64,7 +78,8 @@ class TestPropGovernor:
         # Breach: > 4% loss (effective limit is 5% - 1% buffer = 4%)
         current_balance = 95_000.0  # 5% loss
         trade = make_trade_proposal(current_balance=current_balance)
-        mandate = gov.calculate_risk(trade)
+        report = make_regime_report()
+        mandate = gov.calculate_risk(report, trade)
         # Base scalar is 1.0, then multiplied by throttle (0.0)
         assert mandate.allocation_scalar == 0.0
         # THROTTLED or STANDARD not applicable since throttle 0.0 via combine – risk_mode remains default unless news
@@ -73,10 +88,11 @@ class TestPropGovernor:
     def test_base_clamp_then_throttle_combination(self):
         gov = DummyGovernor()
         gov.prop_state.daily_start_balance = 100_000.0
-        # Induce base governor clamp via high systemic correlation
-        trade = make_trade_proposal(systemic_correlation=0.95, current_balance=98_000.0)  # 2% loss
-        mandate = gov.calculate_risk(trade)
-        # Base clamps to 0.5 then throttle (<1) applies multiplicatively
-        assert 0.0 < mandate.allocation_scalar < 0.5
+        # Induce base governor clamp via high chaos instead of correlation (per new logic)
+        trade = make_trade_proposal(current_balance=98_000.0)  # 2% loss
+        report = make_regime_report(chaos_score=0.7) # Should trigger 0.2 clamp
+        mandate = gov.calculate_risk(report, trade)
+        # Base clamps to 0.2 then throttle applies
+        assert 0.0 < mandate.allocation_scalar < 0.2
         assert mandate.risk_mode in {"CLAMPED", "THROTTLED"}
 

@@ -48,7 +48,7 @@ class RegimeSensor:
         E = energy / len(arr) 
 
         state = "DISORDERED"
-        if abs(M) > 0.7: state = "ORDERED" (Trend)
+        if abs(M) > 0.7: state = "ORDERED" # Trend
         if chi > 0.24: state = "CRITICAL" # Phase Transition (0.25 is max var for binary)
 
         return RegimeReport(M, chi, E, state)

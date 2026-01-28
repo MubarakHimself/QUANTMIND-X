@@ -209,36 +209,45 @@ class PortfolioKellyScaler:
             min_allocation: Minimum risk allocation per bot
             
         Returns:
-            {bot_id: kelly_f} weighted by performance
+            {bot_id: kelly_f} weighted by performance, preserving minimums.
         """
         if not bot_performance:
             return {}
 
         budget = total_risk_budget or self.max_portfolio_risk
         
-        # Filter out negative performers
-        positive_bots = {k: max(v, 0.1) for k, v in bot_performance.items() if v > 0}
+        # Determine number of bots and total minimum required
+        n_bots = len(bot_performance)
+        total_min_required = min_allocation * n_bots
         
-        if not positive_bots:
-            # All bots negative - equal minimum allocation
-            return {bot_id: min_allocation for bot_id in bot_performance}
-
-        # Calculate weighted allocation
-        total_performance = sum(positive_bots.values())
+        # Separate positive performers
+        positive_bots = {k: v for k, v in bot_performance.items() if v > 0}
         
-        allocations = {}
-        for bot_id, perf in bot_performance.items():
-            if bot_id in positive_bots:
-                weight = positive_bots[bot_id] / total_performance
-                allocation = max(budget * weight, min_allocation)
+        # Case 1: All bots negative or budget too small for all minimums
+        if not positive_bots or total_min_required >= budget:
+            if total_min_required <= budget:
+                return {bot_id: min_allocation for bot_id in bot_performance}
             else:
-                allocation = min_allocation
-            allocations[bot_id] = allocation
+                # Scale min_allocation to fit budget
+                scale = budget / total_min_required if total_min_required > 0 else 1.0
+                return {bot_id: min_allocation * scale for bot_id in bot_performance}
 
-        # Scale down if total exceeds budget
-        total_allocated = sum(allocations.values())
-        if total_allocated > budget:
-            scale = budget / total_allocated
-            allocations = {k: v * scale for k, v in allocations.items()}
-
+        # Case 2: Distribute remaining budget among positive performers
+        # Start everyone at min_allocation
+        allocations = {bot_id: min_allocation for bot_id in bot_performance}
+        remaining_budget = budget - total_min_required
+        
+        total_positive_perf = sum(positive_bots.values())
+        if total_positive_perf > 0:
+            for bot_id, perf in positive_bots.items():
+                weight = perf / total_positive_perf
+                allocations[bot_id] += remaining_budget * weight
+                
+        # Final safety check for float precision
+        total = sum(allocations.values())
+        if total > budget:
+            scale = budget / total
+            for k in allocations:
+                allocations[k] *= scale
+                
         return allocations

@@ -38,11 +38,13 @@ class BaseAgent:
         enable_planning: bool = True,
         enable_subagents: bool = True,
         user_id: str = "default_user",
+        kb_namespace: Optional[str] = None,
         mcp_servers: List[Dict[str, Any]] = []
     ):
         self.name = name
         self.role = role
         self.user_id = user_id
+        self.kb_namespace = kb_namespace or name.lower()
         self.skills = skills
         self.checkpointer = MemorySaver()
         self.mcp_clients: List[ClientSession] = []
@@ -88,11 +90,27 @@ class BaseAgent:
         logger.info(f"Agent {name} initialized with {len(skills)} skills and {len(self.tools)} tools.")
 
     def _init_llm(self, model_name: str):
-        """Factory for LLM initialization."""
-        if "claude" in model_name:
+        """
+        Factory for LLM initialization.
+        Configured for OpenRouter by default.
+        """
+        import os
+        base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+        api_key = os.getenv("OPENROUTER_API_KEY")
+
+        if "claude" in model_name.lower() and "openrouter" not in base_url:
             return ChatAnthropic(model=model_name)
-        else:
-            return ChatOpenAI(model=model_name)
+        
+        # Default to OpenAI-compatible (OpenRouter)
+        return ChatOpenAI(
+            model=model_name,
+            openai_api_base=base_url,
+            openai_api_key=api_key,
+            default_headers={
+                "HTTP-Referer": "https://quantmindx.com", # Required by OpenRouter
+                "X-Title": "QuantMindX"
+            }
+        )
 
     def _add_memory_tools(self):
         """Injects LangMem tools for long-term recall."""
@@ -135,6 +153,16 @@ class BaseAgent:
         # This requires more complex integration with LangGraph's tool runtime
         # but represents the architectural intent.
         logger.info(f"Connecting to MCP server: {name}")
+
+    async def ainvoke(self, message: str, thread_id: str = "1") -> str:
+        """
+        Asynchronous chat interface.
+        """
+        config = {"configurable": {"thread_id": thread_id}}
+        inputs = {"messages": [HumanMessage(content=message)]}
+        
+        final_state = await self.graph.ainvoke(inputs, config=config)
+        return final_state["messages"][-1].content
 
     def invoke(self, message: str, thread_id: str = "1") -> str:
         """

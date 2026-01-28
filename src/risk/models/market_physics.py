@@ -9,7 +9,7 @@ Pydantic model for market regime indicators derived from econophysics:
 Reference: docs/trds/enhanced_kelly_position_sizing_v1.md
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -80,7 +80,7 @@ class MarketPhysics(BaseModel):
 
     # Metadata
     calculated_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp when physics indicators were calculated"
     )
 
@@ -117,7 +117,7 @@ class MarketPhysics(BaseModel):
         Returns:
             True if data is fresh, False if stale
         """
-        age_seconds = (datetime.utcnow() - self.calculated_at).total_seconds()
+        age_seconds = (datetime.now(timezone.utc) - self.calculated_at).total_seconds()
         return age_seconds <= max_age_seconds
 
     def mark_stale(self) -> None:

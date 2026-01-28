@@ -6,7 +6,7 @@ Ising phase transitions, Lyapunov chaos detection, and RMT correlation
 filtering with the Kelly Criterion for superior risk-adjusted returns.
 """
 
-from risk.config import (
+from src.risk.config import (
     ACCOUNT_CACHE_TTL,
     DEFAULT_K_FRACTION,
     ISING_CRITICAL_SUSCEPTIBILITY,

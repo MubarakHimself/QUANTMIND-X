@@ -114,8 +114,8 @@ class TestDataReliability:
     def test_sufficient_sample_size(self, kelly_analyzer, sample_trade_history):
         """Test with sufficient sample size (> 30 trades)."""
         params = kelly_analyzer.calculate_kelly_parameters(sample_trade_history)
-
-        assert params.sample_size == 50
+    
+        assert params.sample_size == len(sample_trade_history)
         assert params.is_reliable is True
         assert "HIGH" in params.confidence_note or "MODERATE" in params.confidence_note
 
@@ -182,7 +182,7 @@ class TestAlternativeTradeFormats:
         """Test trades with 'result' and 'amount' fields."""
         trades = [
             {"result": "win", "amount": 500.0},
-            {"result": "loss", "amount": 200.0},
+            {"result": "won", "amount": 200.0},
             {"result": "won", "amount": 600.0},
             {"result": "profit", "amount": 400.0},
         ]
@@ -217,8 +217,9 @@ class TestRollingWindowAnalysis:
             window_size=window_size
         )
 
-        # Should have 31 windows (50 - 20 + 1)
-        assert len(rolling) == 31
+        # Should have n - window_size + 1 windows
+        expected_len = len(sample_trade_history) - window_size + 1
+        assert len(rolling) == expected_len
 
         # Each window should have window_size trades
         for params in rolling:

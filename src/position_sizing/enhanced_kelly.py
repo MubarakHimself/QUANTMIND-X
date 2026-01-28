@@ -87,7 +87,8 @@ def enhanced_kelly_position_size(
     average_atr: float,
     stop_loss_pips: float,
     pip_value: float = 10.0,     # Default pip value for standard lot
-    config: Optional[EnhancedKellyConfig] = None
+    config: Optional[EnhancedKellyConfig] = None,
+    regime_quality: float = 1.0   # Regime quality from Sentinel (1.0=STABLE, 0.0=CHAOTIC)
 ) -> float:
     """
     Calculate optimal position size using Enhanced Kelly with all safety layers.
@@ -118,7 +119,8 @@ def enhanced_kelly_position_size(
         current_atr=current_atr,
         average_atr=average_atr,
         stop_loss_pips=stop_loss_pips,
-        pip_value=pip_value
+        pip_value=pip_value,
+        regime_quality=regime_quality
     )
     return result.position_size
 
@@ -194,7 +196,8 @@ class EnhancedKellyCalculator:
         current_atr: float,
         average_atr: float,
         stop_loss_pips: float,
-        pip_value: float = 10.0
+        pip_value: float = 10.0,
+        regime_quality: float = 1.0
     ) -> KellyResult:
         """
         Calculate optimal position size using Enhanced Kelly with all safety layers.
@@ -261,7 +264,7 @@ class EnhancedKellyCalculator:
         base_kelly_f = ((risk_reward_ratio + 1) * win_rate - 1) / risk_reward_ratio
         adjustments.append(f"Base Kelly = {base_kelly_f:.4f} ({base_kelly_f*100:.2f}%)")
 
-        # Handle negative expectancy
+        # Handle negative or zero expectancy - always return zero position
         if base_kelly_f <= 0:
             adjustments.append("NEGATIVE EXPECTANCY - No edge detected")
             logger.warning(
@@ -273,19 +276,14 @@ class EnhancedKellyCalculator:
                     "base_kelly": base_kelly_f
                 }
             )
-            if self.config.allow_zero_position:
-                return KellyResult(
-                    position_size=0.0,
-                    kelly_f=0.0,
-                    base_kelly_f=base_kelly_f,
-                    risk_amount=0.0,
-                    adjustments_applied=adjustments,
-                    status='zero'
-                )
-            else:
-                # Use fallback risk
-                base_kelly_f = self.config.fallback_risk_pct
-                adjustments.append(f"Using fallback: {base_kelly_f*100:.1f}%")
+            return KellyResult(
+                position_size=0.0,
+                kelly_f=0.0,
+                base_kelly_f=base_kelly_f,
+                risk_amount=0.0,
+                adjustments_applied=adjustments,
+                status='zero'
+            )
 
         kelly_f = base_kelly_f
 
@@ -300,30 +298,47 @@ class EnhancedKellyCalculator:
         else:
             adjustments.append(f"Layer 2 (no cap needed): {kelly_f:.4f}")
 
-        # Step 6: Apply Layer 3 - Dynamic Volatility Adjustment
+        # Step 6: Apply Layer 3 - Physics-Aware Volatility Adjustment
+        # Combines Regime Quality (from Sentinel) with ATR volatility
         atr_ratio = current_atr / average_atr
-        adjustments.append(f"ATR ratio = {atr_ratio:.2f}")
 
+        # Physics Scalar: regime_quality (1.0 = STABLE, 0.0 = CHAOTIC)
+        physics_scalar = regime_quality
+
+        # Volatility Scalar: inverse relationship (high ATR = low scalar)
+        vol_scalar = average_atr / current_atr if atr_ratio > 0 else 1.0
+
+        adjustments.append(f"Regime Quality = {physics_scalar:.2f} (from Sentinel)")
+        adjustments.append(f"ATR ratio = {atr_ratio:.2f}, Vol Scalar = {vol_scalar:.2f}")
+
+        # Combined adjustment: multiply Kelly by both scalars
+        kelly_f_before = kelly_f
+        kelly_f = kelly_f * physics_scalar * vol_scalar
+
+        # Apply traditional Layer 3 adjustments for edge cases
         if atr_ratio > self.config.high_vol_threshold:
-            # High volatility - reduce position
+            # Additional reduction for extreme volatility
             kelly_f = kelly_f / atr_ratio
             adjustments.append(f"Layer 3 (high vol ÷{atr_ratio:.2f}): {kelly_f:.4f}")
-            logger.info(
-                "High volatility detected - reducing position",
-                extra={"atr_ratio": atr_ratio, "adjusted_kelly": kelly_f}
-            )
         elif atr_ratio < self.config.low_vol_threshold:
-            # Low volatility - increase position (conservative boost)
+            # Conservative boost for low volatility (capped by physics)
             kelly_f = kelly_f * self.config.low_vol_boost
             # Re-apply cap after boost
             kelly_f = min(kelly_f, self.config.max_risk_pct)
             adjustments.append(f"Layer 3 (low vol ×{self.config.low_vol_boost}): {kelly_f:.4f}")
-            logger.info(
-                "Low volatility detected - increasing position",
-                extra={"atr_ratio": atr_ratio, "adjusted_kelly": kelly_f}
-            )
         else:
-            adjustments.append(f"Layer 3 (normal vol): {kelly_f:.4f}")
+            adjustments.append(f"Layer 3 (physics × vol): {kelly_f_before:.4f} → {kelly_f:.4f}")
+
+        logger.info(
+            "Physics-aware Layer 3 applied",
+            extra={
+                "regime_quality": regime_quality,
+                "atr_ratio": atr_ratio,
+                "physics_scalar": physics_scalar,
+                "vol_scalar": vol_scalar,
+                "adjusted_kelly": kelly_f
+            }
+        )
 
         # Store for portfolio scaling
         self._last_kelly_f = kelly_f
@@ -370,8 +385,8 @@ class EnhancedKellyCalculator:
         average_atr: float
     ) -> None:
         """Validate all input parameters."""
-        if not 0 <= win_rate <= 1:
-            raise ValueError(f"win_rate must be between 0 and 1, got {win_rate}")
+        if not 0 < win_rate <= 1:
+            raise ValueError(f"win_rate must be between 0 (exclusive) and 1 (inclusive), got {win_rate}")
         if avg_win <= 0:
             raise ValueError(f"avg_win must be positive, got {avg_win}")
         if avg_loss <= 0:

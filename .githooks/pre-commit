@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if git submodule status | grep -E '\-dirty$'; then
+  echo "Error: One or more submodules are dirty. Commit or discard submodule changes before committing." >&2
+  exit 1
+fi

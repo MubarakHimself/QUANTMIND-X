@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 class RegimeReport:
     regime: str             # TREND_STABLE, RANGE_STABLE, BREAKOUT, ETC
     chaos_score: float      # 0.0 - 1.0
+    regime_quality: float   # 1.0 - chaos_score
     susceptibility: float   # 0.0 - 1.0
     is_systemic_risk: bool  
     news_state: str         # SAFE, KILL_ZONE
@@ -53,6 +54,7 @@ class Sentinel:
         self.current_report = RegimeReport(
             regime=regime_label,
             chaos_score=c_report.score,
+            regime_quality=1.0 - c_report.score,
             susceptibility=r_report.susceptibility,
             is_systemic_risk=False, # Placeholder
             news_state=n_state,
