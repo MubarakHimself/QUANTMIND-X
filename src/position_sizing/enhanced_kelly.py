@@ -1,0 +1,402 @@
+"""
+Enhanced Kelly Position Sizing Algorithm
+
+Implements the 3-layer protection system for scientifically optimal position sizing:
+1. Kelly Fraction (50% of full Kelly by default)
+2. Hard Risk Cap (2% max per trade)
+3. Dynamic Volatility Adjustment (ATR-based scaling)
+
+Mathematical Foundation:
+    The Kelly Criterion maximizes long-term growth rate while preventing ruin:
+
+    $$f^* = \\frac{bp - q}{b} = \\frac{p(b+1) - 1}{b}$$
+
+    Where:
+    - $f^*$ = Fraction of capital to wager
+    - $p$ = Probability of winning (win rate)
+    - $q$ = Probability of losing ($1 - p$)
+    - $b$ = Ratio of average win to average loss (payoff ratio)
+
+Enhanced Kelly applies:
+1. Half-Kelly multiplier: $f_{enhanced} = f^* \\times 0.5$
+2. Hard cap: $f_{final} = \\min(f_{enhanced}, 0.02)$ (2% max)
+3. Volatility adjustment: Scale by ATR ratio
+
+Reference: docs/trds/enhanced_kelly_position_sizing_v1.md
+"""
+
+import logging
+import math
+from dataclasses import dataclass, field
+from typing import Optional, List
+
+from .kelly_config import EnhancedKellyConfig
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class KellyResult:
+    """
+    Result of Enhanced Kelly calculation with full breakdown.
+
+    Attributes:
+        position_size: Final position size in lots (rounded to broker precision)
+        kelly_f: Final adjusted Kelly fraction (after all 3 layers)
+        base_kelly_f: Raw Kelly fraction before adjustments
+        risk_amount: Dollar amount at risk (account_balance × kelly_f)
+        adjustments_applied: List of adjustment descriptions for audit trail
+        status: Calculation status - 'calculated', 'fallback', or 'zero'
+
+    Example:
+        >>> result = KellyResult(
+        ...     position_size=1.0,
+        ...     kelly_f=0.02,
+        ...     base_kelly_f=0.325,
+        ...     risk_amount=200.0,
+        ...     adjustments_applied=["Layer 1: 0.1625", "Layer 2: 0.0200"],
+        ...     status='calculated'
+        ... )
+        >>> print(f"Trade {result.position_size} lots (${result.risk_amount} risk)")
+    """
+    position_size: float
+    kelly_f: float
+    base_kelly_f: float
+    risk_amount: float
+    adjustments_applied: List[str] = field(default_factory=list)
+    status: str = 'calculated'
+
+    def to_dict(self) -> dict:
+        """Convert result to dictionary for serialization."""
+        return {
+            "position_size": self.position_size,
+            "kelly_fraction": self.kelly_f,
+            "base_kelly": self.base_kelly_f,
+            "risk_amount": self.risk_amount,
+            "adjustments": self.adjustments_applied,
+            "status": self.status
+        }
+
+
+def enhanced_kelly_position_size(
+    account_balance: float,
+    win_rate: float,
+    avg_win: float,
+    avg_loss: float,
+    current_atr: float,
+    average_atr: float,
+    stop_loss_pips: float,
+    pip_value: float = 10.0,     # Default pip value for standard lot
+    config: Optional[EnhancedKellyConfig] = None
+) -> float:
+    """
+    Calculate optimal position size using Enhanced Kelly with all safety layers.
+
+    Args:
+        account_balance: Current account balance in base currency
+        win_rate: Historical win rate (0 to 1, e.g., 0.55 for 55%)
+        avg_win: Average winning trade profit in currency
+        avg_loss: Average losing trade loss in currency (positive number)
+        current_atr: Current ATR value (same units as price)
+        average_atr: 20-period ATR average
+        stop_loss_pips: Stop loss distance in pips/points
+        pip_value: Value per pip for 1 standard lot (default $10 for forex majors)
+        config: EnhancedKellyConfig instance (uses defaults if None)
+
+    Returns:
+        Position size in lots (rounded to broker precision)
+
+    Raises:
+        ValueError: If inputs are invalid
+    """
+    calculator = EnhancedKellyCalculator(config)
+    result = calculator.calculate(
+        account_balance=account_balance,
+        win_rate=win_rate,
+        avg_win=avg_win,
+        avg_loss=avg_loss,
+        current_atr=current_atr,
+        average_atr=average_atr,
+        stop_loss_pips=stop_loss_pips,
+        pip_value=pip_value
+    )
+    return result.position_size
+
+
+class EnhancedKellyCalculator:
+    """
+    Enhanced Kelly Position Sizing Calculator.
+
+    Implements the 3-layer protection system for scientifically optimal
+    and safe position sizing suitable for prop firm trading.
+
+    Layer 1 - Kelly Fraction:
+        Reduces full Kelly by a safety factor (default 50%).
+        Captures 70-80% of growth with 30-40% less drawdown.
+
+    Layer 2 - Hard Risk Cap:
+        Never exceeds maximum risk percentage (default 2%).
+        Prevents over-leverage and protects account.
+
+    Layer 3 - Dynamic Volatility Adjustment:
+        - High volatility (ATR ratio > 1.3): Reduce position by ATR ratio
+        - Low volatility (ATR ratio < 0.7): Increase position conservatively (×1.2)
+        - Normal volatility: No adjustment
+
+    Attributes:
+        config: EnhancedKellyConfig instance with all parameters
+
+    Example:
+        >>> calculator = EnhancedKellyCalculator()
+        >>> result = calculator.calculate(
+        ...     account_balance=10000.0,
+        ...     win_rate=0.55,
+        ...     avg_win=400.0,
+        ...     avg_loss=200.0,
+        ...     current_atr=0.0012,
+        ...     average_atr=0.0010,
+        ...     stop_loss_pips=20.0,
+        ...     pip_value=10.0
+        ... )
+        >>> print(f"Position: {result.position_size} lots")
+    """
+
+    def __init__(self, config: Optional[EnhancedKellyConfig] = None):
+        """
+        Initialize Enhanced Kelly Calculator.
+
+        Args:
+            config: Optional configuration. Uses defaults if None.
+
+        Raises:
+            ValueError: If configuration is invalid
+        """
+        self.config = config or EnhancedKellyConfig()
+        self.config.validate()
+        self._last_kelly_f: Optional[float] = None
+
+        logger.info(
+            "EnhancedKellyCalculator initialized",
+            extra={
+                "kelly_fraction": self.config.kelly_fraction,
+                "max_risk_pct": self.config.max_risk_pct,
+                "high_vol_threshold": self.config.high_vol_threshold,
+                "low_vol_threshold": self.config.low_vol_threshold
+            }
+        )
+
+    def calculate(
+        self,
+        account_balance: float,
+        win_rate: float,
+        avg_win: float,
+        avg_loss: float,
+        current_atr: float,
+        average_atr: float,
+        stop_loss_pips: float,
+        pip_value: float = 10.0
+    ) -> KellyResult:
+        """
+        Calculate optimal position size using Enhanced Kelly with all safety layers.
+
+        The calculation follows these steps:
+
+        1. **Validate Inputs**: Ensure all parameters are valid
+        2. **Calculate Risk-Reward Ratio**: $B = \\text{avg\\_win} / \\text{avg\\_loss}$
+        3. **Calculate Base Kelly**: $f^* = (B+1)P - 1) / B$
+        4. **Apply Layer 1**: Multiply by Kelly fraction (default 50%)
+        5. **Apply Layer 2**: Cap at maximum risk percentage (default 2%)
+        6. **Apply Layer 3**: Adjust for volatility using ATR ratio
+        7. **Calculate Risk Amount**: $\\text{risk} = \\text{balance} \\times f$
+        8. **Calculate Position Size**: $\\text{lots} = \\text{risk} / (\\text{SL} \\times \\text{pip\\_value})$
+        9. **Round to Broker Precision**: Round down to lot step
+
+        Args:
+            account_balance: Current account balance in base currency (e.g., 10000.0)
+            win_rate: Historical win rate from 0 to 1 (e.g., 0.55 for 55%)
+            avg_win: Average winning trade profit in currency (e.g., 400.0)
+            avg_loss: Average losing trade loss in currency, positive (e.g., 200.0)
+            current_atr: Current ATR value in price units (e.g., 0.0012 for 12 pips)
+            average_atr: 20-period average ATR in price units (e.g., 0.0010)
+            stop_loss_pips: Stop loss distance in pips/points (e.g., 20.0)
+            pip_value: Value per pip for 1 standard lot (default $10 for forex majors)
+
+        Returns:
+            KellyResult containing:
+            - position_size: Final position size in lots
+            - kelly_f: Final adjusted Kelly fraction
+            - base_kelly_f: Raw Kelly before adjustments
+            - risk_amount: Dollar amount at risk
+            - adjustments_applied: List of calculation steps
+            - status: 'calculated', 'fallback', or 'zero'
+
+        Raises:
+            ValueError: If inputs are invalid (negative, out of range, etc.)
+
+        Example:
+            >>> calculator = EnhancedKellyCalculator()
+            >>> result = calculator.calculate(
+            ...     account_balance=10000.0,
+            ...     win_rate=0.55,
+            ...     avg_win=400.0,
+            ...     avg_loss=200.0,
+            ...     current_atr=0.0012,
+            ...     average_atr=0.0010,
+            ...     stop_loss_pips=20.0,
+            ...     pip_value=10.0
+            ... )
+            >>> print(f"Position: {result.position_size} lots at {result.kelly_f:.1%} risk")
+        """
+        adjustments = []
+
+        # Step 1: Input Validation
+        self._validate_inputs(win_rate, avg_win, avg_loss, stop_loss_pips, average_atr)
+
+        # Step 2: Calculate Risk-Reward Ratio (B)
+        risk_reward_ratio = avg_win / avg_loss
+        adjustments.append(f"R:R ratio = {risk_reward_ratio:.2f}")
+
+        # Step 3: Calculate Base Kelly Formula
+        # f = ((B + 1) × P - 1) / B
+        base_kelly_f = ((risk_reward_ratio + 1) * win_rate - 1) / risk_reward_ratio
+        adjustments.append(f"Base Kelly = {base_kelly_f:.4f} ({base_kelly_f*100:.2f}%)")
+
+        # Handle negative expectancy
+        if base_kelly_f <= 0:
+            adjustments.append("NEGATIVE EXPECTANCY - No edge detected")
+            logger.warning(
+                "Negative expectancy detected",
+                extra={
+                    "win_rate": win_rate,
+                    "avg_win": avg_win,
+                    "avg_loss": avg_loss,
+                    "base_kelly": base_kelly_f
+                }
+            )
+            if self.config.allow_zero_position:
+                return KellyResult(
+                    position_size=0.0,
+                    kelly_f=0.0,
+                    base_kelly_f=base_kelly_f,
+                    risk_amount=0.0,
+                    adjustments_applied=adjustments,
+                    status='zero'
+                )
+            else:
+                # Use fallback risk
+                base_kelly_f = self.config.fallback_risk_pct
+                adjustments.append(f"Using fallback: {base_kelly_f*100:.1f}%")
+
+        kelly_f = base_kelly_f
+
+        # Step 4: Apply Layer 1 - Kelly Fraction
+        kelly_f = kelly_f * self.config.kelly_fraction
+        adjustments.append(f"Layer 1 (×{self.config.kelly_fraction}): {kelly_f:.4f}")
+
+        # Step 5: Apply Layer 2 - Hard Risk Cap
+        if kelly_f > self.config.max_risk_pct:
+            kelly_f = self.config.max_risk_pct
+            adjustments.append(f"Layer 2 (capped at {self.config.max_risk_pct*100:.1f}%): {kelly_f:.4f}")
+        else:
+            adjustments.append(f"Layer 2 (no cap needed): {kelly_f:.4f}")
+
+        # Step 6: Apply Layer 3 - Dynamic Volatility Adjustment
+        atr_ratio = current_atr / average_atr
+        adjustments.append(f"ATR ratio = {atr_ratio:.2f}")
+
+        if atr_ratio > self.config.high_vol_threshold:
+            # High volatility - reduce position
+            kelly_f = kelly_f / atr_ratio
+            adjustments.append(f"Layer 3 (high vol ÷{atr_ratio:.2f}): {kelly_f:.4f}")
+            logger.info(
+                "High volatility detected - reducing position",
+                extra={"atr_ratio": atr_ratio, "adjusted_kelly": kelly_f}
+            )
+        elif atr_ratio < self.config.low_vol_threshold:
+            # Low volatility - increase position (conservative boost)
+            kelly_f = kelly_f * self.config.low_vol_boost
+            # Re-apply cap after boost
+            kelly_f = min(kelly_f, self.config.max_risk_pct)
+            adjustments.append(f"Layer 3 (low vol ×{self.config.low_vol_boost}): {kelly_f:.4f}")
+            logger.info(
+                "Low volatility detected - increasing position",
+                extra={"atr_ratio": atr_ratio, "adjusted_kelly": kelly_f}
+            )
+        else:
+            adjustments.append(f"Layer 3 (normal vol): {kelly_f:.4f}")
+
+        # Store for portfolio scaling
+        self._last_kelly_f = kelly_f
+
+        # Step 7: Calculate Risk Amount
+        risk_amount = account_balance * kelly_f
+        adjustments.append(f"Risk amount = ${risk_amount:.2f}")
+
+        # Step 8: Calculate Position Size
+        # Risk per pip = stop_loss_pips * pip_value_per_lot
+        risk_per_lot = stop_loss_pips * pip_value
+        position_size = risk_amount / risk_per_lot
+        adjustments.append(f"Raw position = {position_size:.4f} lots")
+
+        # Step 9: Round to Broker Precision
+        position_size = self._round_to_lot_size(position_size)
+        adjustments.append(f"Rounded position = {position_size:.2f} lots")
+
+        logger.info(
+            "Enhanced Kelly calculation complete",
+            extra={
+                "position_size": position_size,
+                "kelly_fraction": kelly_f,
+                "risk_amount": risk_amount,
+                "account_balance": account_balance
+            }
+        )
+
+        return KellyResult(
+            position_size=position_size,
+            kelly_f=kelly_f,
+            base_kelly_f=base_kelly_f,
+            risk_amount=risk_amount,
+            adjustments_applied=adjustments,
+            status='calculated'
+        )
+
+    def _validate_inputs(
+        self,
+        win_rate: float,
+        avg_win: float,
+        avg_loss: float,
+        stop_loss_pips: float,
+        average_atr: float
+    ) -> None:
+        """Validate all input parameters."""
+        if not 0 <= win_rate <= 1:
+            raise ValueError(f"win_rate must be between 0 and 1, got {win_rate}")
+        if avg_win <= 0:
+            raise ValueError(f"avg_win must be positive, got {avg_win}")
+        if avg_loss <= 0:
+            raise ValueError(f"avg_loss must be positive, got {avg_loss}")
+        if stop_loss_pips <= 0:
+            raise ValueError(f"stop_loss_pips must be positive, got {stop_loss_pips}")
+        if average_atr <= 0:
+            raise ValueError(f"average_atr must be positive, got {average_atr}")
+
+    def _round_to_lot_size(self, position_size: float) -> float:
+        """Round position size to broker lot step."""
+        if position_size < self.config.min_lot_size:
+            return self.config.min_lot_size if not self.config.allow_zero_position else 0.0
+
+        if position_size > self.config.max_lot_size:
+            return self.config.max_lot_size
+
+        # Round down to nearest lot step
+        steps = math.floor(position_size / self.config.lot_step)
+        return round(steps * self.config.lot_step, 2)
+
+    def get_current_f(self) -> float:
+        """Get the last calculated Kelly fraction (for portfolio scaling)."""
+        return getattr(self, '_last_kelly_f', self.config.fallback_risk_pct)
+
+    def set_fraction(self, scaled_f: float) -> None:
+        """Set Kelly fraction from portfolio scaler."""
+        self._scaled_kelly_f = scaled_f

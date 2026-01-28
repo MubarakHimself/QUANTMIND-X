@@ -1,13 +1,475 @@
 {
-  "raw_response": "",
+  "video_id": "SunW-hRFGzY",
   "meta": {
-    "model": "google/gemini-2.0-flash-lite-001",
     "title": "Everything You Need to Know About ORB and How I Use It - Webinar",
+    "total_duration": "00:04:59",
+    "speakers": {
+      "SPEAKER_01": {
+        "role": "Expert",
+        "speaking_time": "02:20"
+      },
+      "SPEAKER_02": {
+        "role": "Host",
+        "speaking_time": "00:00"
+      }
+    },
+    "model": "google/gemini-2.0-flash-lite-001",
     "model_used": "google/gemini-2.0-flash-lite-001",
     "chunk_index": 4,
-    "total_chunks": 4,
-    "processed_at": "2026-01-23T19:29:44.450213"
+    "total_chunks": 12,
+    "processed_at": "2026-01-27T19:02:28.972173"
   },
-  "video_id": "SunW-hRFGzY",
+  "timeline": [
+    {
+      "clip_id": 1,
+      "timestamp_start": "00:00",
+      "timestamp_end": "00:03",
+      "speaker": "SPEAKER_01",
+      "transcript": "here, here, look at the support here, here, here, here. ",
+      "visual": {
+        "description": "A trading chart is visible on the screen beside of a seated male with blonde, medium-length hair that is pulled into a bun. He wears a gray shirt with the word MIX visible and a necklace. He is gesturing toward the trading chart.",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "support",
+        "trading chart",
+        "technical analysis"
+      ]
+    },
+    {
+      "clip_id": 2,
+      "timestamp_start": "00:03",
+      "timestamp_end": "00:10",
+      "speaker": "SPEAKER_01",
+      "transcript": "Most technical analysis that use trend lines will tell you a three point touch system or more is good. ",
+      "visual": {
+        "description": "The speaker is drawing a horizontal line on the trading chart. ",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "technical analysis",
+        "trend lines",
+        "system",
+        "three-point"
+      ]
+    },
+    {
+      "clip_id": 3,
+      "timestamp_start": "00:10",
+      "timestamp_end": "00:18",
+      "speaker": "SPEAKER_01",
+      "transcript": "if you see nine of them on one of these lines, or four of them, five of them, six of them, there's definitely proof in the concept for me. ",
+      "visual": {
+        "description": "The speaker is drawing arrows on the trading chart.",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "technical analysis",
+        "proof in concept"
+      ]
+    },
+    {
+      "clip_id": 4,
+      "timestamp_start": "00:18",
+      "timestamp_end": "00:27",
+      "speaker": "SPEAKER_01",
+      "transcript": "Technical analysis is all about using the previous price data action to make the best determine uh, future price action future action possible. It's like the definition of it. ",
+      "visual": {
+        "description": "The speaker continues to gesture toward and speak about the trading chart.",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "technical analysis",
+        "price action"
+      ]
+    },
+    {
+      "clip_id": 5,
+      "timestamp_start": "00:28",
+      "timestamp_end": "00:50",
+      "speaker": "SPEAKER_01",
+      "transcript": "With the opening range breakout, there's certain things that make good criteria and there's certain things that don't. One of the clearest entries that you're always going to get is your prin through, right? Your print through candle. So we take a look here, what do we have? ",
+      "visual": {
+        "description": "The speaker draws a circle around the print through candle on the trading chart.",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "opening range breakout",
+        "criteria",
+        "print through",
+        "candle"
+      ]
+    },
+    {
+      "clip_id": 6,
+      "timestamp_start": "00:50",
+      "timestamp_end": "00:57",
+      "speaker": "SPEAKER_01",
+      "transcript": "We have a wonderful orb break, a rejection, and a continuation down.  This is what I would call an A+ setup. A+ setup. ",
+      "visual": {
+        "description": "The speaker is pointing along the horizontal and vertical areas of the trading chart. He also draws an angled arrow.",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "breakout",
+        "rejection",
+        "A+",
+        "setup"
+      ]
+    },
+    {
+      "clip_id": 7,
+      "timestamp_start": "00:57",
+      "timestamp_end": "00:58",
+      "speaker": "SPEAKER_01",
+      "transcript": "As a futures trader, ",
+      "visual": {
+        "description": "The speaker looks toward the camera and gestures with two fingers. ",
+        "scene_type": "discussion",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "futures trader"
+      ]
+    },
+    {
+      "clip_id": 8,
+      "timestamp_start": "00:58",
+      "timestamp_end": "01:07",
+      "speaker": "SPEAKER_01",
+      "transcript": "and I know there's a lot of you. Don't try and BS me. I know there's a lot of you, I know all the things.  How many of you ",
+      "visual": {
+        "description": "The speaker points directly toward the camera and smiles. ",
+        "scene_type": "discussion",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "futures trading",
+        "technical analysis",
+        "community"
+      ]
+    },
+    {
+      "clip_id": 9,
+      "timestamp_start": "01:07",
+      "timestamp_end": "01:17",
+      "speaker": "SPEAKER_01",
+      "transcript": "entered the same amount of contract every trade. Put a one in the chat. Put a, put a one in the chat if you enter the same amount of contracts on every trade. ",
+      "visual": {
+        "description": "The speaker is gesturing at the trading chart and then toward the audience. ",
+        "scene_type": "discussion",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "contract",
+        "trading"
+      ]
+    },
+    {
+      "clip_id": 10,
+      "timestamp_start": "01:17",
+      "timestamp_end": "01:27",
+      "speaker": "SPEAKER_01",
+      "transcript": "All right?  Now, if you knew, if you knew prior that this setup has a better chance of going 50 points with a ",
+      "visual": {
+        "description": "The speaker is gesturing at the trading chart. ",
+        "scene_type": "discussion",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "setup",
+        "points"
+      ]
+    },
+    {
+      "clip_id": 11,
+      "timestamp_start": "01:27",
+      "timestamp_end": "02:08",
+      "speaker": "SPEAKER_01",
+      "transcript": "10 point stop loss, would you go a little hotter a little bigger on that trade with a 5 to one risk to reward multiple that you knew might come to fruition, would you go a little bit bigger? Or what if you had a 35 point stop loss, but you knew the potential price target was only 40 points away, almost just over a one to one or multiple. Would you go a little bit smaller on that trade? Or would you just keep holding the same. Why would you risk more for less profit? ",
+      "visual": {
+        "description": "The speaker is gesturing at the trading chart as he speaks.",
+        "scene_type": "discussion",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "stop loss",
+        "risk",
+        "reward",
+        "multiple"
+      ]
+    },
+    {
+      "clip_id": 12,
+      "timestamp_start": "02:08",
+      "timestamp_end": "02:58",
+      "speaker": "SPEAKER_01",
+      "transcript": "Why will you not risk a better trade for a better arm multiple. One of the ways I use orb and one of the ways, the principles that I teach my thousands of students is being dynamic with your risk to reward. If the risk is small and the reward could be good, compound. If the risk it doesn't make sense, scale your sizing. I'm going to say something to you that I say to all of my students, it's to all of the thousands of people that watch my show, to the 54,000 people in my community, they all have heard me say this and you may not have and I don't care if there's one person who's listening, I want you to know this. Size management, risk management, and emotional management are the same thing. There is no difference between size management, risk management and emotional management when it comes to trading.",
+      "visual": {
+        "description": "The speaker moves his hands around to emphasize a message.",
+        "scene_type": "discussion",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "risk management",
+        "reward",
+        "scale",
+        "sizing",
+        "size management",
+        "emotional management",
+        "trading"
+      ]
+    },
+    {
+      "clip_id": 13,
+      "timestamp_start": "02:58",
+      "timestamp_end": "03:07",
+      "speaker": "SPEAKER_01",
+      "transcript": "You have your emotion, you have your risk, and your  size is the dial that helps you deal with your emotions and your risk. ",
+      "visual": {
+        "description": "The speaker's hands are moving in a circle.",
+        "scene_type": "discussion",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "risk",
+        "size",
+        "emotion",
+        "dial"
+      ]
+    },
+    {
+      "clip_id": 14,
+      "timestamp_start": "03:07",
+      "timestamp_end": "03:47",
+      "speaker": "SPEAKER_01",
+      "transcript": "You change the sizing dynamically of your trading to adjust to the risk to reward that you're taking, cause every trade is unique, and you will realize that your emotions that you've been dealing with, the greed, the fear, the hope, the FOMO, will start to dial back. When you see the risk management that you've been struggling with.  Why can't I let green be green? Why am I not good with the red trade? Why do I got to keep over trading. Why do I keep blowing props? ",
+      "visual": {
+        "description": "The speaker's hands are moving as he talks.",
+        "scene_type": "discussion",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "trading",
+        "risk to reward",
+        "emotions",
+        "fear",
+        "greed",
+        "hope",
+        "FOMO",
+        "props"
+      ]
+    },
+    {
+      "clip_id": 15,
+      "timestamp_start": "03:48",
+      "timestamp_end": "03:53",
+      "speaker": "SPEAKER_01",
+      "transcript": "when you have a trade present itself like this, this is a max way trade right here, all right? ",
+      "visual": {
+        "description": "The speaker says this as he points to the trading chart.",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "trade",
+        "max way"
+      ]
+    },
+    {
+      "clip_id": 16,
+      "timestamp_start": "03:54",
+      "timestamp_end": "04:00",
+      "speaker": "SPEAKER_01",
+      "transcript": "The root trading, we're looking at candlesticks. I can see my candlesticks pretty clearly right here. ",
+      "visual": {
+        "description": "The speaker is gesturing to the screen, and the trading graph. ",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "candlesticks"
+      ]
+    },
+    {
+      "clip_id": 17,
+      "timestamp_start": "04:00",
+      "timestamp_end": "04:03",
+      "speaker": "SPEAKER_01",
+      "transcript": "I see that we failed to make a newer high. I see that we did create, ",
+      "visual": {
+        "description": "The speaker points at the trading chart. ",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "high",
+        "trading chart"
+      ]
+    },
+    {
+      "clip_id": 18,
+      "timestamp_start": "04:03",
+      "timestamp_end": "04:07",
+      "speaker": "SPEAKER_02",
+      "transcript": "And uh 1359. so technically when you just look at the screen it shows 1400, 1300, ",
+      "visual": {
+        "description": "A second speaker is heard within the video.  ",
+        "scene_type": "discussion",
+        "chart_visible": false,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": []
+    },
+    {
+      "clip_id": 19,
+      "timestamp_start": "04:07",
+      "timestamp_end": "04:20",
+      "speaker": "SPEAKER_01",
+      "transcript": "So it's actually grown from 1300, Basic market structure. Basic market structure says this is now an LH. What does LH stand for, chat? ",
+      "visual": {
+        "description": "The speaker points at a point on the trading graph.",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "Basic market structure",
+        "LH",
+        "chat"
+      ]
+    },
+    {
+      "clip_id": 20,
+      "timestamp_start": "04:20",
+      "timestamp_end": "04:21",
+      "speaker": "SPEAKER_01",
+      "transcript": "What does LH stand for? ",
+      "visual": {
+        "description": "The speaker has two fingers pointing at the screen.",
+        "scene_type": "discussion",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": []
+    },
+    {
+      "clip_id": 21,
+      "timestamp_start": "04:21",
+      "timestamp_end": "04:25",
+      "speaker": "SPEAKER_01",
+      "transcript": "We're talking basic market structure.  A lower high. ",
+      "visual": {
+        "description": "The speaker writes the word \"LH\" .",
+        "scene_type": "discussion",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "market structure"
+      ]
+    },
+    {
+      "clip_id": 22,
+      "timestamp_start": "04:25",
+      "timestamp_end": "04:34",
+      "speaker": "SPEAKER_01",
+      "transcript": "We have a lower high. If we have a lower high, I can confidently draw something like this now, right? We have a lower high. ",
+      "visual": {
+        "description": "The speaker is drawing a trend line on the chart.",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "lower high",
+        "trend line"
+      ]
+    },
+    {
+      "clip_id": 23,
+      "timestamp_start": "04:34",
+      "timestamp_end": "04:49",
+      "speaker": "SPEAKER_01",
+      "transcript": "We see that we broke outside of orb,  We have a lower high. ",
+      "visual": {
+        "description": "The speaker is gesturing at the trading chart.",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "lower high"
+      ]
+    },
+    {
+      "clip_id": 24,
+      "timestamp_start": "04:49",
+      "timestamp_end": "04:59",
+      "speaker": "SPEAKER_01",
+      "transcript": "What are you referencing, Ron? If you take a look here where we break back in. Let's grab another text box real quick. ",
+      "visual": {
+        "description": "The speakers are going to add a text box to the graph.",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "text box"
+      ]
+    }
+  ],
+  "summary_stats": {
+    "total_clips": 24,
+    "chart_clips": 17,
+    "slide_clips": 0
+  },
   "source_url": "https://youtu.be/SunW-hRFGzY"
 }

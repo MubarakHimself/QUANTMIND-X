@@ -1,0 +1,7 @@
+# MT5 Integration Dependencies
+MetaTrader5>=5.0.0
+fastmcp>=1.0.0
+pydantic>=2.0.0
+cryptography>=3.4.0
+logging>=0.5.1.2
+dataclasses>=0.6

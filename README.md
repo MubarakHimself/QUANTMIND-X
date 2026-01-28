@@ -2,102 +2,136 @@
 
 An AI-powered quantitative trading platform with automated strategy extraction, coding, and deployment.
 
+## Quick Start
+
+```bash
+# One-time setup (installs everything)
+./setup.sh
+
+# Index articles to knowledge base
+python3 scripts/index_to_qdrant.py
+
+# Start using the knowledge base
+./scripts/kb.sh status
+```
+
 ## Project Structure
 
 ```
 QUANTMINDX/
-├── scripts/                # Python scripts for scraping & processing
-├── notebooks/              # Jupyter notebooks for exploration
-├── tools/                  # NPRD multimodal video indexer
-├── mcp-servers/            # Knowledge base MCP server
-├── mcp-metatrader5-server/ # MT5 live trading integration
-├── data/                   # Data storage (gitignored)
-├── config/                 # Configuration files
-└── requirements.txt        # Python dependencies
+├── setup.sh               # One-time installation script
+├── scripts/               # Python scripts for scraping & processing
+│   ├── index_to_qdrant.py # Knowledge base indexer
+│   └── kb.sh              # Knowledge base manager
+├── tools/                 # NPRD multimodal video indexer
+├── mcp-servers/           # Knowledge base MCP server
+├── mcp-metatrader5-server/# MT5 live trading integration
+├── data/                  # Data storage (gitignored)
+└── requirements.txt       # Python dependencies
 ```
 
 ## Setup
 
-### 1. Install Python Dependencies
+### One-Time Setup (Recommended)
 
 ```bash
 cd /home/mubarkahimself/Desktop/QUANTMINDX
-python -m venv venv
+./setup.sh
+```
+
+This installs:
+- Python virtual environment
+- All dependencies (qdrant-client, sentence-transformers, etc.)
+- Embedding models
+- Qdrant database
+- MCP server
+
+### Manual Setup
+
+If you prefer manual setup:
+
+```bash
+# Create venv
+python3 -m venv venv
 source venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
-```
 
-### 2. Set Up API Keys
-
-Create a `.env` file in the project root:
-
-```
+# Create .env file
+cat > .env <<EOF
 FIRECRAWL_API_KEY=your_api_key_here
-QDRANT_URL=http://localhost:6333
 OPENAI_API_KEY=your_openai_key
 ANTHROPIC_API_KEY=your_anthropic_key
+EOF
 ```
 
-Get your Firecrawl API key: https://www.firecrawl.dev/
+## Knowledge Base
 
-### 3. Connect Knowledge Base (MCP)
+### Index Articles
 
-Add to `~/.config/claude/mcp_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "quantmindx-kb": {
-      "command": "python",
-      "args": ["mcp-servers/quantmindx-kb/server.py"]
-    }
-  }
-}
+```bash
+# From QuantMindX directory
+python3 scripts/index_to_qdrant.py
 ```
 
-See [docs/KNOWLEDGE_BASE_SETUP.md](docs/KNOWLEDGE_BASE_SETUP.md) for details.
+This processes all scraped articles and creates vector embeddings for semantic search.
+
+### Knowledge Base Commands
+
+```bash
+./scripts/kb.sh status     # Check knowledge base stats
+./scripts/kb.sh search "RSI"  # Search articles
+./scripts/kb.sh start      # Start MCP server manually
+```
+
+### Auto-Start Hooks (Optional)
+
+Enable automatic activation when entering the directory:
+
+```bash
+./scripts/setup-kb-hooks.sh
+source ~/.bashrc  # or ~/.zshrc
+```
 
 ## Workflow
 
-1. **Input Sources**: Add article URLs or video links to `data/inputs/`
+1. **Input Sources**: Add article URLs to `data/inputs/`
 2. **Scrape**: Firecrawl extracts content from web articles
 3. **Process**: NPRD processes videos with timeline extraction
-4. **Store**: Content embedded and stored in Qdrant vector database
-5. **Query**: Use MCP server or direct API to search knowledge base
+4. **Index**: Run `python3 scripts/index_to_qdrant.py`
+5. **Query**: Use MCP tools or `./scripts/kb.sh search`
 
 ## Components
 
-### Knowledge Base Scraper
-Extracts articles using Firecrawl, handles multi-part series automatically.
+### Knowledge Base
+- **Scraper**: Firecrawl integration for web articles
+- **Embeddings**: sentence-transformers (all-MiniLM-L6-v2)
+- **Vector DB**: Qdrant for semantic search
+- **MCP Server**: Interface for Claude Code integration
 
 ### NPRD (Non-Processing Research Data)
 Multimodal video/audio indexer with:
 - Timeline extraction and semantic block analysis
 - Speaker diarization
 - OCR content extraction from slides
-- Gemini 1.5 Pro integration for video understanding
+- Gemini 1.5 Pro integration
 
-### Vector Database (Qdrant)
-Stores categorized knowledge with semantic search capabilities.
-
-### MCP Knowledge Base Server
-Provides MCP interface for querying the knowledge base from Claude Code.
+### MetaTrader5 Integration
+Live trading connectivity via MCP server.
 
 ## Current Status
 
+- [x] One-time setup script
 - [x] Firecrawl scraper
-- [x] Qdrant vector database setup
+- [x] Qdrant vector database
 - [x] MCP knowledge base server
 - [x] NPRD video processing framework
 - [ ] Trading bot coding agent
 - [ ] Code review agent
 - [ ] Live trading integration
 
-## Knowledge Base
+## Documentation
 
-The knowledge base is accessible via:
-- **Direct API**: Qdrant REST interface
-- **MCP Server**: `mcp-servers/quantmindx-kb/`
-- **Python Scripts**: `scripts/index_to_qdrant.py`, `scripts/generate_document_index.py`
-
-Run `python scripts/index_to_qdrant.py --help` for indexing options.
+- [docs/KNOWLEDGE_BASE_SETUP.md](docs/KNOWLEDGE_BASE_SETUP.md) - Detailed setup guide
+- [docs/KNOWLEDGE_BASE_HOOKS.md](docs/KNOWLEDGE_BASE_HOOKS.md) - Auto-start hooks guide

@@ -2,11 +2,23 @@
 """
 Qdrant MCP Server for QuantMindX Knowledge Base
 Provides semantic search over MQL5 articles via MCP protocol.
+Only works when run from the QuantMindX directory.
 """
 
 import json
 import asyncio
+import os
+import sys
 from pathlib import Path
+
+# Security check: Only run from QuantMindX directory
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+if PROJECT_ROOT.name != "QUANTMINDX":
+    print(f"Error: Must be run from QuantMindX directory", file=sys.stderr)
+    print(f"Current: {PROJECT_ROOT}", file=sys.stderr)
+    sys.exit(1)
+
+os.chdir(PROJECT_ROOT)
 
 try:
     from mcp.server import Server
@@ -24,7 +36,7 @@ except ImportError:
     exit(1)
 
 # Configuration
-QDRANT_PATH = Path("data/qdrant_db")
+QDRANT_PATH = PROJECT_ROOT / "data" / "qdrant_db"
 COLLECTION_NAME = "mql5_knowledge"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
@@ -139,8 +151,8 @@ async def call_tool(name: str, arguments: dict):
     
     elif name == "get_article_content":
         file_path = arguments.get("file_path", "")
-        full_path = Path("data/scraped_articles") / file_path
-        
+        full_path = PROJECT_ROOT / "data" / "scraped_articles" / file_path
+
         if full_path.exists():
             content = full_path.read_text(encoding='utf-8')
             return [TextContent(type="text", text=content)]

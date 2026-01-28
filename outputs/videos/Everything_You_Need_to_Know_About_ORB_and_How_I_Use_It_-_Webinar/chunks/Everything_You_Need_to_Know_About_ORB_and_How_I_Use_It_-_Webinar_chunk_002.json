@@ -1,13 +1,540 @@
 {
-  "raw_response": "```json\n{\n  \"video_id\": \"9C7_6Y4g9Fw\",\n  \"meta\": {\n    \"title\": \"ORB Made Simple\",\n    \"total_duration\": \"00:09:00\",\n    \"speakers\": {\n      \"SPEAKER_01\": {\n        \"role\": \"Expert\",\n        \"speaking_time\": \"08:53\"\n      },\n      \"SPEAKER_02\": {\n        \"role\": \"Host\",\n        \"speaking_time\": \"00:00\"\n      }\n    }\n  },\n  \"timeline\": [\n    {\n      \"clip_id\": 1,\n      \"timestamp_start\": \"00:00\",\n      \"timestamp_end\": \"00:04\",\n      \"speaker\": \"SPEAKER_02\",\n      \"transcript\": \"here, here. Look at the support here, here, here.\",\n      \"visual\": {\n        \"description\": \"A man with a top knot hairstyle is drawing on an actively trading chart with a red line. .\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"support\",\n        \"chart\"\n      ]\n    },\n    {\n      \"clip_id\": 2,\n      \"timestamp_start\": \"00:04\",\n      \"timestamp_end\": \"00:18\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"Most technical analysis that use trend lines will tell you a three-point touch system or more is good. If you see nine of them on one of these lines or four of them, five of them, six of them, there's definitely proof in the concept for me.\",\n      \"visual\": {\n        \"description\": \"The chart displays candle formations over time, with green and gray shaded areas highlighted in the middle of the screen. The speaker is marking the areas with arrows and drawing red lines across the screen.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"technical\",\n        \"analysis\",\n        \"trend lines\",\n        \"arrows\",\n        \"lines\"\n      ]\n    },\n    {\n      \"clip_id\": 3,\n      \"timestamp_start\": \"00:18\",\n      \"timestamp_end\": \"00:28\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"Technical analysis is all about using the previous price data action to make the best determined uh future price action future action possible. It's like the definition of it.\",\n      \"visual\": {\n        \"description\": \"The chart is still displaying candle formations over time, with the speaker drawing red horizontal lines across the screen. The speaker points toward a few of them.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"Technical analysis\",\n        \"price action\",\n        \"price\"\n      ]\n    },\n    {\n      \"clip_id\": 4,\n      \"timestamp_start\": \"00:28\",\n      \"timestamp_end\": \"00:34\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"With the opening range breakout, there's certain things that make good criteria and there's certain things that don't.\",\n      \"visual\": {\n        \"description\": \"The speaker is gesturing with both hands as the camera faces him head-on. The chart still displays the trading information.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"opening range breakout\",\n        \"criteria\"\n      ]\n    },\n    {\n      \"clip_id\": 5,\n      \"timestamp_start\": \"00:34\",\n      \"timestamp_end\": \"00:43\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"One of the clearest entries that you're always going to get is your print through, right? Your print through candle. So we take a look here, what do we have?\",\n      \"visual\": {\n        \"description\": \"The speaker is pointing at the chart, drawing a circle on the candle formation with the white cursor.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"entries\",\n        \"print through\",\n        \"candle\"\n      ]\n    },\n    {\n      \"clip_id\": 6,\n      \"timestamp_start\": \"00:43\",\n      \"timestamp_end\": \"00:53\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"We have a wonderful orb break, a rejection and a continuation down. This is what I would call an A plus setup, A plus plus setup.\",\n      \"visual\": {\n        \"description\": \"The speaker is drawing arrows with white lines in the chart showing specific information. The speakers are referencing the trade action in the chart.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"orb\",\n        \"rejection\",\n        \"continuation\",\n        \"a plus setup\"\n      ]\n    },\n    {\n      \"clip_id\": 7,\n      \"timestamp_start\": \"00:53\",\n      \"timestamp_end\": \"01:03\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"As a futures trader, how many of you, and I know there's a lot of you, don't try and BS me. I know there's a lot of you, I know all the things.\",\n      \"visual\": {\n        \"description\": \"The speaker gestures to the camera as he addresses the viewers.\",\n        \"scene_type\": \"discussion\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"trader\",\n        \"futures\",\n        \"knowledge\"\n      ]\n    },\n    {\n      \"clip_id\": 8,\n      \"timestamp_start\": \"01:03\",\n      \"timestamp_end\": \"01:17\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"How many of you enter the same amount of contracts every trade? Put a one in the chat. Put a one in the chat if you enter the same amount of contracts on every trade. All right?\",\n      \"visual\": {\n        \"description\": \"Speaker stands up to speak. The lower part of the chart with the text still visible on screen.\",\n        \"scene_type\": \"discussion\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"chat\",\n        \"contracts\",\n        \"trade\"\n      ]\n    },\n    {\n      \"clip_id\": 9,\n      \"timestamp_start\": \"01:17\",\n      \"timestamp_end\": \"01:35\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"Now, if you knew, if you knew, prior that this setup has a better chance of going 50 points with a 10 point stop loss, would you go a little hotter on that trade with a 5 to 1 risk reward multiple that you knew might come to fruition, would you go a little bit bigger?\",\n      \"visual\": {\n        \"description\": \"The speaker is drawing on his chart. He is referring to the trading chart.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"stop loss\",\n        \"reward\",\n        \"trade\"\n      ]\n    },\n    {\n      \"clip_id\": 10,\n      \"timestamp_start\": \"01:35\",\n      \"timestamp_end\": \"01:44\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"or what if you had a 35 point stop loss, but you knew the potential price target was only 40 points away almost just over a one to one or multiple. Would you go a little bit smaller on that trade? Or would you just keep holding the same? Why would you risk more for less profit?\",\n      \"visual\": {\n        \"description\": \"The presenter points to the chart, highlighting the example, the price and drawing on the chart.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"loss\",\n        \"price target\",\n        \"smaller\",\n        \"profit\"\n      ]\n    },\n    {\n      \"clip_id\": 11,\n      \"timestamp_start\": \"01:44\",\n      \"timestamp_end\": \"01:59\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"Why would you not risk a better trade for a better R multiple? One of the ways I use orb and one of the ways, the principles that I teach my thousands of students, is being dynamic with your risk to reward. If the risk is small and the reward could be good, compound. If the risk it doesn't make sense, scale your sizing. I'm going to say something to you that I say to all of my students, to all of the thousands of people that watch my show, that are 54,000 people in my ser in my community, they all have heard me say this and you may not have and I don't care if there's one person who's listening. I want you to know this.\",\n      \"visual\": {\n        \"description\": \"The speaker is teaching from his trading charts. He gestures with his hands as he describes his trading techniques and concepts.\",\n        \"scene_type\": \"discussion\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"R multiple\",\n        \"dynamic\",\n        \"risk to reward\",\n        \"sizing\",\n        \"students\",\n        \"trading\"\n      ]\n    },\n    {\n      \"clip_id\": 12,\n      \"timestamp_start\": \"01:59\",\n      \"timestamp_end\": \"02:08\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"Size management, risk management and emotional management are the same thing. There is no difference between size management, risk management and emotional management when it comes to trading.\",\n      \"visual\": {\n        \"description\": \"The speaker is emphasizing three aspects of trading.\",\n        \"scene_type\": \"discussion\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"Size management\",\n        \"risk management\",\n        \"emotional management\",\n        \"trading\"\n      ]\n    },\n    {\n      \"clip_id\": 13,\n      \"timestamp_start\": \"02:08\",\n      \"timestamp_end\": \"02:22\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"You have your emotion, you have your risk, and your size is the dial that helps you deal with your emotions and your risk. You change the sizing dynamically of your trading to adjust to the risk to reward that you're taking because every trade is unique and you will realize that your emotions that you've been dealing with, the greed, the fear, the hope, the FOMO will start to dial back.\",\n      \"visual\": {\n        \"description\": \"The speaker points and then demonstrates what a trader would do with risk and reward.\",\n        \"scene_type\": \"discussion\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"emotions\",\n        \"risk\",\n        \"FOMO\",\n        \"trading\",\n        \"greed\",\n        \"fear\",\n        \"hope\"\n      ]\n    },\n    {\n      \"clip_id\": 14,\n      \"timestamp_start\": \"02:22\",\n      \"timestamp_end\": \"03:43\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"When you see the risk management that you've been struggling with, why can't I let green be green? Why am I not good with the red trade? Why do I got to keep over trading? Why do I keep blowing props? Use that dial to deal with your emotions, use that dial to deal with your risk and it's the size management. They're all the same thing. They're all the same thing. When you have a trade present itself like this, this is a max way trade right here, all right? The root trading, we're looking at candlesticks. I can see my candlesticks pretty clearly right here. I see that we failed to make a newer high, I see that\",\n      \"visual\": {\n        \"description\": \"The speaker is explaining the different points and highlighting the price on the chart, using arrows and drawing information on the chart.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"risk management\",\n        \"trading\",\n        \"emotional\",\n        \"max way trade\",\n        \"candlesticks\"\n      ]\n    },\n    {\n      \"clip_id\": 15,\n      \"timestamp_start\": \"03:43\",\n      \"timestamp_end\": \"03:55\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"I see that we failed to make a newer high. I see that we did create, let me just go to my uh right click, go to my text box. I love drawing text.\",\n      \"visual\": {\n        \"description\": \"The presenter is drawing on the screen and highlighting the information while marking on the chart with text information.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"text box\",\n        \"market structure\",\n        \"high\"\n      ]\n    },\n    {\n      \"clip_id\": 16,\n      \"timestamp_start\": \"03:55\",\n      \"timestamp_end\": \"04:06\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"Basic market structure. Basic market structure says, this is now an LH, what does LH stand for, chat. What does LH stand for, we're talking basic market structure.\",\n      \"visual\": {\n        \"description\": \"The speaker is highlighting the basic market structures on the chart and asking the audience to answer the question about LH.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"Basic market structure\",\n        \"LH\",\n        \"chart\"\n      ]\n    },\n    {\n      \"clip_id\": 17,\n      \"timestamp_start\": \"04:06\",\n      \"timestamp_end\": \"04:11\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"right click, go to my text box, basic market structure. Basic market structure says, this is now an LH. What does LH stand for, chat?\",\n      \"visual\": {\n        \"description\": \"The screen shows right-click options by the graph. While talking, he is marking areas.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"chat.\",\n        \"text box\",\n        \"structure\"\n      ]\n    },\n    {\n      \"clip_id\": 18,\n      \"timestamp_start\": \"04:11\",\n      \"timestamp_end\": \"04:15\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"What does LH stand for, we're talking basic market structure. A lower high.  We have a lower high. If we have a Lower High, I can confidently draw something like this now, right?\",\n      \"visual\": {\n        \"description\": \"The speaker is showing the areas where he marked the red lines on the graph.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"market structure\",\n        \"lower high\",\n        \"chart\",\n        \"lines\"\n      ]\n    },\n    {\n      \"clip_id\": 19,\n      \"timestamp_start\": \"04:15\",\n      \"timestamp_end\": \"04:21\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"We have a lower high. We see that we broke outside of orb, and, uh, 1359, so technically when you just look at the screen, it shows 1400 but 1300, you know, and uh the, you know?\",\n      \"visual\": {\n        \"description\": \"The speaker is drawing on the chart while speaking.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"orb\",\n        \"1359\",\n        \"screen\"\n      ]\n    },\n    {\n      \"clip_id\": 20,\n      \"timestamp_start\": \"04:21\",\n      \"timestamp_end\": \"04:27\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"So it's actually grown from 1300. If you, if you take a look here where we break back in, lower high. If we have a lower high consider a newer low.\",\n      \"visual\": {\n        \"description\": \"The speaker is saying something with the chart view.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"high\",\n        \"newer\",\n        \"low\"\n      ]\n    },\n    {\n      \"clip_id\": 21,\n      \"timestamp_start\": \"04:27\",\n      \"timestamp_end\": \"04:36\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"If you know prior that this setup has a better chance, the chart with this,  would you go a little bit bigger with a 5 - to-1 risk to reward multiple that you knew might come fruition, would you go a little bit bigger?\",\n      \"visual\": {\n        \"description\": \"The presenter is speaking and pointing to the chart view. The chart view has red horizontal lines.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"risk\",\n        \"reward\",\n        \"better chance\"\n      ]\n    },\n    {\n      \"clip_id\": 22,\n      \"timestamp_start\": \"04:36\",\n      \"timestamp_end\": \"04:41\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"or what if you had a 35 point stop loss, but you knew the potential price target was only 40 points away or just over one-to-one or multiple. Would you go a little bit smaller on that trade? Or would you just keep holding the same?\",\n      \"visual\": {\n        \"description\": \"The speaker is drawing on the chart, highlighting information using arrows and text and points. The chart view is displaying information about the trade.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"stop loss\",\n        \"price target\",\n        \"trading\"\n      ]\n    },\n    {\n      \"clip_id\": 23,\n      \"timestamp_start\": \"04:41\",\n      \"timestamp_end\": \"04:48\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"Why would you risk more for less profit? Why would you not risk a better trade for a better R multiple. One thing that we're going to look at on the 15-minute chart is this and this is the simplest way to use orb, we have a candle closure outside of  orb low or a candle closure outside of the orb high on the 15-minute chart, that's your signal.  That's the\",\n      \"visual\": {\n        \"description\": \"The speaker is drawing on the chart. The chart is depicting the trading patterns.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"profit\",\n        \"signal\",\n        \"chart\"\n      ]\n    },\n    {\n      \"clip_id\": 24,\n      \"timestamp_start\": \"04:48\",\n      \"timestamp_end\": \"04:54\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"cast in the bat signal, get ready, get ready, we may have a potential trade coming.\",\n      \"visual\": {\n        \"description\": \"The speaker is gesturing with both hands, and as he speaks, he points to the chart. The chart still shows the trading patterns.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"trade\",\n        \"signal\",\n        \"potential\"\n      ]\n    },\n    {\n      \"clip_id\": 25,\n      \"timestamp_start\": \"04:54\",\n      \"timestamp_end\": \"05:05\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"In the futures and the options world, where you go, you have your emotion, you have your risk and your size is the dial that helps you deal with your emotions and your risk. You change the sizing dynamically of your trading.\",\n      \"visual\": {\n        \"description\": \"The speaker is pointing to the chart and talking. There's text on the chart.\",\n        \"scene_type\": \"discussion\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"futures\",\n        \"options\",\n        \"trading\",\n        \"emotions\",\n        \"risk\"\n      ]\n    },\n    {\n      \"clip_id\": 26,\n      \"timestamp_start\": \"05:05\",\n      \"timestamp_end\": \"05:12\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"You're going to see the risk management that you've been struggling with. Why can't I let green be green? I'm going to say something to you that I say to all of students when it comes to trading. You will realize the emotions can also be controlled in trading.\",\n      \"visual\": {\n        \"description\": \"The presenter is speaking from the chart. The trading board displays chart patterns. \",\n        \"scene_type\": \"discussion\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"the risk management\",\n        \"trading\",\n        \"emotions\"\n      ]\n    },\n    {\n      \"clip_id\": 27,\n      \"timestamp_start\": \"05:12\",\n      \"timestamp_end\": \"05:28\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"If you see this on your lower time frames and you can confirm this on multiple time frames, what you should be able to visualize and it's called a trend. Market structure. it's very clear, is it not? We're looking at a beautiful piece of market structure. Now, the best way to use the orb, the best way to use the orb is where we come back to our 15 minute chart. 15-minute chart is king, we can get rid of our ruler now, very simple to use the drawings on wealth charts. It's literally a left a right click, put it up, and a right click delete, it's on, it's off, it's fast.\",\n      \"visual\": {\n        \"description\": \"The speaker is pointing to the chart while talking. Drawing and text appears on the chart.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"trend\",\n        \"market structure\",\n        \"chart\",\n        \"drawings\"\n      ]\n    },\n    {\n      \"clip_id\": 28,\n      \"timestamp_start\": \"05:28\",\n      \"timestamp_end\": \"05:30\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"We're looking at a a beautiful piece of market structure.\",\n      \"visual\": {\n        \"description\": \"The speaker is discussing market structure as he points toward the chart.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"structure\",\n        \"market structure\"\n      ]\n    },\n    {\n      \"clip_id\": 29,\n      \"timestamp_start\": \"05:30\",\n      \"timestamp_end\": \"05:35\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"Now, the best way to use the orb, the best way to use the orb is where we come back to our 15 minute chart. 15-minute chart, we're going to see.\",\n      \"visual\": {\n        \"description\": \"The speaker is analyzing his chart and the trading actions on the screen.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"orb\",\n        \"chart\"\n      ]\n    },\n    {\n      \"clip_id\": 30,\n      \"timestamp_start\": \"05:35\",\n      \"timestamp_end\": \"05:41\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"You come back to our 15. It's the 15 minute chart is king. You can get your print through on, right?  You're going to get, you're going to drop the one two minute.  Doesn't matter. You could drop down to the 3, 4, 5. who cares?  Whatever you're comfortable with. But you want to drop the time frame.\",\n      \"visual\": {\n        \"description\": \"The speaker is drawing on the chart describing the movements. The chart is showing the candle formation.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"print through\",\n        \"the 15 minute chart\",\n        \"time frame\"\n      ]\n    },\n    {\n      \"clip_id\": 31,\n      \"timestamp_start\": \"05:41\",\n      \"timestamp_end\": \"05:54\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"And you're gonna drop the time frame. Once we drop the time frame, then yes, we're going to see. One thing, we broke candlestick structure, two, we closed outside of orb. Three, we are considering a newer low. Okay, in indices futures. What about individual stock? Applicable\",\n      \"visual\": {\n        \"description\": \"A diagram that indicates price. The speaker is marking the area and highlighting it also.\",\n        \"scene_type\": \"chart_analysis\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"candlestick\",\n        \"orb\",\n        \"indexes\",\n        \"futures\",\n        \"stock\"\n      ]\n    },\n    {\n      \"clip_id\": 32,\n      \"timestamp_start\": \"05:54\",\n      \"timestamp_end\": \"06:03\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"And they're going to see, how many more levels of confluence do you guys need to to confidently push that short button? How many? I like two or three. I just told you four, and if you add your own little sauce to it, I bet you got five or six. If you have five or six levels\",\n      \"visual\": {\n        \"description\": \"The speaker continues to emphasize the key levels for a successful trade and its application.\",\n        \"scene_type\": \"discussion\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"confluence\",\n        \"trade\"\n      ]\n    },\n    {\n      \"clip_id\": 33,\n      \"timestamp_start\": \"06:03\",\n      \"timestamp_end\": \"06:13\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"of confluence and you don't have the you don't you don't have the guts to push to push that short button and have the confidence in your system, then you need to figure something out. You need to figure something out because right here, I could tell you this, I was short this morning, I was short this morning and once this\",\n      \"visual\": {\n        \"description\": \"The speaker is pointing towards the chart and drawing with the white cursor.\",\n        \"scene_type\": \"discussion\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"short\",\n        \"confidence\",\n        \"system\"\n      ]\n    },\n    {\n      \"clip_id\": 34,\n      \"timestamp_start\": \"06:13\",\n      \"timestamp_end\": \"06:29\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"is a lower high established and this happened, look at that right here. You know what this is called? This isn't called a sell off. This isn't, you know, a little drop, liquidity, you know, This this you know, you know what this is called? This is called a life changing day for a trader. This is called life changing.\",\n      \"visual\": {\n        \"description\": \"The presenter is pointing to the chart where the trading is happening.\",\n        \"scene_type\": \"discussion\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"lower highs\",\n        \"trader\",\n        \"life changing day\",\n        \"sell off\",\n        \"liquidity\"\n      ]\n    },\n    {\n      \"clip_id\": 35,\n      \"timestamp_start\": \"06:29\",\n      \"timestamp_end\": \"06:33\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"I don't care about no falling knife, I don't care about no technical analysis pattern. All I see is an opportunity for retail traders\",\n      \"visual\": {\n        \"description\": \"The speaker is starting to close the discussion on the chart, summarizing what the viewer should be looking for.\",\n        \"scene_type\": \"discussion\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"technical analysis\",\n        \"retail traders\"\n      ]\n    },\n    {\n      \"clip_id\": 36,\n      \"timestamp_start\": \"06:33\",\n      \"timestamp_end\": \"07:36\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"an A plus setup, that's what I see. Right here, that's what I'm passionate about. How can these people see it visually and then become so confident in their system that they're going to push the damn button and not only that, they're going to push it twice because it's presenting the A plus dynamic Risk management setup that they're looking for. Orb is simple enough to give that to you, with a little bit of Max way sauce. You'll never miss it ever. This is a perfect example of how powerful the 15-minute range can be and if you think that it wasn't, number one, two, look at the candle continuations down.\",\n      \"visual\": {\n        \"description\": \"The speaker is going over the chart explaining what is happening within the trade chart.\",\n        \"scene_type\": \"discussion\",\n        \"chart_visible\": true,\n        \"slide_visible\": false\n      },\n      \"ocr_content\": [],\n      \"keywords\": [\n        \"chart\",\n        \"candle\",\n        \"print\"\n      ]\n    },\n    {\n      \"clip_id\": 37,\n      \"timestamp_start\": \"07:36\",\n      \"timestamp_end\": \"07:40\",\n      \"speaker\": \"SPEAKER_01\",\n      \"transcript\": \"And I can",
+  "video_id": "SunW-hRFGzY",
   "meta": {
-    "model": "google/gemini-2.0-flash-lite-001",
     "title": "Everything You Need to Know About ORB and How I Use It - Webinar",
+    "total_duration": "00:04:59",
+    "speakers": {
+      "SPEAKER_01": {
+        "role": "Expert",
+        "speaking_time": "04:59"
+      }
+    },
+    "model": "google/gemini-2.0-flash-lite-001",
     "model_used": "google/gemini-2.0-flash-lite-001",
     "chunk_index": 2,
-    "total_chunks": 4,
-    "processed_at": "2026-01-23T19:26:16.540788"
+    "total_chunks": 12,
+    "processed_at": "2026-01-27T18:59:17.910011"
   },
-  "video_id": "SunW-hRFGzY",
+  "timeline": [
+    {
+      "clip_id": 1,
+      "timestamp_start": "00:00",
+      "timestamp_end": "00:04",
+      "speaker": "SPEAKER_01",
+      "transcript": "also have five cash accounts with 57,000 in verified profits. And this platform fills",
+      "visual": {
+        "description": "The video shows a man in front of a screen. On the screen is a chart. The man is in front of his camera and is talking to the audience. He is wearing a grey t-shirt with the letters \"MAX\" on it. He also has a bun and a necklace on. On the chart is a line graph, seemingly in a downtrend. In the upper right hand corner of the screen is the current time, which is 1:05 PM.",
+        "scene_type": "intro",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [
+        "app.wealthcharts.com",
+        "1:05 PM",
+        "5/9/2023"
+      ],
+      "keywords": [
+        "trading",
+        "profits",
+        "chart"
+      ]
+    },
+    {
+      "clip_id": 2,
+      "timestamp_start": "00:04",
+      "timestamp_end": "00:13",
+      "speaker": "SPEAKER_01",
+      "transcript": "20 Apex accounts like a hot knife through butter for me every single day. I get wonderful fills and wonderful exits and it's real simple to use because I can just right click, buy sell, right click buy sell.",
+      "visual": {
+        "description": "The man is gesturing with his fingers while talking. The chart is still visible, the line graph stays the same.",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [
+        "app.wealthcharts.com",
+        "1:05 PM",
+        "5/9/2023"
+      ],
+      "keywords": [
+        "trading",
+        "accounts",
+        "buy sell"
+      ]
+    },
+    {
+      "clip_id": 3,
+      "timestamp_start": "00:13",
+      "timestamp_end": "00:18",
+      "speaker": "SPEAKER_01",
+      "transcript": "and drag my targets. And when you're also in a trade, I don't know, I'm sure they covered this, but it tells you your profit. It tells me your 30% drawdown. It tells you your liquid when you know, when you're liquify. It tells you all of this on the chart.",
+      "visual": {
+        "description": "The man is gestures to his sides with his hands and then gestures to the chart. The chart is still visible.",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [
+        "app.wealthcharts.com",
+        "1:05 PM",
+        "5/9/2023"
+      ],
+      "keywords": [
+        "profit",
+        "chart",
+        "drawdown"
+      ]
+    },
+    {
+      "clip_id": 4,
+      "timestamp_start": "00:18",
+      "timestamp_end": "00:24",
+      "speaker": "SPEAKER_01",
+      "transcript": "It's the first platform that I'm aware of that does this. It's also fully customizable to everything that I like and need as a trader. I need to see what Spy's doing versus the Qs in relevance. I wanted to know what the Nasdaq and SPX, and SBY",
+      "visual": {
+        "description": "The man states that this is the first platform he's used that does this. The chart is still visible, he is describing what needs he has as a trader.",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [
+        "app.wealthcharts.com",
+        "1:05 PM",
+        "5/9/2023"
+      ],
+      "keywords": [
+        "platform",
+        "trader",
+        "customizable"
+      ]
+    },
+    {
+      "clip_id": 5,
+      "timestamp_start": "00:24",
+      "timestamp_end": "00:36",
+      "speaker": "SPEAKER_01",
+      "transcript": "in QEs all have in common with each other on the day. It's part of my trading strategy. with a fully customizable screen like this, you're able to see everything. You're able to copy trade right on the screen clearly. You're able to get a clean entry, clean exit, and you're able to see all the PA verified profits.",
+      "visual": {
+        "description": "The man points to the right side of the screen showing his chart. He then gestures with his hands describing the features of the chart.",
+        "scene_type": "introduction",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [
+        "app.wealthcharts.com",
+        "1:05 PM",
+        "5/9/2023"
+      ],
+      "keywords": [
+        "trading",
+        "strategy",
+        "verified profits"
+      ]
+    },
+    {
+      "clip_id": 6,
+      "timestamp_start": "00:36",
+      "timestamp_end": "00:41",
+      "speaker": "SPEAKER_01",
+      "transcript": "32,000 just today just today alone using wealth charts. And over almost almost, I can't say over yet, I won't lie. uh, almost half a million in verified profits in the last 12 trading days. 12 trading days Rob.",
+      "visual": {
+        "description": "The man points to the chart and states the profits he has made that day, as well as overall profits. ",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [
+        "app.wealthcharts.com",
+        "1:05 PM",
+        "5/9/2023"
+      ],
+      "keywords": [
+        "verified profits",
+        "trading days",
+        "chart"
+      ]
+    },
+    {
+      "clip_id": 7,
+      "timestamp_start": "00:41",
+      "timestamp_end": "00:54",
+      "speaker": "SPEAKER_01",
+      "transcript": "Um, what I'm going to show you guys today is my bread and butter for future trading. Uh, I don't think it was very big in the trading game until Big Daddy Max got on his big social media big mouth and started screaming it from the mountaintops, and yes, you guys may know what I'm talking about. I'm talking about the Orb. Orb is king. Why complicate trading? Why complicated to the point where you don't even know what",
+      "visual": {
+        "description": "The man starts to talk about the strategies, going into the different tools that can be used. The chart is still visible.",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [
+        "app.wealthcharts.com",
+        "1:05 PM",
+        "5/9/2023",
+        "NVDA"
+      ],
+      "keywords": [
+        "trading",
+        "market",
+        "timeframe"
+      ]
+    },
+    {
+      "clip_id": 8,
+      "timestamp_start": "00:54",
+      "timestamp_end": "01:06",
+      "speaker": "SPEAKER_01",
+      "transcript": "what you're looking at anymore. How many of you have three different momentum oscillators on your chart and they're all reading the same exact thing, yet for some reason, you think you're seeing confluence between your MACD, your stochastics, your RSI, your EMAs, you're all of that. You have the same thing, copy pasted four times on your chart. Does everyone see my chart here? Everyone can see this beautiful wealth chart I have up here.",
+      "visual": {
+        "description": "The man uses the chat to describe the tools and strategies. He is telling the audience to not have too many indicators on their chart.",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [
+        "app.wealthcharts.com",
+        "1:05 PM",
+        "5/9/2023",
+        "SPY"
+      ],
+      "keywords": [
+        "chart",
+        "screen",
+        "trading"
+      ]
+    },
+    {
+      "clip_id": 9,
+      "timestamp_start": "01:06",
+      "timestamp_end": "01:11",
+      "speaker": "SPEAKER_01",
+      "transcript": "This beautiful wealth chart is all I need. And when I say that, I mean that. I don't need any indicators. I don't want to trade with any indicators. I want to trade on the 15 minute time frame down to the one to two minute time frame. And I'm going to show you guys exactly how I do it every single day.",
+      "visual": {
+        "description": "The man states that he doesn't need anymore tools, so he focuses on the 15 to two minute scale. The chart is still visible.",
+        "scene_type": "discussion",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [
+        "app.wealthcharts.com",
+        "1:05 PM",
+        "5/9/2023",
+        "SPY"
+      ],
+      "keywords": [
+        "indicators",
+        "trading",
+        "timeframe"
+      ]
+    },
+    {
+      "clip_id": 10,
+      "timestamp_start": "01:11",
+      "timestamp_end": "01:17",
+      "speaker": "SPEAKER_01",
+      "transcript": "The most important thing you need to do is start on the 15 minute time frame. Now, there is total interpretation with the opening range breakout. You can try the 5 minute, you can try the 15 minute. There's some people that love the 30 minute, whatever floats your boat. Remember what I say is what I do, but what I say to you, you need to make it yours, because I cannot trade for you.",
+      "visual": {
+        "description": "The man states the importance of starting on the 15 minute time frame. He then describes the importance of trading for yourself.",
+        "scene_type": "discussion",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [
+        "app.wealthcharts.com",
+        "1:05 PM",
+        "5/9/2023",
+        "SPY"
+      ],
+      "keywords": [
+        "trading",
+        "timeframe",
+        "market"
+      ]
+    },
+    {
+      "clip_id": 11,
+      "timestamp_start": "01:17",
+      "timestamp_end": "02:18",
+      "speaker": "SPEAKER_01",
+      "transcript": "I don't have the same risk management you have. I don't have the same emotional management you have, and I don't have the same uh uh size management that you have. Every one is unique and every trade is unique. So you have to trade your game. So when I teach you this and show you this, make it yours, Find out which time frame you like the best, but I'm gonna show you how I do it. The first thing I'm going to do every single day is look at this 9:30 candle right here. This beautiful 9:30 candle. I do not care what happens from 4:01 PM today until 9:29 AM tomorrow. I don't want to know what happened in the pre-market. I don't want to know what happened in the after hours. I don't care. I don't want to know, of any foreseen news. I don't care about any earnings reports. I don't want to know nothing. All I want to know is live price action when the markets are open, because what do we tend to do? How many of you are guilty of this? You saw an earnings report, you saw a big move overnight. We're up 250 points and you said, man, this thing's going to dump. People are going to take profit right at 9:30. I'm going short right at the open. There's no way it can keep going up. 9:30 opens and you see the biggest green candle you've ever seen. You went from 250 to 350 green and you cooked yourself. Why? Why?",
+      "visual": {
+        "description": "The man describes his trading strategy and what he does. He states that he wants to lose the pre-market bias. The man gives a psychological tip.",
+        "scene_type": "chart_analysis",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [
+        "app.wealthcharts.com",
+        "1:05 PM",
+        "5/9/2023",
+        "SPY"
+      ],
+      "keywords": [
+        "premarket bias",
+        "market",
+        "trading"
+      ]
+    },
+    {
+      "clip_id": 12,
+      "timestamp_start": "02:18",
+      "timestamp_end": "02:30",
+      "speaker": "SPEAKER_01",
+      "transcript": "Because you formulated a bias without nothing technical, with nothing analytical, you just looked at a bunch of numbers on a chart and made an opinion. That is how traders lose before the market even open. And one thing for us to do, a psychological tip is what? It's hard to become reactive instead of being proactive whe when you become proactive, you it's hard to flip to a reactive mindset.",
+      "visual": {
+        "description": "The man gives an important tip about making an opinion about trading.",
+        "scene_type": "discussion",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [
+        "WealthTracker"
+      ],
+      "keywords": [
+        "opinion",
+        "market",
+        "trading"
+      ]
+    },
+    {
+      "clip_id": 13,
+      "timestamp_start": "02:30",
+      "timestamp_end": "02:50",
+      "speaker": "SPEAKER_01",
+      "transcript": "It's very tough to hit that reverse button when you know you're wrong, because a lot of traders love to hit that DCA button instead. Why do we keep putting our eggs in a basket that has holes in it the size of, of softball, sorry, of softballs instead of putting our eggs in a basket that's made out of gold.",
+      "visual": {
+        "description": "The man continues on the psychological tip describing the importance of the tip and making sure you're not making assumptions. The chart is still visible.",
+        "scene_type": "discussion",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "proactive",
+        "trading",
+        "psychological"
+      ]
+    },
+    {
+      "clip_id": 14,
+      "timestamp_start": "02:50",
+      "timestamp_end": "02:59",
+      "speaker": "SPEAKER_01",
+      "transcript": "One thing you need to know, lose the pre-market bias. Lose all that pre market bias. You don't need it. All you need on your wealth chart is this",
+      "visual": {
+        "description": "The man reiterates the psychological tip and ends the video.",
+        "scene_type": "outro",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": [
+        "bias",
+        "psychological tip",
+        "trading"
+      ]
+    },
+    {
+      "clip_id": 15,
+      "timestamp_start": "02:59",
+      "timestamp_end": "02:59",
+      "speaker": "SPEAKER_01",
+      "transcript": ".",
+      "visual": {
+        "description": "The man gestures to end the video.",
+        "scene_type": "outro",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": []
+    },
+    {
+      "clip_id": 16,
+      "timestamp_start": "02:59",
+      "timestamp_end": "02:59",
+      "speaker": "SPEAKER_01",
+      "transcript": ".",
+      "visual": {
+        "description": "The man points to the chart.",
+        "scene_type": "outro",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": []
+    },
+    {
+      "clip_id": 17,
+      "timestamp_start": "02:59",
+      "timestamp_end": "02:59",
+      "speaker": "SPEAKER_01",
+      "transcript": ".",
+      "visual": {
+        "description": "The man looks directly at the camera.",
+        "scene_type": "outro",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": []
+    },
+    {
+      "clip_id": 18,
+      "timestamp_start": "02:59",
+      "timestamp_end": "02:59",
+      "speaker": "SPEAKER_01",
+      "transcript": ".",
+      "visual": {
+        "description": "The man looks at the camera.",
+        "scene_type": "outro",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": []
+    },
+    {
+      "clip_id": 19,
+      "timestamp_start": "02:59",
+      "timestamp_end": "02:59",
+      "speaker": "SPEAKER_01",
+      "transcript": ".",
+      "visual": {
+        "description": "The man points at the screen.",
+        "scene_type": "outro",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": []
+    },
+    {
+      "clip_id": 20,
+      "timestamp_start": "02:59",
+      "timestamp_end": "02:59",
+      "speaker": "SPEAKER_01",
+      "transcript": ".",
+      "visual": {
+        "description": "The man shakes his head.",
+        "scene_type": "outro",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": []
+    },
+    {
+      "clip_id": 21,
+      "timestamp_start": "02:59",
+      "timestamp_end": "02:59",
+      "speaker": "SPEAKER_01",
+      "transcript": ".",
+      "visual": {
+        "description": "The man closes his eyes.",
+        "scene_type": "outro",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": []
+    },
+    {
+      "clip_id": 22,
+      "timestamp_start": "02:59",
+      "timestamp_end": "02:59",
+      "speaker": "SPEAKER_01",
+      "transcript": ".",
+      "visual": {
+        "description": "The man raises his hand, in a gesture of end.",
+        "scene_type": "outro",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": []
+    },
+    {
+      "clip_id": 23,
+      "timestamp_start": "02:59",
+      "timestamp_end": "02:59",
+      "speaker": "SPEAKER_01",
+      "transcript": ".",
+      "visual": {
+        "description": "The man looks towards the chart.",
+        "scene_type": "outro",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": []
+    },
+    {
+      "clip_id": 24,
+      "timestamp_start": "02:59",
+      "timestamp_end": "02:59",
+      "speaker": "SPEAKER_01",
+      "transcript": ".",
+      "visual": {
+        "description": "The man turns his head towards the screen.",
+        "scene_type": "outro",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": []
+    },
+    {
+      "clip_id": 25,
+      "timestamp_start": "02:59",
+      "timestamp_end": "02:59",
+      "speaker": "SPEAKER_01",
+      "transcript": ".",
+      "visual": {
+        "description": "The man closes his eyes.",
+        "scene_type": "outro",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": []
+    },
+    {
+      "clip_id": 26,
+      "timestamp_start": "02:59",
+      "timestamp_end": "03:00",
+      "speaker": "SPEAKER_01",
+      "transcript": ".",
+      "visual": {
+        "description": "The man points at the chart.",
+        "scene_type": "outro",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [],
+      "keywords": []
+    },
+    {
+      "clip_id": 27,
+      "timestamp_start": "03:00",
+      "timestamp_end": "04:59",
+      "speaker": "SPEAKER_01",
+      "transcript": "SPY.",
+      "visual": {
+        "description": "The man points at the screen and then towards his chin.",
+        "scene_type": "outro",
+        "chart_visible": true,
+        "slide_visible": false
+      },
+      "ocr_content": [
+        "WealthTracker"
+      ],
+      "keywords": []
+    }
+  ],
+  "summary_stats": {
+    "total_clips": 27,
+    "chart_clips": 14,
+    "slide_clips": 0
+  },
   "source_url": "https://youtu.be/SunW-hRFGzY"
 }

@@ -1,73 +1,38 @@
-# Python
+# 1. AGENT BRAINS & METADATA (Strictly Ignored)
+.gemini/
+.claude/
+.claude-flow/
+.qodo/
+.swarm/
+.agent/
+.mcp.json
+.nprd_config.json
+
+# 2. DOCUMENTATION & ARTIFACTS
+docs/
+*.md
+!README.md
+
+# 3. SCRIPTS & CONFIGS
+*.sh
+*.json
+.env
+.env.*
+config/
+
+# 4. COMPILED & TRASH
+*.ex5
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-ENV/
-.venv
-*.egg-info/
-dist/
-build/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-*.ipynb_checkpoints
-
-# Environment variables
-.env
-.env.local
-*.env
-
-# API Keys
-*_api_key.txt
-secrets.json
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-data/qdrant/
-
-# Logs
 *.log
-logs/
-
-# OS
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
-*~
-
-# IDE
-.vscode/
-.idea/
-*.iml
-
-# Scraped data (too large for git)
-data/raw_articles/
-data/markdown/
-data/exports/
-
-# Processed videos (NPRD outputs)
-data/videos/
-data/video_transcripts/
-data/video_clips/
-*.mp4
-*.mkv
-*.avi
-*.mov
-*.webm
-
-# Scraped articles and exports (additional)
-data/scraped_articles/
-*.json.gz
-*.json.zip
-
-# Temporary files
 tmp/
-temp/
-*.tmp
+*.sqlite
+*.db
+
+# 5. DATA & OUTPUTS
+data/
+outputs/
+logs/
+venv/
+env/
+quant-traderr-lab/
