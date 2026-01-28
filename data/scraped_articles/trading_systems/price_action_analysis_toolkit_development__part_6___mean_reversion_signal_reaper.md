@@ -1,0 +1,694 @@
+---
+title: Price Action Analysis Toolkit Development (Part 6): Mean Reversion Signal Reaper
+url: https://www.mql5.com/en/articles/16700
+categories: Trading Systems, Expert Advisors
+relevance_score: 7
+scraped_at: 2026-01-22T17:49:57.593343
+---
+
+[![](https://www.mql5.com/ff/sh/jup0jccfs9655z9z2/01.png)Learn to create your own robotsRead our book "MQL5 Programming for Traders"Begin](https://www.mql5.com/ff/go?link=https://www.mql5.com/en/book%3Futm_source=www.mql5.com%26utm_medium=display%26utm_term=read.algobook%26utm_content=visit.page%26utm_campaign=algobook.promo.04.2024&a=rsxjstxkzbrlgjjrxaglpezpvrjflnvw&s=7224440013c3dbc50ba9cc078cd015fabca36df446b8e75028d6b30234663872&uid=&ref=https://www.mql5.com/en/articles/16700&id=bfogggabsofabcpxuzmgaibarmaxasdrj&fz_uniq=5049411368844634899)
+
+MetaTrader 5 / Trading systems
+
+
+### Introduction
+
+Mean reversion is an intriguing trading strategy that many skilled traders use to optimize their market insights. This concept revolves around the idea that asset prices tend to move back toward their historical averages, creating opportunities for strategically timed trades. However, manually analyzing price movements can be both time-consuming and prone to oversight. That’s where automation can significantly enhance the trading experience.
+
+In this article, we will develop an MQL5 Expert Advisor designed to identify trading opportunities grounded in mean reversion principles. By utilizing a 50-period Exponential Moving Average (EMA) and the Relative Strength Index (RSI), we will generate precise entry signals that allow us to capitalize on market fluctuations. To make the trading process even more intuitive, our EA will display buy and sell signals as visual arrows directly on the chart, alongside an informative summary detailing the signals.
+
+If you’re eager to streamline your trading and leverage the power of automation, join us as we explore how to create an MQL5 Expert Advisor that captures the essence of mean reversion. Let’s dive into the details and take a look at the table of contents.
+
+- [Introduction](https://www.mql5.com/en/articles/16700#para1)
+- [What is Mean Reversion](https://www.mql5.com/en/articles/16700#para2)
+- [Strategy Overview](https://www.mql5.com/en/articles/16700#para3)
+- [Code Breakdown](https://www.mql5.com/en/articles/16700#para4)
+- [Testing and Results](https://www.mql5.com/en/articles/16700#para5)
+- [Conclusion](https://www.mql5.com/en/articles/16700#para6)
+
+### What is Mean Reversion
+
+Mean reversion is a financial concept that posits that asset prices, returns, or other market metrics tend to revert to their historical average or "mean" as time progresses. This mean can be calculated through different methods, including the average price over a designated timeframe, a moving average, or a standard benchmark return.
+
+The theory is based on the belief that extreme fluctuations in the market are typically short-lived, and that prices will ultimately stabilize. Traders and analysts leverage this principle to spot potential trading opportunities, especially when prices diverge notably from their historical averages.
+
+Brief History and Origin
+
+Mean reversion is a concept rooted in statistics and finance, first recognized in the early 20th century through the works of mathematicians like Francis Galton. Originally applied in the study of natural phenomena, such as the tendency of extreme traits in populations (e.g., height) to revert to the average over generations, mean reversion later became a cornerstone of financial theory.
+
+In financial markets, this idea was popularized by economists like John Maynard Keynes, who observed that asset prices often oscillate around their fundamental values. This led to the development of trading strategies that exploit these tendencies. For instance, during the dot-com bubble of the late 1990s, many overvalued technology stocks eventually reverted to their fundamental values, demonstrating mean reversion in action.
+
+Practical Examples of Mean Reversion
+
+- Stock Market: During the COVID-19 pandemic, many stocks experienced sharp deviations from their historical averages. For example, travel industry stocks fell drastically below their averages, but later rebounded as the market normalized.
+- Currency Pairs: Currency exchange rates often revert to their long-term means due to central bank policies and economic fundamentals. For instance, the USD/JPY pair historically oscillates within a predictable range over time.
+- Commodities: Gold and oil prices frequently demonstrate mean-reverting behavior, moving back to historical levels after extreme price spikes or dips due to geopolitical events.
+
+Defining Mean Reversion in Context with Our Expert Advisor (EA)
+
+In the context of this project, mean reversion refers to the tendency of an asset's price to return to its average (mean) level after moving significantly above or below it. This principle forms the basis for the trading signals that will be generated by the Expert Advisor (EA).
+
+- Mean (50 EMA):The code uses a 50-period Exponential Moving Average (EMA) to represent the mean. The EMA dynamically adjusts to recent price data, providing a reliable benchmark for the current market trend. When the price deviates significantly from the EMA, it signals a potential reversion.
+- Reversion in Action: A buy signal is generated when the price is below the 50 EMA and the RSI is oversold, the EA predicts an upward price movement back toward the EMA. A sell signal conversely, when the price is above the 50 EMA and the RSI is overbought, the EA anticipates a downward price correction.
+
+### Strategy Overview
+
+This strategy is built around the concept of mean reversion, which suggests that prices tend to return to their average levels after significant deviations. This behavior creates trading opportunities when combined with reliable indicators like the 50 EMA and the Relative Strength Index (RSI).
+
+- How It Works
+
+The strategy uses two key indicators:
+
+1. The 50 EMA acts as the benchmark, representing the dynamic average price over a specific period.
+2. The RSI identifies overbought or oversold conditions.
+
+When prices deviate too far from the 50 EMA and the RSI confirms extreme conditions, the strategy assumes a likely reversal toward the mean.
+
+![Mean Reversion Concept](https://c.mql5.com/2/136/Mean_Reversion_Concept__2.png)Price
+
+Fig 1. Mean Reversion Concept
+
+The diagram above (Fig 1) illustrates price movements in relation to the Exponential Moving Average (EMA) and highlights trading signals triggered at extreme levels of the Relative Strength Index (RSI).
+
+A buy signal is generated when:
+
+Price is below the 50 EMA, indicating a downward deviation. RSI is below 30, confirming an oversold market. This setup signals a potential price bounce back toward the mean.
+
+A sell signal occurs when:
+
+Price is above the 50 EMA, signaling an upward deviation. RSI is above 70, confirming an overbought market. This setup anticipates a price correction back to the mean.
+
+- Visual Cues and Text Summary:
+
+Green arrows indicate buy signals. Red arrows indicate sell signals. A text summary is displayed in the top-right corner of the chart showing, the signal type (Buy/Sell). The strategy incorporates clear stop loss and take profit rules:
+
+1. Stop Loss: Placed below the recent low for buy positions and above the recent high for sell positions.
+2. Take Profit: Targeted near the 50 EMA, where price reversion is expected.
+3. Cooldown Mechanism. To avoid redundant signals and overtrading, a cooldown period is applied. After a signal, the strategy waits for a specified number of bars before considering new signals. This feature helps reduce noise during volatile market conditions.
+
+The ATR (Average True Range) is utilized to establish dynamic levels for setting Take Profit (TP) and Stop Loss (SL) values.
+
+- Key Benefits of the Strategy
+
+| Benefit | Explanation |
+| --- | --- |
+| Simple Yet Effective Logic | Combines EMA and RSI for reliable mean reversion opportunities. |
+| Visual Signals | Arrows and text summaries make signals clear and actionable. |
+| Risk Management Integration | Clear stop loss and take profit rules protect trades and manage risk. |
+| Noise Reduction | Cooldown periods help filter out redundant signals in choppy markets. |
+| Configurable Parameters | Easily customize the EMA period, RSI levels, and cooldown settings. |
+
+- The MQL5 code for the Expert Advisor (EA).
+
+```
+//+------------------------------------------------------------------+
+//|                                        Mean Reversion Reaper.mq5 |
+//|                              Copyright 2024, Christian Benjamin. |
+//|                                             https://www.mql5.com |
+//+------------------------------------------------------------------+
+#property copyright "Christian Benjamin"
+#property link      "https://www.mql5.com"
+#property version   "1.00"
+
+#property strict
+#property indicator_chart_window
+
+//--- Input Parameters
+input int EMA_Period = 50;                     // EMA Period
+input int RSI_Period = 14;                     // RSI Period
+input double RSI_Overbought = 70.0;            // RSI Overbought level
+input double RSI_Oversold = 30.0;              // RSI Oversold level
+input int CooldownBars = 3;                    // Cooldown bars between signals
+input double ATR_Multiplier = 2.0;             // ATR Multiplier for TP and SL
+input int ATR_Period = 14;                     // ATR Period
+input color BuySignalColor = clrGreen;         // Buy signal arrow color
+input color SellSignalColor = clrRed;          // Sell signal arrow color
+input int ArrowSize = 2;                       // Arrow size
+input color TextColor = clrDodgerBlue;         // Color for TP/SL text summary
+
+//--- Global Variables
+int EMA_Handle, RSI_Handle, ATR_Handle;
+datetime lastSignalTime = 0;
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                   |
+//+------------------------------------------------------------------+
+int OnInit()
+  {
+// Create handles for indicators
+   EMA_Handle = iMA(NULL, 0, EMA_Period, 0, MODE_EMA, PRICE_CLOSE);
+   RSI_Handle = iRSI(NULL, 0, RSI_Period, PRICE_CLOSE);
+   ATR_Handle = iATR(NULL, 0, ATR_Period);
+
+   if(EMA_Handle == INVALID_HANDLE || RSI_Handle == INVALID_HANDLE || ATR_Handle == INVALID_HANDLE)
+     {
+      Print("Failed to create indicator handles. Error: ", GetLastError());
+      return INIT_FAILED;
+     }
+
+   Print("Mean Reversion EA initialized.");
+   return INIT_SUCCEEDED;
+  }
+
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+  {
+// Clear the Signal Summary text object upon deinitialization
+   ObjectDelete(0, "SignalSummary");
+   Print("Mean Reversion EA deinitialized.");
+  }
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
+void OnTick()
+  {
+// Avoid repeating signals on cooldown
+   if(BarsSinceLastSignal() < CooldownBars)
+      return;
+
+   double EMA_Value = GetEMA();
+   double RSI_Value = GetRSI();
+   double ATR_Value = GetATR();
+
+   if(EMA_Value == 0 || RSI_Value == 0 || ATR_Value == 0)
+      return;
+
+   double closePrice = iClose(NULL, 0, 0); // Current close price
+   double highPrice = iHigh(NULL, 0, 1);   // Previous bar high
+   double lowPrice = iLow(NULL, 0, 1);     // Previous bar low
+
+// Check for Buy Signal
+   if(closePrice < EMA_Value && RSI_Value <= RSI_Oversold)
+     {
+      DrawSignalArrow("BuySignal", closePrice, BuySignalColor);
+      DisplayTextSummary("BUY", closePrice, lowPrice, ATR_Value);
+      UpdateSignalTime();
+     }
+// Check for Sell Signal
+   else
+      if(closePrice > EMA_Value && RSI_Value >= RSI_Overbought)
+        {
+         DrawSignalArrow("SellSignal", closePrice, SellSignalColor);
+         DisplayTextSummary("SELL", closePrice, highPrice, ATR_Value);
+         UpdateSignalTime();
+        }
+  }
+
+//+------------------------------------------------------------------+
+//| Get EMA Value                                                    |
+//+------------------------------------------------------------------+
+double GetEMA()
+  {
+   double emaValues[1];
+   if(CopyBuffer(EMA_Handle, 0, 0, 1, emaValues) <= 0)
+      return 0;
+   return emaValues[0];
+  }
+
+//+------------------------------------------------------------------+
+//| Get RSI Value                                                    |
+//+------------------------------------------------------------------+
+double GetRSI()
+  {
+   double rsiValues[1];
+   if(CopyBuffer(RSI_Handle, 0, 0, 1, rsiValues) <= 0)
+      return 0;
+   return rsiValues[0];
+  }
+
+//+------------------------------------------------------------------+
+//| Get ATR Value                                                    |
+//+------------------------------------------------------------------+
+double GetATR()
+  {
+   double atrValues[1];
+   if(CopyBuffer(ATR_Handle, 0, 0, 1, atrValues) <= 0)
+      return 0;
+   return atrValues[0];
+  }
+
+//+------------------------------------------------------------------+
+//| Draw signal arrow on the chart                                   |
+//+------------------------------------------------------------------+
+void DrawSignalArrow(string signalType, double price, color arrowColor)
+  {
+   string arrowName = signalType + "_" + TimeToString(TimeCurrent(), TIME_MINUTES);
+// Delete the existing arrow if it exists
+   if(ObjectFind(0, arrowName) != -1)  // If the object exists
+     {
+      ObjectDelete(0, arrowName); // Delete the existing object
+     }
+   ObjectCreate(0, arrowName, OBJ_ARROW, 0, TimeCurrent(), price);
+   ObjectSetInteger(0, arrowName, OBJPROP_ARROWCODE, (signalType == "BuySignal") ? 233 : 234);
+   ObjectSetInteger(0, arrowName, OBJPROP_COLOR, arrowColor);
+   ObjectSetInteger(0, arrowName, OBJPROP_WIDTH, ArrowSize);
+  }
+
+//+------------------------------------------------------------------+
+//| Display TP and SL as text summary                                |
+//+------------------------------------------------------------------+
+void DisplayTextSummary(string signalType, double price, double refPrice, double ATR)
+  {
+   string objectName = "SignalSummary"; // Unique object name for the summary
+
+// Delete the existing summary if it exists
+   if(ObjectFind(0, objectName) != -1)  // If the object exists
+     {
+      ObjectDelete(0, objectName); // Delete the existing object
+     }
+
+   double SL = (signalType == "BUY") ? refPrice - (ATR * ATR_Multiplier) : refPrice + (ATR * ATR_Multiplier);
+   double TP = (signalType == "BUY") ? price + (ATR * ATR_Multiplier) : price - (ATR * ATR_Multiplier);
+
+   string summary = signalType + " Signal\n" +
+                    "Price: " + DoubleToString(price, 5) + "\n" +
+                    "TP: " + DoubleToString(TP, 5) + "\n" +
+                    "SL: " + DoubleToString(SL, 5);
+
+   ObjectCreate(0, objectName, OBJ_LABEL, 0, 0, 0);
+   ObjectSetString(0, objectName, OBJPROP_TEXT, summary);
+   ObjectSetInteger(0, objectName, OBJPROP_COLOR, TextColor);
+   ObjectSetInteger(0, objectName, OBJPROP_FONTSIZE, 10); // Adjust font size if needed
+
+// Position the label at the left upper corner
+   ObjectSetInteger(0, objectName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE, 10); // 10 pixels from the left
+   ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE, 10); // 10 pixels from the top
+  }
+
+//+------------------------------------------------------------------+
+//| Update signal time to prevent frequent signals                   |
+//+------------------------------------------------------------------+
+void UpdateSignalTime()
+  {
+   lastSignalTime = iTime(NULL, 0, 0);
+  }
+
+//+------------------------------------------------------------------+
+//| Calculate bars since the last signal                             |
+//+------------------------------------------------------------------+
+int BarsSinceLastSignal()
+  {
+   datetime currentBarTime = iTime(NULL, 0, 0);
+   if(lastSignalTime == 0)
+      return INT_MAX; // If no signal has been generated return a large number.
+   return (int)((currentBarTime - lastSignalTime) / PeriodSeconds());
+  }
+//+------------------------------------------------------------------+
+```
+
+### Code Breakdown
+
+Header Information
+
+The header provides basic metadata about the Expert Advisor (EA), including its name, author, and version. This information is helpful for identifying the EA and ensuring attribution. The #property directives specify metadata, such as copyright, author link, and version, which are displayed when the EA is used. Additionally, the _#property_ indicator\_chart\_window directive indicates that this EA operates in the main chart window rather than a separate sub-window.
+
+```
+//+------------------------------------------------------------------+
+//| Mean Reversion Reaper.mq5                                        |
+//| Author: Christian Benjamin                                       |
+//| Website: https://www.mql5.com                                    |
+//+------------------------------------------------------------------+
+#property copyright "Christian Benjamin"
+#property link      "https://www.mql5.com"
+#property version   "1.00"
+
+// Indicator operates in the main chart window
+#property indicator_chart_window
+```
+
+Input Parameters
+
+The input parameters allow users to customize the behavior of the EA without modifying the code itself. These parameters include essential settings such as the EMA, RSI, and ATR periods, as well as thresholds for overbought and oversold RSI levels. A cooldown period can be set to prevent frequent signal generation, helping reduce market noise and ensuring clarity. Users can also specify visual elements like arrow colors and sizes for buy and sell signals, along with the text color for the summary displayed on the chart. By adjusting these parameters, traders can tailor the EA to suit their trading strategy or market conditions.
+
+```
+input int EMA_Period = 50;                     // EMA Period
+input int RSI_Period = 14;                     // RSI Period
+input double RSI_Overbought = 75.0;            // RSI Overbought level
+input double RSI_Oversold = 25.0;              // RSI Oversold level
+input int CooldownBars = 3;                    // Cooldown bars between signals
+input double ATR_Multiplier = 2.0;             // ATR Multiplier for TP and SL
+input int ATR_Period = 14;                     // ATR Period
+input color BuySignalColor = clrGreen;         // Buy signal arrow color
+input color SellSignalColor = clrRed;          // Sell signal arrow color
+input int ArrowSize = 2;                       // Arrow size
+input color TextColor = clrDodgerBlue;         // Color for TP/SL text summary
+```
+
+Global Variables
+
+The global variables section defines critical state-tracking variables and references for indicators used by the EA. Handles for the EMA, RSI, and ATR indicators are declared here, along with _lastSignalTime_, which stores the timestamp of the most recent signal. These variables ensure that the EA can access indicator data efficiently and enforce logic such as the cooldown period between signals.
+
+```
+int EMA_Handle, RSI_Handle, ATR_Handle;        // Handles for EMA, RSI, and ATR
+datetime lastSignalTime = 0;                   // Tracks last signal time
+```
+
+Initialization (OnInit)
+
+The _OnInit_ function is executed when the EA is loaded onto a chart. Its primary role is to initialize indicator handles using functions such as iMA for EMA, iRSI for RSI, and iATR for ATR. These handles are essential for retrieving indicator values during runtime. The function also performs error checking to ensure that all handles are created successfully. If any handle creation fails, an error message is logged, and the EA stops running. A successful initialization outputs a confirmation message to the journal, signaling that the EA is ready to operate.
+
+```
+int OnInit()
+{
+    EMA_Handle = iMA(NULL, 0, EMA_Period, 0, MODE_EMA, PRICE_CLOSE);
+    RSI_Handle = iRSI(NULL, 0, RSI_Period, PRICE_CLOSE);
+    ATR_Handle = iATR(NULL, 0, ATR_Period);
+
+    if (EMA_Handle == INVALID_HANDLE || RSI_Handle == INVALID_HANDLE || ATR_Handle == INVALID_HANDLE) {
+        Print("Failed to create indicator handles. Error: ", GetLastError());
+        return INIT_FAILED; // Stops EA if initialization fails
+    }
+
+    Print("Mean Reversion EA initialized.");
+    return INIT_SUCCEEDED;
+}
+```
+
+Cleanup (OnDeinit)
+
+The _OnDeinit_ function is called automatically when the EA is removed from the chart or reinitialized. Its main responsibility is to clean up chart objects created during the EA's runtime. Specifically, it deletes the " _SignalSummary_" label to ensure the chart is left uncluttered. This function also logs a message confirming the EA's deinitialization, providing clarity on its termination process.
+
+```
+void OnDeinit(const int reason)
+{
+    ObjectDelete(0, "SignalSummary"); // Remove any signal summary text
+    Print("Mean Reversion EA deinitialized.");
+}
+```
+
+Signal Processing (OnTick)
+
+The OnTick function serves as the core of the EA, processing each new market tick. It begins by checking if the cooldown period has elapsed since the last signal. If not, the function exits early to avoid redundant signals. It then retrieves the latest values for the EMA, RSI, and ATR indicators using their respective handles. Using these values, the EA evaluates conditions for buy or sell signals.
+
+A buy signal is triggered when the price is below the EMA, and RSI is in oversold territory. Conversely, a sell signal occurs when the price is above the EMA, and RSI is overbought. For each signal, the function draws an arrow on the chart and displays a text summary with the price, stop-loss (SL), and take-profit (TP) levels. The signal's timestamp is updated to enforce the cooldown mechanism.
+
+```
+void OnTick()
+{
+    if (BarsSinceLastSignal() < CooldownBars) return; // Skip if cooldown is active
+
+    double EMA_Value = GetEMA();   // Fetch EMA value
+    double RSI_Value = GetRSI();   // Fetch RSI value
+    double ATR_Value = GetATR();   // Fetch ATR value
+
+    double closePrice = iClose(NULL, 0, 0); // Current bar's close price
+
+    if (closePrice < EMA_Value && RSI_Value <= RSI_Oversold) {
+        // Buy Signal
+        DrawSignalArrow("BuySignal", closePrice, BuySignalColor);
+        DisplayTextSummary("BUY", closePrice, iLow(NULL, 0, 1), ATR_Value);
+        UpdateSignalTime(); // Update last signal time
+    } else if (closePrice > EMA_Value && RSI_Value >= RSI_Overbought) {
+        // Sell Signal
+        DrawSignalArrow("SellSignal", closePrice, SellSignalColor);
+        DisplayTextSummary("SELL", closePrice, iHigh(NULL, 0, 1), ATR_Value);
+        UpdateSignalTime(); // Update last signal time
+    }
+}
+```
+
+Utility Functions
+
+- Retrieve Indicator Values
+
+Utility functions such as GetEMA, GetRSI, and GetATR are designed to fetch the latest values from their respective indicators. These functions use the CopyBuffer method to extract data from indicator handles. If the data retrieval fails for any reason, the functions return zero, signaling that the EA should skip processing for the current tick. These functions are lightweight and modular, keeping the code clean and maintainable.
+
+```
+double GetEMA()
+{
+    double emaValues[1];
+    if (CopyBuffer(EMA_Handle, 0, 0, 1, emaValues) <= 0)
+        return 0;
+    return emaValues[0];
+}
+
+double GetRSI()
+{
+    double rsiValues[1];
+    if (CopyBuffer(RSI_Handle, 0, 0, 1, rsiValues) <= 0)
+        return 0;
+    return rsiValues[0];
+}
+
+double GetATR()
+{
+    double atrValues[1];
+    if (CopyBuffer(ATR_Handle, 0, 0, 1, atrValues) <= 0)
+        return 0;
+    return atrValues[0];
+}
+```
+
+- Draw Signal Arrow
+
+The DrawSignalArrow function adds a visual cue to the chart, indicating a buy or sell signal. It dynamically generates a unique name for each arrow using the signal type and current time, ensuring no overlap with existing objects. If an arrow with the same name already exists, it is deleted before creating a new one. The arrow's properties, such as color, size, and type, are determined by user-defined input parameters, allowing for clear and customizable visual representation.
+
+```
+void DrawSignalArrow(string signalType, double price, color arrowColor)
+{
+    string arrowName = signalType + "_" + TimeToString(TimeCurrent(), TIME_MINUTES);
+    if (ObjectFind(0, arrowName) != -1) ObjectDelete(0, arrowName);
+
+    ObjectCreate(0, arrowName, OBJ_ARROW, 0, TimeCurrent(), price);
+    ObjectSetInteger(0, arrowName, OBJPROP_ARROWCODE, (signalType == "BuySignal") ? 233 : 234);
+    ObjectSetInteger(0, arrowName, OBJPROP_COLOR, arrowColor);
+    ObjectSetInteger(0, arrowName, OBJPROP_WIDTH, ArrowSize);
+}
+```
+
+- Display TP/SL Summary
+
+The DisplayTextSummary function provides a concise summary of the signal, including the price, stop-loss, and take-profit levels. This information is displayed as a label on the chart, positioned in the upper-left corner. The function calculates TP and SL levels based on the ATR and its multiplier, offering dynamic levels that adapt to market volatility. If a summary label already exists, it is deleted before creating a new one. This ensures that only the latest signal information is displayed, reducing clutter and enhancing readability.
+
+```
+void DisplayTextSummary(string signalType, double price, double refPrice, double ATR)
+{
+    string objectName = "SignalSummary";
+    if (ObjectFind(0, objectName) != -1) ObjectDelete(0, objectName);
+
+    double SL = (signalType == "BUY") ? refPrice - (ATR * ATR_Multiplier) : refPrice + (ATR * ATR_Multiplier);
+    double TP = (signalType == "BUY") ? price + (ATR * ATR_Multiplier) : price - (ATR * ATR_Multiplier);
+
+    string summary = signalType + " Signal\n" +
+                     "Price: " + DoubleToString(price, 5) + "\n" +
+                     "TP: " + DoubleToString(TP, 5) + "\n" +
+                     "SL: " + DoubleToString(SL, 5);
+
+    ObjectCreate(0, objectName, OBJ_LABEL, 0, 0, 0);
+    ObjectSetString(0, objectName, OBJPROP_TEXT, summary);
+    ObjectSetInteger(0, objectName, OBJPROP_COLOR, TextColor);
+    ObjectSetInteger(0, objectName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+    ObjectSetInteger(0, objectName, OBJPROP_XDISTANCE, 10);
+    ObjectSetInteger(0, objectName, OBJPROP_YDISTANCE, 10);
+}
+```
+
+- Cooldown Management
+
+The EA enforces a cooldown period between signals to prevent overtrading during volatile market conditions. The _UpdateSignalTime_ function updates the _lastSignalTime_ variable with the timestamp of the most recent signal, while the _BarsSinceLastSignal_ function calculates the number of bars that have elapsed since the last signal. If no signal has been generated yet, a large value is returned to ensure normal operation. This mechanism ensures that signals are spaced appropriately, providing traders with clearer and more reliable insights.
+
+```
+void UpdateSignalTime()
+{
+    lastSignalTime = iTime(NULL, 0, 0); // Store time of the current bar
+}
+
+int BarsSinceLastSignal()
+{
+    datetime currentBarTime = iTime(NULL, 0, 0);
+    if (lastSignalTime == 0) return INT_MAX; // No signals generated yet
+    return (int)((currentBarTime - lastSignalTime) / PeriodSeconds());
+}
+```
+
+### Testing and Results
+
+Let's talk about backtesting, an essential step in evaluating your Expert Advisor (EA). Essentially, backtesting involves running your EA on historical market data to see how it would have performed in the past. This process is crucial for determining whether your strategy is in sync with different market conditions and for gaining insights into its overall robustness.
+
+Here are some key points to keep in mind when backtesting:
+
+- Historical Data Range: Make sure to use data that spans different market conditions, such as trending and ranging markets. This helps you assess how adaptable your EA is.
+- Key Metrics: Focus on measuring performance through important metrics, including profit factor, win rate, maximum drawdown, and average trade duration. These will give you a clearer picture of how effective your strategy is.
+- Optimization: Don’t hesitate to experiment with your input parameters—like the EMA period and RSI levels—to discover the most effective settings for specific market instruments or timeframes.
+- Visual Validation: Finally, always check whether the arrows and signals generated by your EA align with your intended trading logic. This is key to ensuring that your strategy is functioning as you designed it.
+
+By thoroughly backtesting your EA with these considerations, you can build a more reliable and effective trading strategy.
+
+![TEST SIGNAL](https://c.mql5.com/2/136/TEST__SIGNAL__2.png)
+
+Fig 2. Test Result 1
+
+The diagram above displays the tests conducted on two different timeframes for the Volatility 75 (1s) index over a 29 days period. Below, we have tabulated the results from the two tests.
+
+Signal Generation and Performance tables
+
+- Table 1
+
+| Signal Type | Timeframe | Total signals generated | True signals (where price rose after the signal) | Buy Signal Accuracy(%) |
+| --- | --- | --- | --- | --- |
+| Buy | M30 | 41 | 33 | 80.5% |
+| Sell | M30 | 21 | 15 | 71.4% |
+
+- Table 2
+
+| Signal Type | Timeframe | Total signals generated | True signals (where price rose after the signal) | Buy Signal Accuracy(%) |
+| --- | --- | --- | --- | --- |
+| Buy | H1 | 19 | 14 | 73.6% |
+| --- | --- | --- | --- | --- |
+| Sell | H1 | 13 | 8 | 61.5% |
+| --- | --- | --- | --- | --- |
+
+Below is an illustration of the real-time testing results for the Expert Advisor (EA).
+
+![Real Time Signal](https://c.mql5.com/2/136/REAL_TIME_SIGNAL__2.png)
+
+Fig 3. Test Result 2
+
+Let's also take a look at the GIF below.
+
+![TEST RESULT](https://c.mql5.com/2/136/Mean_Reversion_Gif__2.gif)
+
+Fig 4. Test Result 3
+
+References:
+
+- De Bondt, Werner F. M., and Richard Thaler. ["Does the stock market overreact?" The Journal of Finance, 1985](https://www.mql5.com/go?link=https://onlinelibrary.wiley.com/doi/10.1111/j.1540-6261.1985.tb05004.x "https://onlinelibrary.wiley.com/doi/10.1111/j.1540-6261.1985.tb05004.x").
+- Pindyck, Robert S. " [The dynamics of commodity spot and futures markets: A primer.](https://www.mql5.com/go?link=https://web.mit.edu/rpindyck/www/Papers/Dynamics_Comm_Spot.pdf "https://web.mit.edu/rpindyck/www/Papers/Dynamics_Comm_Spot.pdf")" The Energy Journal, 2001.
+
+- Wilder, J. Welles Jr. ["New Concepts in Technical Trading Systems." Trend Research, 1978.](https://www.mql5.com/go?link=https://www.scribd.com/doc/314256186/Welles-Wilder-1 "https://www.scribd.com/doc/314256186/Welles-Wilder-1")
+
+
+### Conclusion
+
+The Mean Reversion Reaper Expert Advisor (EA) offers a dependable signal generation system based on mean reversion principles, achieving an impressive accuracy rate of at least 70% for buy signals. Its use of Average True Range (ATR) for setting stop-loss (SL) and take-profit (TP) levels enables the system to adapt to various market volatility conditions, making it particularly effective in range-bound markets.
+
+However, it's important to keep in mind that the EA may be less effective during strong trending markets, which is a typical characteristic of mean reversion strategies. To enhance your trading experience, consider fine-tuning the parameters and exploring additional filters for sell signals. Since the EA does not execute trades automatically, its signals can be especially beneficial for manual traders looking to capitalize on short-term reversals.
+
+In essence, the Mean Reversion Reaper EA can be a powerful ally for traders interested in market reversion patterns. By staying attentive to market conditions and being open to adjustments in your strategy, you can maximize the potential of this tool in your trading arsenal.
+
+| Date | Tool Name | Description | Version | Updates | Notes |
+| --- | --- | --- | --- | --- | --- |
+| 01/10/24 | [Chart Projector](https://www.mql5.com/en/articles/16014) | Script to overlay the previous day's price action with ghost effect. | 1.0 | Initial Release | First tool in Lynnchris Tool Chest |
+| 18/11/24 | [Analytical Comment](https://www.mql5.com/en/articles/15927) | It provides previous day's information in a tabular format, as well as anticipates the future direction of the market. | 1.0 | Initial Release | Second tool in the Lynnchris Tool Chest |
+| 27/11/24 | [Analytics Master](https://www.mql5.com/en/articles/16434) | Regular Update of market metrics after every two hours | 1.01 | Second Release | Third tool in the Lynnchris Tool Chest |
+| 02/12/24 | [Analytics Forecaster](https://www.mql5.com/en/articles/16559) | Regular Update of market metrics after every two hours with telegram integration | 1.1 | Third Edition | Tool number 4 |
+| 09/12/24 | [Volatility Navigator](https://www.mql5.com/en/articles/16560) | The EA analyzes market conditions using the Bollinger Bands, RSI and ATR indicators | 1.0 | Initial Release | Tool Number 5 |
+| 19/12/24 | Mean Reversion Signal Reaper | Analyzes market using mean reversion strategy and provides signal | 1.0 | Initial Release | Tool number 6 |
+
+**Attached files** \|
+
+
+[Download ZIP](https://www.mql5.com/en/articles/download/16700.zip "Download all attachments in the single ZIP archive")
+
+[Mean\_Reversion.mq5](https://www.mql5.com/en/articles/download/16700/mean_reversion.mq5 "Download Mean_Reversion.mq5")(16.16 KB)
+
+**Warning:** All rights to these materials are reserved by MetaQuotes Ltd. Copying or reprinting of these materials in whole or in part is prohibited.
+
+This article was written by a user of the site and reflects their personal views. MetaQuotes Ltd is not responsible for the accuracy of the information presented, nor for any consequences resulting from the use of the solutions, strategies or recommendations described.
+
+#### Other articles by this author
+
+- [Price Action Analysis Toolkit (Part 55): Designing a CPI Mini-Candle Overlay for Intra-bar Pressure](https://www.mql5.com/en/articles/20949)
+- [Price Action Analysis Toolkit Development (Part 54): Filtering Trends with EMA and Smoothed Price Action](https://www.mql5.com/en/articles/20851)
+- [Price Action Analysis Toolkit Development (Part 53): Pattern Density Heatmap for Support and Resistance Zone Discovery](https://www.mql5.com/en/articles/20390)
+- [Price Action Analysis Toolkit Development (Part 52): Master Market Structure with Multi-Timeframe Visual Analysis](https://www.mql5.com/en/articles/20387)
+- [Price Action Analysis Toolkit Development (Part 51): Revolutionary Chart Search Technology for Candlestick Pattern Discovery](https://www.mql5.com/en/articles/20313)
+- [Price Action Analysis Toolkit Development (Part 50): Developing the RVGI, CCI and SMA Confluence Engine in MQL5](https://www.mql5.com/en/articles/20262)
+- [Price Action Analysis Toolkit Development (Part 49): Integrating Trend, Momentum, and Volatility Indicators into One MQL5 System](https://www.mql5.com/en/articles/20168)
+
+**Last comments \|**
+**[Go to discussion](https://www.mql5.com/en/forum/478575)**
+(3)
+
+
+![linfo2](https://c.mql5.com/avatar/2023/4/6438c14d-e2f0.png)
+
+**[linfo2](https://www.mql5.com/en/users/neilhazelwood)**
+\|
+7 Jan 2025 at 03:33
+
+Thank you Christian  , Very helpful as a template
+
+
+![Roman Shiredchenko](https://c.mql5.com/avatar/2012/3/4F76634B-9044.jpg)
+
+**[Roman Shiredchenko](https://www.mql5.com/en/users/r0man)**
+\|
+3 Sep 2025 at 18:58
+
+Yes.... thanks. Interesting material - I will take it into my work and also look for variants of trading approach in [strategy tester](https://www.metatrader5.com/en/terminal/help/algotrading/testing "MetaTrader 5 Help: Strategy Tester in MetaTrader 5 Client Terminal") and on real trades......
+
+
+![khanatd](https://c.mql5.com/avatar/avatar_na2.png)
+
+**[khanatd](https://www.mql5.com/en/users/khanatd)**
+\|
+15 Oct 2025 at 06:10
+
+Hi sir is mql4 version available with arrows at current candle?
+
+thanks
+
+khan
+
+![Automating Trading Strategies in MQL5 (Part 3): The Zone Recovery RSI System for Dynamic Trade Management](https://c.mql5.com/2/107/Automating_Trading_Strategies_in_MQL5_Part_3_LOGO.png)[Automating Trading Strategies in MQL5 (Part 3): The Zone Recovery RSI System for Dynamic Trade Management](https://www.mql5.com/en/articles/16705)
+
+In this article, we create a Zone Recovery RSI EA System in MQL5, using RSI signals to trigger trades and a recovery strategy to manage losses. We implement a "ZoneRecovery" class to automate trade entries, recovery logic, and position management. The article concludes with backtesting insights to optimize performance and enhance the EA’s effectiveness.
+
+![MQL5 Trading Toolkit (Part 5): Expanding the History Management EX5 Library with Position Functions](https://c.mql5.com/2/107/MQL5_Trading_Toolkit_Part_2___LOGO.png)[MQL5 Trading Toolkit (Part 5): Expanding the History Management EX5 Library with Position Functions](https://www.mql5.com/en/articles/16681)
+
+Discover how to create exportable EX5 functions to efficiently query and save historical position data. In this step-by-step guide, we will expand the History Management EX5 library by developing modules that retrieve key properties of the most recently closed position. These include net profit, trade duration, pip-based stop loss, take profit, profit values, and various other important details.
+
+![Neural Networks Made Easy (Part 96): Multi-Scale Feature Extraction (MSFformer)](https://c.mql5.com/2/82/Neural_networks_are_easy_Part_96__LOGO.png)[Neural Networks Made Easy (Part 96): Multi-Scale Feature Extraction (MSFformer)](https://www.mql5.com/en/articles/15156)
+
+Efficient extraction and integration of long-term dependencies and short-term features remain an important task in time series analysis. Their proper understanding and integration are necessary to create accurate and reliable predictive models.
+
+![Building a Candlestick Trend Constraint Model (Part 10): Strategic Golden and Death Cross (EA)](https://c.mql5.com/2/106/Building_A_Candlestick_Trend_Constraint_Model_Part_10_LOGO.png)[Building a Candlestick Trend Constraint Model (Part 10): Strategic Golden and Death Cross (EA)](https://www.mql5.com/en/articles/16633)
+
+Did you know that the Golden Cross and Death Cross strategies, based on moving average crossovers, are some of the most reliable indicators for identifying long-term market trends? A Golden Cross signals a bullish trend when a shorter moving average crosses above a longer one, while a Death Cross indicates a bearish trend when the shorter average moves below. Despite their simplicity and effectiveness, manually applying these strategies often leads to missed opportunities or delayed trades.
+
+[![](https://www.mql5.com/ff/sh/wm94j0jmkwd29943z2/ddfa713cb3cdd580c3e81e0e13b5b1b8.jpg)\\
+Revised MetaTrader 5 Web Terminal\\
+\\
+Trade with no restrictions from any mobile device, OS and web browser\\
+\\
+Learn more](https://www.mql5.com/ff/go?link=https://trade.metatrader5.com/&a=fkjlpstbxdmrrwpblfatcsdjyrxbizyj&s=f462f051eb7aaec36d6b31792d312d60d3f5a50c83b12d0d66e85d5d61bd941b&uid=&ref=https://www.mql5.com/en/articles/16700&id=wdausxxqrpvhekbwjrjlhqjghyhesrqqau&fz_uniq=5049411368844634899)
+
+This website uses cookies. Learn more about our [Cookies Policy](https://www.mql5.com/en/about/cookies).
+
+![close](https://c.mql5.com/i/close.png)
+
+![MQL5 - Language of trade strategies built-in the MetaTrader 5 client terminal](https://c.mql5.com/i/registerlandings/logo-2.png)
+
+You are missing trading opportunities:
+
+- Free trading apps
+- Over 8,000 signals for copying
+- Economic news for exploring financial markets
+
+RegistrationLog in
+
+latin characters without spaces
+
+a password will be sent to this email
+
+An error occurred
+
+
+- [Log in With Google](https://www.mql5.com/en/auth_oauth2?provider=Google&amp;return=popup&amp;reg=1)
+
+You agree to [website policy](https://www.mql5.com/en/about/privacy) and [terms of use](https://www.mql5.com/en/about/terms)
+
+If you do not have an account, please [register](https://www.mql5.com/en/auth_register)
+
+Allow the use of cookies to log in to the MQL5.com website.
+
+Please enable the necessary setting in your browser, otherwise you will not be able to log in.
+
+[Forgot your login/password?](https://www.mql5.com/en/auth_forgotten?return=popup)
+
+- [Log in With Google](https://www.mql5.com/en/auth_oauth2?provider=Google&amp;return=popup)

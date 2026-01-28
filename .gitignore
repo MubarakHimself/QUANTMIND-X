@@ -1,0 +1,58 @@
+# System & OS
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+outputs/
+
+# Node / JS
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Rust / Tauri
+target/
+src-tauri/target/
+**/*.rs.bk
+
+# IDEs
+.vscode/
+.idea/
+
+# Agentic / AI Memory (IGNORE THESE)
+.gemini/
+.agent/
+.claude/
+.claude-flow/
+.qodo/
+.swarm/
+brain/
+artifacts/
+agent-os/
+agent-os/
+
+# Project Specific
+data/db/
+data/chroma_db/
+scraped_data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary
+temp/
+tmp/

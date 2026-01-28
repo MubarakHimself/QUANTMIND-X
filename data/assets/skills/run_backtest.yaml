@@ -1,0 +1,17 @@
+name: run_backtest
+description: Executes a backtest using the QuantMind Backtest Engine.
+inputs:
+  strategy_code:
+    type: string
+    description: The full code of the strategy (Python or MQL5)
+  symbol:
+    type: string
+    default: EURUSD
+  timeframe:
+    type: string
+    default: H1
+outputs:
+  sharpe_ratio: float
+  total_return: float
+  drawdown: float
+  logs: string

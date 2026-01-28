@@ -1,0 +1,6 @@
+"Transcript: Strategy - RSI Mean Reversion V1
+Goal: Create a simple bot that buys when market is oversold and sells when overbought.
+Entry: Buy if RSI(14) crosses below 30 and then back above. Sell if RSI(14) crosses above 70 and then back below.
+Risk: Use 50 pip stop loss and 100 pip take profit.
+Physics: Ensure it uses the new Strategy Router and Kelly scaling. If chaos is high, reduce size.
+Target: EURUSD M15."

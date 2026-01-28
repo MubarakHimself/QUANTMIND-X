@@ -1,0 +1,892 @@
+[
+  {
+    "url": "https://www.mql5.com/en/articles/408",
+    "title": "will pay",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/240",
+    "title": "the MQL5 Wizard",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/523",
+    "title": "how to copy trading signals",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20962",
+    "title": "MQL5 Trading Tools (Part 12): Enhancing the Correlation Matrix Dashboard with Interactivity",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17328",
+    "title": "Developing a multi-currency Expert Advisor (Part 24): Adding a new strategy (II)",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20782",
+    "title": "Python-MetaTrader 5 Strategy Tester (Part 03): MT5-Like Trading Operations \u2014 Handling and Managing",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20933",
+    "title": "Reimagining Classic Strategies (Part 21): Bollinger Bands And RSI Ensemble Strategy Discovery",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20945",
+    "title": "MQL5 Trading Tools (Part 11): Correlation Matrix Dashboard (Pearson, Spearman, Kendall) with Heatmap and Standard Modes",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19755",
+    "title": "Optimizing Trend Strength: Trading in Trend Direction and Strength",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20811",
+    "title": "Creating Custom Indicators in MQL5 (Part 4): Smart WaveTrend Crossover with Dual Oscillators",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/16992",
+    "title": "Neuroboids Optimization Algorithm (NOA)",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20716",
+    "title": "Larry Williams Market Secrets (Part 4): Automating Short-Term Swing Highs and Lows in MQL5",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20719",
+    "title": "Creating Custom Indicators in MQL5 (Part 3): Multi-Gauge Enhancements with Sector and Round Styles",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/16457",
+    "title": "Creating a mean-reversion strategy based on machine learning",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20512",
+    "title": "Larry Williams Market Secrets (Part 2): Automating a Market Structure Trading System",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20530",
+    "title": "Reimagining Classic Strategies (Part 20): Modern Stochastic Oscillators",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20610",
+    "title": "Creating Custom Indicators in MQL5 (Part 1): Building a Pivot-Based Trend Indicator with Canvas Gradient",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20587",
+    "title": "From Novice to Expert: Automating Trade Discipline with an MQL5 Risk Enforcement EA",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20554",
+    "title": "From Novice to Expert: Trading the RSI with Market Structure Awareness",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20569",
+    "title": "Automating Trading Strategies in MQL5 (Part 46): Liquidity Sweep on Break of Structure (BoS)",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19655",
+    "title": "Automated Risk Management for Passing Prop Firm Challenges",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20378",
+    "title": "Mastering Kagi Charts in MQL5 (Part 2): Implementing Automated Kagi-Based Trading",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20449",
+    "title": "Fortified Profit Architecture: Multi-Layered Account Protection",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20361",
+    "title": "Automating Trading Strategies in MQL5 (Part 45): Inverse Fair Value Gap (IFVG)",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20417",
+    "title": "From Novice to Expert: Developing a Geographic Market Awareness with MQL5 Visualization",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17303",
+    "title": "Currency pair strength indicator in pure MQL5",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20458",
+    "title": "Implementing Practical Modules from Other Languages in MQL5 (Part 05): The Logging module from Python, Log Like a Pro",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17282",
+    "title": "Capital management in trading and the trader's home accounting program with a database",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20469",
+    "title": "Developing a Trading Strategy: Using a Volume-Bound Approach",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20339",
+    "title": "Automating Trading Strategies in MQL5 (Part 42): Session-Based Opening Range Breakout (ORB) System",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20309",
+    "title": "Developing a Trading Strategy: The Flower Volatility Index Trend-Following Approach",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20327",
+    "title": "Analytical Volume Profile Trading (AVPT): Liquidity Architecture, Market Memory, and Algorithmic Execution",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20323",
+    "title": "Automating Trading Strategies in MQL5 (Part 41): Candle Range Theory (CRT) \u2013 Accumulation, Manipulation, Distribution (AMD)",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20287",
+    "title": "Automating Black-Scholes Greeks: Advanced Scalping and Microstructure Trading",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/16985",
+    "title": "Risk Management (Part 2): Implementing Lot Calculation in a Graphical Interface",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20065",
+    "title": "Developing Trading Strategy: Pseudo Pearson Correlation Approach",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20221",
+    "title": "Automating Trading Strategies in MQL5 (Part 40): Fibonacci Retracement Trading with Custom Levels",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20235",
+    "title": "Integrating MQL5 with Data Processing Packages (Part 6): Merging Market Feedback with Model Adaptation",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20220",
+    "title": "Developing a Trading Strategy: The Triple Sine Mean Reversion Method",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19989",
+    "title": "Formulating Dynamic Multi-Pair EA (Part 5): Scalping vs Swing Trading Approaches",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19932",
+    "title": "Risk-Based Trade Placement EA with On-Chart UI (Part 1): Designing the User Interface",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20113",
+    "title": "Developing a Trading Strategy: The Butterfly Oscillator Method",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19756",
+    "title": "Optimizing Long-Term Trades: Engulfing Candles and Liquidity Strategies",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/625?utm_source=www.mql5.com&utm_campaign=download",
+    "title": "Download MetaTrader 5 for Linux",
+    "category": "Trading"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/143",
+    "title": "trading systems",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/171",
+    "title": "create robots without programming",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/55",
+    "title": "genetic algorithms",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20862",
+    "title": "Larry Williams Market Secrets (Part 6): Measuring Volatility Breakouts Using Market Swings",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20815",
+    "title": "Creating Custom Indicators in MQL5 (Part 5): WaveTrend Crossover Evolution Using Canvas for Fog Gradients, Signal Bubbles, and Risk Management",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17241",
+    "title": "Neural Networks in Trading: Two-Dimensional Connection Space Models (Final Part)",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20851",
+    "title": "Price Action Analysis Toolkit Development (Part 54): Filtering Trends with EMA and Smoothed Price Action",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17424",
+    "title": "Forex arbitrage trading: A simple synthetic market maker bot to get started",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17210",
+    "title": "Neural Networks in Trading: Two-Dimensional Connection Space Models (Chimera)",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20722",
+    "title": "Building AI-Powered Trading Systems in MQL5 (Part 8): UI Polish with Animations, Timing Metrics, and Response Management Tools",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20510",
+    "title": "Larry Williams Market Secrets (Part 3): Proving Non-Random Market Behavior with MQL5",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17157",
+    "title": "Neural Networks in Trading: Multi-Task Learning Based on the ResNeXt Model (Final Part)",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20695",
+    "title": "Implementing Practical Modules from Other Languages in MQL5 (Part 06): Python-Like File IO operations in MQL5",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20571",
+    "title": "Data Science and ML (Part 47): Forecasting the Market Using the DeepAR model in Python",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17325",
+    "title": "Billiards Optimization Algorithm (BOA)",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20632",
+    "title": "Creating Custom Indicators in MQL5 (Part 2): Building a Gauge-Style RSI Display with Canvas and Needle Mechanics",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20657",
+    "title": "Statistical Arbitrage Through Cointegrated Stocks (Part 9): Backtesting Portfolio Weights Updates",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20591",
+    "title": "Introduction to MQL5 (Part 32): Mastering API and WebRequest Function in MQL5 (VI)",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20588",
+    "title": "Building AI-Powered Trading Systems in MQL5 (Part 7): Further Modularization and Automated Trading",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20550",
+    "title": "Codex Pipelines: From Python to MQL5 for Indicator Selection \u2014 A Multi-Quarter Analysis of the FXI ETF",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20414",
+    "title": "Adaptive Smart Money Architecture (ASMA): Merging SMC Logic With Market Sentiment for Dynamic Strategy Switching",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20514",
+    "title": "Overcoming The Limitation of Machine Learning (Part 9): Correlation-Based Feature Learning in Self-Supervised Finance",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17277",
+    "title": "Developing a multi-currency Expert Advisor (Part 24): Adding a new strategy (I)",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20488",
+    "title": "Reimagining Classic Strategies (Part 19): Deep Dive Into Moving Average Crossovers",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20485",
+    "title": "Statistical Arbitrage Through Cointegrated Stocks (Part 8): Rolling Windows Eigenvector Comparison for Portfolio Rebalancing",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20355",
+    "title": "Automating Trading Strategies in MQL5 (Part 44): Change of Character (CHoCH) Detection with Swing High/Low Breaks",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17142",
+    "title": "Neural Networks in Trading: Multi-Task Learning Based on the ResNeXt Model",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20289",
+    "title": "The MQL5 Standard Library Explorer (Part 5): Multiple Signal Expert",
+    "category": "Trading Systems"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/690",
+    "title": "use of OpenCL",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/44",
+    "title": "mathematical",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20938",
+    "title": "Introduction to MQL5 (Part 36): Mastering API and WebRequest Function in MQL5 (X)",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20859",
+    "title": "Introduction to MQL5 (Part 35): Mastering API and WebRequest Function in MQL5 (IX)",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17512",
+    "title": "Forex arbitrage trading: Analyzing synthetic currencies movements and their mean reversion",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20455",
+    "title": "Python-MetaTrader 5 Strategy Tester (Part 02): Dealing with Bars, Ticks, and Overloading Built-in Functions in a Simulator",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20802",
+    "title": "Introduction to MQL5 (Part 34): Mastering API and WebRequest Function in MQL5 (VIII)",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17168",
+    "title": "Fibonacci in Forex (Part I): Examining the Price-Time Relationship",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20700",
+    "title": "Introduction to MQL5 (Part 33): Mastering API and WebRequest Function in MQL5 (VII)",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17380",
+    "title": "Successful Restaurateur Algorithm (SRA)",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20273",
+    "title": "Pure implementation of RSA encryption in MQL5",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20595",
+    "title": "Codex Pipelines, from Python to MQL5, for Indicator Selection: A Multi-Quarter Analysis of the XLF ETF with Machine Learning",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20546",
+    "title": "Introduction to MQL5 (Part 31): Mastering API and WebRequest Function in MQL5 (V)",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17047",
+    "title": "Chaos Game Optimization (CGO)",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20425",
+    "title": "Introduction to MQL5 (Part 30): Mastering API and WebRequest Function in MQL5 (IV)",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20375",
+    "title": "Introduction to MQL5 (Part 29): Mastering API and WebRequest Function in MQL5 (III)",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20302",
+    "title": "MetaTrader 5 Machine Learning Blueprint (Part 6): Engineering a Production-Grade Caching System",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20271",
+    "title": "Market Positioning Codex for VGT with Kendall's Tau and Distance Correlation",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/16913",
+    "title": "Developing a multi-currency Expert Advisor (Part 23): Putting in order the conveyor of automatic project optimization stages (II)",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19035",
+    "title": "Implementing Practical Modules from Other Languages in MQL5 (Part 04): time, date, and datetime modules from Python",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20280",
+    "title": "Introduction to MQL5 (Part 28): Mastering API and WebRequest Function in MQL5 (II)",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20254",
+    "title": "Building AI-Powered Trading Systems in MQL5 (Part 6): Introducing Chat Deletion and Search Functionality",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20160",
+    "title": "From Novice to Expert: Predictive Price Pathways",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17653",
+    "title": "Implementation of a table model in MQL5: Applying the MVC concept",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/11794",
+    "title": "Market Simulation (Part 06): Transferring Information from MetaTrader 5 to Excel",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17246",
+    "title": "Blood inheritance optimization (BIO)",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20037",
+    "title": "From Novice to Expert: Time Filtered Trading",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20249",
+    "title": "Building AI-Powered Trading Systems in MQL5 (Part 5): Adding a Collapsible Sidebar with Chat Popups",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17171",
+    "title": "Analyzing all price movement options on the IBM quantum computer",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20005",
+    "title": "From Novice to Expert: Forex Market Periods",
+    "category": "Integration"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/260",
+    "title": "marking of Elliott Waves",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/10",
+    "title": "to develop a custom indicator",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/190",
+    "title": "William Blau's trading ideas",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20949",
+    "title": "Price Action Analysis Toolkit (Part 55): Designing a CPI Mini-Candle Overlay for Intra-bar Pressure",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20745",
+    "title": "Larry Williams Market Secrets (Part 5): Automating the Volatility Breakout Strategy in MQL5",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20728",
+    "title": "Sigma Score Indicator for MetaTrader 5: A Simple Statistical Anomaly Detector",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20645",
+    "title": "From Novice to Expert: Navigating Market Irregularities",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20511",
+    "title": "Larry Williams Market Secrets (Part 1): Building a Swing Structure Indicator in MQL5",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20390",
+    "title": "Price Action Analysis Toolkit Development (Part 53): Pattern Density Heatmap for Support and Resistance Zone Discovery",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20387",
+    "title": "Price Action Analysis Toolkit Development (Part 52): Master Market Structure with Multi-Timeframe Visual Analysis",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20239",
+    "title": "Mastering Kagi Charts in MQL5 (Part I): Creating the Indicator",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20313",
+    "title": "Price Action Analysis Toolkit Development (Part 51): Revolutionary Chart Search Technology for Candlestick Pattern Discovery",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20045",
+    "title": "Markets Positioning Codex in MQL5 (Part 2):  Bitwise Learning, with Multi-Patterns for Nvidia",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20020",
+    "title": "Markets Positioning Codex in MQL5 (Part 1): Bitwise Learning for Nvidia",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17252",
+    "title": "How can century-old functions update your trading strategies?",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20168",
+    "title": "Price Action Analysis Toolkit Development (Part 49): Integrating Trend, Momentum, and Volatility Indicators into One MQL5 System",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19944",
+    "title": "Price Action Analysis Toolkit Development (Part 47): Tracking Forex Sessions and Breakouts in MetaTrader 5",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19918",
+    "title": "From Novice to Expert: Parameter Control Utility",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19576",
+    "title": "Mastering Quick Trades: Overcoming Execution Paralysis",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19948",
+    "title": "MQL5 Wizard Techniques you should know (Part 85): Using Patterns of Stochastic-Oscillator and the FrAMA with Beta VAE Inference Learning",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19945",
+    "title": "Price Action Analysis Toolkit Development (Part 46): Designing an Interactive Fibonacci Retracement EA with Smart Visualization in MQL5",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19912",
+    "title": "Introduction to MQL5 (Part 24): Building an EA that Trades with Chart Objects",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19890",
+    "title": "MQL5 Wizard Techniques you should know (Part 84): Using Patterns of Stochastic Oscillator and the FrAMA - Conclusion",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19857",
+    "title": "MQL5 Wizard Techniques you should know (Part 83):  Using Patterns of Stochastic Oscillator and the FrAMA \u2014 Behavioral Archetypes",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19856",
+    "title": "Introduction to MQL5 (Part 22): Building an Expert Advisor for the 5-0 Harmonic Pattern",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19794",
+    "title": "MQL5 Wizard Techniques you should know (Part 82): Using Patterns of TRIX and the WPR with DQN Reinforcement Learning",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19781",
+    "title": "MQL5 Wizard Techniques you should know (Part 81):  Using Patterns of Ichimoku and the ADX-Wilder with Beta VAE Inference Learning",
+    "category": "Indicators"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/719",
+    "title": "analyze news",
+    "category": "Expert Advisors"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/117",
+    "title": "ordering of trading robots",
+    "category": "Expert Advisors"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20658",
+    "title": "From Novice to Expert: Higher Probability Signals",
+    "category": "Expert Advisors"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17410",
+    "title": "Build a Remote Forex Risk Management System in Python",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20589",
+    "title": "Building Volatility models in MQL5 (Part I): The Initial Implementation",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17104",
+    "title": "Neural Networks in Trading: Hierarchical Dual-Tower Transformer (Final Part)",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20317",
+    "title": "Overcoming The Limitation of Machine Learning (Part 8): Nonparametric Strategy Selection",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20256",
+    "title": "Overcoming The Limitation of Machine Learning (Part 7): Automatic Strategy Selection",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17069",
+    "title": "Neural Networks in Trading: Hierarchical Dual-Tower Transformer (Hidformer)",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20238",
+    "title": "Self Optimizing Expert Advisors in MQL5 (Part 17): Ensemble Intelligence",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/16993",
+    "title": "Neural Networks in Trading: Memory Augmented Context-Aware Learning for Cryptocurrency Markets (Final Part)",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20223",
+    "title": "Reimagining Classic Strategies (Part 18): Searching For Candlestick Patterns",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/16975",
+    "title": "Neural Networks in Trading: Memory Augmented Context-Aware Learning (MacroHFT) for Cryptocurrency Markets",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/17143",
+    "title": "Circle Search Algorithm (CSA)",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20059",
+    "title": "MetaTrader 5 Machine Learning Blueprint (Part 5): Sequential Bootstrapping\u2014Debiasing Labels, Improving Returns",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20090",
+    "title": "Reimagining Classic Strategies (Part 17): Modelling Technical Indicators",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/16937",
+    "title": "Neural Networks in Trading: A Multi-Agent System with Conceptual Reinforcement (Final Part)",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20023",
+    "title": "Self Optimizing Expert Advisors in MQL5 (Part 16): Supervised Linear System Identification",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/16916",
+    "title": "Neural Networks in Trading: A Multi-Agent System with Conceptual Reinforcement (FinCon)",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19850",
+    "title": "Machine Learning Blueprint (Part 4): The Hidden Flaw in Your Financial ML Pipeline \u2014 Label Concurrency",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/20010",
+    "title": "Overcoming The Limitation of Machine Learning (Part 6): Effective Memory Cross Validation",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/16867",
+    "title": "Neural Networks in Trading: A Multimodal, Tool-Augmented Agent for Financial Markets (Final Part)",
+    "category": "Machine Learning"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/239",
+    "title": "the testing fundamentals",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/75",
+    "title": "tick generation algorithms",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/12621",
+    "title": "Market Simulation (Part 07): Sockets (I)",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/16452",
+    "title": "Developing a multi-currency Expert Advisor (Part 22): Starting the transition to hot swapping of settings",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/12598",
+    "title": "Market Simulation (Part 05): Creating the C_Orders Class (II)",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/18361",
+    "title": "Bivariate Copulae in MQL5 (Part 1): Implementing Gaussian and Student's t-Copulae for Dependency Modeling",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/12580",
+    "title": "Market Simulation (Part 03): A Matter of Performance",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/12537",
+    "title": "Market Simulation (Part 02): Cross Orders (II)",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/16877",
+    "title": "Cyclic Parthenogenesis Algorithm (CPA)",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19508",
+    "title": "Developing A Custom Account Performace Matrix Indicator",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/16373",
+    "title": "Developing a multi-currency Expert Advisor (Part 21): Preparing for an important experiment and optimizing the code",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/19422",
+    "title": "Developing a Custom Market Sentiment Indicator",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/12536",
+    "title": "Market Simulation (Part 01): Cross Orders (I)",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/18946",
+    "title": "MQL5 Wizard Techniques you should know (Part 77): Using Gator Oscillator and the Accumulation/Distribution Oscillator",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/18913",
+    "title": "Implementing Practical Modules from Other Languages in MQL5 (Part 03): Schedule Module from Python, the OnTimer Event on Steroids",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/18817",
+    "title": "From Novice to Expert: Animated News Headline Using MQL5 (VII) \u2014 Post Impact Strategy for News Trading",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/16494",
+    "title": "Cycles and trading",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/12442",
+    "title": "Developing a Replay System (Part 75): New Chart Trade (II)",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/12413",
+    "title": "Developing a Replay System (Part 74): New Chart Trade (I)",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/16364",
+    "title": "Arithmetic Optimization Algorithm (AOA): From AOA to SOA (Simple Optimization Algorithm)",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/18723",
+    "title": "MQL5 Wizard Techniques you should know (Part 73): Using Patterns of Ichimoku and the ADX-Wilder",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/16134",
+    "title": "Developing a multi-currency Expert Advisor (Part 20): Putting in order the conveyor of automatic project optimization stages (I)",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/16315",
+    "title": "Atomic Orbital Search (AOS) algorithm: Modification",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/14895",
+    "title": "Fast trading strategy tester in Python using Numba",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/12363",
+    "title": "Developing a Replay System (Part 73): An Unusual Communication (II)",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/16276",
+    "title": "Atomic Orbital Search (AOS) algorithm",
+    "category": "Strategy Tester"
+  },
+  {
+    "url": "https://www.mql5.com/en/articles/12362",
+    "title": "Developing a Replay System (Part 72): An Unusual Communication (I)",
+    "category": "Strategy Tester"
+  }
+]
