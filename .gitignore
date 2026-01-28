@@ -28,6 +28,8 @@ test_*.py
 tests/
 tools/
 scripts/
+mcp-servers/
+mcp-metatrader5-server/
 
 # 4. COMPILED & TRASH
 *.ex5
