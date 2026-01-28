@@ -5,12 +5,14 @@ from rich.markdown import Markdown
 
 from src.agents.implementations.quant_code import create_quant_code_agent
 from src.agents.implementations.analyst import create_analyst_agent
+from src.agents.implementations.copilot import create_copilot_agent
 
 console = Console()
 
 AGENTS = {
     "quantcode": create_quant_code_agent,
-    "analyst": create_analyst_agent
+    "analyst": create_analyst_agent,
+    "copilot": create_copilot_agent
 }
 
 @click.group()

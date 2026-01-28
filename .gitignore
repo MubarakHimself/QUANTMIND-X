@@ -9,9 +9,10 @@
 .nprd_config.json
 
 # 2. DOCUMENTATION & ARTIFACTS
-docs/
-*.md
+# (Allowed for collaboration)
 !README.md
+!docs/
+!docs/**/*.md
 
 # 3. SCRIPTS & CONFIGS
 *.sh
