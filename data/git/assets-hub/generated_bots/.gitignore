@@ -1,0 +1,10 @@
+# Generated trading bots
+# These are temporary outputs from code generation
+*.mq5
+*.py
+*.json
+*.log
+*/
+
+# Keep directory structure
+!.gitignore
