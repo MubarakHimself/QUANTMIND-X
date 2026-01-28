@@ -1,137 +1,79 @@
-# QUANTMIND-X
+# 🌌 QUANTMIND-X: The Quant Engineering Factory
 
-An AI-powered quantitative trading platform with automated strategy extraction, coding, and deployment.
+QuantMind-X is an autonomous, physics-aware proprietary trading ecosystem. It bridges the gap between neural pattern recognition (NPRD) and industrial-grade high-frequency trading through a tri-layer sentient architecture.
 
-## Quick Start
+---
 
+## 🏗️ Architecture: The Brain & The Body
+
+QuantMind-X is divided into two primary hemispheres:
+
+### 🧠 1. The Intelligence Hub (The Brain)
+A multi-agent system powered by **OpenRouter** and **LangGraph** that handles the end-to-end strategy lifecycle.
+- **🕵️‍♂️ Analyst Agent**: Consumes voice-to-text transcripts (NPRD) and synthesizes technical requirement documents (TRDs).
+- **🤖 QuantCode Agent**: A specialized engineering agent that uses a **Trial & Reflection** loop to write, compile, and refine MQL5 and Python strategies.
+- **🚀 QuantMind Co-pilot**: The master orchestrator. Sits at the highest hierarchical level, managing agent handoffs and global task queuing.
+
+### 🛡️ 2. The Strategy Router (The Body)
+A high-performance execution floor that manages risk and trade dispatch in real-time.
+- **Sentinel**: Real-time market diagnostics using **Lyapunov-based Chaos Sensors** to detect market instability.
+- **Governor**: Enforces compliance and risk stacking (including **Prop Firm Survival** quadratic throttling).
+- **Commander**: Runs a **Strategy Auction** to dispatch the best bots for the current market regime.
+
+---
+
+## 🔬 Core Technologies
+
+### 🌀 Physics-Aware Risk
+We don't just measure volatility; we measure **Chaos**. The system uses rate-of-divergence (Lyapunov proxies) to identify when market predictability collapses, automatically engaging a 0.2x risk floor.
+
+### 📊 3-Layer Enhanced Kelly
+Optimal position sizing that protects capital through:
+1.  **Kelly Fractioning**: Capturing growth without the ruin of full Kelly.
+2.  **Hard Risk Caps**: Absolute circuit breakers on a per-trade basis.
+3.  **Dynamic Volatility Adjustment**: Real-time scaling based on ATR divergence.
+
+### 🔌 Native Bridge (ZMQ)
+Low-latency communication layer using ZeroMQ for sub-5ms integration between Python's intelligence and MetaTrader 5's execution.
+
+---
+
+## 🚀 Getting Started
+
+### 1. Environment Configuration
+Ensure your `.env` is configured for **OpenRouter**:
 ```bash
-# One-time setup (installs everything)
-./setup.sh
-
-# Index articles to knowledge base
-python3 scripts/index_to_qdrant.py
-
-# Start using the knowledge base
-./scripts/kb.sh status
+OPENROUTER_API_KEY=your_key
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 ```
 
-## Project Structure
-
-```
-QUANTMINDX/
-├── setup.sh               # One-time installation script
-├── scripts/               # Python scripts for scraping & processing
-│   ├── index_to_qdrant.py # Knowledge base indexer
-│   └── kb.sh              # Knowledge base manager
-├── tools/                 # NPRD multimodal video indexer
-├── mcp-servers/           # Knowledge base MCP server
-├── mcp-metatrader5-server/# MT5 live trading integration
-├── data/                  # Data storage (gitignored)
-└── requirements.txt       # Python dependencies
-```
-
-## Setup
-
-### One-Time Setup (Recommended)
-
+### 2. Interaction
+Interact with the specialized agents via the QuantMind CLI:
 ```bash
-cd /home/mubarkahimself/Desktop/QUANTMINDX
-./setup.sh
+# Chat with the Architect
+python3 -m src.agents.cli chat --agent analyst
+
+# Chat with the Engineer
+python3 -m src.agents.cli chat --agent quantcode
 ```
 
-This installs:
-- Python virtual environment
-- All dependencies (qdrant-client, sentence-transformers, etc.)
-- Embedding models
-- Qdrant database
-- MCP server
-
-### Manual Setup
-
-If you prefer manual setup:
-
+### 3. Stress Testing
+Verify the router's responsiveness to chaos:
 ```bash
-# Create venv
-python3 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Create .env file
-cat > .env <<EOF
-FIRECRAWL_API_KEY=your_api_key_here
-OPENAI_API_KEY=your_openai_key
-ANTHROPIC_API_KEY=your_anthropic_key
-EOF
+python3 stress_test_router.py
 ```
 
-## Knowledge Base
+---
 
-### Index Articles
+## 🗺️ Roadmap: The Path to Sentience
 
-```bash
-# From QuantMindX directory
-python3 scripts/index_to_qdrant.py
-```
+- [x] **Phase 4: Strategy Router Core** (Sentinel, Governor, Commander)
+- [x] **Phase 4.5: Agent Framework** (BaseAgent, Skill Management)
+- [x] **Phase 5: Analyst & QuantCode V1** (Node Graphs & Refinement)
+- [ ] **Phase 6: QuantMind Co-pilot** (The Master Orchestrator)
+- [ ] **Phase 7: IDE Integration** (VS Code-style Desktop App)
+- [ ] **Phase 8: Live Prop Deployment**
 
-This processes all scraped articles and creates vector embeddings for semantic search.
+---
 
-### Knowledge Base Commands
-
-```bash
-./scripts/kb.sh status     # Check knowledge base stats
-./scripts/kb.sh search "RSI"  # Search articles
-./scripts/kb.sh start      # Start MCP server manually
-```
-
-### Auto-Start Hooks (Optional)
-
-Enable automatic activation when entering the directory:
-
-```bash
-./scripts/setup-kb-hooks.sh
-source ~/.bashrc  # or ~/.zshrc
-```
-
-## Workflow
-
-1. **Input Sources**: Add article URLs to `data/inputs/`
-2. **Scrape**: Firecrawl extracts content from web articles
-3. **Process**: NPRD processes videos with timeline extraction
-4. **Index**: Run `python3 scripts/index_to_qdrant.py`
-5. **Query**: Use MCP tools or `./scripts/kb.sh search`
-
-## Components
-
-### Knowledge Base
-- **Scraper**: Firecrawl integration for web articles
-- **Embeddings**: sentence-transformers (all-MiniLM-L6-v2)
-- **Vector DB**: Qdrant for semantic search
-- **MCP Server**: Interface for Claude Code integration
-
-### NPRD (Non-Processing Research Data)
-Multimodal video/audio indexer with:
-- Timeline extraction and semantic block analysis
-- Speaker diarization
-- OCR content extraction from slides
-- Gemini 1.5 Pro integration
-
-### MetaTrader5 Integration
-Live trading connectivity via MCP server.
-
-## Current Status
-
-- [x] One-time setup script
-- [x] Firecrawl scraper
-- [x] Qdrant vector database
-- [x] MCP knowledge base server
-- [x] NPRD video processing framework
-- [ ] Trading bot coding agent
-- [ ] Code review agent
-- [ ] Live trading integration
-
-## Documentation
-
-- [docs/KNOWLEDGE_BASE_SETUP.md](docs/KNOWLEDGE_BASE_SETUP.md) - Detailed setup guide
-- [docs/KNOWLEDGE_BASE_HOOKS.md](docs/KNOWLEDGE_BASE_HOOKS.md) - Auto-start hooks guide
+© 2026 QuantMind Labs. Built for the era of Machine Intelligence.
