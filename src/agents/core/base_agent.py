@@ -39,6 +39,7 @@ class BaseAgent:
         enable_subagents: bool = True,
         user_id: str = "default_user",
         kb_namespace: Optional[str] = None,
+        system_prompt: Optional[str] = None,
         mcp_servers: List[Dict[str, Any]] = []
     ):
         self.name = name
@@ -54,7 +55,7 @@ class BaseAgent:
         
         # 2. Base Tools & System Prompt
         self.tools: List[Union[BaseTool, Callable]] = []
-        self.system_prompt = f"You are {name}, {role}.\n"
+        self.system_prompt = system_prompt or f"You are {name}, {role}.\n"
         
         # 3. Add Planning (Deep Characteristic)
         if enable_planning:

@@ -131,4 +131,3 @@ def create_analyst_agent() -> AnalystAgent:
         user_id="researcher_1",
         kb_namespace="analyst_kb"
     )
-    )
