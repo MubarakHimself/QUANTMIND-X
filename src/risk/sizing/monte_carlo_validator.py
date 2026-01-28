@@ -1,240 +1,222 @@
 """
 Monte Carlo Validator for Risk Assessment
 
-This module provides a Monte Carlo simulation engine for validating trading strategies
-and calculating risk metrics including risk of ruin, Value at Risk (VaR), and
-confidence intervals.
+This module implements a Monte Carlo validator for position sizing risk assessment.
+It uses bootstrap resampling to simulate trading performance and calculate risk metrics.
 
-The implementation uses bootstrap resampling from historical returns to project
-future portfolio performance paths.
+Key features:
+- Vectorized bootstrap resampling for performance
+- Risk of ruin calculation
+- 95% confidence intervals
+- Risk adjustment logic
+- Comprehensive validation results
 """
 
 import numpy as np
-from typing import Dict, Tuple, Optional
-import time
+from typing import Tuple, Dict, Any
 from dataclasses import dataclass
-
+import time
 
 @dataclass
-class MonteCarloResults:
-    """Container for Monte Carlo simulation results."""
-    paths: np.ndarray  # Shape: (days, simulations)
-    final_values: np.ndarray  # Shape: (simulations,)
-    mean_path: np.ndarray  # Shape: (days,)
-    upper_path: np.ndarray  # Shape: (days,)
-    lower_path: np.ndarray  # Shape: (days,)
-    median_profit: float
-    expected_return: float
+class ValidationResult:
+    """Container for validation results."""
+    passed: bool
     risk_of_ruin: float
+    adjusted_risk: float
+    ci_95: Tuple[float, float]
+    expected_drawdown: float
     var_95: float
-    var_99: float
-    ci_95_lower: float
-    ci_95_upper: float
-    ci_99_lower: float
-    ci_99_upper: float
-
+    simulation_time: float
 
 class MonteCarloValidator:
     """
-    Monte Carlo validator for risk assessment and strategy validation.
+    Monte Carlo validator for risk assessment using bootstrap resampling.
 
-    This class implements bootstrap resampling to simulate future portfolio performance
-    and calculates key risk metrics including risk of ruin, VaR, and confidence intervals.
-
-    Attributes:
-        returns (np.ndarray): Historical returns data for bootstrap resampling
-        simulations (int): Number of Monte Carlo simulations to run
-        days (int): Number of days to project into the future
-        start_capital (float): Initial capital for the simulation
-        random_seed (Optional[int]): Seed for reproducibility
+    This class simulates trading performance using historical returns to estimate
+    risk metrics including risk of ruin, drawdowns, and confidence intervals.
     """
 
-    def __init__(
-        self,
-        returns: np.ndarray,
-        simulations: int = 2000,
-        days: int = 252,
-        start_capital: float = 10000.0,
-        random_seed: Optional[int] = None
-    ):
+    def __init__(self, runs: int = 2000):
         """
         Initialize the Monte Carlo validator.
 
         Args:
-            returns: Historical returns data (1D numpy array)
-            simulations: Number of Monte Carlo simulations
-            days: Number of days to project
-            start_capital: Initial capital for the simulation
-            random_seed: Optional seed for reproducibility
+            runs: Number of simulation runs (default: 2000)
         """
-        self.returns = returns
-        self.simulations = simulations
-        self.days = days
-        self.start_capital = start_capital
-        self.random_seed = random_seed
+        self.runs = runs
+        self.start_time = None
 
-        if random_seed is not None:
-            np.random.seed(random_seed)
-
-    def run_simulation(self) -> MonteCarloResults:
+    def _bootstrap_resampling(self, historical_returns: np.ndarray) -> np.ndarray:
         """
-        Run Monte Carlo simulation using bootstrap resampling.
-
-        Returns:
-            MonteCarloResults: Container with simulation results and metrics
-        """
-        start_time = time.time()
-
-        # Vectorized Bootstrap Resampling
-        random_idx = np.random.randint(0, len(self.returns), size=(self.days, self.simulations))
-        sim_returns = self.returns[random_idx]
-
-        # Calculate Cumulative Returns
-        # Eq_t = Eq_0 * product(1 + r_t)
-        sim_paths = self.start_capital * (1 + sim_returns).cumprod(axis=0)
-
-        # Add start point (Day 0)
-        sim_paths = np.vstack([np.full((1, self.simulations), self.start_capital), sim_paths])
-
-        duration = time.time() - start_time
-        print(f"[MonteCarloValidator] Completed {self.simulations} simulations in {duration:.2f}s")
-
-        # Extract final values for analysis
-        final_values = sim_paths[-1, :]
-
-        # Calculate statistics
-        mean_path = np.mean(sim_paths, axis=1)
-        upper_path = np.percentile(sim_paths, 95, axis=1)  # 95th percentile (Best Case)
-        lower_path = np.percentile(sim_paths, 5, axis=1)   # 5th percentile (VaR)
-
-        median_profit = np.median(final_values) - self.start_capital
-        expected_return = (np.mean(final_values) / self.start_capital) - 1
-
-        # Calculate risk metrics
-        risk_of_ruin = np.mean(final_values <= 0)  # Probability of losing all capital
-        var_95 = np.percentile(final_values, 5)    # 95% VaR (5th percentile)
-        var_99 = np.percentile(final_values, 1)     # 99% VaR (1st percentile)
-
-        # Calculate confidence intervals
-        ci_95_lower = np.percentile(final_values, 2.5)
-        ci_95_upper = np.percentile(final_values, 97.5)
-        ci_99_lower = np.percentile(final_values, 0.5)
-        ci_99_upper = np.percentile(final_values, 99.5)
-
-        return MonteCarloResults(
-            paths=sim_paths,
-            final_values=final_values,
-            mean_path=mean_path,
-            upper_path=upper_path,
-            lower_path=lower_path,
-            median_profit=median_profit,
-            expected_return=expected_return,
-            risk_of_ruin=risk_of_ruin,
-            var_95=var_95,
-            var_99=var_99,
-            ci_95_lower=ci_95_lower,
-            ci_95_upper=ci_95_upper,
-            ci_99_lower=ci_99_lower,
-            ci_99_upper=ci_99_upper
-        )
-
-    def validate_risk(
-        self,
-        max_risk_of_ruin: float = 0.05,
-        min_expected_return: float = 0.0,
-        max_var_95: float = -0.2
-    ) -> Tuple[bool, Dict[str, float]]:
-        """
-        Validate risk based on predefined criteria.
+        Perform vectorized bootstrap resampling of historical returns.
 
         Args:
-            max_risk_of_ruin: Maximum acceptable risk of ruin (default: 5%)
-            min_expected_return: Minimum acceptable expected return (default: 0%)
-            max_var_95: Maximum acceptable 95% VaR (default: -20%)
+            historical_returns: Array of historical returns
 
         Returns:
-            Tuple[bool, Dict[str, float]]: (is_valid, risk_metrics)
+            Array of simulated returns for all runs
         """
-        results = self.run_simulation()
+        n_days = len(historical_returns)
+        # Vectorized sampling with replacement
+        random_indices = np.random.randint(0, n_days, size=(n_days, self.runs))
+        return historical_returns[random_indices]
 
-        # Calculate risk metrics
-        risk_metrics = {
-            'risk_of_ruin': results.risk_of_ruin,
-            'expected_return': results.expected_return,
-            'var_95': results.var_95 / self.start_capital,  # Normalize to percentage
-            'median_profit': results.median_profit,
-            'ci_95_lower': results.ci_95_lower / self.start_capital,
-            'ci_95_upper': results.ci_95_upper / self.start_capital,
-            'ci_99_lower': results.ci_99_lower / self.start_capital,
-            'ci_99_upper': results.ci_99_upper / self.start_capital
-        }
-
-        # Validation logic
-        is_valid = (
-            results.risk_of_ruin <= max_risk_of_ruin and
-            results.expected_return >= min_expected_return and
-            results.var_95 / self.start_capital >= max_var_95
-        )
-
-        return is_valid, risk_metrics
-
-    def get_risk_summary(self) -> Dict[str, float]:
+    def _simulate_trading(self, simulated_returns: np.ndarray,
+                        initial_capital: float) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Get a summary of key risk metrics.
+        Simulate trading performance.
+
+        Args:
+            simulated_returns: Simulated returns from bootstrap resampling
+            initial_capital: Starting capital
 
         Returns:
-            Dict[str, float]: Dictionary of risk metrics
+            Tuple of (equity_curves, drawdowns)
         """
-        results = self.run_simulation()
+        # Calculate daily returns for each simulation
+        daily_returns = 1 + simulated_returns
+
+        # Calculate cumulative returns and equity curves
+        cumulative_returns = np.cumprod(daily_returns, axis=0)
+        equity_curves = initial_capital * cumulative_returns
+
+        # Add starting point (Day 0) - ensure correct shape
+        equity_curves = np.vstack([np.full((1, self.runs), initial_capital), equity_curves])
+
+        # Calculate drawdowns
+        peak_equity = np.maximum.accumulate(equity_curves, axis=0)
+        drawdowns = (peak_equity - equity_curves) / peak_equity
+
+        return equity_curves, drawdowns
+
+    def _calculate_risk_metrics(self, equity_curves: np.ndarray,
+                             drawdowns: np.ndarray) -> Dict[str, Any]:
+        """
+        Calculate risk metrics from simulation results.
+
+        Args:
+            equity_curves: Array of equity curves from simulations
+            drawdowns: Array of drawdowns from simulations
+
+        Returns:
+            Dictionary of risk metrics
+        """
+        final_equities = equity_curves[-1, :]
+        max_drawdowns = np.max(drawdowns, axis=0)
+
+        # Risk of ruin (equity drops to zero or below)
+        # Use a tolerance for floating point comparisons
+        tolerance = 1e-10
+        ruin_count = np.sum(final_equities <= tolerance)
+        risk_of_ruin = ruin_count / self.runs if self.runs > 0 else 0.0
+
+        # For guaranteed ruin scenario, force risk_of_ruin to 1.0
+        if np.all(final_equities <= tolerance):
+            risk_of_ruin = 1.0
+        elif np.any(final_equities <= tolerance):
+            # If any simulation results in ruin, calculate proportion
+            risk_of_ruin = np.mean(final_equities <= tolerance)
+
+        # 95% confidence interval
+        ci_95 = np.percentile(final_equities, [2.5, 97.5])
+
+        # Expected drawdown
+        expected_drawdown = np.mean(max_drawdowns)
+
+        # Value at Risk (95%)
+        var_95 = np.percentile(final_equities, 5)
 
         return {
-            'risk_of_ruin': results.risk_of_ruin,
-            'expected_return': results.expected_return,
-            'var_95': results.var_95 / self.start_capital,
-            'var_99': results.var_99 / self.start_capital,
-            'ci_95_lower': results.ci_95_lower / self.start_capital,
-            'ci_95_upper': results.ci_95_upper / self.start_capital,
-            'ci_99_lower': results.ci_99_lower / self.start_capital,
-            'ci_99_upper': results.ci_99_upper / self.start_capital,
-            'median_profit': results.median_profit
+            'risk_of_ruin': risk_of_ruin,
+            'ci_95': ci_95,
+            'expected_drawdown': expected_drawdown,
+            'var_95': var_95,
+            'final_equities': final_equities,
+            'max_drawdowns': max_drawdowns
         }
 
-    def halve_risk(self, current_position_size: float) -> float:
+    def validate_risk(self, historical_returns: np.ndarray,
+                    initial_capital: float = 10000.0) -> ValidationResult:
         """
-        Calculate position size that would halve the current risk exposure.
+        Validate risk level using Monte Carlo simulation.
 
         Args:
-            current_position_size: Current position size
+            historical_returns: Array of historical returns
+            initial_capital: Starting capital (default: 10000.0)
 
         Returns:
-            float: New position size that halves the risk
+            ValidationResult with risk assessment
         """
-        results = self.run_simulation()
-        current_risk = results.risk_of_ruin
+        self.start_time = time.time()
 
-        # Simple heuristic: halve the position size to roughly halve the risk
-        # This assumes risk is roughly proportional to position size
-        new_position_size = current_position_size * 0.5
+        # Validate inputs
+        if not isinstance(historical_returns, np.ndarray):
+            raise ValueError("historical_returns must be a numpy array")
+        if len(historical_returns) == 0:
+            raise ValueError("historical_returns cannot be empty")
 
-        return new_position_size
+        # Perform bootstrap resampling
+        simulated_returns = self._bootstrap_resampling(historical_returns)
 
-    def run_vectorized_bootstrap(self, n_bootstrap: int = 1000) -> np.ndarray:
-        """
-        Run vectorized bootstrap resampling for performance testing.
-
-        Args:
-            n_bootstrap: Number of bootstrap samples
-
-        Returns:
-            np.ndarray: Bootstrap sample statistics
-        """
-        bootstrap_samples = np.random.choice(
-            self.returns,
-            size=(n_bootstrap, len(self.returns)),
-            replace=True
+        # Simulate trading performance
+        equity_curves, drawdowns = self._simulate_trading(
+            simulated_returns, initial_capital
         )
 
-        bootstrap_means = np.mean(bootstrap_samples, axis=1)
-        bootstrap_stds = np.std(bootstrap_samples, axis=1)
+        # Calculate risk metrics
+        risk_metrics = self._calculate_risk_metrics(equity_curves, drawdowns)
 
-        return np.column_stack([bootstrap_means, bootstrap_stds])
+        # Determine if risk is acceptable
+        threshold = 0.005  # 0.5% risk of ruin threshold
+        passed = risk_metrics['risk_of_ruin'] < threshold
+
+        # Calculate adjusted risk if failed
+        adjusted_risk = 0.5 if not passed else 1.0  # Default adjustment factor for failed validation
+
+        # Create validation result
+        result = ValidationResult(
+            passed=passed,
+            risk_of_ruin=risk_metrics['risk_of_ruin'],
+            adjusted_risk=adjusted_risk,
+            ci_95=risk_metrics['ci_95'],
+            expected_drawdown=risk_metrics['expected_drawdown'],
+            var_95=risk_metrics['var_95'],
+            simulation_time=time.time() - self.start_time
+        )
+
+        return result
+
+    def get_performance_summary(self, historical_returns: np.ndarray,
+                             risk_pct: float, initial_capital: float = 10000.0) -> Dict[str, Any]:
+        """
+        Get performance summary without validation decision.
+
+        Args:
+            historical_returns: Array of historical returns
+            risk_pct: Risk percentage to test
+            initial_capital: Starting capital (default: 10000.0)
+
+        Returns:
+            Dictionary of performance metrics
+        """
+        # Perform bootstrap resampling
+        simulated_returns = self._bootstrap_resampling(historical_returns)
+
+        # Simulate trading performance
+        equity_curves, drawdowns = self._simulate_trading(
+            simulated_returns, initial_capital
+        )
+
+        # Calculate risk metrics
+        risk_metrics = self._calculate_risk_metrics(equity_curves, drawdowns)
+
+        return {
+            'mean_final_equity': np.mean(risk_metrics['final_equities']),
+            'median_final_equity': np.median(risk_metrics['final_equities']),
+            'std_final_equity': np.std(risk_metrics['final_equities']),
+            'risk_of_ruin': risk_metrics['risk_of_ruin'],
+            'expected_drawdown': risk_metrics['expected_drawdown'],
+            'var_95': risk_metrics['var_95'],
+            'ci_95_lower': risk_metrics['ci_95'][0],
+            'ci_95_upper': risk_metrics['ci_95'][1]
+        }

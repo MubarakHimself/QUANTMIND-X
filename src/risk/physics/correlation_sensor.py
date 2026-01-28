@@ -17,7 +17,6 @@ import numpy as np
 from scipy.linalg import eigh
 from typing import Tuple
 from functools import lru_cache
-import warnings
 
 
 class CorrelationSensor:
@@ -77,7 +76,7 @@ class CorrelationSensor:
             raise ValueError(f"Must have at least 2 assets, got {n_assets}")
 
         if t_periods < 20:
-            warnings.warn(f"Low number of time periods ({t_periods}), results may be unstable")
+            raise ValueError(f"Must have at least 20 periods, got {t_periods}")
 
     def _normalize_returns(self, returns_matrix: np.ndarray) -> np.ndarray:
         """
