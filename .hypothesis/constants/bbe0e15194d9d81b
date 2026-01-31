@@ -1,0 +1,4 @@
+# file: /home/mubarkahimself/Desktop/QUANTMINDX/src/database/manager.py
+# hypothesis_version: 6.151.4
+
+[0.0, 0.5, 1.0, 5.0, 8.0, 100, 'DatabaseManager', 'Unknown', 'account_id', 'agent_type', 'completed', 'current_equity', 'daily_drawdown_pct', 'daily_start_balance', 'date', 'high_water_mark', 'id', 'is_breached', 'kelly_score', 'memory_type', 'pending', 'sharpe_ratio', 'snapshot_timestamp']

@@ -1,0 +1,4 @@
+# file: /home/mubarkahimself/Desktop/QUANTMINDX/src/database/retry.py
+# hypothesis_version: 6.151.4
+
+[0.5, 1.0, 2.0, 30.0, 'SELECT 1', 'T', '__main__', 'sqlite:///test.db']

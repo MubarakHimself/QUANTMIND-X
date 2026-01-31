@@ -1,0 +1,4 @@
+# file: /home/mubarkahimself/Desktop/QUANTMINDX/src/database/models.py
+# hypothesis_version: 6.151.4
+
+[0.0, 1.0, 5.0, 8.0, 100, 200, 'CASCADE', 'DailySnapshot', 'PropFirmAccount', 'SET NULL', 'TradeProposal', 'account_id', 'agent_tasks', 'agent_type', 'all, delete-orphan', 'daily_snapshots', 'date', 'idx_snapshot_date', 'kelly_score', 'pending', 'prop_account', 'prop_firm_accounts', 'sharpe_ratio', 'status', 'strategy_performance', 'trade_proposals', 'uq_account_date']

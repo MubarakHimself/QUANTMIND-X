@@ -1,0 +1,4 @@
+# file: /home/mubarkahimself/Desktop/QUANTMINDX/src/database/chroma_client.py
+# hypothesis_version: 6.151.4
+
+[0.0, 0.5, 100, 384, '=', 'Z', '__main__', 'agent_memory', 'agent_type', 'categories', 'chromadb', 'code_hash', 'collections', 'context', 'cosine', 'count', 'created_at', 'data', 'distance', 'distances', 'document', 'documents', 'embedding_dimension', 'embedding_model', 'hnsw:M', 'hnsw:construction_ef', 'hnsw:search_ef', 'hnsw:space', 'id', 'ids', 'importance', 'market_research', 'memory_type', 'metadata', 'metadatas', 'pattern_type', 'performance_metrics', 'persist_directory', 'relevance_score', 'similarity', 'strategy_dna', 'strategy_name', 'timestamp', 'title', 'url', 'volatility_level', '{}']
