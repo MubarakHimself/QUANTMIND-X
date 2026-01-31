@@ -1,3 +1,3 @@
 """
-Tests for agent implementations and integration.
+Agent tests.
 """

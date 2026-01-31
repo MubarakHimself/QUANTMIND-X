@@ -3,13 +3,10 @@
     "."
   ],
   "graphs": {
-    "analyst_agent": "./src/agents/analyst/graph.py:create_analyst_graph",
-    "quant_agent": "./src/agents/quant/graph.py:create_quant_graph",
-    "executor_agent": "./src/agents/executor/graph.py:create_executor_graph",
-    "router_agent": "./src/agents/router/graph.py:create_router_graph"
+    "analyst": "./src/agents/analyst.py:compile_analyst_graph",
+    "quantcode": "./src/agents/quantcode.py:compile_quantcode_graph",
+    "executor": "./src/agents/executor.py:compile_executor_graph",
+    "router": "./src/agents/router.py:compile_router_graph"
   },
-  "env": ".env",
-  "python_version": "3.12",
-  "pip_config_file": "requirements.txt",
-  "dockerfile_lines": []
+  "env": ".env"
 }
