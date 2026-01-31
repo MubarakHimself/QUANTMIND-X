@@ -1,0 +1,27 @@
+[command]
+name = "process"
+description = "Analyze a YouTube video for NPRD extraction."
+
+[[args]]
+name = "url"
+type = "string"
+description = "The YouTube URL to analyze"
+required = true
+
+[job]
+# This command runs a shell script wrapper (or direct python) to orchestrate
+# 1. Download/Extract (Python)
+# 2. Feed to Gemini (via prompt context injection)
+
+# NOTE: Since we cannot easily "inject" dynamic file paths into a static TOML prompt from a shell command output within the TOML syntax itself easily without a custom tool, 
+# we will design this command to output the INSTRUCTIONS for the user/server on what to do, OR we rely on the Server to handle the orchestration.
+# However, to make it useful:
+
+prompt = """
+You are about to analyze a video from {{url}}.
+First, I need to get the video data.
+
+Please run the 'nprd_preprocess' tool (if available) or wait for my data injection.
+
+(Note: For full automation, use the NPRD Server API which handles the file uploading automatically).
+"""

@@ -1,0 +1,19 @@
+{
+    "name": "nprd-extension",
+    "version": "1.0.0",
+    "description": "Neutral Processing & Reality Documentation (NPRD) extension for unbiased video analysis using The Librarian persona.",
+    "skills": [
+        {
+            "path": "skills/librarian",
+            "name": "librarian",
+            "description": "Unbiased video data transcriber causing 'The Librarian' persona."
+        }
+    ],
+    "commands": [
+        {
+            "name": "process",
+            "path": "commands/nprd/process.toml",
+            "description": "Process a YouTube video URL using NPRD protocols."
+        }
+    ]
+}

@@ -1,0 +1,22 @@
+{
+  "EURUSD": {
+    "multiplier": 1.0,
+    "timestamp": 1704067200
+  },
+  "GBPUSD": {
+    "multiplier": 1.0,
+    "timestamp": 1704067200
+  },
+  "USDJPY": {
+    "multiplier": 1.0,
+    "timestamp": 1704067200
+  },
+  "XAUUSD": {
+    "multiplier": 1.0,
+    "timestamp": 1704067200
+  },
+  "XAGUSD": {
+    "multiplier": 1.0,
+    "timestamp": 1704067200
+  }
+}

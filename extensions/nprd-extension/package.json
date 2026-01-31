@@ -1,0 +1,19 @@
+{
+    "name": "quantmindx-nprd-extension",
+    "version": "1.0.0",
+    "description": "NPRD Video Analysis Extension",
+    "main": "index.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "keywords": [
+        "gemini",
+        "cli",
+        "extension",
+        "nprd",
+        "video",
+        "analysis"
+    ],
+    "author": "QuantMindX",
+    "license": "ISC"
+}

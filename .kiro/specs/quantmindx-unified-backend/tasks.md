@@ -63,8 +63,8 @@
 - [x] 5.3 Implement Utils/Sockets.mqh for WebSocket communication
 - [x] 5.4 Implement Utils/RingBuffer.mqh with CRiBuff for O(1) operations
 - [x] 5.5 Write unit tests for JSON parsing with various input formats
-- [-] 5.6 Write property test for Ring Buffer performance characteristics
-- [ ] 5.7 Create MQL5 asset index documentation (docs/knowledge/mql5_asset_index.md)
+- [x] 5.6 Write property test for Ring Buffer performance characteristics
+- [x] 5.7 Create MQL5 asset index documentation (docs/knowledge/mql5_asset_index.md)
 
 ## Task Group 6: PropFirm Python Implementation
 

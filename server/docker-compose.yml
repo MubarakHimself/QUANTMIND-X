@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  nprd-engine:
+    build:
+      context: ../
+      dockerfile: server/Dockerfile
+    container_name: nprd-engine
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      # Set Gemini API Key if you want to override the file-based auth (optional)
+      # - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      # CRITICAL: Share the Host's Gemini Credentials
+      # This allows 'gemini run' inside Docker to use the token from 'gemini auth login' on Host.
+      - ${HOME}/.gemini:/root/.gemini
+      # Share Qwen Credentials
+      - ${HOME}/.qwen:/root/.qwen
+      
+      # Optional: Persist downloaded data for debugging
+      - ./tmp_downloads:/app/tmp/nprd_data
+      
+      # Mount the Knowledge Hub to save outputs
+      - ../docs/knowledge/nprd_outputs:/app/docs/knowledge/nprd_outputs
+
+    restart: unless-stopped

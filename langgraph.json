@@ -1,0 +1,15 @@
+{
+  "dependencies": [
+    "."
+  ],
+  "graphs": {
+    "analyst_agent": "./src/agents/analyst/graph.py:create_analyst_graph",
+    "quant_agent": "./src/agents/quant/graph.py:create_quant_graph",
+    "executor_agent": "./src/agents/executor/graph.py:create_executor_graph",
+    "router_agent": "./src/agents/router/graph.py:create_router_graph"
+  },
+  "env": ".env",
+  "python_version": "3.12",
+  "pip_config_file": "requirements.txt",
+  "dockerfile_lines": []
+}
