@@ -1,4 +1,0 @@
-# file: /home/mubarkahimself/Desktop/QUANTMINDX/src/router/prop/governor.py
-# hypothesis_version: 6.151.4
-
-[0.0, 0.01, 0.05, 1.0, 100000, 'HALTED_NEWS', 'KILL_ZONE', 'RegimeReport', 'THROTTLED', 'current_balance', 'daily_start_balance']

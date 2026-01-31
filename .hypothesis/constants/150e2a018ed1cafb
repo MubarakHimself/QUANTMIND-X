@@ -1,4 +1,0 @@
-# file: /home/mubarkahimself/Desktop/QUANTMINDX/src/router/governor.py
-# hypothesis_version: 6.151.4
-
-[0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0, 'CLAMPED', 'RegimeReport', 'STANDARD']

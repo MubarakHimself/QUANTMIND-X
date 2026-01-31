@@ -13,6 +13,7 @@ __pycache__/
 venv/
 .venv/
 .pytest_cache/
+.hypothesis/
 *.egg-info/
 dist/
 build/
@@ -33,17 +34,23 @@ src-tauri/target/
 .vscode/
 .idea/
 
-# Agentic / AI Memory (IGNORE THESE)
+# Agentic / AI Development Files (Keep Local Only)
 .gemini/
 .agent/
 .claude/
 .claude-flow/
 .qodo/
 .swarm/
+.kiro/
+.hypothesis/
 brain/
 artifacts/
 agent-os/
-agent-os/
+
+# Development Summary Files
+*_SUMMARY.md
+TASK_GROUP*.md
+SESSION_SUMMARY.md
 
 # Project Specific
 data/db/
