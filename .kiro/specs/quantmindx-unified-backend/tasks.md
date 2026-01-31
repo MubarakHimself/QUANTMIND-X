@@ -85,15 +85,15 @@
 
 - [x] 7.1 Implement DiskSyncer class for atomic file operations
 - [x] 7.2 Implement atomic risk_matrix.json write (temp file + rename)
-- [ ] 7.3 Implement GlobalVariable update via MT5 connection
-- [ ] 7.4 Implement file watcher for risk_matrix.json changes
-- [ ] 7.5 Implement heartbeat endpoint (POST /heartbeat)
-- [ ] 7.6 Implement heartbeat payload validation (ea_name, symbol, magic_number, etc.)
-- [ ] 7.7 Implement DatabaseErrorHandler with retry logic
-- [ ] 7.8 Implement MQL5BridgeErrorHandler for integration errors
-- [ ] 7.9 Implement CircuitBreaker pattern for external service calls
-- [ ] 7.10 Write integration tests for MQL5-Python bridge
-- [ ] 7.11 Write property test for atomic file write operations
+- [x] 7.3 Implement GlobalVariable update via MT5 connection
+- [x] 7.4 Implement file watcher for risk_matrix.json changes
+- [x] 7.5 Implement heartbeat endpoint (POST /heartbeat)
+- [x] 7.6 Implement heartbeat payload validation (ea_name, symbol, magic_number, etc.)
+- [x] 7.7 Implement DatabaseErrorHandler with retry logic
+- [x] 7.8 Implement MQL5BridgeErrorHandler for integration errors
+- [x] 7.9 Implement CircuitBreaker pattern for external service calls
+- [x] 7.10 Write integration tests for MQL5-Python bridge
+- [x] 7.11 Write property test for atomic file write operations
 
 ## Task Group 8: LangGraph Agent Architecture
 

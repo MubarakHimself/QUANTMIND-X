@@ -224,18 +224,21 @@ class DiskSyncer:
     def sync_risk_matrix(
         self,
         risk_matrix: Dict[str, Any],
-        target_file: Optional[str] = None
+        target_file: Optional[str] = None,
+        update_global_vars: bool = True
     ):
         """
         Sync risk matrix to MT5 with retry logic.
 
         Performs validation, atomic write, and retry with exponential backoff.
+        Optionally updates MT5 global variables for fast-path access.
 
         Args:
             risk_matrix: Risk data to sync
                          Format: {"symbol": {"multiplier": float, "timestamp": int}}
             target_file: Optional custom target file path.
                         If None, uses mt5_path/risk_matrix.json
+            update_global_vars: If True, also update MT5 global variables
 
         Raises:
             ValueError: If JSON validation fails
@@ -256,6 +259,13 @@ class DiskSyncer:
             try:
                 self._atomic_write(target_file, risk_matrix)
                 logger.info(f"Successfully synced risk matrix to {target_file}")
+                
+                # Update global variables for fast-path access
+                if update_global_vars:
+                    for symbol, data in risk_matrix.items():
+                        var_name = f"QM_RISK_{symbol.replace('/', '_')}"
+                        self.update_global_variable(var_name, data.get('multiplier', 1.0))
+                
                 return
 
             except IOError as e:
@@ -278,6 +288,45 @@ class DiskSyncer:
         raise IOError(
             f"Failed to sync risk matrix after {self.max_retries} attempts: {last_error}"
         )
+
+    def update_global_variable(self, variable_name: str, value: float) -> bool:
+        """
+        Update MQL5 global variable via MT5 connection.
+        
+        Provides fast-path access for MQL5 EAs to retrieve risk parameters
+        without file I/O overhead.
+        
+        Args:
+            variable_name: Name of the global variable (e.g., "QM_RISK_MULTIPLIER")
+            value: Value to set
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            import MetaTrader5 as mt5
+            
+            # Initialize MT5 connection
+            if not mt5.initialize():
+                logger.warning(f"Failed to initialize MT5 connection: {mt5.last_error()}")
+                return False
+            
+            # Set global variable
+            if not mt5.global_variable_set(variable_name, value):
+                logger.warning(f"Failed to set global variable {variable_name}: {mt5.last_error()}")
+                mt5.shutdown()
+                return False
+            
+            logger.debug(f"Successfully set global variable {variable_name} = {value}")
+            mt5.shutdown()
+            return True
+            
+        except ImportError:
+            logger.warning("MetaTrader5 package not available, skipping global variable update")
+            return False
+        except Exception as e:
+            logger.error(f"Error updating global variable {variable_name}: {e}")
+            return False
 
     def read_risk_matrix(self, source_file: Optional[str] = None) -> Dict[str, Any]:
         """
