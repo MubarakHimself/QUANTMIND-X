@@ -68,23 +68,23 @@
 
 ## Task Group 6: PropFirm Python Implementation
 
-- [ ] 6.1 Implement PropCommander class extending BaseCommander
-- [ ] 6.2 Implement Kelly Filter logic with 0.8 threshold
-- [ ] 6.3 Implement preservation mode trade rejection logic
-- [ ] 6.4 Implement Coin Flip Bot activation for minimum trading days
-- [ ] 6.5 Implement PropGovernor class extending BaseGovernor
-- [ ] 6.6 Implement Quadratic Throttle calculation method
-- [ ] 6.7 Implement hard stop logic (4.5% threshold with 1% buffer)
-- [ ] 6.8 Implement news guard (KILL_ZONE) detection and response
-- [ ] 6.9 Implement PropState database-backed storage
-- [ ] 6.10 Write unit tests for PropCommander and PropGovernor
-- [ ] 6.11 Write property tests for Quadratic Throttle formula
-- [ ] 6.12 Write property tests for Kelly Filter threshold enforcement
+- [x] 6.1 Implement PropCommander class extending BaseCommander
+- [x] 6.2 Implement Kelly Filter logic with 0.8 threshold
+- [x] 6.3 Implement preservation mode trade rejection logic
+- [x] 6.4 Implement Coin Flip Bot activation for minimum trading days
+- [x] 6.5 Implement PropGovernor class extending BaseGovernor
+- [x] 6.6 Implement Quadratic Throttle calculation method
+- [x] 6.7 Implement hard stop logic (4.5% threshold with 1% buffer)
+- [x] 6.8 Implement news guard (KILL_ZONE) detection and response
+- [x] 6.9 Implement PropState database-backed storage
+- [x] 6.10 Write unit tests for PropCommander and PropGovernor
+- [x] 6.11 Write property tests for Quadratic Throttle formula
+- [x] 6.12 Write property tests for Kelly Filter threshold enforcement
 
 ## Task Group 7: MQL5-Python Integration Layer
 
-- [ ] 7.1 Implement DiskSyncer class for atomic file operations
-- [ ] 7.2 Implement atomic risk_matrix.json write (temp file + rename)
+- [x] 7.1 Implement DiskSyncer class for atomic file operations
+- [x] 7.2 Implement atomic risk_matrix.json write (temp file + rename)
 - [ ] 7.3 Implement GlobalVariable update via MT5 connection
 - [ ] 7.4 Implement file watcher for risk_matrix.json changes
 - [ ] 7.5 Implement heartbeat endpoint (POST /heartbeat)

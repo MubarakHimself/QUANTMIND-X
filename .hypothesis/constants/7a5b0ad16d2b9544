@@ -1,0 +1,4 @@
+# file: /home/mubarkahimself/Desktop/QUANTMINDX/src/router/prop/commander.py
+# hypothesis_version: 6.151.4
+
+[0.08, 0.8, 'CoinFlip_Bot', 'MINIMAL', 'MIN_DAYS_TICKER', 'instruction', 'kelly_score', 'name', 'risk_mode', 'strategy']

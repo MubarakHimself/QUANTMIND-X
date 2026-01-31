@@ -301,6 +301,35 @@ class DatabaseManager:
                 'snapshot_timestamp': snapshot.snapshot_timestamp
             }
 
+    def get_latest_snapshot(self, account_id: str) -> Optional[DailySnapshot]:
+        """
+        Retrieve the most recent daily snapshot for an account.
+
+        Args:
+            account_id: MT5 account number or string ID
+
+        Returns:
+            Latest DailySnapshot object or None if not found
+        """
+        with self.get_session() as session:
+            account = session.query(PropFirmAccount).filter(
+                PropFirmAccount.account_id == str(account_id)
+            ).first()
+
+            if account is None:
+                return None
+
+            snapshot = session.query(DailySnapshot).filter(
+                DailySnapshot.account_id == account.id
+            ).order_by(DailySnapshot.date.desc()).first()
+
+            if snapshot is None:
+                return None
+
+            # Detach from session to avoid DetachedInstanceError
+            session.expunge(snapshot)
+            return snapshot
+
     def get_daily_drawdown(self, account_id: str) -> float:
         """
         Calculate current daily drawdown percentage.
