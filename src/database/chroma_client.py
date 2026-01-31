@@ -274,7 +274,7 @@ class ChromaDBClient:
         Args:
             memory_id: Unique identifier for the memory
             content: Memory content
-            agent_type: Type of agent (analyst/quant/executor)
+            agent_type: Type of agent (analyst/quant/copilot)
             memory_type: Type of memory (semantic/episodic/procedural)
             context: Context in which memory was created
             importance: Importance score (0-1)

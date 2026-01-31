@@ -1,7 +1,8 @@
 """
-Executor Agent Workflow
+QuantMind Copilot Agent Workflow
 
-Implements the Executor agent using LangGraph for EA deployment and monitoring.
+Implements the QuantMind Copilot agent using LangGraph for EA deployment and monitoring.
+The Copilot is the master orchestrator that manages agent handoffs and global task queuing.
 
 **Validates: Requirements 8.4**
 """
@@ -12,12 +13,12 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 
-from src.agents.state import ExecutorState
+from src.agents.state import CopilotState
 
 logger = logging.getLogger(__name__)
 
 
-def deployment_node(state: ExecutorState) -> Dict[str, Any]:
+def deployment_node(state: CopilotState) -> Dict[str, Any]:
     """Deployment node: Create deployment manifest."""
     logger.info("Deployment node creating manifest")
     
@@ -38,7 +39,7 @@ def deployment_node(state: ExecutorState) -> Dict[str, Any]:
     }
 
 
-def compilation_node(state: ExecutorState) -> Dict[str, Any]:
+def compilation_node(state: CopilotState) -> Dict[str, Any]:
     """Compilation node: Compile MQL5 EA."""
     logger.info("Compilation node compiling EA")
     
@@ -54,7 +55,7 @@ def compilation_node(state: ExecutorState) -> Dict[str, Any]:
     }
 
 
-def validation_node(state: ExecutorState) -> Dict[str, Any]:
+def validation_node(state: CopilotState) -> Dict[str, Any]:
     """Validation node: Validate EA deployment."""
     logger.info("Validation node validating deployment")
     
@@ -74,7 +75,7 @@ def validation_node(state: ExecutorState) -> Dict[str, Any]:
     }
 
 
-def monitoring_node(state: ExecutorState) -> Dict[str, Any]:
+def monitoring_node(state: CopilotState) -> Dict[str, Any]:
     """Monitoring node: Monitor EA performance."""
     logger.info("Monitoring node tracking EA performance")
     
@@ -95,9 +96,9 @@ def monitoring_node(state: ExecutorState) -> Dict[str, Any]:
     }
 
 
-def create_executor_graph() -> StateGraph:
-    """Create the Executor agent workflow graph."""
-    workflow = StateGraph(ExecutorState)
+def create_copilot_graph() -> StateGraph:
+    """Create the QuantMind Copilot agent workflow graph."""
+    workflow = StateGraph(CopilotState)
     
     workflow.add_node("deployment", deployment_node)
     workflow.add_node("compilation", compilation_node)
@@ -113,26 +114,26 @@ def create_executor_graph() -> StateGraph:
     return workflow
 
 
-def compile_executor_graph(checkpointer: MemorySaver = None) -> Any:
-    """Compile the Executor agent graph."""
-    workflow = create_executor_graph()
+def compile_copilot_graph(checkpointer: MemorySaver = None) -> Any:
+    """Compile the QuantMind Copilot agent graph."""
+    workflow = create_copilot_graph()
     
     if checkpointer is None:
         checkpointer = MemorySaver()
     
     compiled_graph = workflow.compile(checkpointer=checkpointer)
-    logger.info("Executor agent graph compiled successfully")
+    logger.info("QuantMind Copilot agent graph compiled successfully")
     
     return compiled_graph
 
 
-def run_executor_workflow(
+def run_copilot_workflow(
     deployment_request: str,
-    workspace_path: str = "workspaces/executor",
-    memory_namespace: tuple = ("memories", "executor", "default")
+    workspace_path: str = "workspaces/copilot",
+    memory_namespace: tuple = ("memories", "copilot", "default")
 ) -> Dict[str, Any]:
-    """Execute the Executor agent workflow."""
-    initial_state = ExecutorState(
+    """Execute the QuantMind Copilot agent workflow."""
+    initial_state = CopilotState(
         messages=[HumanMessage(content=deployment_request)],
         current_task="ea_deployment",
         workspace_path=workspace_path,
@@ -144,10 +145,10 @@ def run_executor_workflow(
         monitoring_data=None
     )
     
-    graph = compile_executor_graph()
-    config = {"configurable": {"thread_id": "executor_001"}}
+    graph = compile_copilot_graph()
+    config = {"configurable": {"thread_id": "copilot_001"}}
     final_state = graph.invoke(initial_state, config)
     
-    logger.info("Executor workflow completed")
+    logger.info("QuantMind Copilot workflow completed")
     
     return final_state

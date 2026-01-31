@@ -8,7 +8,7 @@ from src.agents.state import (
     AgentState,
     AnalystState,
     QuantCodeState,
-    ExecutorState,
+    CopilotState,
     RouterState
 )
 
@@ -24,10 +24,10 @@ from src.agents.quantcode import (
     run_quantcode_workflow
 )
 
-from src.agents.executor import (
-    create_executor_graph,
-    compile_executor_graph,
-    run_executor_workflow
+from src.agents.copilot import (
+    create_copilot_graph,
+    compile_copilot_graph,
+    run_copilot_workflow
 )
 
 from src.agents.router import (
@@ -41,7 +41,7 @@ __all__ = [
     "AgentState",
     "AnalystState",
     "QuantCodeState",
-    "ExecutorState",
+    "CopilotState",
     "RouterState",
     
     # Analyst agent
@@ -54,10 +54,10 @@ __all__ = [
     "compile_quantcode_graph",
     "run_quantcode_workflow",
     
-    # Executor agent
-    "create_executor_graph",
-    "compile_executor_graph",
-    "run_executor_workflow",
+    # Copilot agent
+    "create_copilot_graph",
+    "compile_copilot_graph",
+    "run_copilot_workflow",
     
     # Router agent
     "create_router_graph",

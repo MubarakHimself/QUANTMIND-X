@@ -33,7 +33,7 @@ def classify_task_node(state: RouterState) -> Dict[str, Any]:
         target_agent = "quantcode"
     elif any(keyword in last_message.lower() for keyword in ['deploy', 'execute', 'monitor']):
         task_type = "deployment"
-        target_agent = "executor"
+        target_agent = "copilot"
     else:
         task_type = "general"
         target_agent = "analyst"  # Default to analyst

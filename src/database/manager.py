@@ -449,7 +449,7 @@ class DatabaseManager:
         Create a new agent task record.
 
         Args:
-            agent_type: Type of agent (analyst/quant/executor)
+            agent_type: Type of agent (analyst/quant/copilot)
             task_type: Type of task being performed
             task_data: Dictionary containing task details
             status: Initial task status (default: pending)

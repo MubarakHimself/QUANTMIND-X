@@ -137,7 +137,7 @@ class AgentTasks(Base):
 
     Attributes:
         id: Primary key
-        agent_type: Type of agent (analyst/quant/executor)
+        agent_type: Type of agent (analyst/quant/copilot)
         task_type: Type of task being performed
         task_data: JSON data containing task details
         status: Task status (pending/in_progress/completed/failed)

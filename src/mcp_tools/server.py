@@ -199,20 +199,20 @@ if mcp:
 class FileReadRequest(BaseModel):
     """Request schema for file read."""
     file_path: str = Field(description="Path to file relative to workspace")
-    workspace: str = Field(default="analyst", description="Workspace: analyst, quant, executor")
+    workspace: str = Field(default="analyst", description="Workspace: analyst, quant, copilot")
 
 
 class FileWriteRequest(BaseModel):
     """Request schema for file write."""
     file_path: str = Field(description="Path to file relative to workspace")
     content: str = Field(description="File content to write")
-    workspace: str = Field(default="analyst", description="Workspace: analyst, quant, executor")
+    workspace: str = Field(default="analyst", description="Workspace: analyst, quant, copilot")
 
 
 class FileListRequest(BaseModel):
     """Request schema for file listing."""
     directory: str = Field(default=".", description="Directory path relative to workspace")
-    workspace: str = Field(default="analyst", description="Workspace: analyst, quant, executor")
+    workspace: str = Field(default="analyst", description="Workspace: analyst, quant, copilot")
 
 
 if mcp:

@@ -126,7 +126,7 @@ QM_MAX_RISK_PER_TRADE_PCT    = 2.0    // Maximum risk per trade
 ```mql5
 QM_MAGIC_ANALYST_START       = 100000  // Analyst agent range
 QM_MAGIC_QUANT_START         = 110000  // Quant agent range
-QM_MAGIC_EXECUTOR_START      = 120000  // Executor agent range
+QM_MAGIC_COPILOT_START       = 120000  // Copilot agent range
 QM_MAGIC_COINFLIP_START      = 130000  // Coin Flip Bot range
 ```
 

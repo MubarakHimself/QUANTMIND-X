@@ -36,13 +36,13 @@ class TaskQueue:
         Initialize TaskQueue for a specific agent type.
         
         Args:
-            queue_type: Type of queue (analyst, quant, executor)
+            queue_type: Type of queue (analyst, quant, copilot)
             queue_dir: Directory containing queue files (default: data/queues)
         
         Raises:
             ValueError: If queue_type is invalid
         """
-        valid_types = ["analyst", "quant", "executor"]
+        valid_types = ["analyst", "quant", "copilot"]
         if queue_type not in valid_types:
             raise ValueError(
                 f"Invalid queue_type: {queue_type}. "

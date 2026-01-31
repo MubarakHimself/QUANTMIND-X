@@ -52,9 +52,9 @@ class QuantCodeState(AgentState):
     reflection_notes: Optional[str]
 
 
-class ExecutorState(AgentState):
+class CopilotState(AgentState):
     """
-    State for Executor agent workflow.
+    State for QuantMind Copilot agent workflow.
     
     **Validates: Requirements 8.4**
     """
