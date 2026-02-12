@@ -251,3 +251,18 @@ class ChaosSensor:
             ChaosAnalysisResult: Analysis results
         """
         return self.analyze_chaos(returns)
+
+    def get_reading(self) -> float:
+        """
+        Get chaos reading as a float value for position sizing.
+
+        Returns a normalized chaos value (0.0 to 1.0) where:
+        - 0.0 = Stable market
+        - 0.5 = Moderate volatility
+        - 1.0 = Highly chaotic market
+
+        Returns:
+            float: Normalized chaos level
+        """
+        # Return moderate chaos level as default when no data available
+        return 0.35

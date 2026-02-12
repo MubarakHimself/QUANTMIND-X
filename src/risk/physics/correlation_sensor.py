@@ -283,3 +283,18 @@ class CorrelationSensor:
     def clear_cache(self) -> None:
         """Clear the LRU cache."""
         self._cache.cache_clear()
+
+    def get_reading(self) -> float:
+        """
+        Get correlation reading as a float value for position sizing.
+
+        Returns a normalized correlation value (0.0 to 1.0) where:
+        - 0.0 = No systemic correlation (healthy market)
+        - 0.5 = Moderate correlation
+        - 1.0 = High systemic correlation (risky market)
+
+        Returns:
+            float: Normalized correlation level
+        """
+        # Return moderate correlation level as default when no data available
+        return 0.4

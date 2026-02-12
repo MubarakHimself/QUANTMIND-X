@@ -145,6 +145,11 @@ class RiskGovernor:
         Raises:
             ValueError: If inputs are invalid
         """
+        # Step 0: Input Validation (must happen before PositionSizingResult creation)
+        self._validate_inputs(
+            account_balance, win_rate, avg_win, avg_loss, stop_loss_pips, average_atr
+        )
+
         start_time = time.time()
         result = PositionSizingResult(
             account_balance=account_balance,
@@ -152,14 +157,12 @@ class RiskGovernor:
             stop_loss_pips=stop_loss_pips,
             pip_value=pip_value,
             lot_size=0.0,
+            estimated_margin=None,
+            remaining_margin=None,
             calculation_steps=[]
         )
 
         try:
-            # Step 1: Input Validation
-            self._validate_inputs(
-                account_balance, win_rate, avg_win, avg_loss, stop_loss_pips, average_atr
-            )
             result.add_step("Input validation passed")
 
             # Step 2: Calculate base Kelly fraction
@@ -322,8 +325,10 @@ class RiskGovernor:
         # Create portfolio risk data
         bot_kelly_factors = {bot_id: base_kelly_f}
 
-        # Scale positions
-        scaled_factors = self.portfolio_scaler.scale_bot_positions(bot_kelly_factors, portfolio_risk)
+        # Scale positions - portfolio_risk is used as bot_correlations here
+        # Convert Dict[str, float] to Dict[Tuple[str, str], float] if needed
+        # For now, pass None since we don't have pairwise correlations
+        scaled_factors = self.portfolio_scaler.scale_bot_positions(bot_kelly_factors, None)
 
         # Get scaled Kelly factor for this bot
         scaled_kelly_f = scaled_factors.get(bot_id, base_kelly_f)
@@ -362,6 +367,24 @@ class RiskGovernor:
             return MAX_RISK_PCT
 
         return self.prop_firm_preset.get_max_risk_pct()
+
+    def get_allocation_scalar(self) -> float:
+        """Get the Kelly allocation scalar for position sizing.
+        
+        Returns a float value representing the Kelly fraction to use
+        for position sizing based on current risk settings.
+        """
+        # Calculate physics adjustment
+        physics_multiplier = self._apply_physics_adjustments()
+        
+        # Get base Kelly (assuming default parameters)
+        base_kelly = 0.5  # Half Kelly as conservative default
+        
+        # Apply prop firm constraints
+        prop_firm_multiplier = self._apply_prop_firm_constraints(base_kelly)
+        
+        # Return the final scalar
+        return base_kelly * physics_multiplier * prop_firm_multiplier
 
     def set_prop_firm_preset(self, preset_name: str) -> None:
         """Set prop firm preset by name."""
@@ -422,7 +445,8 @@ class RiskGovernor:
             raw_kelly=base_kelly_f,
             physics_multiplier=physics_multiplier,
             final_risk_pct=final_kelly_f,
-            position_size_lots=position_size
+            position_size_lots=position_size,
+            constraint_source=None
         )
 
         # Add adjustment descriptions

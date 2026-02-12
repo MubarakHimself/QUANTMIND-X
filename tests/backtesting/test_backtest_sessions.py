@@ -284,16 +284,16 @@ class TestSessionDetectionDuringBacktest:
         assert session == TradingSession.NEW_YORK
 
     def test_asian_session_detected_during_asian_hours(self):
-        """Test Asian session detected during 00:00-09:00 UTC."""
-        # 01:00 UTC = During Asian session
-        utc_time = datetime(2026, 2, 12, 1, 0, tzinfo=timezone.utc)
+        """Test Asian session detected during Tokyo local hours 00:00-09:00."""
+        # 22:00 UTC = 07:00 Tokyo (inside 00:00-09:00 Tokyo) = ASIAN
+        utc_time = datetime(2026, 2, 12, 22, 0, tzinfo=timezone.utc)
         session = SessionDetector.detect_session(utc_time)
         assert session == TradingSession.ASIAN
 
     def test_closed_session_detected_during_closed_hours(self):
         """Test closed period detected outside all sessions."""
-        # 23:00 UTC = All sessions closed
-        utc_time = datetime(2026, 2, 12, 23, 0, tzinfo=timezone.utc)
+        # 01:00 UTC = 10:00 Tokyo (outside 00:00-09:00) = CLOSED
+        utc_time = datetime(2026, 2, 12, 1, 0, tzinfo=timezone.utc)
         session = SessionDetector.detect_session(utc_time)
         assert session == TradingSession.CLOSED
 
@@ -698,13 +698,16 @@ def on_bar(tester):
             broker_id="test_broker"
         )
         
-        # Create data spanning multiple sessions
-        # 01:00 UTC = Asian, 10:00 UTC = London, 14:00 UTC = Overlap, 18:00 UTC = NY
+        # Create data spanning multiple sessions (correct UTC times for each session)
+        # 22:00 UTC = ASIAN (07:00 Tokyo, within 00:00-09:00)
+        # 10:00 UTC = LONDON (10:00 London, within 08:00-16:00)
+        # 14:00 UTC = OVERLAP (14:00 London + 09:00 NY, both active)
+        # 18:00 UTC = NEW_YORK (18:00 London + 13:00 NY, NY active after overlap ends)
         test_times = [
-            datetime(2026, 2, 12, 1, 0, tzinfo=timezone.utc),   # Asian
-            datetime(2026, 2, 12, 10, 0, tzinfo=timezone.utc),  # London
-            datetime(2026, 2, 12, 14, 0, tzinfo=timezone.utc),  # Overlap
-            datetime(2026, 2, 12, 18, 0, tzinfo=timezone.utc),  # NY
+            datetime(2026, 2, 12, 22, 0, tzinfo=timezone.utc),   # ASIAN
+            datetime(2026, 2, 12, 10, 0, tzinfo=timezone.utc),  # LONDON
+            datetime(2026, 2, 12, 14, 0, tzinfo=timezone.utc),  # OVERLAP
+            datetime(2026, 2, 12, 18, 0, tzinfo=timezone.utc),  # NEW_YORK
         ]
         
         data = pd.DataFrame({

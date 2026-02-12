@@ -19,6 +19,7 @@ Enhanced with fee-aware Kelly position sizing:
 import logging
 import pandas as pd
 import numpy as np
+import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Tuple, Union
 from dataclasses import dataclass, field
@@ -29,6 +30,7 @@ from src.router.sentinel import Sentinel, RegimeReport
 from src.router.enhanced_governor import EnhancedGovernor
 from src.router.commander import Commander
 from src.router.sessions import SessionDetector, TradingSession
+from src.api.ws_logger import setup_backtest_logging, get_connection_manager
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +104,8 @@ class SentinelEnhancedTester(PythonStrategyTester):
         initial_cash: float = 10000.0,
         commission: float = 0.001,
         slippage: float = 0.0,
-        broker_id: str = "icmarkets_raw"
+        broker_id: str = "icmarkets_raw",
+        enable_ws_streaming: bool = True
     ):
         """Initialize Sentinel-enhanced tester with broker support.
 
@@ -113,6 +116,7 @@ class SentinelEnhancedTester(PythonStrategyTester):
             slippage: Slippage in price points
             broker_id: Broker identifier for fee-aware Kelly (default: icmarkets_raw)
                 Used to auto-fetch pip values, commissions, and spreads during position sizing
+            enable_ws_streaming: Enable WebSocket streaming for real-time updates (default: True)
         """
         super().__init__(
             initial_cash=initial_cash,
@@ -149,6 +153,16 @@ class SentinelEnhancedTester(PythonStrategyTester):
         self._regime_qualities: List[float] = []
         self._chaos_scores: List[float] = []
 
+        # WebSocket streaming (Phase 3 integration)
+        self._enable_ws_streaming = enable_ws_streaming
+        self._backtest_id: Optional[str] = None
+        self._ws_logger: Optional[logging.Logger] = None
+        self._progress_streamer = None
+        
+        if enable_ws_streaming:
+            self._backtest_id = str(uuid.uuid4())
+            self._ws_logger, self._progress_streamer = setup_backtest_logging(self._backtest_id)
+            
         logger.info(
             f"SentinelEnhancedTester initialized with mode={mode.value}, broker_id={broker_id}, "
             f"EnhancedGovernor ready for fee-aware Kelly position sizing"
@@ -218,7 +232,7 @@ class SentinelEnhancedTester(PythonStrategyTester):
             bar_utc_time = self._get_bar_utc_timestamp()
         
         # Get regime report from Sentinel
-        report = self._sentinel.on_tick(symbol, price)
+        report = self._sentinel.on_tick(symbol, price)  # type: ignore[union-attr]
 
         # Track regime history with UTC timestamp for session-aware audit trail
         self._regime_history.append({
@@ -237,7 +251,12 @@ class SentinelEnhancedTester(PythonStrategyTester):
 
         # Check for regime transition
         if self._last_regime != report.regime:
-            self._log_regime_transition(report)
+            regime_data = {
+                'chaos_score': report.chaos_score,
+                'regime_quality': report.regime_quality,
+                'news_state': report.news_state
+            }
+            self._log_regime_transition(self._last_regime or "", report.regime, regime_data)
             self._last_regime = report.regime
 
         # Apply regime filtering for Spiced modes
@@ -309,34 +328,36 @@ class SentinelEnhancedTester(PythonStrategyTester):
                     if self._regime_history:
                         prev_regime = self._regime_history[-1]['regime']
                         if prev_regime != regime_data['regime']:
-                            self._log_regime_transition(report)
+                            self._log_regime_transition(prev_regime, regime_data['regime'], regime_data)
 
                     self._regime_history.append(regime_data)
 
         except Exception as e:
             self._log(f"Sentinel error at bar {self.current_bar}: {e}")
 
-    def _log_regime_transition(self, report: RegimeReport):
+    def _log_regime_transition(self, old_regime: str, new_regime: str, regime_data: Dict[str, Any]) -> None:
         """Log regime transition with full context.
-
+        
         Args:
-            report: Current regime report
+            old_regime: Previous regime name
+            new_regime: New regime name
+            regime_data: Regime data dictionary containing chaos_score, regime_quality, etc.
         """
         transition = {
             'timestamp': self._get_current_time(),
             'bar': self.current_bar,
-            'old_regime': self._last_regime,
-            'new_regime': report.regime,
-            'chaos_score': report.chaos_score,
-            'regime_quality': report.regime_quality,
-            'news_state': report.news_state
+            'old_regime': old_regime,
+            'new_regime': new_regime,
+            'chaos_score': regime_data.get('chaos_score', 0.0),
+            'regime_quality': regime_data.get('regime_quality', 1.0),
+            'news_state': regime_data.get('news_state', 'NONE')
         }
 
         self._regime_transitions.append(transition)
 
         self._log(
-            f"Regime Transition: {transition['old_regime']} -> {transition['new_regime']} "
-            f"(chaos={report.chaos_score:.2f}, quality={report.regime_quality:.2f})"
+            f"Regime Transition: {old_regime} -> {new_regime} "
+            f"(chaos={transition['chaos_score']:.2f}, quality={transition['regime_quality']:.2f})"
         )
 
     def _track_filtered_trade(self, filter_type: str, reason: str):
@@ -398,21 +419,16 @@ class SentinelEnhancedTester(PythonStrategyTester):
         if 'broker_id' not in trade_proposal:
             trade_proposal['broker_id'] = self.broker_id
 
-        # Create a mock RegimeReport for governor
+        # Create a RegimeReport for governor using the actual dataclass
         # In production, this would come from Sentinel
-        from dataclasses import dataclass
-        @dataclass
-        class MockRegimeReport:
-            regime: str
-            chaos_score: float
-            regime_quality: float
-            news_state: str
-
-        regime_report = MockRegimeReport(
+        regime_report = RegimeReport(
             regime='STABLE',
             chaos_score=0.0,
             regime_quality=regime_quality,
-            news_state='NONE'
+            susceptibility=0.0,
+            is_systemic_risk=False,
+            news_state='NONE',
+            timestamp=0.0
         )
 
         # Calculate Kelly-based position using EnhancedGovernor
@@ -487,7 +503,7 @@ class SentinelEnhancedTester(PythonStrategyTester):
             return []
         
         # Get regime report from Sentinel for auction
-        report = self._sentinel.on_tick(symbol, price=1.0)  # Price not used for regime detection
+        report = self._sentinel.on_tick(symbol, price=1.0)  # type: ignore[union-attr]  # Price not used for regime detection
         
         # Run Commander auction with UTC timestamp for session-aware filtering
         auction_result = self._commander.run_auction(
@@ -561,7 +577,8 @@ class SentinelEnhancedTester(PythonStrategyTester):
         """
         # Get current price
         if price is None:
-            price = self.iClose(symbol, self.timeframe, 0)
+            timeframe = self.timeframe if self.timeframe is not None else 0
+            price = self.iClose(symbol, int(timeframe), 0)
             if price is None:
                 self._log(f"Error: Cannot get price for buy order")
                 return None
@@ -626,7 +643,8 @@ class SentinelEnhancedTester(PythonStrategyTester):
         """
         # Get current price
         if price is None:
-            price = self.iClose(symbol, self.timeframe, 0)
+            timeframe = self.timeframe if self.timeframe is not None else 0
+            price = self.iClose(symbol, int(timeframe), 0)
             if price is None:
                 self._log(f"Error: Cannot get price for sell order")
                 return None
@@ -706,6 +724,41 @@ class SentinelEnhancedTester(PythonStrategyTester):
         
         self._data_cache[symbol] = prepared_data
         
+        # Get timeframe string for display
+        timeframe_str = str(timeframe)
+        
+        # Broadcast backtest start (Phase 3 WebSocket integration)
+        if self._progress_streamer is not None:
+            import asyncio
+            try:
+                # Get start/end dates from data
+                start_date = str(prepared_data.iloc[0]['time']) if 'time' in prepared_data.columns else 'unknown'
+                end_date = str(prepared_data.iloc[-1]['time']) if 'time' in prepared_data.columns else 'unknown'
+                
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(
+                        self._progress_streamer.start(
+                            variant=self.mode.value,
+                            symbol=symbol,
+                            timeframe=timeframe_str,
+                            start_date=start_date,
+                            end_date=end_date
+                        )
+                    )
+                else:
+                    loop.run_until_complete(
+                        self._progress_streamer.start(
+                            variant=self.mode.value,
+                            symbol=symbol,
+                            timeframe=timeframe_str,
+                            start_date=start_date,
+                            end_date=end_date
+                        )
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to broadcast backtest start: {e}")
+        
         # Compile strategy function
         try:
             namespace = {}
@@ -732,8 +785,9 @@ class SentinelEnhancedTester(PythonStrategyTester):
             )
         
         # Run backtest bar by bar with Commander integration
+        total_bars = len(prepared_data)
         try:
-            for self.current_bar in range(len(prepared_data)):
+            for self.current_bar in range(total_bars):
                 # Update equity
                 self._update_equity()
                 
@@ -756,18 +810,87 @@ class SentinelEnhancedTester(PythonStrategyTester):
                 
                 # Call strategy function
                 try:
-                    self._strategy_func(self)
+                    if self._strategy_func:
+                        self._strategy_func(self)  # type: ignore[call-arg]
                 except Exception as e:
                     self._log(f"Strategy error at bar {self.current_bar}: {e}")
+                
+                # WebSocket progress update every 100 bars (Phase 3)
+                if self._progress_streamer is not None and self.current_bar > 0 and self.current_bar % 100 == 0:
+                    progress_pct = (self.current_bar / total_bars) * 100
+                    current_date = str(prepared_data.iloc[self.current_bar]['time']) if 'time' in prepared_data.columns else ''
+                    
+                    import asyncio
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            asyncio.create_task(
+                                self._progress_streamer.update_progress(
+                                    progress=progress_pct,
+                                    status=f"Processing bar {self.current_bar}/{total_bars}",
+                                    bars_processed=self.current_bar,
+                                    total_bars=total_bars,
+                                    current_date=current_date,
+                                    trades_count=len(self.trades) if hasattr(self, 'trades') else 0,
+                                    current_pnl=self.equity[-1] - self.initial_cash if hasattr(self, 'equity') and self.equity else 0
+                                )
+                            )
+                    except Exception as e:
+                        logger.warning(f"Failed to broadcast progress: {e}")
         
         except Exception as e:
             self._log(f"Backtest error: {e}")
+            if self._progress_streamer is not None:
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.create_task(self._progress_streamer.error(str(e)))
+                    else:
+                        loop.run_until_complete(self._progress_streamer.error(str(e)))
+                except:
+                    pass
         
         # Close remaining positions
         self.close_all_positions()
         
-        # Calculate final metrics (includes regime history with UTC timestamps)
-        return self._calculate_result()
+        # Calculate final metrics
+        result = self._calculate_result()
+        
+        # Broadcast backtest complete (Phase 3)
+        if self._progress_streamer is not None:
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(
+                        self._progress_streamer.complete(
+                            final_balance=result.final_cash,
+                            total_trades=result.trades,
+                            win_rate=(result.trades * result.win_rate / 100) if result.trades > 0 else 0,
+                            sharpe_ratio=result.sharpe,
+                            drawdown=result.drawdown,
+                            return_pct=result.return_pct,
+                            results=result.to_dict()
+                        )
+                    )
+                else:
+                    loop.run_until_complete(
+                        self._progress_streamer.complete(
+                            final_balance=result.final_cash,
+                            total_trades=result.trades,
+                            win_rate=(result.trades * result.win_rate / 100) if result.trades > 0 else 0,
+                            sharpe_ratio=result.sharpe,
+                            drawdown=result.drawdown,
+                            return_pct=result.return_pct,
+                            results=result.to_dict()
+                        )
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to broadcast backtest complete: {e}")
+        
+        # Return final result
+        return result
 
     # -------------------------------------------------------------------------
     # Enhanced Result Calculation
@@ -789,8 +912,8 @@ class SentinelEnhancedTester(PythonStrategyTester):
             regime_counts[regime] = regime_counts.get(regime, 0) + 1
 
         # Calculate average quality metrics
-        avg_quality = np.mean(self._regime_qualities) if self._regime_qualities else 0.0
-        avg_chaos = np.mean(self._chaos_scores) if self._chaos_scores else 0.0
+        avg_quality = float(np.mean(self._regime_qualities)) if self._regime_qualities else 0.0
+        avg_chaos = float(np.mean(self._chaos_scores)) if self._chaos_scores else 0.0
 
         # Create enhanced result
         return SpicedBacktestResult(
@@ -1072,13 +1195,13 @@ def run_full_system_backtest(
                 for regime, count in w.get('regime_distribution', {}).items():
                     regime_dist[regime] = regime_dist.get(regime, 0) + count
 
-            avg_quality = np.mean([w.get('avg_regime_quality', 0.0) for w in wf_result.window_regime_stats]) if wf_result.window_regime_stats else 0.0
+            avg_quality = float(np.mean([w.get('avg_regime_quality', 0.0) for w in wf_result.window_regime_stats])) if wf_result.window_regime_stats else 0.0
 
             return SpicedBacktestResult(
                 sharpe=wf_result.aggregate_metrics.get('sharpe_mean', 0.0),
                 return_pct=wf_result.aggregate_metrics.get('return_pct_mean', 0.0),
                 drawdown=wf_result.aggregate_metrics.get('drawdown_mean', 0.0),
-                trades=wf_result.aggregate_metrics.get('total_trades', 0),
+                trades=int(wf_result.aggregate_metrics.get('total_trades', 0)),
                 log=f"Walk-Forward + Regime Filter completed with {len(wf_result.window_results)} windows",
                 initial_cash=initial_cash,
                 final_cash=initial_cash * (1 + wf_result.aggregate_metrics.get('return_pct_mean', 0.0) / 100),
@@ -1093,7 +1216,7 @@ def run_full_system_backtest(
                 sharpe=wf_result.aggregate_metrics.get('sharpe_mean', 0.0),
                 return_pct=wf_result.aggregate_metrics.get('return_pct_mean', 0.0),
                 drawdown=wf_result.aggregate_metrics.get('drawdown_mean', 0.0),
-                trades=wf_result.aggregate_metrics.get('total_trades', 0),
+                trades=int(wf_result.aggregate_metrics.get('total_trades', 0)),
                 log=f"Walk-Forward optimization completed with {len(wf_result.window_results)} windows",
                 initial_cash=initial_cash,
                 final_cash=initial_cash * (1 + wf_result.aggregate_metrics.get('return_pct_mean', 0.0) / 100),
@@ -1148,7 +1271,7 @@ def run_multi_symbol_backtest(
         logger.info(f"Running backtest for {symbol}")
         try:
             result = run_full_system_backtest(
-                mode=mode,
+                mode=mode.value,
                 data=data,
                 symbol=symbol,
                 timeframe=timeframe,

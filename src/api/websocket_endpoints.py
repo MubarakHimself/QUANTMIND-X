@@ -9,12 +9,15 @@ Provides real-time updates for:
 - Trade journal entries
 """
 
-from typing import Set, Dict, Any
+from typing import Set, Dict, Any, Optional, TYPE_CHECKING
 import asyncio
 import json
 import logging
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from fastapi import WebSocket, WebSocketDisconnect
 
 try:
     from fastapi import WebSocket, WebSocketDisconnect
@@ -23,22 +26,25 @@ try:
 except ImportError:
     logger.warning("FastAPI not available for WebSocket support")
     FASTAPI_AVAILABLE = False
+    # Create stub types for runtime when FastAPI is not available
+    WebSocket = type('WebSocket', (), {})  # type: ignore
+    WebSocketDisconnect = type('WebSocketDisconnect', (Exception,), {})  # type: ignore
 
 
 class ConnectionManager:
     """Manages WebSocket connections for UI updates."""
     
     def __init__(self):
-        self.active_connections: Set[WebSocket] = set()
-        self.subscriptions: Dict[str, Set[WebSocket]] = {}
+        self.active_connections: Set[WebSocket] = set()  # type: ignore
+        self.subscriptions: Dict[str, Set[WebSocket]] = {}  # type: ignore
     
-    async def connect(self, websocket: WebSocket):
+    async def connect(self, websocket: WebSocket):  # type: ignore
         """Accept new WebSocket connection."""
         await websocket.accept()
         self.active_connections.add(websocket)
         logger.info(f"WebSocket connected. Total: {len(self.active_connections)}")
     
-    def disconnect(self, websocket: WebSocket):
+    def disconnect(self, websocket: WebSocket):  # type: ignore
         """Remove WebSocket connection."""
         self.active_connections.discard(websocket)
         # Remove from all subscriptions
@@ -46,14 +52,14 @@ class ConnectionManager:
             topic_subs.discard(websocket)
         logger.info(f"WebSocket disconnected. Total: {len(self.active_connections)}")
     
-    async def subscribe(self, websocket: WebSocket, topic: str):
+    async def subscribe(self, websocket: WebSocket, topic: str):  # type: ignore
         """Subscribe connection to specific topic."""
         if topic not in self.subscriptions:
             self.subscriptions[topic] = set()
         self.subscriptions[topic].add(websocket)
         logger.debug(f"WebSocket subscribed to: {topic}")
     
-    async def broadcast(self, message: Dict[str, Any], topic: str = None):
+    async def broadcast(self, message: Dict[str, Any], topic: Optional[str] = None):
         """
         Broadcast message to all connections or specific topic subscribers.
         
@@ -101,7 +107,7 @@ def create_websocket_endpoints(app):
         return
     
     @app.websocket("/ws")
-    async def websocket_endpoint(websocket: WebSocket):
+    async def websocket_endpoint(websocket: WebSocket):  # type: ignore
         """
         Main WebSocket endpoint for UI updates.
         
@@ -156,7 +162,7 @@ async def broadcast_backtest_progress(backtest_id: str, progress: float, status:
     }, topic="backtest")
 
 
-async def broadcast_trading_update(bot_id: str, status: str, pnl: float = None):
+async def broadcast_trading_update(bot_id: str, status: str, pnl: Optional[float] = None):
     """
     Broadcast live trading update to UI.
     
@@ -175,7 +181,7 @@ async def broadcast_trading_update(bot_id: str, status: str, pnl: float = None):
     }, topic="trading")
 
 
-async def broadcast_log_entry(level: str, message: str, source: str = None):
+async def broadcast_log_entry(level: str, message: str, source: Optional[str] = None):
     """
     Broadcast log entry to UI.
     
@@ -192,6 +198,11 @@ async def broadcast_log_entry(level: str, message: str, source: str = None):
             "source": source
         }
     }, topic="logs")
+
+
+def get_manager():
+    """Get the global connection manager for use by other modules."""
+    return manager
 
 
 __all__ = [

@@ -9,7 +9,7 @@ Task Group 6: Enhanced Governor Integration
 """
 
 import logging
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import Dict, Optional, TYPE_CHECKING, Any
 from datetime import datetime, timezone
 
 from src.position_sizing.enhanced_kelly import EnhancedKellyCalculator, KellyResult, EnhancedKellyConfig
@@ -18,6 +18,7 @@ from src.router.governor import Governor, RiskMandate
 # Optional imports for database features
 if TYPE_CHECKING:
     from src.database.models import PropFirmAccount, DailySnapshot, HouseMoneyState, BrokerRegistry
+    from src.router.sentinel import RegimeReport
 
 try:
     from src.database.models import PropFirmAccount, DailySnapshot, HouseMoneyState, BrokerRegistry
@@ -25,12 +26,61 @@ try:
     DB_AVAILABLE = True
 except ImportError:
     # Create stubs for type hints when database is not available
-    class PropFirmAccount: pass
-    class DailySnapshot: pass
-    class HouseMoneyState: pass
-    class BrokerRegistry: pass
+    class PropFirmAccount:
+        id: int
+        account_id: str
+    class DailySnapshot:
+        id: int
+        account_id: int
+        date: str
+        daily_start_balance: float
+        high_water_mark: float
+        current_equity: float
+        daily_drawdown_pct: float
+        is_breached: bool
+        def __init__(self, account_id: int, date: str, daily_start_balance: float,
+                     high_water_mark: float, current_equity: float,
+                     daily_drawdown_pct: float, is_breached: bool):
+            self.id = 0
+            self.account_id = account_id
+            self.date = date
+            self.daily_start_balance = daily_start_balance
+            self.high_water_mark = high_water_mark
+            self.current_equity = current_equity
+            self.daily_drawdown_pct = daily_drawdown_pct
+            self.is_breached = is_breached
+    class HouseMoneyState:
+        id: int
+        account_id: str
+        daily_start_balance: float
+        current_pnl: float
+        high_water_mark: float
+        risk_multiplier: float
+        is_preservation_mode: bool
+        date: str
+        def __init__(self, account_id: str, date: str, daily_start_balance: float,
+                     current_pnl: float, high_water_mark: float,
+                     risk_multiplier: float, is_preservation_mode: bool):
+            self.id = 0
+            self.account_id = account_id
+            self.date = date
+            self.daily_start_balance = daily_start_balance
+            self.current_pnl = current_pnl
+            self.high_water_mark = high_water_mark
+            self.risk_multiplier = risk_multiplier
+            self.is_preservation_mode = is_preservation_mode
+    class BrokerRegistry:
+        id: int
+        broker_id: str
+        pip_values: Dict[str, float]
+    # Stub for get_session when database is not available
+    def get_session() -> Any:
+        raise RuntimeError("Database not available")
     DB_AVAILABLE = False
     logging.warning("Database models not available - running without database features")
+
+# Import RegimeReport - used at runtime for isinstance checks and type hints
+from src.router.sentinel import RegimeReport
 
 logger = logging.getLogger(__name__)
 
@@ -83,10 +133,11 @@ class EnhancedGovernor(Governor):
 
     def calculate_risk(
         self,
-        regime_report: 'RegimeReport',
+        regime_report: RegimeReport,
         trade_proposal: Dict,
         account_balance: Optional[float] = None,
-        broker_id: Optional[str] = None
+        broker_id: Optional[str] = None,
+        **kwargs: Any
     ) -> RiskMandate:
         """
         Calculate risk mandate using Kelly Criterion.
@@ -123,6 +174,10 @@ class EnhancedGovernor(Governor):
         current_atr = trade_proposal.get('current_atr', 0.0012)
         average_atr = trade_proposal.get('average_atr', 0.0010)
 
+        # Determine pip_value: prefer trade_proposal value, otherwise use symbol-specific default
+        # Kelly Calculator can still override via broker lookup even if we provide a default
+        pip_value = trade_proposal.get('pip_value', self._get_pip_value(symbol, broker_id))
+
         # Calculate Kelly position size with fee-aware parameters
         # Kelly Calculator will auto-fetch pip_value, commission, and spread from broker registry
         kelly_result = self.kelly_calculator.calculate(
@@ -133,7 +188,7 @@ class EnhancedGovernor(Governor):
             current_atr=current_atr,
             average_atr=average_atr,
             stop_loss_pips=stop_loss_pips,
-            pip_value=10.0,  # Kelly will override with broker lookup
+            pip_value=pip_value,  # Use symbol-specific value, Kelly may override via broker lookup
             regime_quality=regime_report.regime_quality,
             broker_id=broker_id,
             symbol=symbol,
@@ -166,25 +221,26 @@ class EnhancedGovernor(Governor):
         # This avoids double-scaling: kelly_f has already been applied to position_size/risk_amount
         physics_scalar = base_mandate.allocation_scalar
 
-        # Apply physics scalar only to the already-kelly-sized position and risk amounts
-        # This ensures position sizes are clamped by governor without re-applying Kelly
+        # Apply physics scalar to all risk metrics for consistency
+        # This ensures position sizes, risk amounts, and kelly_fraction are all clamped by governor
         final_position_size = scaled_position_size * physics_scalar
         final_risk_amount = scaled_risk_amount * physics_scalar
+        final_kelly_fraction = kelly_f_with_house_money * physics_scalar
 
         # Build mandate with extended fields
-        # Note: allocation_scalar is the physics clamp; kelly_fraction is the original Kelly (post house-money)
+        # Note: allocation_scalar is the physics clamp; kelly_fraction is the final Kelly after physics throttling
         # position_size and risk_amount incorporate both house_money_multiplier and physics_scalar
         mandate = RiskMandate(
             allocation_scalar=physics_scalar,
             risk_mode=base_mandate.risk_mode,
             position_size=final_position_size,
-            kelly_fraction=kelly_f_with_house_money,
+            kelly_fraction=final_kelly_fraction,
             risk_amount=final_risk_amount,
             kelly_adjustments=kelly_result.adjustments_applied,
             notes=(
                 f"Kelly: {kelly_result.kelly_f:.4f} × "
-                f"House Money: {self.house_money_multiplier:.2f} = {kelly_f_with_house_money:.4f}. "
-                f"Physics Scalar: {physics_scalar:.4f}. "
+                f"House Money: {self.house_money_multiplier:.2f} × "
+                f"Physics: {physics_scalar:.4f} = {final_kelly_fraction:.4f}. "
                 f"Final position: {final_position_size:.4f} lots, risk: ${final_risk_amount:.2f}. "
                 f"{base_mandate.notes or ''}"
             )
@@ -398,6 +454,11 @@ class EnhancedGovernor(Governor):
             session = get_session()
 
             today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+
+            # Ensure account_id is not None (should be guaranteed by caller)
+            if self.account_id is None:
+                logger.warning("Cannot update house money state: account_id is None")
+                return
 
             # Check if record exists for today
             state = session.query(HouseMoneyState).filter_by(

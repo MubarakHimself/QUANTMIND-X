@@ -302,20 +302,17 @@ class SessionDetector:
         current_session = cls.detect_session(utc_time)
         is_active = current_session != TradingSession.CLOSED
 
-        # Calculate next session
-        next_session = cls._get_next_session(current_session)
+        # Calculate next session and time until open using dynamic computation
+        next_session, time_until_open = cls._get_next_session_info(utc_time)
 
         # Calculate time until close (returns tuple of (minutes, string))
         close_mins, close_str = cls._calculate_time_until_close(utc_time, current_session)
-
-        # Calculate time until next session opens (returns minutes)
-        open_mins = cls._calculate_time_until_open(utc_time, next_session)
 
         return SessionInfo(
             session=current_session,
             is_active=is_active,
             next_session=next_session,
-            time_until_open=open_mins,
+            time_until_open=time_until_open,
             time_until_close=close_mins,
             time_until_close_str=close_str
         )
@@ -449,25 +446,60 @@ class SessionDetector:
         return False
 
     @classmethod
-    def _get_next_session(cls, current_session: TradingSession) -> Optional[TradingSession]:
-        """Get next session after current one."""
-        session_order = [
+    def _get_next_session_info(
+        cls, 
+        utc_time: datetime
+    ) -> Tuple[Optional[TradingSession], Optional[int]]:
+        """Compute the next active session by scanning all sessions for earliest upcoming start.
+        
+        Args:
+            utc_time: Current UTC time
+            
+        Returns:
+            Tuple of (next_session, minutes_until_open)
+        """
+        # Ensure UTC
+        if utc_time.tzinfo is None:
+            utc_time = utc_time.replace(tzinfo=timezone.utc)
+        elif utc_time.tzinfo != timezone.utc:
+            utc_time = utc_time.astimezone(timezone.utc)
+        
+        # Sessions to check (excluding OVERLAP and CLOSED)
+        sessions_to_check = [
             TradingSession.ASIAN,
             TradingSession.LONDON,
-            TradingSession.OVERLAP,
-            TradingSession.NEW_YORK,
-            TradingSession.CLOSED
+            TradingSession.NEW_YORK
         ]
+        
+        earliest_session = None
+        earliest_minutes = None
+        
+        for session in sessions_to_check:
+            mins = cls._minutes_until_session_opens(session, utc_time)
+            if mins is not None:
+                # mins == 0 means session is currently active, skip for next session
+                if mins == 0:
+                    continue
+                if earliest_minutes is None or mins < earliest_minutes:
+                    earliest_minutes = mins
+                    earliest_session = session
+        
+        # If no sessions found (all currently active), wrap to first session tomorrow
+        if earliest_session is None:
+            # Find the next ASIAN session (which wraps around)
+            asian_mins = cls._minutes_until_session_opens(TradingSession.ASIAN, utc_time)
+            if asian_mins is not None:
+                earliest_session = TradingSession.ASIAN
+                earliest_minutes = asian_mins
+        
+        return earliest_session, earliest_minutes
 
-        try:
-            current_idx = session_order.index(current_session)
-            if current_idx + 1 < len(session_order):
-                return session_order[current_idx + 1]
-            else:
-                # Wrap around to beginning
-                return session_order[0]
-        except ValueError:
-            return None
+    @classmethod
+    def _get_next_session(cls, current_session: TradingSession) -> Optional[TradingSession]:
+        """Get next session after current one (kept for compatibility)."""
+        # Use the new dynamic computation
+        next_session, _ = cls._get_next_session_info(datetime.now(timezone.utc))
+        return next_session
 
     @classmethod
     def get_current_session(cls) -> TradingSession:

@@ -42,6 +42,8 @@ if app is None:
     logger.error("Failed to create FastAPI app. Is 'fastapi' installed?")
     sys.exit(1)
 
+# WebSocket endpoints are already registered in create_ide_api_app()
+
 # Include additional routers
 app.include_router(analytics_router)
 app.include_router(chat_router)
@@ -54,7 +56,7 @@ app.include_router(session_router)
 @app.on_event("startup")
 async def startup_event():
     logger.info("QuantMind API Server starting on port 8000...")
-    logger.info("Endpoints mounted: /api/ide, /api/chat, /api/analytics, /api/settings, /api/trd, /api/router, /api/journal, /api/sessions")
+    logger.info("Endpoints mounted: /api/ide, /api/chat, /api/analytics, /api/settings, /api/trd, /api/router, /api/journal, /api/sessions, /api/v1/backtest")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

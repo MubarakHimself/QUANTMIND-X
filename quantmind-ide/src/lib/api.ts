@@ -201,3 +201,57 @@ export async function sendChatMessage(
 export async function getFileContent(path: string): Promise<{ content: string }> {
     return apiFetch(`/files/content?path=${encodeURIComponent(path)}`);
 }
+
+// =============================================================================
+// Backtest Endpoints
+// =============================================================================
+
+export interface BacktestRequest {
+    symbol: string;
+    timeframe: string;
+    variant: 'vanilla' | 'spiced' | 'vanilla_full' | 'spiced_full';
+    start_date: string;
+    end_date: string;
+    strategy_code?: string;
+    strategy_name?: string;
+}
+
+export interface BacktestResponse {
+    backtest_id: string;
+    status: string;
+    message?: string;
+}
+
+export interface BacktestResult {
+    backtest_id: string;
+    final_balance: number;
+    total_trades: number;
+    win_rate?: number;
+    sharpe_ratio?: number;
+    drawdown?: number;
+    return_pct?: number;
+    duration_seconds?: number;
+    results?: Record<string, unknown>;
+}
+
+export async function runBacktest(request: BacktestRequest): Promise<BacktestResponse> {
+    return apiFetch<BacktestResponse>('/v1/backtest/run', {
+        method: 'POST',
+        body: JSON.stringify(request)
+    });
+}
+
+export async function getBacktestResults(backtestId: string): Promise<BacktestResult> {
+    return apiFetch<BacktestResult>(`/v1/backtest/results/${backtestId}`);
+}
+
+export async function getBacktestStatus(backtestId: string): Promise<{ status: string; progress: number }> {
+    return apiFetch(`/v1/backtest/status/${backtestId}`);
+}
+
+// Export WebSocket client creation functions
+export {
+    createBacktestClient,
+    createTradingClient,
+    createWebSocketClient
+} from './ws-client';

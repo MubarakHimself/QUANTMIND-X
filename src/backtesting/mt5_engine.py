@@ -22,11 +22,11 @@ from dataclasses import dataclass, field
 import logging
 
 try:
-    import MetaTrader5 as mt5
+    import MetaTrader5 as mt5  # type: ignore
     MT5_AVAILABLE = True
 except ImportError:
     MT5_AVAILABLE = False
-    mt5 = None
+    mt5 = None  # type: ignore
     logging.warning("MetaTrader5 package not available. Some features will be disabled.")
 
 logger = logging.getLogger(__name__)
@@ -101,6 +101,7 @@ class MT5BacktestResult:
     final_cash: float = 0.0
     equity_curve: List[float] = field(default_factory=list)
     trade_history: List[Dict[str, Any]] = field(default_factory=list)
+    win_rate: float = 0.0  # Win rate as percentage (0-100)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert result to dictionary."""
@@ -431,14 +432,14 @@ class PythonStrategyTester:
 
         try:
             if login and password and server:
-                self._mt5_connected = mt5.initialize(login=login, password=password, server=server)
+                self._mt5_connected = mt5.initialize(login=login, password=password, server=server)  # type: ignore
             else:
-                self._mt5_connected = mt5.initialize()
+                self._mt5_connected = mt5.initialize()  # type: ignore
 
             if self._mt5_connected:
-                logger.info(f"Connected to MT5 terminal: {mt5.terminal_info()}")
+                logger.info(f"Connected to MT5 terminal: {mt5.terminal_info()}")  # type: ignore
             else:
-                logger.error(f"MT5 connection failed: {mt5.last_error()}")
+                logger.error(f"MT5 connection failed: {mt5.last_error()}")  # type: ignore
 
         except Exception as e:
             logger.error(f"MT5 connection error: {e}")
@@ -469,10 +470,10 @@ class PythonStrategyTester:
             mt5_timeframe = self._get_mt5_timeframe(timeframe)
 
             # Retrieve data
-            rates = mt5.copy_rates_from_pos(symbol, mt5_timeframe, start_pos, count)
+            rates = mt5.copy_rates_from_pos(symbol, mt5_timeframe, start_pos, count)  # type: ignore
 
             if rates is None or len(rates) == 0:
-                logger.error(f"Failed to copy rates for {symbol}: {mt5.last_error()}")
+                logger.error(f"Failed to copy rates for {symbol}: {mt5.last_error()}")  # type: ignore
                 return None
 
             # Convert to DataFrame
@@ -506,7 +507,7 @@ class PythonStrategyTester:
             return None
 
         try:
-            tick = mt5.symbol_info_tick(symbol)
+            tick = mt5.symbol_info_tick(symbol)  # type: ignore
             if tick is None:
                 return None
 
@@ -534,9 +535,9 @@ class PythonStrategyTester:
         if MT5_AVAILABLE:
             # Direct mapping for most common timeframes
             mapping = {
-                MQL5Timeframe.PERIOD_M1: mt5.TIMEFRAME_M1 if hasattr(mt5, 'TIMEFRAME_M1') else 16385,
-                MQL5Timeframe.PERIOD_H1: mt5.TIMEFRAME_H1 if hasattr(mt5, 'TIMEFRAME_H1') else 16393,
-                MQL5Timeframe.PERIOD_D1: mt5.TIMEFRAME_D1 if hasattr(mt5, 'TIMEFRAME_D1') else 16401,
+                MQL5Timeframe.PERIOD_M1: mt5.TIMEFRAME_M1 if hasattr(mt5, 'TIMEFRAME_M1') else 16385,  # type: ignore
+                MQL5Timeframe.PERIOD_H1: mt5.TIMEFRAME_H1 if hasattr(mt5, 'TIMEFRAME_H1') else 16393,  # type: ignore
+                MQL5Timeframe.PERIOD_D1: mt5.TIMEFRAME_D1 if hasattr(mt5, 'TIMEFRAME_D1') else 16401,  # type: ignore
             }
             return mapping.get(mql5_timeframe, mql5_timeframe)
         return mql5_timeframe
@@ -702,6 +703,9 @@ class PythonStrategyTester:
             return None
 
         if price is None:
+            if self.timeframe is None:
+                self._log(f"Error: timeframe not set for {symbol}")
+                return None
             price = self.iClose(symbol, self.timeframe, 0)
             if price is None:
                 self._log(f"Error: Cannot get price for buy order")
@@ -743,6 +747,9 @@ class PythonStrategyTester:
             Trade record or None
         """
         if price is None:
+            if self.timeframe is None:
+                self._log(f"Error: timeframe not set for {symbol}")
+                return None
             price = self.iClose(symbol, self.timeframe, 0)
             if price is None:
                 self._log(f"Error: Cannot get price for sell order")
@@ -805,6 +812,9 @@ class PythonStrategyTester:
         closed = 0
         for pos in list(self.positions):
             if pos.direction == "buy":
+                if self.timeframe is None:
+                    self._log(f"Error: timeframe not set for {pos.symbol}")
+                    continue
                 price = self.iClose(pos.symbol, self.timeframe, 0)
                 if price is not None:
                     self.sell(pos.symbol, pos.volume, price)
@@ -894,7 +904,8 @@ class PythonStrategyTester:
 
                 # Call strategy function
                 try:
-                    self._strategy_func(self)
+                    if self._strategy_func is not None:
+                        self._strategy_func(self)
                 except Exception as e:
                     self._log(f"Strategy error at bar {self.current_bar}: {e}")
 
@@ -931,8 +942,11 @@ class PythonStrategyTester:
             df['time'] = pd.date_range(start='2024-01-01', periods=len(df), freq='1h')
 
         # Ensure datetime is timezone-aware
-        if df['time'].dt.tz is None:
-            df['time'] = df['time'].dt.tz_localize('utc')
+        time_series = pd.to_datetime(df['time'])
+        if time_series.dt.tz is None:
+            df['time'] = time_series.dt.tz_localize('utc')
+        else:
+            df['time'] = time_series
 
         # Ensure required columns exist
         required_cols = ['open', 'high', 'low', 'close', 'tick_volume']
@@ -952,6 +966,8 @@ class PythonStrategyTester:
 
         for pos in self.positions:
             if pos.direction == "buy":
+                if self.timeframe is None:
+                    continue
                 current_price = self.iClose(pos.symbol, self.timeframe, 0)
                 if current_price is not None:
                     unrealized_pnl = (current_price - pos.entry_price) * pos.volume * 100000
