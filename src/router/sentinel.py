@@ -82,3 +82,32 @@ class Sentinel:
             return "RANGE_STABLE"
             
         return "UNCERTAIN"
+
+# =============================================================================
+# Global Sentinel Instance and Helper Functions
+# =============================================================================
+
+_global_sentinel: Optional[Sentinel] = None
+
+def get_sentinel() -> Sentinel:
+    """Get or create global sentinel instance."""
+    global _global_sentinel
+    if _global_sentinel is None:
+        _global_sentinel = Sentinel()
+    return _global_sentinel
+
+def get_current_regime() -> str:
+    """
+    Get the current market regime.
+    
+    Returns:
+        str: Current regime state (TREND_STABLE, RANGE_STABLE, HIGH_CHAOS, etc.)
+    """
+    try:
+        sentinel = get_sentinel()
+        if sentinel.current_report:
+            return sentinel.current_report.regime
+        return "UNKNOWN"
+    except Exception as e:
+        logger.error(f"Failed to get current regime: {e}")
+        return "ERROR"

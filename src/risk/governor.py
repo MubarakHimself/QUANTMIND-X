@@ -23,7 +23,7 @@ from .models.position_sizing_result import PositionSizingResult
 from .models.sizing_recommendation import SizingRecommendation
 from .physics.chaos_sensor import ChaosSensor
 from .physics.correlation_sensor import CorrelationSensor
-from .physics.ising_sensor import IsingSensor
+from .physics.ising_sensor import IsingRegimeSensor
 from .config import (
     PROP_FIRM_PRESETS,
     get_preset,
@@ -84,7 +84,7 @@ class RiskGovernor:
         # Initialize physics sensors
         self.chaos_sensor = ChaosSensor()
         self.correlation_sensor = CorrelationSensor()
-        self.ising_sensor = IsingSensor()
+        self.ising_sensor = IsingRegimeSensor()
 
         # Initialize portfolio scaler
         self.portfolio_scaler = PortfolioKellyScaler()

@@ -1,0 +1,20 @@
+# Dockerfile for PageIndex (Articles)
+FROM node:20-slim
+
+WORKDIR /app
+
+# Install PageIndex
+RUN npm install -g @pageindex/server
+
+# Create data directory for articles
+RUN mkdir -p /data/articles
+
+# Expose MCP port
+EXPOSE 3000
+
+# Set environment variables
+ENV PAGEINDEX_DATA_DIR=/data/articles
+ENV PAGEINDEX_INDEX_NAME=quantmind-articles
+
+# Start PageIndex MCP server
+CMD ["pageindex-server", "--data-dir", "/data/articles", "--port", "3000"]

@@ -70,7 +70,8 @@ class TestPropGovernor:
         # Effective limit = 4%, so throttle should be between (0,1)
         assert 0.0 < mandate.allocation_scalar < 1.0
         assert mandate.risk_mode == "THROTTLED"
-        assert "Prop Throttle Active" in (mandate.notes or "")
+        # V8: Check for tier-aware throttle message
+        assert "Throttle" in (mandate.notes or "")
 
     def test_zero_throttle_when_beyond_effective_limit(self):
         gov = DummyGovernor()

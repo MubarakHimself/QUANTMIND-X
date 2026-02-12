@@ -1,0 +1,40 @@
+version: '3.8'
+
+# NPRD Stack - Simplified
+# Primary: Gemini CLI with YOLO mode (headless + bypass permissions)
+# Backup: Qwen API (cloud, if Gemini fails)
+
+services:
+  nprd:
+    build:
+      context: ../..
+      dockerfile: docker/nprd/Dockerfile
+    container_name: quantmind-nprd
+    volumes:
+      # Mount OAuth credentials (run 'gemini auth' once on host)
+      - ./gemini-credentials:/root/.gemini
+      # Data directories
+      - ../../data/nprd:/app/data/nprd
+      - ../../data/videos:/app/data/videos
+    ports:
+      - "8001:8001"
+    environment:
+      # Gemini CLI settings
+      - GEMINI_YOLO_MODE=true # Headless + bypass permissions
+      - NPRD_DATA_DIR=/app/data/nprd
+      - PYTHONPATH=/app
+      # Qwen API as backup (cloud, not local)
+      - QWEN_API_KEY=${QWEN_API_KEY:-}
+      - QWEN_API_URL=https://dashscope.aliyuncs.com/api/v1
+    networks:
+      - quantmind
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8001/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  quantmind:
+    driver: bridge

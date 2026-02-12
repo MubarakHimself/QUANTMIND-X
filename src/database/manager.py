@@ -12,7 +12,7 @@ from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
 
 from .engine import engine, Session, init_database as init_sqlite_db
-from .models import PropFirmAccount, DailySnapshot, TradeProposal, AgentTasks, StrategyPerformance, Base
+from .models import PropFirmAccount, DailySnapshot, TradeProposal, AgentTasks, StrategyPerformance, BrokerRegistry, HouseMoneyState, BotCircuitBreaker, Base
 from .retry import DatabaseConnectionManager, create_connection_manager, with_retry
 
 

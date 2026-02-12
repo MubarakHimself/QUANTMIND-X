@@ -1,0 +1,161 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-02-02T00:00:00Z",
+  "categories": {
+    "indicators": {
+      "description": "Technical indicators for market analysis",
+      "assets": [
+        {
+          "id": "rsi",
+          "name": "Relative Strength Index",
+          "version": "1.0.0",
+          "file": "indicators/rsi.mq5",
+          "description": "RSI oscillator for overbought/oversold conditions",
+          "tags": ["momentum", "oscillator"],
+          "parameters": ["period"],
+          "created": "2026-02-02T00:00:00Z"
+        },
+        {
+          "id": "macd",
+          "name": "Moving Average Convergence Divergence",
+          "version": "1.0.0",
+          "file": "indicators/macd.mq5",
+          "description": "MACD indicator for trend and momentum analysis",
+          "tags": ["trend", "momentum"],
+          "parameters": ["fast_period", "slow_period", "signal_period"],
+          "created": "2026-02-02T00:00:00Z"
+        },
+        {
+          "id": "bollinger_bands",
+          "name": "Bollinger Bands",
+          "version": "1.0.0",
+          "file": "indicators/bollinger_bands.mq5",
+          "description": "Bollinger Bands for volatility and price levels",
+          "tags": ["volatility", "support_resistance"],
+          "parameters": ["period", "deviations"],
+          "created": "2026-02-02T00:00:00Z"
+        },
+        {
+          "id": "atr",
+          "name": "Average True Range",
+          "version": "1.0.0",
+          "file": "indicators/atr.mq5",
+          "description": "ATR for volatility measurement",
+          "tags": ["volatility"],
+          "parameters": ["period"],
+          "created": "2026-02-02T00:00:00Z"
+        }
+      ]
+    },
+    "strategies": {
+      "description": "Strategy templates for different market approaches",
+      "assets": [
+        {
+          "id": "trend_following",
+          "name": "Trend Following Strategy",
+          "version": "1.0.0",
+          "file": "templates/strategies/trend_following.mq5",
+          "description": "Template for trend following strategies using moving averages",
+          "tags": ["trend", "momentum"],
+          "parameters": ["ma_fast", "ma_slow", "risk_percent"],
+          "created": "2026-02-02T00:00:00Z"
+        },
+        {
+          "id": "mean_reversion",
+          "name": "Mean Reversion Strategy",
+          "version": "1.0.0",
+          "file": "templates/strategies/mean_reversion.mq5",
+          "description": "Template for mean reversion strategies using Bollinger Bands",
+          "tags": ["mean_reversion", "volatility"],
+          "parameters": ["bb_period", "bb_deviations", "risk_percent"],
+          "created": "2026-02-02T00:00:00Z"
+        },
+        {
+          "id": "breakout",
+          "name": "Breakout Strategy",
+          "version": "1.0.0",
+          "file": "templates/strategies/breakout.mq5",
+          "description": "Template for breakout strategies using range breakouts",
+          "tags": ["breakout", "momentum"],
+          "parameters": ["range_period", "risk_percent"],
+          "created": "2026-02-02T00:00:00Z"
+        },
+        {
+          "id": "scalping",
+          "name": "Scalping Strategy",
+          "version": "1.0.0",
+          "file": "templates/strategies/scalping.mq5",
+          "description": "Template for high-frequency scalping strategies",
+          "tags": ["scalping", "short_term"],
+          "parameters": ["timeframe", "pip_target", "stop_loss_pips"],
+          "created": "2026-02-02T00:00:00Z"
+        }
+      ]
+    },
+    "calculations": {
+      "description": "Reusable calculation methods and utilities",
+      "assets": [
+        {
+          "id": "position_sizing",
+          "name": "Position Sizing Calculator",
+          "version": "1.0.0",
+          "file": "calculations/position_sizing.mq5",
+          "description": "Methods for calculating position sizes based on risk management",
+          "tags": ["risk_management", "position_sizing"],
+          "parameters": ["account_balance", "risk_percent", "stop_loss_pips"],
+          "created": "2026-02-02T00:00:00Z"
+        },
+        {
+          "id": "risk_metrics",
+          "name": "Risk Metrics Calculator",
+          "version": "1.0.0",
+          "file": "calculations/risk_metrics.mq5",
+          "description": "Methods for calculating various risk metrics",
+          "tags": ["risk_management", "analytics"],
+          "parameters": ["returns_array", "confidence_level"],
+          "created": "2026-02-02T00:00:00Z"
+        }
+      ]
+    },
+    "risk_management": {
+      "description": "Risk management components and filters",
+      "assets": [
+        {
+          "id": "kelly_criterion",
+          "name": "Kelly Criterion Calculator",
+          "version": "1.0.0",
+          "file": "risk_management/kelly_criterion.mq5",
+          "description": "Implementation of Kelly Criterion for optimal position sizing",
+          "tags": ["kelly", "position_sizing", "optimization"],
+          "parameters": ["win_rate", "win_loss_ratio"],
+          "created": "2026-02-02T00:00:00Z"
+        },
+        {
+          "id": "volatility_filter",
+          "name": "Volatility Filter",
+          "version": "1.0.0",
+          "file": "risk_management/volatility_filter.mq5",
+          "description": "Filter trades based on market volatility conditions",
+          "tags": ["volatility", "filter"],
+          "parameters": ["atr_threshold", "lookback_period"],
+          "created": "2026-02-02T00:00:00Z"
+        }
+      ]
+    },
+    "signals": {
+      "description": "Signal generation and processing utilities",
+      "assets": [
+        {
+          "id": "signal_processor",
+          "name": "Signal Processor",
+          "version": "1.0.0",
+          "file": "signals/signal_processor.mq5",
+          "description": "Utility for processing and filtering trading signals",
+          "tags": ["signals", "filtering"],
+          "parameters": ["confirmation_threshold", "filter_strength"],
+          "created": "2026-02-02T00:00:00Z"
+        }
+      ]
+    }
+  }
+}

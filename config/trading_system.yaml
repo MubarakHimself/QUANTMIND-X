@@ -1,0 +1,311 @@
+# QuantMindX Trading System Configuration
+# Task Group 8: API Layer Integration
+#
+# Centralized configuration for:
+# - Data source priorities
+# - Backtest parameters
+# - Risk thresholds
+# - Regime filtering settings
+
+# =============================================================================
+# Data Source Configuration
+# =============================================================================
+data_source:
+  # Priority order for data fetching (highest to lowest)
+  priorities:
+    - mt5          # MetaTrader 5 terminal (live data)
+    - api          # External API sources
+    - cache        # Local Parquet cache
+
+  # MT5 Connection Settings
+  mt5:
+    login: null
+    password: null
+    server: null
+    timeout: 60000  # Connection timeout in milliseconds
+
+  # Cache Settings
+  cache:
+    path: "data/historical"
+    format: "parquet"
+    compression: "snappy"
+    auto_refresh: true
+    refresh_interval_hours: 24
+
+  # API Fallback Settings
+  api:
+    enabled: true
+    timeout: 30
+    max_retries: 3
+
+
+# =============================================================================
+# Backtest Parameters
+# =============================================================================
+backtest:
+  # Default account settings
+  initial_cash: 10000.0
+  currency: "USD"
+
+  # Cost assumptions
+  commission: 0.001    # Commission per trade (0.1%)
+  slippage: 0.00005    # Slippage in price points (0.5 pips)
+
+  # Default date range
+  default_start_date: "2023-01-01"
+  default_end_date: "2024-01-01"
+
+  # Multi-symbol settings
+  max_symbols: 10
+  correlation_threshold: 0.7  # Prevent correlated positions above this
+
+  # Walk-forward optimization settings
+  walk_forward:
+    enabled: false
+    train_pct: 0.5      # Training window (50%)
+    test_pct: 0.2       # Test window (20%)
+    gap_pct: 0.1        # Gap between windows (10%)
+    min_windows: 3      # Minimum number of rolling windows
+
+  # Monte Carlo simulation settings
+  monte_carlo:
+    enabled: false
+    simulations: 1000
+    confidence_levels: [0.05, 0.95]  # 5th and 95th percentile
+
+
+# =============================================================================
+# Risk Thresholds
+# =============================================================================
+risk:
+  # Prop firm rules
+  daily_loss_limit_pct: 5.0      # Maximum daily loss (5%)
+  max_drawdown_pct: 10.0         # Maximum drawdown (10%)
+  hard_stop_buffer_pct: 1.0      # Safety buffer (1%)
+
+  # Target profit for preservation mode
+  target_profit_pct: 8.0         # Target profit (8%)
+
+  # Position sizing limits
+  max_position_size_pct: 2.0     # Maximum position size (2% of equity)
+  max_total_exposure_pct: 6.0    # Maximum total exposure (6% of equity)
+
+  # Kelly criterion settings
+  kelly:
+    fraction: 0.5                # Kelly fraction (50% - conservative)
+    max_leverage: 3.0            # Maximum leverage multiplier
+    min_win_rate: 0.55           # Minimum win rate for trading
+
+  # House Money Effect
+  house_money:
+    enabled: true
+    profit_threshold_pct: 5.0    # Profit threshold for increased risk (5%)
+    risk_multiplier_up: 1.5      # Risk multiplier when up (1.5x)
+    risk_multiplier_down: 0.5    # Risk multiplier when down (0.5x)
+    preservation_mode: true      # Enable preservation mode at target
+
+
+# =============================================================================
+# Regime Filtering Settings
+# =============================================================================
+regime:
+  # Sentinel integration
+  enabled: true
+  update_interval: 60  # Seconds between regime updates
+
+  # Chaos thresholds
+  chaos:
+    wait_threshold: 0.3      # Below this, can wait for breakeven
+    trail_threshold: 0.6     # Above this, immediate exit
+    max_allowed: 0.8         # Maximum allowed for new trades
+
+  # Banned regimes (no new trades)
+  banned_regimes:
+    - "NEWS_EVENT"
+    - "HIGH_CHAOS"
+
+  # Regime quality scalar for position sizing
+  quality_scalar_enabled: true
+  quality_formula: "1.0 - chaos_score"  # Linear reduction
+
+  # Regime-aware exit settings
+  smart_exit:
+    enabled: true
+    max_drawdown_before_exit: 0.10  # 10% loss triggers immediate exit
+    breakeven_wait_enabled: true    # Wait for breakeven in low chaos
+    trailing_stop_enabled: true     # Use trailing stop in moderate chaos
+
+
+# =============================================================================
+# API Server Configuration
+# =============================================================================
+api:
+  host: "0.0.0.0"
+  port: 8000
+  debug: false
+  workers: 4
+
+  # CORS settings
+  cors:
+    enabled: true
+    origins:
+      - "http://localhost:3000"
+      - "http://localhost:5173"
+    methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "DELETE"
+    headers:
+      - "Content-Type"
+      - "Authorization"
+
+  # Rate limiting
+  rate_limit:
+    enabled: true
+    requests_per_minute: 60
+    burst_size: 10
+
+
+# =============================================================================
+# Database Configuration
+# =============================================================================
+database:
+  # SQLite settings (transaction data)
+  sqlite:
+    path: "data/quantmind.db"
+    pool_size: 5
+    timeout: 30
+
+  # DuckDB settings (analytics data)
+  duckdb:
+    path: "data/backtest_results.duckdb"
+    memory_limit: "4GB"
+    threads: 4
+
+  # Connection settings
+  connection:
+    retry_attempts: 3
+    retry_delay: 1.0  # Seconds
+    statement_timeout: 30  # Seconds
+
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+  # File logging
+  file:
+    enabled: true
+    path: "logs/trading_system.log"
+    max_size_mb: 10
+    backup_count: 5
+
+  # Console logging
+  console:
+    enabled: true
+    colored: true
+
+
+# =============================================================================
+# Trading Bot Configuration
+# =============================================================================
+bots:
+  # Bot registry settings
+  auto_discovery: true
+  scan_path: "strategies"
+
+  # Lifecycle settings
+  quarantine:
+    enabled: true
+    consecutive_losses_threshold: 5
+    daily_trade_limit: 20
+    auto_reactivate: false
+
+  # Performance tracking
+  track_performance: true
+  min_trades_for_evaluation: 10
+  evaluation_window_days: 30
+
+
+# =============================================================================
+# Kill Switch Configuration
+# =============================================================================
+kill_switch:
+  # File monitoring
+  stop_file_path: "STOP"
+  check_interval_ms: 100
+
+  # Auto-trigger conditions
+  auto_trigger:
+    max_drawdown_exceeded: true
+    daily_loss_limit_exceeded: true
+    extreme_chaos: true
+    news_event: true
+
+  # Smart exit settings
+  smart_exit:
+    enabled: true
+    breakeven_timeout_minutes: 60
+    trailing_stop_distance_pips: 5
+
+
+# =============================================================================
+# Broker Registry Configuration
+# =============================================================================
+brokers:
+  # Default broker profiles
+  profiles:
+    - name: "ICMarketsRAW"
+      type: "mt5"
+      spread_avg: 0.1
+      commission_per_lot: 3.5
+      lot_step: 0.01
+      min_lot: 0.01
+      max_lot: 100.0
+      pip_values:
+        EURUSD: 10.0
+        GBPUSD: 10.0
+        XAUUSD: 1.0
+      tags: ["RAW_ECN", "LOW_SPREAD"]
+
+    - name: "DefaultDemo"
+      type: "mt5"
+      spread_avg: 1.0
+      commission_per_lot: 0.0
+      lot_step: 0.01
+      min_lot: 0.01
+      max_lot: 100.0
+      pip_values:
+        EURUSD: 10.0
+        GBPUSD: 10.0
+        XAUUSD: 1.0
+      tags: ["STANDARD", "DEMO"]
+
+
+# =============================================================================
+# Account Configuration
+# =============================================================================
+accounts:
+  # Account routing matrix
+  routing:
+    machine_gun:
+      type: "HFT"
+      max_positions: 5
+      max_lot_per_trade: 0.1
+      allowed_strategies: ["scalper", "hft"]
+
+    sniper:
+      type: "STRUCTURAL"
+      max_positions: 3
+      max_lot_per_trade: 1.0
+      allowed_strategies: ["trend", "breakout"]
+
+    demo:
+      type: "TESTING"
+      max_positions: 10
+      max_lot_per_trade: 0.5
+      allowed_strategies: ["all"]

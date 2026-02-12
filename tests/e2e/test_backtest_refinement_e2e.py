@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+@pytest.mark.timeout(30)
 async def test_backtest_failure_triggers_refinement(
     quant_code_agent,
     sample_trd,

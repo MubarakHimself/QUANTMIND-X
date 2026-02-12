@@ -415,3 +415,335 @@ string ParseJsonResponse(string jsonResponse, string key)
 
 #endif // __QSL_SOCKETS_MQH__
 //+------------------------------------------------------------------+
+
+
+//+------------------------------------------------------------------+
+//| V8 HFT Infrastructure: CQuantMindSocket Class                     |
+//|                                                                   |
+//| Enhanced socket client for sub-5ms latency communication with    |
+//| Python ZMQ socket server. Uses optimized JSON formatting and     |
+//| persistent connection patterns.                                   |
+//+------------------------------------------------------------------+
+class CQuantMindSocket : public CSocketClient
+{
+private:
+    string m_serverAddress;
+    uint   m_serverPort;
+    bool   m_connected;
+    int    m_reconnectAttempts;
+    int    m_maxReconnectAttempts;
+    
+public:
+    //+------------------------------------------------------------------+
+    //| Constructor                                                      |
+    //+------------------------------------------------------------------+
+    CQuantMindSocket() : CSocketClient()
+    {
+        m_serverAddress = "localhost";
+        m_serverPort = 5555;
+        m_connected = false;
+        m_reconnectAttempts = 0;
+        m_maxReconnectAttempts = 3;
+        
+        // Set base URL for socket server
+        SetBaseUrl("http://" + m_serverAddress + ":" + IntegerToString(m_serverPort));
+    }
+    
+    //+------------------------------------------------------------------+
+    //| Constructor with custom server address                          |
+    //|                                                                  |
+    //| @param serverAddress Server hostname or IP                      |
+    //| @param serverPort Server port number                            |
+    //+------------------------------------------------------------------+
+    CQuantMindSocket(string serverAddress, uint serverPort) : CSocketClient()
+    {
+        m_serverAddress = serverAddress;
+        m_serverPort = serverPort;
+        m_connected = false;
+        m_reconnectAttempts = 0;
+        m_maxReconnectAttempts = 3;
+        
+        // Set base URL for socket server
+        SetBaseUrl("http://" + m_serverAddress + ":" + IntegerToString(m_serverPort));
+    }
+    
+    //+------------------------------------------------------------------+
+    //| Connect to socket server                                        |
+    //|                                                                  |
+    //| Tests connection and marks as connected if successful.          |
+    //|                                                                  |
+    //| @return true if connected, false otherwise                      |
+    //+------------------------------------------------------------------+
+    bool ConnectToServer()
+    {
+        if(m_connected)
+        {
+            return true;
+        }
+        
+        // Test connection
+        if(TestConnection())
+        {
+            m_connected = true;
+            m_reconnectAttempts = 0;
+            Print("[CQuantMindSocket] ✓ Connected to socket server at ", GetBaseUrl());
+            return true;
+        }
+        
+        m_reconnectAttempts++;
+        Print("[CQuantMindSocket] Failed to connect (attempt ", m_reconnectAttempts, "/", m_maxReconnectAttempts, ")");
+        
+        return false;
+    }
+    
+    //+------------------------------------------------------------------+
+    //| Send trade open event                                           |
+    //|                                                                  |
+    //| @param eaName EA identifier                                     |
+    //| @param symbol Trading symbol                                    |
+    //| @param volume Position size in lots                             |
+    //| @param magic Magic number                                       |
+    //| @param riskMultiplier Output risk multiplier from server        |
+    //| @return true if successful, false otherwise                     |
+    //+------------------------------------------------------------------+
+    bool SendTradeOpen(string eaName, string symbol, double volume, int magic, double &riskMultiplier)
+    {
+        if(!m_connected && !ConnectToServer())
+        {
+            return false;
+        }
+        
+        // Build JSON message
+        string message = StringFormat(
+            "{\"type\":\"trade_open\",\"ea_name\":\"%s\",\"symbol\":\"%s\",\"volume\":%.2f,\"magic\":%d,\"timestamp\":%d}",
+            eaName, symbol, volume, magic, (int)TimeLocal()
+        );
+        
+        // Send to server
+        string response;
+        int statusCode = Post("/", message, response);
+        
+        if(statusCode == 200)
+        {
+            // Parse risk multiplier from response
+            riskMultiplier = ParseRiskMultiplier(response);
+            return true;
+        }
+        
+        m_connected = false;
+        return false;
+    }
+    
+    //+------------------------------------------------------------------+
+    //| Send trade close event                                          |
+    //|                                                                  |
+    //| @param eaName EA identifier                                     |
+    //| @param symbol Trading symbol                                    |
+    //| @param ticket Order ticket number                               |
+    //| @param profit Profit/loss amount                                |
+    //| @return true if successful, false otherwise                     |
+    //+------------------------------------------------------------------+
+    bool SendTradeClose(string eaName, string symbol, int ticket, double profit)
+    {
+        if(!m_connected && !ConnectToServer())
+        {
+            return false;
+        }
+        
+        // Build JSON message
+        string message = StringFormat(
+            "{\"type\":\"trade_close\",\"ea_name\":\"%s\",\"symbol\":\"%s\",\"ticket\":%d,\"profit\":%.2f,\"timestamp\":%d}",
+            eaName, symbol, ticket, profit, (int)TimeLocal()
+        );
+        
+        // Send to server
+        string response;
+        int statusCode = Post("/", message, response);
+        
+        if(statusCode == 200)
+        {
+            return true;
+        }
+        
+        m_connected = false;
+        return false;
+    }
+    
+    //+------------------------------------------------------------------+
+    //| Send trade modify event                                         |
+    //|                                                                  |
+    //| @param eaName EA identifier                                     |
+    //| @param ticket Order ticket number                               |
+    //| @param newSL New stop loss price                                |
+    //| @param newTP New take profit price                              |
+    //| @return true if successful, false otherwise                     |
+    //+------------------------------------------------------------------+
+    bool SendTradeModify(string eaName, int ticket, double newSL, double newTP)
+    {
+        if(!m_connected && !ConnectToServer())
+        {
+            return false;
+        }
+        
+        // Build JSON message
+        string message = StringFormat(
+            "{\"type\":\"trade_modify\",\"ea_name\":\"%s\",\"ticket\":%d,\"new_sl\":%.5f,\"new_tp\":%.5f,\"timestamp\":%d}",
+            eaName, ticket, newSL, newTP, (int)TimeLocal()
+        );
+        
+        // Send to server
+        string response;
+        int statusCode = Post("/", message, response);
+        
+        if(statusCode == 200)
+        {
+            return true;
+        }
+        
+        m_connected = false;
+        return false;
+    }
+    
+    //+------------------------------------------------------------------+
+    //| Send heartbeat                                                   |
+    //|                                                                  |
+    //| @param eaName EA identifier                                     |
+    //| @param symbol Trading symbol                                    |
+    //| @param magic Magic number                                       |
+    //| @param riskMultiplier Output risk multiplier from server        |
+    //| @return true if successful, false otherwise                     |
+    //+------------------------------------------------------------------+
+    bool SendHeartbeat(string eaName, string symbol, int magic, double &riskMultiplier)
+    {
+        if(!m_connected && !ConnectToServer())
+        {
+            return false;
+        }
+        
+        // Build JSON message
+        string message = StringFormat(
+            "{\"type\":\"heartbeat\",\"ea_name\":\"%s\",\"symbol\":\"%s\",\"magic\":%d,\"timestamp\":%d}",
+            eaName, symbol, magic, (int)TimeLocal()
+        );
+        
+        // Send to server
+        string response;
+        int statusCode = Post("/", message, response);
+        
+        if(statusCode == 200)
+        {
+            // Parse risk multiplier from response
+            riskMultiplier = ParseRiskMultiplier(response);
+            return true;
+        }
+        
+        m_connected = false;
+        return false;
+    }
+    
+    //+------------------------------------------------------------------+
+    //| Send risk update                                                 |
+    //|                                                                  |
+    //| @param eaName EA identifier                                     |
+    //| @param newMultiplier New risk multiplier to set                 |
+    //| @return true if successful, false otherwise                     |
+    //+------------------------------------------------------------------+
+    bool SendRiskUpdate(string eaName, double newMultiplier)
+    {
+        if(!m_connected && !ConnectToServer())
+        {
+            return false;
+        }
+        
+        // Build JSON message
+        string message = StringFormat(
+            "{\"type\":\"risk_update\",\"ea_name\":\"%s\",\"risk_multiplier\":%.2f,\"timestamp\":%d}",
+            eaName, newMultiplier, (int)TimeLocal()
+        );
+        
+        // Send to server
+        string response;
+        int statusCode = Post("/", message, response);
+        
+        if(statusCode == 200)
+        {
+            return true;
+        }
+        
+        m_connected = false;
+        return false;
+    }
+    
+    //+------------------------------------------------------------------+
+    //| Check if connected                                               |
+    //|                                                                  |
+    //| @return true if connected, false otherwise                      |
+    //+------------------------------------------------------------------+
+    bool IsConnected()
+    {
+        return m_connected;
+    }
+    
+    //+------------------------------------------------------------------+
+    //| Disconnect from server                                           |
+    //+------------------------------------------------------------------+
+    void Disconnect()
+    {
+        m_connected = false;
+        Print("[CQuantMindSocket] Disconnected from socket server");
+    }
+    
+private:
+    //+------------------------------------------------------------------+
+    //| Parse risk multiplier from JSON response                        |
+    //|                                                                  |
+    //| @param jsonResponse JSON response string                        |
+    //| @return Risk multiplier value                                   |
+    //+------------------------------------------------------------------+
+    double ParseRiskMultiplier(string jsonResponse)
+    {
+        // Find "risk_multiplier" key
+        string searchPattern = "\"risk_multiplier\"";
+        int keyPos = StringFind(jsonResponse, searchPattern);
+        
+        if(keyPos < 0)
+        {
+            return 1.0; // Default multiplier
+        }
+        
+        // Find colon after key
+        int colonPos = StringFind(jsonResponse, ":", keyPos);
+        if(colonPos < 0)
+        {
+            return 1.0;
+        }
+        
+        // Find comma or closing brace after value
+        int commaPos = StringFind(jsonResponse, ",", colonPos);
+        int bracePos = StringFind(jsonResponse, "}", colonPos);
+        
+        int endPos = (commaPos > 0 && commaPos < bracePos) ? commaPos : bracePos;
+        
+        if(endPos < 0)
+        {
+            return 1.0;
+        }
+        
+        // Extract value string
+        string valueStr = StringSubstr(jsonResponse, colonPos + 1, endPos - colonPos - 1);
+        
+        // Remove whitespace
+        StringTrimLeft(valueStr);
+        StringTrimRight(valueStr);
+        
+        // Convert to double
+        return StringToDouble(valueStr);
+    }
+};
+
+//+------------------------------------------------------------------+
+//| Global: Create QuantMind Socket instance                         |
+//+------------------------------------------------------------------+
+CQuantMindSocket g_quantMindSocket;
+
+//+------------------------------------------------------------------+

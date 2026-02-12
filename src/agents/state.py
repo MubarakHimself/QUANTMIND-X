@@ -73,3 +73,19 @@ class RouterState(AgentState):
     task_type: Optional[str]
     target_agent: Optional[str]
     delegation_history: List[Dict[str, Any]]
+
+
+class ExecutorState(AgentState):
+    """
+    State for Executor agent workflow.
+    
+    Handles trade execution, position management, and PropCommander integration.
+    
+    **Validates: Requirements 8.6**
+    """
+    trade_proposal: Optional[Dict[str, Any]]
+    execution_status: Optional[str]
+    position_updates: List[Dict[str, Any]]
+    risk_approval: Optional[bool]
+    broker_id: Optional[str]
+

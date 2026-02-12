@@ -1,0 +1,20 @@
+# Dockerfile for PageIndex (Logs/Trading Data)
+FROM node:20-slim
+
+WORKDIR /app
+
+# Install PageIndex
+RUN npm install -g @pageindex/server
+
+# Create data directory for logs
+RUN mkdir -p /data/logs
+
+# Expose MCP port
+EXPOSE 3002
+
+# Set environment variables
+ENV PAGEINDEX_DATA_DIR=/data/logs
+ENV PAGEINDEX_INDEX_NAME=quantmind-logs
+
+# Start PageIndex MCP server
+CMD ["pageindex-server", "--data-dir", "/data/logs", "--port", "3002"]

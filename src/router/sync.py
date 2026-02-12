@@ -7,6 +7,7 @@ Responsible for atomic file writes to MT5 risk_matrix.json with:
 - Retry logic with exponential backoff
 - JSON schema validation
 - Wine path handling for MT5 on Linux
+- V8: Socket-based risk updates alongside file-based (backward compatible)
 """
 
 import os
@@ -15,6 +16,7 @@ import tempfile
 import logging
 import time
 import fcntl
+import zmq
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -34,13 +36,16 @@ class DiskSyncer:
     - Retry logic with exponential backoff
     - JSON schema validation
     - Wine path detection for Linux MT5 installations
+    - V8: Socket-based risk updates (optional, backward compatible)
     """
 
     def __init__(
         self,
         mt5_path: Optional[str] = None,
         max_retries: int = 5,
-        initial_backoff: float = 1.0
+        initial_backoff: float = 1.0,
+        socket_enabled: bool = False,
+        socket_address: str = "tcp://localhost:5555"
     ):
         """
         Initialize DiskSyncer with MT5 path configuration.
@@ -50,12 +55,23 @@ class DiskSyncer:
                      If None, auto-detects Wine path.
             max_retries: Maximum retry attempts for file writes (default: 5)
             initial_backoff: Initial backoff in seconds (default: 1.0)
+            socket_enabled: Enable socket-based risk updates (V8, default: False)
+            socket_address: ZMQ socket address (default: tcp://localhost:5555)
         """
         self.mt5_path = mt5_path or self._get_wine_mt5_path()
         self.max_retries = max_retries
         self.initial_backoff = initial_backoff
+        
+        # V8: Socket configuration
+        self.socket_enabled = socket_enabled
+        self.socket_address = socket_address
+        self.socket_context = None
+        self.socket = None
+        
+        if self.socket_enabled:
+            self._init_socket()
 
-        logger.info(f"DiskSyncer initialized with MT5 path: {self.mt5_path}")
+        logger.info(f"DiskSyncer initialized with MT5 path: {self.mt5_path}, socket_enabled: {self.socket_enabled}")
 
     def _get_wine_mt5_path(self) -> str:
         """
@@ -81,6 +97,72 @@ class DiskSyncer:
         default_path = wine_paths[0]
         logger.debug(f"Using default Wine MT5 path: {default_path}")
         return str(default_path)
+    
+    def _init_socket(self):
+        """
+        V8: Initialize ZMQ socket for risk updates.
+        """
+        try:
+            self.socket_context = zmq.Context()
+            self.socket = self.socket_context.socket(zmq.REQ)
+            self.socket.connect(self.socket_address)
+            # Set timeout to avoid blocking
+            self.socket.setsockopt(zmq.RCVTIMEO, 1000)  # 1 second timeout
+            logger.info(f"Socket initialized: {self.socket_address}")
+        except Exception as e:
+            logger.error(f"Failed to initialize socket: {e}")
+            self.socket_enabled = False
+    
+    def _send_socket_update(self, risk_matrix: Dict[str, Any]) -> bool:
+        """
+        V8: Send risk update via socket.
+        
+        Args:
+            risk_matrix: Risk matrix to broadcast
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.socket_enabled or not self.socket:
+            return False
+        
+        try:
+            # Create risk update message
+            message = {
+                "type": "risk_update",
+                "data": risk_matrix,
+                "timestamp": int(time.time())
+            }
+            
+            # Send message
+            self.socket.send_json(message)
+            
+            # Wait for acknowledgment
+            response = self.socket.recv_json()
+            
+            if response.get('status') == 'success':
+                logger.debug("Socket risk update successful")
+                return True
+            else:
+                logger.warning(f"Socket risk update failed: {response.get('message')}")
+                return False
+                
+        except zmq.Again:
+            logger.warning("Socket risk update timeout")
+            return False
+        except Exception as e:
+            logger.error(f"Socket risk update error: {e}")
+            return False
+    
+    def close_socket(self):
+        """
+        V8: Close socket connection and cleanup.
+        """
+        if self.socket:
+            self.socket.close()
+        if self.socket_context:
+            self.socket_context.term()
+        logger.info("Socket closed")
 
     def _validate_risk_matrix(self, risk_matrix: Dict[str, Any]) -> bool:
         """
@@ -232,6 +314,7 @@ class DiskSyncer:
 
         Performs validation, atomic write, and retry with exponential backoff.
         Optionally updates MT5 global variables for fast-path access.
+        V8: Also sends updates via socket if enabled (backward compatible).
 
         Args:
             risk_matrix: Risk data to sync
@@ -259,6 +342,14 @@ class DiskSyncer:
             try:
                 self._atomic_write(target_file, risk_matrix)
                 logger.info(f"Successfully synced risk matrix to {target_file}")
+                
+                # V8: Send socket update (non-blocking, best-effort)
+                if self.socket_enabled:
+                    socket_success = self._send_socket_update(risk_matrix)
+                    if socket_success:
+                        logger.info("Socket risk update sent successfully")
+                    else:
+                        logger.warning("Socket risk update failed (file-based fallback active)")
                 
                 # Update global variables for fast-path access
                 if update_global_vars:

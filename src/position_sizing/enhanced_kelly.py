@@ -197,7 +197,11 @@ class EnhancedKellyCalculator:
         average_atr: float,
         stop_loss_pips: float,
         pip_value: float = 10.0,
-        regime_quality: float = 1.0
+        regime_quality: float = 1.0,
+        commission_per_lot: float = 0.0,
+        spread_pips: float = 0.0,
+        broker_id: Optional[str] = None,
+        symbol: Optional[str] = None
     ) -> KellyResult:
         """
         Calculate optimal position size using Enhanced Kelly with all safety layers.
@@ -205,14 +209,17 @@ class EnhancedKellyCalculator:
         The calculation follows these steps:
 
         1. **Validate Inputs**: Ensure all parameters are valid
-        2. **Calculate Risk-Reward Ratio**: $B = \\text{avg\\_win} / \\text{avg\\_loss}$
-        3. **Calculate Base Kelly**: $f^* = (B+1)P - 1) / B$
-        4. **Apply Layer 1**: Multiply by Kelly fraction (default 50%)
-        5. **Apply Layer 2**: Cap at maximum risk percentage (default 2%)
-        6. **Apply Layer 3**: Adjust for volatility using ATR ratio
-        7. **Calculate Risk Amount**: $\\text{risk} = \\text{balance} \\times f$
-        8. **Calculate Position Size**: $\\text{lots} = \\text{risk} / (\\text{SL} \\times \\text{pip\\_value})$
-        9. **Round to Broker Precision**: Round down to lot step
+        2. **Broker Auto-Lookup**: If broker_id provided, auto-fetch pip_value, commission, spread
+        3. **Calculate Risk-Reward Ratio**: $B = \\text{avg\\_win} / \\text{avg\\_loss}$
+        4. **Fee Adjustment**: Deduct fees from avg_win, add to avg_loss, recalculate ratio
+        5. **Fee Kill Switch**: Block trades if fees >= avg_win
+        6. **Calculate Base Kelly**: $f^* = (B+1)P - 1) / B$
+        7. **Apply Layer 1**: Multiply by Kelly fraction (default 50%)
+        8. **Apply Layer 2**: Cap at maximum risk percentage (default 2%)
+        9. **Apply Layer 3**: Adjust for volatility using ATR ratio
+        10. **Calculate Risk Amount**: $\\text{risk} = \\text{balance} \\times f$
+        11. **Calculate Position Size**: $\\text{lots} = \\text{risk} / (\\text{SL} \\times \\text{pip\\_value})$
+        12. **Round to Broker Precision**: Round down to lot step
 
         Args:
             account_balance: Current account balance in base currency (e.g., 10000.0)
@@ -223,6 +230,11 @@ class EnhancedKellyCalculator:
             average_atr: 20-period average ATR in price units (e.g., 0.0010)
             stop_loss_pips: Stop loss distance in pips/points (e.g., 20.0)
             pip_value: Value per pip for 1 standard lot (default $10 for forex majors)
+            regime_quality: Regime quality from Sentinel (1.0=STABLE, 0.0=CHAOTIC)
+            commission_per_lot: Commission per standard lot (default 0.0)
+            spread_pips: Average spread in pips (default 0.0)
+            broker_id: Broker identifier for auto-lookup (optional)
+            symbol: Trading symbol for pip value lookup (required if broker_id provided)
 
         Returns:
             KellyResult containing:
@@ -246,11 +258,54 @@ class EnhancedKellyCalculator:
             ...     current_atr=0.0012,
             ...     average_atr=0.0010,
             ...     stop_loss_pips=20.0,
-            ...     pip_value=10.0
+            ...     pip_value=10.0,
+            ...     commission_per_lot=7.0,
+            ...     spread_pips=0.1,
+            ...     broker_id="icmarkets_raw",
+            ...     symbol="XAUUSD"
             ... )
             >>> print(f"Position: {result.position_size} lots at {result.kelly_f:.1%} risk")
         """
         adjustments = []
+
+        # Step 0: Broker Auto-Lookup for fee parameters
+        if broker_id is not None and symbol is not None:
+            try:
+                from src.router.broker_registry import BrokerRegistryManager
+                broker_mgr = BrokerRegistryManager()
+
+                # Auto-fetch pip_value from broker registry (overrides passed value)
+                pip_value = broker_mgr.get_pip_value(symbol, broker_id)
+                adjustments.append(f"Auto-lookup: pip_value={pip_value} from {broker_id}")
+
+                # Auto-fetch commission if not explicitly provided
+                if commission_per_lot == 0.0:
+                    commission_per_lot = broker_mgr.get_commission(broker_id)
+                    adjustments.append(f"Auto-lookup: commission=${commission_per_lot}/lot from {broker_id}")
+
+                # Auto-fetch spread if not explicitly provided
+                if spread_pips == 0.0:
+                    spread_pips = broker_mgr.get_spread(broker_id)
+                    adjustments.append(f"Auto-lookup: spread={spread_pips} pips from {broker_id}")
+
+                logger.info(
+                    "Broker auto-lookup complete",
+                    extra={
+                        "broker_id": broker_id,
+                        "symbol": symbol,
+                        "pip_value": pip_value,
+                        "commission_per_lot": commission_per_lot,
+                        "spread_pips": spread_pips
+                    }
+                )
+            except Exception as e:
+                # Gracefully degrade when database is unavailable or any error occurs
+                # Continue using passed/default pip_value, commission_per_lot, and spread_pips
+                logger.warning(
+                    f"Broker auto-lookup failed for broker_id={broker_id}, symbol={symbol}: {e}. "
+                    f"Using provided/default values: pip_value={pip_value}, "
+                    f"commission_per_lot={commission_per_lot}, spread_pips={spread_pips}"
+                )
 
         # Step 1: Input Validation
         self._validate_inputs(win_rate, avg_win, avg_loss, stop_loss_pips, average_atr)
@@ -259,10 +314,50 @@ class EnhancedKellyCalculator:
         risk_reward_ratio = avg_win / avg_loss
         adjustments.append(f"R:R ratio = {risk_reward_ratio:.2f}")
 
+        # Step 2.5: Fee-Adjusted Returns Calculation
+        # Calculate total fee per lot: commission + (spread * pip_value)
+        fee_per_lot = commission_per_lot + (spread_pips * pip_value)
+        adjustments.append(f"Fee per lot = ${fee_per_lot:.2f} (comm: ${commission_per_lot}, spread: {spread_pips} pips × ${pip_value})")
+
+        # Adjust average win and loss with fees
+        # Win is reduced by fees paid on entry and exit
+        avg_win_net = avg_win - fee_per_lot
+        # Loss is increased by fees paid (losses still incur fees)
+        avg_loss_net = avg_loss + fee_per_lot
+        adjustments.append(f"Net avg_win = ${avg_win_net:.2f}, Net avg_loss = ${avg_loss_net:.2f}")
+
+        # Recalculate risk-reward ratio using net values
+        if avg_loss_net > 0:
+            risk_reward_ratio = avg_win_net / avg_loss_net
+            adjustments.append(f"Fee-adjusted R:R = {risk_reward_ratio:.2f}")
+        else:
+            adjustments.append("WARNING: avg_loss_net is zero or negative, using original ratio")
+
         # Step 3: Calculate Base Kelly Formula
         # f = ((B + 1) × P - 1) / B
         base_kelly_f = ((risk_reward_ratio + 1) * win_rate - 1) / risk_reward_ratio
         adjustments.append(f"Base Kelly = {base_kelly_f:.4f} ({base_kelly_f*100:.2f}%)")
+
+        # Step 3.5: Fee Kill Switch
+        # If fees exceed expected win, block the trade
+        if fee_per_lot >= avg_win:
+            logger.warning(
+                "FEE KILL SWITCH ACTIVATED",
+                extra={
+                    "fee_per_lot": fee_per_lot,
+                    "avg_win": avg_win,
+                    "symbol": symbol,
+                    "broker_id": broker_id
+                }
+            )
+            return KellyResult(
+                position_size=0.0,
+                kelly_f=0.0,
+                base_kelly_f=base_kelly_f,
+                risk_amount=0.0,
+                adjustments_applied=adjustments + ["FEE KILL SWITCH - Fees exceed expected profit"],
+                status='fee_blocked'
+            )
 
         # Handle negative or zero expectancy - always return zero position
         if base_kelly_f <= 0:

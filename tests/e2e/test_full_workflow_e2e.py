@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch, call
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+@pytest.mark.timeout(30)
 async def test_full_workflow_trd_to_deployment(
     quant_code_agent,
     sample_trd,

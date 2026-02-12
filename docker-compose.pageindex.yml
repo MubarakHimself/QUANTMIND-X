@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  # PageIndex for Articles
+  pageindex-articles:
+    build:
+      context: .
+      dockerfile: docker/pageindex/Dockerfile.articles
+    container_name: quantmind-pageindex-articles
+    volumes:
+      - ./data/scraped_articles:/data/articles:ro
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    networks:
+      - quantmind-network
+
+  # PageIndex for Books/PDFs
+  pageindex-books:
+    build:
+      context: .
+      dockerfile: docker/pageindex/Dockerfile.books
+    container_name: quantmind-pageindex-books
+    volumes:
+      - ./data/knowledge_base/books:/data/books:ro
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+    networks:
+      - quantmind-network
+
+  # PageIndex for Trading Logs
+  pageindex-logs:
+    build:
+      context: .
+      dockerfile: docker/pageindex/Dockerfile.logs
+    container_name: quantmind-pageindex-logs
+    volumes:
+      - ./data/logs:/data/logs:ro
+    ports:
+      - "3002:3002"
+    restart: unless-stopped
+    networks:
+      - quantmind-network
+
+networks:
+  quantmind-network:
+    driver: bridge

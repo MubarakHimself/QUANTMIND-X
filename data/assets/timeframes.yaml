@@ -1,0 +1,120 @@
+# MT5 Timeframe Constants
+# Reference: https://www.mql5.com/en/docs/constants/chartconstants/enum_timeframes
+
+timeframes:
+  # Standard Timeframes
+  M1:
+    name: "1 Minute"
+    constant: "PERIOD_M1"
+    value: 1
+    description: "1-minute chart"
+    typical_usage: "Scalping, high-frequency trading"
+  
+  M5:
+    name: "5 Minutes"
+    constant: "PERIOD_M5"
+    value: 5
+    description: "5-minute chart"
+    typical_usage: "Intraday trading, short-term analysis"
+  
+  M15:
+    name: "15 Minutes"
+    constant: "PERIOD_M15"
+    value: 15
+    description: "15-minute chart"
+    typical_usage: "Intraday trading, swing trading"
+  
+  M30:
+    name: "30 Minutes"
+    constant: "PERIOD_M30"
+    value: 30
+    description: "30-minute chart"
+    typical_usage: "Swing trading, medium-term analysis"
+  
+  H1:
+    name: "1 Hour"
+    constant: "PERIOD_H1"
+    value: 60
+    description: "1-hour chart"
+    typical_usage: "Day trading, swing trading"
+  
+  H4:
+    name: "4 Hours"
+    constant: "PERIOD_H4"
+    value: 240
+    description: "4-hour chart"
+    typical_usage: "Position trading, long-term analysis"
+  
+  D1:
+    name: "Daily"
+    constant: "PERIOD_D1"
+    value: 1440
+    description: "Daily chart"
+    typical_usage: "Position trading, long-term investing"
+  
+  W1:
+    name: "Weekly"
+    constant: "PERIOD_W1"
+    value: 10080
+    description: "Weekly chart"
+    typical_usage: "Long-term investing, macro analysis"
+  
+  MN1:
+    name: "Monthly"
+    constant: "PERIOD_MN1"
+    value: 43200
+    description: "Monthly chart"
+    typical_usage: "Long-term investing, fundamental analysis"
+
+# Multi-timeframe Analysis Configurations
+multi_timeframe_sets:
+  intraday:
+    name: "Intraday Analysis"
+    timeframes: ["M5", "M15", "M30", "H1"]
+    primary: "H1"
+    confirmation: ["M15", "M30"]
+    filter: "M5"
+  
+  swing_trading:
+    name: "Swing Trading"
+    timeframes: ["H1", "H4", "D1"]
+    primary: "H4"
+    confirmation: "D1"
+    filter: "H1"
+  
+  position_trading:
+    name: "Position Trading"
+    timeframes: ["H4", "D1", "W1"]
+    primary: "D1"
+    confirmation: "W1"
+    filter: "H4"
+
+# Timeframe Conversion Utilities
+conversion_factors:
+  minutes_to_seconds: 60
+  hours_to_minutes: 60
+  days_to_hours: 24
+  weeks_to_days: 7
+  months_to_days: 30.44  # Average days per month
+
+# Strategy Timeframe Recommendations
+strategy_recommendations:
+  scalping:
+    recommended_timeframes: ["M1", "M5"]
+    max_timeframe: "M15"
+    reasoning: "High-frequency strategies require fast timeframes for quick entry/exit"
+  
+  day_trading:
+    recommended_timeframes: ["M5", "M15", "M30", "H1"]
+    max_timeframe: "H1"
+    reasoning: "Day traders need intraday timeframes to capture daily movements"
+  
+  swing_trading:
+    recommended_timeframes: ["H1", "H4", "D1"]
+    max_timeframe: "D1"
+    reasoning: "Swing traders hold positions for several days, requiring daily analysis"
+  
+  position_trading:
+    recommended_timeframes: ["D1", "W1", "MN1"]
+    max_timeframe: "W1"
+    reasoning: "Long-term positions benefit from weekly and monthly trend analysis"

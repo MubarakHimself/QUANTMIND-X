@@ -23,6 +23,7 @@ from typing import List, Dict
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
+@pytest.mark.timeout(30)
 async def test_deploy_paper_agent_creates_container(
     quant_code_agent,
     deployment_config,

@@ -1,0 +1,23 @@
+# Parent Python directories
+../venv
+../.venv
+../src
+../tests
+../data
+../scripts
+../docker
+../docs
+../quantmind-ide-desktop
+
+# Local directories
+venv
+.venv
+node_modules
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.coverage
+dist
+build
+.svelte-kit

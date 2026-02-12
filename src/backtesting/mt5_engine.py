@@ -356,7 +356,8 @@ class PythonStrategyTester:
         slippage: float = 0.0,
         mt5_login: Optional[int] = None,
         mt5_password: Optional[str] = None,
-        mt5_server: Optional[str] = None
+        mt5_server: Optional[str] = None,
+        is_spiced_mode: bool = False
     ):
         """Initialize the strategy tester.
 
@@ -367,6 +368,7 @@ class PythonStrategyTester:
             mt5_login: MT5 terminal login (for live data)
             mt5_password: MT5 terminal password
             mt5_server: MT5 server name
+            is_spiced_mode: Enable spiced mode with regime filtering
         """
         self.initial_cash = initial_cash
         self.commission = commission
@@ -398,6 +400,11 @@ class PythonStrategyTester:
 
         # Strategy function
         self._strategy_func: Optional[Callable] = None
+
+        # Sentinel integration for regime detection (Task Group 4)
+        self._sentinel: Optional[Any] = None
+        self._is_spiced_mode: bool = is_spiced_mode
+        self._regime_history: List[Dict[str, Any]] = []  # Track regime changes
 
         # Set as default tester for module-level functions
         global _default_tester
@@ -563,6 +570,110 @@ class PythonStrategyTester:
         return self._mql5_funcs.iVolume(symbol, timeframe, shift)
 
     # -------------------------------------------------------------------------
+    # Sentinel Integration (Task Group 4)
+    # -------------------------------------------------------------------------
+
+    def _should_filter_trade(self) -> bool:
+        """Check if trade should be filtered based on current regime.
+
+        Returns:
+            True if trade should be filtered (skipped), False otherwise.
+        """
+        if not self._is_spiced_mode or self._sentinel is None:
+            return False
+
+        # Get latest regime report
+        if self._regime_history:
+            latest_report = self._regime_history[-1]
+            regime = latest_report.get('regime')
+            chaos_score = latest_report.get('chaos_score', 0.0)
+
+            # Filter based on regime
+            if regime in ('HIGH_CHAOS', 'NEWS_EVENT'):
+                return True
+
+            # Filter based on chaos score threshold
+            if chaos_score > 0.6:
+                return True
+
+        return False
+
+    def _get_regime_quality(self) -> float:
+        """Get current regime quality scalar for position sizing.
+
+        Returns:
+            Regime quality (0.0 to 1.0), or 1.0 if no sentinel.
+        """
+        if not self._is_spiced_mode or self._sentinel is None:
+            return 1.0
+
+        if self._regime_history:
+            latest_report = self._regime_history[-1]
+            return latest_report.get('regime_quality', 1.0)
+
+        return 1.0
+
+    def _update_regime_state(self) -> None:
+        """Update regime state by calling sentinel and tracking history.
+
+        Called for each bar during backtest to update regime detection.
+        """
+        if self._sentinel is None:
+            return
+
+        try:
+            # Get current price data for sentinel
+            if self.symbol and self.symbol in self._data_cache:
+                current_data = self._data_cache[self.symbol]
+                if self.current_bar < len(current_data):
+                    bar = current_data.iloc[self.current_bar]
+
+                    # Call sentinel's on_tick with symbol and price
+                    report = self._sentinel.on_tick(
+                        symbol=self.symbol,
+                        price=bar['close']
+                    )
+
+                    # Store regime report
+                    regime_data = {
+                        'bar': self.current_bar,
+                        'timestamp': bar['time'],
+                        'regime': getattr(report, 'regime', 'UNKNOWN'),
+                        'chaos_score': getattr(report, 'chaos_score', 0.0),
+                        'regime_quality': getattr(report, 'regime_quality', 1.0),
+                        'susceptibility': getattr(report, 'susceptibility', 0.0),
+                        'is_systemic_risk': getattr(report, 'is_systemic_risk', False),
+                        'news_state': getattr(report, 'news_state', 'UNKNOWN')
+                    }
+
+                    # Check for regime transition
+                    if self._regime_history:
+                        prev_regime = self._regime_history[-1]['regime']
+                        if prev_regime != regime_data['regime']:
+                            self._log_regime_transition(prev_regime, regime_data['regime'], regime_data)
+
+                    self._regime_history.append(regime_data)
+
+        except Exception as e:
+            self._log(f"Sentinel error at bar {self.current_bar}: {e}")
+
+    def _log_regime_transition(self, old_regime: str, new_regime: str, regime_data: Dict[str, Any]) -> None:
+        """Log regime transition for tracking and analysis.
+
+        Args:
+            old_regime: Previous regime name
+            new_regime: New regime name
+            regime_data: Full regime data dictionary
+        """
+        transition_log = (
+            f"Regime transition at bar {self.current_bar}: "
+            f"{old_regime} -> {new_regime} "
+            f"(chaos={regime_data.get('chaos_score', 0):.2f}, "
+            f"quality={regime_data.get('regime_quality', 1.0):.2f})"
+        )
+        self._log(transition_log)
+
+    # -------------------------------------------------------------------------
     # Trading Operations
     # -------------------------------------------------------------------------
 
@@ -576,7 +687,20 @@ class PythonStrategyTester:
 
         Returns:
             Position ticket or None
+
+        Note:
+            In spiced mode, trades may be filtered based on regime detection.
         """
+        # Task Group 4: Check if trade should be filtered based on regime
+        if self._should_filter_trade():
+            if self._regime_history:
+                latest = self._regime_history[-1]
+                self._log(
+                    f"Trade FILTERED by Sentinel: regime={latest.get('regime')}, "
+                    f"chaos_score={latest.get('chaos_score', 0):.2f}"
+                )
+            return None
+
         if price is None:
             price = self.iClose(symbol, self.timeframe, 0)
             if price is None:
@@ -764,6 +888,9 @@ class PythonStrategyTester:
             for self.current_bar in range(len(prepared_data)):
                 # Update equity
                 self._update_equity()
+
+                # Update regime state (Task Group 4: Sentinel integration)
+                self._update_regime_state()
 
                 # Call strategy function
                 try:

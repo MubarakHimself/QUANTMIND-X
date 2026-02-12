@@ -1,0 +1,42 @@
+{
+    "mcpServers": {
+        "pageindex-articles": {
+            "command": "docker",
+            "args": [
+                "exec",
+                "-i",
+                "quantmind-pageindex-articles",
+                "mcp-server"
+            ],
+            "description": "PageIndex MCP for articles only"
+        },
+        "pageindex-books": {
+            "command": "docker",
+            "args": [
+                "exec",
+                "-i",
+                "quantmind-pageindex-books",
+                "mcp-server"
+            ],
+            "description": "PageIndex MCP for books/PDFs"
+        },
+        "pageindex-logs": {
+            "command": "docker",
+            "args": [
+                "exec",
+                "-i",
+                "quantmind-pageindex-logs",
+                "mcp-server"
+            ],
+            "description": "PageIndex MCP for trading logs"
+        },
+        "context7": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@context7/mcp-server@latest"
+            ],
+            "description": "Context7 for MQL5/LangChain/LangGraph docs"
+        }
+    }
+}

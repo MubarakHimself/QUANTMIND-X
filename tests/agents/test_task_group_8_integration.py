@@ -49,6 +49,7 @@ class TestMCPClientConnection:
         )
 
     @pytest.mark.asyncio
+    @pytest.mark.timeout(30)
     async def test_connect_to_mcp_success(self, base_agent):
         """Test successful MCP server connection."""
         with patch('src.agents.core.base_agent.stdio_client') as mock_stdio:

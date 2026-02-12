@@ -1,0 +1,115 @@
+# QuantMindX V8 Broker Configuration
+#
+# This file defines all broker connections for the unified broker registry.
+# Supports MT5 (mock/socket), Binance Spot, and Binance Futures.
+#
+# **Validates: Task 25.17**
+
+brokers:
+  # ============================================================================
+  # MT5 Brokers (Mock for Development)
+  # ============================================================================
+  
+  exness_demo_mock:
+    type: mt5_mock
+    account_id: "DEMO_12345678"
+    server: "Exness-MT5Demo"
+    login: "12345678"
+    initial_balance: 10000.0
+    enabled: true
+    description: "Mock MT5 account for local development"
+  
+  # ============================================================================
+  # MT5 Brokers (Socket Bridge for VPS)
+  # ============================================================================
+  
+  exness_pro_01:
+    type: mt5_socket
+    vps_host: "${MT5_VPS_HOST}"  # Your VPS IP address
+    vps_port: 5555
+    account_id: "${MT5_ACCOUNT_ID}"
+    timeout: 5.0
+    max_retries: 3
+    enabled: false  # Enable when VPS is ready
+    description: "Production MT5 account via VPS socket bridge"
+  
+  exness_demo_02:
+    type: mt5_socket
+    vps_host: "localhost"  # For testing with local MT5
+    vps_port: 5555
+    account_id: "87654321"
+    timeout: 5.0
+    max_retries: 3
+    enabled: false
+    description: "Demo MT5 account via socket bridge"
+  
+  # ============================================================================
+  # Binance Spot
+  # ============================================================================
+  
+  binance_spot_main:
+    type: binance_spot
+    api_key: "${BINANCE_API_KEY}"
+    api_secret: "${BINANCE_API_SECRET}"
+    testnet: false
+    enabled: false  # Enable when ready to trade
+    description: "Binance Spot production account"
+  
+  binance_spot_testnet:
+    type: binance_spot
+    api_key: "${BINANCE_TESTNET_KEY}"
+    api_secret: "${BINANCE_TESTNET_SECRET}"
+    testnet: true
+    enabled: true  # Safe to enable for testing
+    description: "Binance Spot testnet account"
+  
+  # ============================================================================
+  # Binance Futures
+  # ============================================================================
+  
+  binance_futures_main:
+    type: binance_futures
+    api_key: "${BINANCE_API_KEY}"
+    api_secret: "${BINANCE_API_SECRET}"
+    testnet: false
+    enabled: false  # Enable when ready to trade
+    description: "Binance Futures production account"
+  
+  binance_futures_testnet:
+    type: binance_futures
+    api_key: "${BINANCE_TESTNET_KEY}"
+    api_secret: "${BINANCE_TESTNET_SECRET}"
+    testnet: true
+    enabled: false
+    description: "Binance Futures testnet account"
+
+# ============================================================================
+# Configuration Notes
+# ============================================================================
+#
+# Environment Variables:
+# - ${VAR_NAME} syntax will be replaced with environment variable values
+# - Set these in your .env file or system environment
+#
+# Broker Types:
+# - mt5_mock: Mock MT5 for development (no VPS needed)
+# - mt5_socket: Real MT5 via socket bridge (requires VPS)
+# - mt5: Alias for mt5_socket
+# - binance_spot: Binance Spot trading
+# - binance_futures: Binance Futures trading
+#
+# Enabled Flag:
+# - true: Broker will be registered on startup
+# - false: Broker available but not auto-registered
+#
+# VPS Setup (for mt5_socket):
+# 1. Install Windows on VPS
+# 2. Install MT5 terminal
+# 3. Deploy EAs with Socket Client (from Task Group 23)
+# 4. Update vps_host with your VPS IP
+# 5. Set enabled: true
+#
+# Migration Path:
+# 1. Development: Use mt5_mock (enabled: true)
+# 2. Testing: Use binance_spot_testnet (enabled: true)
+# 3. Production: Switch to mt5_socket and binance_spot_main (enabled: true)

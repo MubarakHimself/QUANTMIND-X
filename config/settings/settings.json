@@ -1,0 +1,56 @@
+{
+  "general": {
+    "theme": "light",
+    "language": "en",
+    "timezone": "Africa/Kampala",
+    "autoSave": true,
+    "autoSaveInterval": 30,
+    "debugMode": false,
+    "logLevel": "info"
+  },
+  "apiKeys": [],
+  "mcpServers": [
+    {
+      "id": "context7",
+      "name": "Context7",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@context7/mcp-server"
+      ],
+      "status": "stopped",
+      "type": "builtin",
+      "description": "Documentation lookup for LangChain, LangGraph, and libraries"
+    }
+  ],
+  "agents": {
+    "defaultModel": "claude-sonnet-4",
+    "temperature": 0.7,
+    "maxTokens": 4096,
+    "enableMemory": true,
+    "memoryType": "hybrid",
+    "skillsEnabled": true,
+    "autoDelegate": false
+  },
+  "risk": {
+    "houseMoneyEnabled": true,
+    "houseMoneyThreshold": 0.5,
+    "dailyLossLimit": 5.0,
+    "maxDrawdown": 10.0,
+    "riskMode": "dynamic",
+    "balanceZones": {
+      "danger": 200,
+      "growth": 1000,
+      "scaling": 5000,
+      "guardian": 999999999
+    }
+  },
+  "database": {
+    "sqlitePath": "./data/quantmind.db",
+    "duckdbPath": "./data/analytics.duckdb",
+    "autoBackup": true,
+    "backupInterval": 3600,
+    "maxBackups": 10
+  },
+  "skills": []
+}

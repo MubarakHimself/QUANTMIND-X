@@ -33,6 +33,7 @@ class TestCommandParser:
         parser = CommandParser()
 
         # Register a simple command
+        @pytest.mark.timeout(30)
         async def test_handler(args: str) -> str:
             return f"Test executed: {args}"
 
