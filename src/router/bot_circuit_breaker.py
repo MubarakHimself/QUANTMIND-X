@@ -36,15 +36,24 @@ class BotCircuitBreakerManager:
     MAX_CONSECUTIVE_LOSSES = 5
     DEFAULT_DAILY_TRADE_LIMIT = 20
 
-    def __init__(self, db_manager: Optional[DBManager] = None):
+    def __init__(self, db_manager: Optional[DBManager] = None, account_id: Optional[str] = None, account_balance: Optional[float] = None):
         """
         Initialize BotCircuitBreaker manager.
 
         Args:
             db_manager: Optional DBManager instance (creates instance if not provided)
+            account_id: Real account identifier for fee tracking
+            account_balance: Current account balance for fee calculations
         """
         self.db = db_manager or DBManager()
-        self.fee_monitor = FeeMonitor(account_id="quantmindx_default", db_manager=self.db)
+        # Use provided account_id and balance, or fall back to defaults
+        self.account_id = account_id or "quantmindx_default"
+        self.account_balance = account_balance or 1000.0
+        self.fee_monitor = FeeMonitor(
+            account_id=self.account_id,
+            db_manager=self.db,
+            account_balance=self.account_balance
+        )
 
     def get_or_create_state(self, bot_id: str) -> BotCircuitBreaker:
         """
@@ -368,3 +377,57 @@ class BotCircuitBreakerManager:
         # Store custom limit in bot_id metadata or separate config
         logger.info(f"Custom trade limit set for {bot_id}: {limit} trades/day")
         # Implementation would extend schema to store custom limits
+    
+    def update_account_balance(self, new_balance: float) -> None:
+        """
+        Update the account balance used for fee calculations.
+        
+        Args:
+            new_balance: New account balance
+        """
+        self.account_balance = new_balance
+        self.fee_monitor.account_balance = new_balance
+        logger.info(f"Updated account balance to ${new_balance:.2f} for fee monitoring")
+    
+    def update_account_id(self, new_account_id: str) -> None:
+        """
+        Update the account ID used for fee tracking.
+        
+        Args:
+            new_account_id: New account identifier
+        """
+        self.account_id = new_account_id
+        # Create new fee monitor with updated account ID
+        self.fee_monitor = FeeMonitor(
+            account_id=self.account_id,
+            db_manager=self.db,
+            account_balance=self.account_balance
+        )
+        logger.info(f"Updated account ID to {new_account_id} for fee monitoring")
+    
+    def update_account_balance(self, new_balance: float) -> None:
+        """
+        Update the account balance used for fee calculations.
+        
+        Args:
+            new_balance: New account balance
+        """
+        self.account_balance = new_balance
+        self.fee_monitor.account_balance = new_balance
+        logger.info(f"Updated account balance to ${new_balance:.2f} for fee monitoring")
+    
+    def update_account_id(self, new_account_id: str) -> None:
+        """
+        Update the account ID used for fee tracking.
+        
+        Args:
+            new_account_id: New account identifier
+        """
+        self.account_id = new_account_id
+        # Create new fee monitor with updated account ID
+        self.fee_monitor = FeeMonitor(
+            account_id=self.account_id,
+            db_manager=self.db,
+            account_balance=self.account_balance
+        )
+        logger.info(f"Updated account ID to {new_account_id} for fee monitoring")

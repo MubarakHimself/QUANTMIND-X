@@ -536,6 +536,7 @@ class Commander:
         self,
         primary_regime_report: "RegimeReport",
         all_timeframe_regimes: Dict["Timeframe", "RegimeReport"],
+        primary_timeframe: Optional["Timeframe"] = None,
         account_balance: Optional[float] = None,
         broker_id: str = "mt5_default",
         current_utc: Optional[datetime] = None
@@ -555,6 +556,8 @@ class Commander:
         Args:
             primary_regime_report: Primary regime report (fastest timeframe)
             all_timeframe_regimes: Dict of timeframe -> regime report for all timeframes
+            primary_timeframe: The actual primary timeframe being used (e.g., fastest).
+                             If None, derived from all_timeframe_regimes keys.
             account_balance: Account balance for position sizing
             broker_id: Broker identifier for fee-aware Kelly
             current_utc: UTC timestamp for session-aware filtering
@@ -570,11 +573,18 @@ class Commander:
         elif current_utc.tzinfo != timezone.utc:
             current_utc = current_utc.astimezone(timezone.utc)
 
+        # Comment 1 fix: Derive primary_timeframe if not provided
+        # Use the fastest timeframe (smallest interval) as primary if not specified
+        if primary_timeframe is None and all_timeframe_regimes:
+            sorted_timeframes = sorted(all_timeframe_regimes.keys(), key=lambda tf: tf.seconds)
+            primary_timeframe = sorted_timeframes[0]
+        
         # Detect current session
         current_session = SessionDetector.detect_session(current_utc)
         logger.info(
             f"Running multi-timeframe auction for session: {current_session.value}, "
-            f"UTC time: {current_utc.isoformat()}, timeframes: {[tf.name for tf in all_timeframe_regimes.keys()]}"
+            f"UTC time: {current_utc.isoformat()}, timeframes: {[tf.name for tf in all_timeframe_regimes.keys()]}, "
+            f"primary_timeframe: {primary_timeframe.name if primary_timeframe else 'None'}"
         )
 
         # Get all eligible bots
@@ -662,11 +672,31 @@ class Commander:
                 'risk_mode': mandate.risk_mode
             })
             
+            # Comment 1 fix: Use actual primary_timeframe instead of hardcoded 'M5'
+            # Comment 3 fix: Add top-level timeframe and multi_timeframe_aligned fields
+            bot_preferred_tf = bot.get('preferred_timeframe')
+            actual_timeframe = bot_preferred_tf if bot_preferred_tf else (primary_timeframe.name if primary_timeframe else 'H1')
+            
+            # Determine multi_timeframe_alignment for multi-timeframe bots
+            use_mtf = bot.get('use_multi_timeframe', False)
+            multi_timeframe_aligned = False
+            if use_mtf and bot.get('secondary_timeframes'):
+                multi_timeframe_aligned = self._check_secondary_timeframes_alignment(
+                    bot.get('secondary_timeframes'),
+                    all_timeframe_regimes
+                )
+            
+            # Add top-level timeframe field (Comment 3)
+            dispatch['timeframe'] = actual_timeframe
+            
+            # Add multi_timeframe_aligned field (Comment 3)
+            dispatch['multi_timeframe_aligned'] = multi_timeframe_aligned
+            
             # Add timeframe context to dispatch (Comment 1: ensure dispatch payloads include timeframe context)
             dispatch['timeframe_context'] = {
-                'primary_timeframe': 'M5',  # Default, will be overridden by bot's preferred
-                'preferred_timeframe': bot.get('preferred_timeframe', 'H1'),
-                'use_multi_timeframe': bot.get('use_multi_timeframe', False),
+                'primary_timeframe': primary_timeframe.name if primary_timeframe else 'H1',
+                'preferred_timeframe': bot_preferred_tf if bot_preferred_tf else 'H1',
+                'use_multi_timeframe': use_mtf,
                 'secondary_timeframes': bot.get('secondary_timeframes', []),
                 'all_regimes': {tf.name: r.regime for tf, r in all_timeframe_regimes.items()}
             }
@@ -684,8 +714,10 @@ class Commander:
         """
         Filter bots based on their preferred_timeframe and secondary_timeframes alignment.
         
-        Comment 1: Select bots by preferred_timeframe and enforce secondary_timeframes alignment
-        when use_multi_timeframe is true.
+        Comment 2: When a bot has preferred_timeframe set but that timeframe is absent
+        from all_timeframe_regimes, skip the bot (or explicitly wait) instead of accepting it.
+        Only include bots when their preferred timeframe has a regime report and passes
+        chaos/extreme checks.
         
         Args:
             bots: List of eligible bot dicts
@@ -713,9 +745,17 @@ class Commander:
                     from src.router.multi_timeframe_sentinel import Timeframe
                     preferred_tf = Timeframe[preferred_tf]
                 except KeyError:
-                    logger.warning(f"Unknown timeframe: {preferred_tf}, including bot")
-                    filtered.append(bot)
+                    logger.warning(f"Unknown timeframe: {preferred_tf}, skipping bot")
                     continue
+            
+            # Comment 2 fix: Skip bot if preferred_timeframe is NOT in all_timeframe_regimes
+            # This ensures bots only dispatch when their preferred timeframe has a regime report
+            if preferred_tf not in all_timeframe_regimes:
+                logger.debug(
+                    f"Bot {bot.get('bot_id')} skipped: preferred timeframe {preferred_tf.name} "
+                    f"not in available timeframes {list(all_timeframe_regimes.keys())}"
+                )
+                continue
             
             # Check if preferred timeframe's regime is suitable
             if preferred_tf in all_timeframe_regimes:
