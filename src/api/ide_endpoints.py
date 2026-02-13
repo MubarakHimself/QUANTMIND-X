@@ -1108,6 +1108,7 @@ def create_ide_api_app():
         initial_cash: Optional[float] = Field(10000.0, description="Initial account balance")
         commission: Optional[float] = Field(0.001, description="Commission per trade")
         broker_id: Optional[str] = Field("icmarkets_raw", description="Broker ID for fee-aware Kelly")
+        enable_ws_streaming: Optional[bool] = Field(True, description="Enable WebSocket streaming for real-time updates")
 
     @app.post("/api/v1/backtest/run")
     async def run_backtest(request: BacktestRunRequest):
@@ -1211,32 +1212,47 @@ def on_bar(tester):
             "created_at": datetime.now().isoformat()
         }
 
-        # Setup WebSocket logging for progress updates
-        ws_logger, progress_streamer = setup_backtest_logging(backtest_id)
+        # Get the running event loop for thread-safe WebSocket broadcasts (Comment 1)
+        loop = asyncio.get_running_loop()
+        
+        # Only setup WebSocket logging if enable_ws_streaming is True (Comment 2 fix)
+        if request.enable_ws_streaming:
+            # Single shared streamer (passed to tester - no duplicates)
+            ws_logger, progress_streamer = setup_backtest_logging(backtest_id, loop=loop)
+        else:
+            ws_logger = None
+            progress_streamer = None
 
-        # Run backtest in background task
         async def run_backtest_task():
             try:
-                result = run_full_system_backtest(
-                    mode=request.variant,
-                    data=data,
-                    symbol=request.symbol,
-                    timeframe=timeframe_int,
-                    strategy_code=request.strategy_code or "",
-                    initial_cash=request.initial_cash if request.initial_cash is not None else 10000.0,
-                    commission=request.commission if request.commission is not None else 0.001,
-                    broker_id=request.broker_id if request.broker_id is not None else "icmarkets_raw"
+                # Offload sync CPU-heavy backtest to thread pool (unblocks event loop)
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: run_full_system_backtest(
+                        mode=request.variant,
+                        data=data,
+                        symbol=request.symbol,
+                        timeframe=timeframe_int,
+                        strategy_code=request.strategy_code or "",
+                        initial_cash=request.initial_cash if request.initial_cash is not None else 10000.0,
+                        commission=request.commission if request.commission is not None else 0.001,
+                        broker_id=request.broker_id if request.broker_id is not None else "icmarkets_raw",
+                        backtest_id=backtest_id,
+                        progress_streamer=progress_streamer,  # Only set if enable_ws_streaming is True
+                        ws_logger=ws_logger,  # Comment 2: Pass ws_logger for log_entry streaming
+                        enable_ws_streaming=request.enable_ws_streaming or False,  # Pass the flag to control streaming (ensure bool)
+                        loop=loop  # Pass FastAPI event loop for thread-safe WS broadcasts (Comment 1)
+                    )
                 )
 
-                # Handle result based on type (Dict vs object)
+                # Handle result
                 if isinstance(result, dict):
-                    # Multi-symbol result: use first symbol's result
                     first_key = next(iter(result))
                     backtest_result = result[first_key]
                 else:
                     backtest_result = result
 
-                # Store results
+                # Store results (tester broadcasts complete via shared streamer)
                 _backtest_results[backtest_id] = {
                     "backtest_id": backtest_id,
                     "final_balance": backtest_result.final_cash,
@@ -1249,25 +1265,8 @@ def on_bar(tester):
                     "results": backtest_result.to_dict() if hasattr(backtest_result, 'to_dict') else {}
                 }
 
-                # Update session status
                 _backtest_sessions[backtest_id]["status"] = "completed"
                 _backtest_sessions[backtest_id]["completed_at"] = datetime.now().isoformat()
-
-                # Broadcast completion
-                if progress_streamer:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        asyncio.create_task(
-                            progress_streamer.complete(
-                                final_balance=backtest_result.final_cash,
-                                total_trades=backtest_result.trades,
-                                win_rate=getattr(backtest_result, 'win_rate', None),
-                                sharpe_ratio=backtest_result.sharpe,
-                                drawdown=backtest_result.drawdown,
-                                return_pct=backtest_result.return_pct,
-                                results=backtest_result.to_dict() if hasattr(backtest_result, 'to_dict') else {}
-                            )
-                        )
 
                 logger.info(f"Backtest {backtest_id} completed")
 
@@ -1275,13 +1274,8 @@ def on_bar(tester):
                 logger.error(f"Backtest {backtest_id} failed: {e}")
                 _backtest_sessions[backtest_id]["status"] = "error"
                 _backtest_sessions[backtest_id]["error"] = str(e)
+                # Tester handles error broadcast via shared streamer
 
-                if progress_streamer:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        asyncio.create_task(progress_streamer.error(str(e)))
-
-        # Start background task
         asyncio.create_task(run_backtest_task())
 
         return {
@@ -1328,6 +1322,103 @@ def on_bar(tester):
                 raise HTTPException(404, f"Results not found for backtest {backtest_id}")
 
         return results
+
+    # -------------------------------------------------------------------------
+    # Multi-Timeframe Regime Endpoints (Comment 4)
+    # -------------------------------------------------------------------------
+
+    # Module-level storage for shared MultiTimeframeSentinel instance
+    _mtf_sentinel_instance = {}
+
+    def _get_multi_timeframe_sentinel():
+        """Get or create the shared MultiTimeframeSentinel instance."""
+        sentinel_key = "sentinel"
+        if sentinel_key not in _mtf_sentinel_instance:
+            try:
+                from src.router.multi_timeframe_sentinel import MultiTimeframeSentinel, Timeframe
+                _mtf_sentinel_instance[sentinel_key] = MultiTimeframeSentinel(timeframes=[Timeframe.M5, Timeframe.H1, Timeframe.H4])
+            except Exception as e:
+                logger.warning(f"Could not create MultiTimeframeSentinel: {e}")
+                _mtf_sentinel_instance[sentinel_key] = None
+        return _mtf_sentinel_instance.get(sentinel_key)
+
+    @app.get("/api/trading/timeframes/regimes")
+    async def get_all_timeframe_regimes():
+        """
+        Get all timeframe regimes from the MultiTimeframeSentinel.
+        
+        Returns dictionary of timeframe -> regime report for all tracked timeframes.
+        """
+        sentinel = _get_multi_timeframe_sentinel()
+        if sentinel is None:
+            raise HTTPException(503, "Multi-timeframe sentinel not available")
+        
+        all_regimes = sentinel.get_all_regimes()
+        return {
+            "regimes": {
+                tf.name: {
+                    "regime": report.regime,
+                    "chaos_score": report.chaos_score,
+                    "regime_quality": report.regime_quality,
+                    "susceptibility": report.susceptibility,
+                    "news_state": report.news_state,
+                }
+                for tf, report in all_regimes.items()
+            },
+            "dominant_regime": sentinel.get_dominant_regime()
+        }
+
+    @app.get("/api/trading/timeframes/dominant")
+    async def get_dominant_regime():
+        """
+        Get the dominant regime across all timeframes.
+        
+        Returns the dominant regime string using voting logic.
+        """
+        sentinel = _get_multi_timeframe_sentinel()
+        if sentinel is None:
+            raise HTTPException(503, "Multi-timeframe sentinel not available")
+        
+        return {
+            "dominant_regime": sentinel.get_dominant_regime()
+        }
+
+    @app.post("/api/trading/timeframes/tick")
+    async def process_timeframe_tick(request: dict):
+        """
+        Process a tick through the MultiTimeframeSentinel.
+        
+        Accepts symbol, price, and optional timestamp.
+        """
+        sentinel = _get_multi_timeframe_sentinel()
+        if sentinel is None:
+            raise HTTPException(503, "Multi-timeframe sentinel not available")
+        
+        symbol = request.get("symbol", "EURUSD")
+        price = request.get("price")
+        if price is None:
+            raise HTTPException(400, "price is required")
+        
+        from datetime import datetime, timezone
+        timestamp = request.get("timestamp")
+        if timestamp:
+            try:
+                timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            except ValueError:
+                timestamp = datetime.now(timezone.utc)
+        else:
+            timestamp = datetime.now(timezone.utc)
+        
+        # Process tick
+        updated_regimes = sentinel.on_tick(symbol, price, timestamp)
+        
+        return {
+            "symbol": symbol,
+            "price": price,
+            "timestamp": timestamp.isoformat(),
+            "updated_timeframes": [tf.name for tf in updated_regimes.keys()],
+            "dominant_regime": sentinel.get_dominant_regime()
+        }
 
     # -------------------------------------------------------------------------
     # Health Check

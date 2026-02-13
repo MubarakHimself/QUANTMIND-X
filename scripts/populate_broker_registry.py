@@ -193,8 +193,8 @@ def populate_mt5_default(dry_run: bool = False):
                     "EURUSD": 10.0,
                     "GBPUSD": 10.0,
                     "USDJPY": 9.09,
-                    "XAUUSD": 10.0,  # Default fallback value
-                    "XAGUSD": 10.0,  # Default fallback value
+                    "XAUUSD": 1.0,   # Gold: $1 per pip (matches EnhancedGovernor._get_pip_value)
+                    "XAGUSD": 50.0,  # Silver: $50 per pip (matches EnhancedGovernor._get_pip_value)
                 },
                 preference_tags=["STANDARD", "TESTING"]
             )
@@ -214,8 +214,8 @@ def populate_mt5_default(dry_run: bool = False):
                     "EURUSD": 10.0,
                     "GBPUSD": 10.0,
                     "USDJPY": 9.09,
-                    "XAUUSD": 10.0,  # Default fallback value
-                    "XAGUSD": 10.0,  # Default fallback value
+                    "XAUUSD": 1.0,   # Gold: $1 per pip (matches EnhancedGovernor._get_pip_value)
+                    "XAGUSD": 50.0,  # Silver: $50 per pip (matches EnhancedGovernor._get_pip_value)
                 },
                 preference_tags=["STANDARD", "TESTING"]
             )

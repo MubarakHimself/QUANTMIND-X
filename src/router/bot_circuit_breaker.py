@@ -11,8 +11,9 @@ import logging
 from typing import Optional, Tuple, List, Dict, Any
 from datetime import datetime, date, timezone
 
-from src.database.manager import DatabaseManager
+from src.database.db_manager import DBManager
 from src.database.models import BotCircuitBreaker
+from src.router.fee_monitor import FeeMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +36,15 @@ class BotCircuitBreakerManager:
     MAX_CONSECUTIVE_LOSSES = 5
     DEFAULT_DAILY_TRADE_LIMIT = 20
 
-    def __init__(self, db_manager: Optional[DatabaseManager] = None):
+    def __init__(self, db_manager: Optional[DBManager] = None):
         """
         Initialize BotCircuitBreaker manager.
 
         Args:
-            db_manager: Optional DatabaseManager instance (creates singleton if not provided)
+            db_manager: Optional DBManager instance (creates instance if not provided)
         """
-        self.db = db_manager or DatabaseManager()
+        self.db = db_manager or DBManager()
+        self.fee_monitor = FeeMonitor(account_id="quantmindx_default", db_manager=self.db)
 
     def get_or_create_state(self, bot_id: str) -> BotCircuitBreaker:
         """
@@ -104,6 +106,7 @@ class BotCircuitBreakerManager:
         self,
         bot_id: str,
         is_loss: bool,
+        fee: float = 0.0,
         trade_date: Optional[date] = None
     ) -> BotCircuitBreaker:
         """
@@ -116,6 +119,7 @@ class BotCircuitBreakerManager:
         Args:
             bot_id: Unique bot identifier
             is_loss: Whether the trade was a loss
+            fee: Fee for the trade (defaults to 0.0)
             trade_date: Date of the trade (defaults to today)
 
         Returns:
@@ -146,6 +150,15 @@ class BotCircuitBreakerManager:
             if state.consecutive_losses > 0:
                 logger.info(f"Win recorded: reset consecutive losses for {bot_id}")
             state.consecutive_losses = 0
+
+        # Record fee (Phase 3.2)
+        self.fee_monitor.record_trade_fee(bot_id, fee, trade_date)
+
+        # Check fee kill switch
+        should_halt, reason = self.fee_monitor.should_halt_trading()
+        if should_halt:
+            self.quarantine_bot(bot_id, reason=f"FEE_KILL_SWITCH: {reason}")
+            state.is_quarantined = True
 
         # Check quarantine triggers
         if state.consecutive_losses >= self.MAX_CONSECUTIVE_LOSSES:

@@ -67,6 +67,21 @@ export interface LogEntryMessage {
   logger_name?: string;
 }
 
+export interface TickDataMessage {
+  symbol: string;
+  bid: number;
+  ask: number;
+  spread: number;
+  timestamp: string;
+}
+
+export interface PaperTradingUpdateMessage {
+  agent_id: string;
+  status: string;
+  uptime_seconds?: number;
+  [key: string]: unknown;
+}
+
 export interface SubscriptionConfirmation {
   type: 'subscription_confirmed';
   topic: string;

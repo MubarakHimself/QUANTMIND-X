@@ -119,6 +119,65 @@ class TestCheckSessionActive:
 
         assert response.status_code == 400
 
+    def test_check_closed_session_when_market_closed(self, client):
+        """Test /check/CLOSED returns is_active=true when no trading sessions are active.
+        
+        This tests the special case where CLOSED should return true when
+        no other session is active (e.g., outside trading hours or on weekends).
+        """
+        # Mock time to be outside trading hours (20:00 UTC is outside all sessions)
+        with patch('src.router.sessions.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(2026, 2, 12, 20, 0, tzinfo=timezone.utc)
+
+            response = client.get("/api/sessions/check/CLOSED")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["session"] == "CLOSED"
+        # Outside trading hours, CLOSED should be active
+        assert data["is_active"] is True
+        assert "utc_time" in data
+
+    def test_check_closed_session_when_market_open(self, client):
+        """Test /check/CLOSED returns is_active=false when a trading session is active.
+        
+        During trading hours, CLOSED should return false because the market is open.
+        """
+        # Mock time to be during London session (10:00 UTC is during London)
+        with patch('src.api.session_endpoints.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(2026, 2, 12, 10, 0, tzinfo=timezone.utc)
+
+            response = client.get("/api/sessions/check/CLOSED")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["session"] == "CLOSED"
+        # During trading hours, CLOSED should be inactive
+        assert data["is_active"] is False
+        assert "utc_time" in data
+
+    def test_check_closed_session_weekend(self, client):
+        """Test /check/CLOSED returns is_active=true on weekends.
+        
+        On weekends (Saturday/Sunday), no trading sessions are active,
+        so CLOSED should return true.
+        """
+        # Mock time to be a Sunday
+        with patch('src.router.sessions.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(2026, 2, 15, 10, 0, tzinfo=timezone.utc)  # Sunday
+
+            response = client.get("/api/sessions/check/CLOSED")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["session"] == "CLOSED"
+        # On weekend, CLOSED should be active
+        assert data["is_active"] is True
+        assert "utc_time" in data
+
 
 class TestTimeWindowCheck:
     """Test GET /api/sessions/time-window endpoint."""

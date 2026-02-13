@@ -2,10 +2,10 @@
   import TopBar from '$lib/components/TopBar.svelte';
   import ActivityBar from '$lib/components/ActivityBar.svelte';
   import MainContent from '$lib/components/MainContent.svelte';
-  import AgentPanel from '$lib/components/AgentPanel.svelte';
+  import AgentPanel from '$lib/components/agent-panel/AgentPanel.svelte';
   import BottomPanel from '$lib/components/BottomPanel.svelte';
 
-  let activeView = 'ea';
+  let activeView = 'live';
   let agentPanelOpen = true;
   let openFiles: Array<{id: string, name: string, content?: string, type?: string}> = [];
   let activeTabId = '';

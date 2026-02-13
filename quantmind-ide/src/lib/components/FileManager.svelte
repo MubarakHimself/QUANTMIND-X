@@ -9,6 +9,7 @@
   import Pagination from './Pagination.svelte';
   import FileViewer from './FileViewer.svelte';
   import FileEditor from './FileEditor.svelte';
+  import { fileHistoryManager } from '../services/fileHistoryManager';
 
   const dispatch = createEventDispatcher();
 
@@ -339,7 +340,23 @@
 
   function handleSave(event: CustomEvent) {
     if (selectedFile && selectedFileContent) {
-      selectedFileContent = event.detail.content;
+      const previousContent = selectedFileContent;
+      const newContent = event.detail.content;
+      
+      // Record the operation in file history
+      if (newContent !== previousContent) {
+        fileHistoryManager.recordOperation(
+          selectedFile.id,
+          selectedFile.name,
+          selectedFile.path,
+          'copilot',
+          'modified',
+          newContent,
+          previousContent
+        );
+      }
+      
+      selectedFileContent = newContent;
       selectedFile.metadata = { ...selectedFile.metadata, content: selectedFileContent || undefined };
     }
   }

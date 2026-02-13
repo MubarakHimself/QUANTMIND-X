@@ -16,6 +16,8 @@ from datetime import datetime
 import json
 import logging
 
+from src.router.multi_timeframe_sentinel import Timeframe
+
 logger = logging.getLogger(__name__)
 
 
@@ -122,6 +124,74 @@ class PreferredConditions:
         )
 
 
+# Build a lookup table for Timeframe by name (e.g., "M15" -> Timeframe.M15)
+_TIMEFRAME_BY_NAME: Dict[str, Timeframe] = {tf.name: tf for tf in Timeframe}
+
+
+def _parse_timeframe(data: Any, key: str, default: Timeframe = Timeframe.H1) -> Timeframe:
+    """
+    Parse a Timeframe enum from dictionary data with backward compatibility.
+    
+    Handles cases where:
+    - Key exists and contains a valid Timeframe name
+    - Key exists but has invalid value (returns default)
+    - Key doesn't exist (returns default for backward compatibility)
+    """
+    if data is None:
+        return default
+    
+    value = data.get(key) if isinstance(data, dict) else None
+    if value is None:
+        return default
+    
+    try:
+        if isinstance(value, Timeframe):
+            return value
+        # Handle string names like "M15", "H1", etc.
+        if isinstance(value, str) and value in _TIMEFRAME_BY_NAME:
+            return _TIMEFRAME_BY_NAME[value]
+        # Also try the enum directly (for cases where value is already the enum name)
+        return Timeframe[value]
+    except (ValueError, KeyError, AttributeError):
+        logger.warning(f"Invalid timeframe value '{value}' for key '{key}', using default {default}")
+        return default
+
+
+def _parse_timeframe_list(data: Any, key: str) -> List[Timeframe]:
+    """
+    Parse a list of Timeframe enums from dictionary data with backward compatibility.
+    
+    Handles cases where:
+    - Key exists and contains a list of valid Timeframe names
+    - Key exists but has invalid values (skips invalid ones)
+    - Key doesn't exist (returns empty list for backward compatibility)
+    """
+    if data is None:
+        return []
+    
+    value = data.get(key) if isinstance(data, dict) else None
+    if value is None:
+        return []
+    
+    if not isinstance(value, list):
+        return []
+    
+    result = []
+    for item in value:
+        try:
+            if isinstance(item, Timeframe):
+                result.append(item)
+            elif isinstance(item, str) and item in _TIMEFRAME_BY_NAME:
+                result.append(_TIMEFRAME_BY_NAME[item])
+            else:
+                result.append(Timeframe[item])
+        except (ValueError, KeyError, AttributeError):
+            logger.warning(f"Invalid timeframe value '{item}' in list, skipping")
+            continue
+    
+    return result
+
+
 @dataclass
 class BotManifest:
     """
@@ -149,6 +219,9 @@ class BotManifest:
     description: str = ""
     symbols: List[str] = field(default_factory=list)
     timeframes: List[str] = field(default_factory=list)
+    preferred_timeframe: Timeframe = Timeframe.H1
+    use_multi_timeframe: bool = False
+    secondary_timeframes: List[Timeframe] = field(default_factory=list)
     max_positions: int = 1
     max_daily_trades: int = 100
     
@@ -177,6 +250,9 @@ class BotManifest:
             "prop_firm_safe": self.prop_firm_safe,
             "symbols": self.symbols,
             "timeframes": self.timeframes,
+            "preferred_timeframe": self.preferred_timeframe.name,
+            "use_multi_timeframe": self.use_multi_timeframe,
+            "secondary_timeframes": [tf.name for tf in self.secondary_timeframes],
             "max_positions": self.max_positions,
             "max_daily_trades": self.max_daily_trades,
             "created_at": self.created_at.isoformat(),
@@ -198,6 +274,11 @@ class BotManifest:
         if "preferred_conditions" in data:
             preferred_conditions = PreferredConditions.from_dict(data["preferred_conditions"])
 
+        # Parse timeframe fields with backward compatibility
+        preferred_timeframe = _parse_timeframe(data, "preferred_timeframe", Timeframe.H1)
+        use_multi_timeframe = data.get("use_multi_timeframe", False) if isinstance(data, dict) else False
+        secondary_timeframes = _parse_timeframe_list(data, "secondary_timeframes")
+
         return cls(
             bot_id=data["bot_id"],
             name=data.get("name", ""),
@@ -209,6 +290,9 @@ class BotManifest:
             prop_firm_safe=data.get("prop_firm_safe", True),
             symbols=data.get("symbols", []),
             timeframes=data.get("timeframes", []),
+            preferred_timeframe=preferred_timeframe,
+            use_multi_timeframe=use_multi_timeframe,
+            secondary_timeframes=secondary_timeframes,
             max_positions=data.get("max_positions", 1),
             max_daily_trades=data.get("max_daily_trades", 100),
             created_at=datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now(),

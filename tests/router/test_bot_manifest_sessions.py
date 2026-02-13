@@ -15,6 +15,7 @@ from src.router.bot_manifest import (
     TradeFrequency,
     BrokerType
 )
+from src.router.multi_timeframe_sentinel import Timeframe
 
 
 class TestTimeWindow:
@@ -331,3 +332,175 @@ class TestExampleManifests:
             if manifest.bot_id == "amd_hunter_01":
                 assert manifest.preferred_conditions is None
                 break
+
+
+class TestBotManifestTimeframeSerialization:
+    """Test BotManifest timeframe field serialization and deserialization."""
+
+    def test_to_dict_includes_timeframe_fields(self):
+        """Test that to_dict() includes preferred_timeframe, use_multi_timeframe, and secondary_timeframes."""
+        manifest = BotManifest(
+            bot_id="tf_test_bot",
+            name="Timeframe Test Bot",
+            strategy_type=StrategyType.STRUCTURAL,
+            frequency=TradeFrequency.LOW,
+            preferred_timeframe=Timeframe.M15,
+            use_multi_timeframe=True,
+            secondary_timeframes=[Timeframe.H1, Timeframe.H4]
+        )
+        
+        data = manifest.to_dict()
+        
+        # Check the new fields are present
+        assert "preferred_timeframe" in data
+        assert data["preferred_timeframe"] == "M15"
+        assert "use_multi_timeframe" in data
+        assert data["use_multi_timeframe"] is True
+        assert "secondary_timeframes" in data
+        assert data["secondary_timeframes"] == ["H1", "H4"]
+
+    def test_from_dict_parses_timeframe_fields(self):
+        """Test that from_dict() correctly parses timeframe fields."""
+        data = {
+            "bot_id": "tf_test_bot",
+            "name": "Timeframe Test Bot",
+            "description": "",
+            "strategy_type": "STRUCTURAL",
+            "frequency": "LOW",
+            "min_capital_req": 50.0,
+            "preferred_broker_type": "ANY",
+            "prop_firm_safe": True,
+            "symbols": [],
+            "timeframes": [],
+            "preferred_timeframe": "M15",
+            "use_multi_timeframe": True,
+            "secondary_timeframes": ["H1", "H4"],
+            "max_positions": 1,
+            "max_daily_trades": 100,
+            "created_at": "2026-02-12T10:00:00",
+            "last_trade_at": None,
+            "total_trades": 0,
+            "win_rate": 0.0,
+            "tags": []
+        }
+        
+        manifest = BotManifest.from_dict(data)
+        
+        assert manifest.preferred_timeframe == Timeframe.M15
+        assert manifest.use_multi_timeframe is True
+        assert manifest.secondary_timeframes == [Timeframe.H1, Timeframe.H4]
+
+    def test_round_trip_serialization(self):
+        """Test serialization round-trip preserves all timeframe fields."""
+        original = BotManifest(
+            bot_id="round_trip_bot",
+            name="Round Trip Bot",
+            strategy_type=StrategyType.SCALPER,
+            frequency=TradeFrequency.HIGH,
+            preferred_timeframe=Timeframe.M5,
+            use_multi_timeframe=True,
+            secondary_timeframes=[Timeframe.M1, Timeframe.M15, Timeframe.H1]
+        )
+        
+        # Serialize to dict
+        data = original.to_dict()
+        
+        # Deserialize back
+        restored = BotManifest.from_dict(data)
+        
+        # Verify all fields are preserved
+        assert restored.bot_id == original.bot_id
+        assert restored.name == original.name
+        assert restored.preferred_timeframe == original.preferred_timeframe
+        assert restored.use_multi_timeframe == original.use_multi_timeframe
+        assert restored.secondary_timeframes == original.secondary_timeframes
+
+    def test_backward_compatibility_no_timeframe_fields(self):
+        """Test backward compatibility when timeframe fields are missing."""
+        data = {
+            "bot_id": "legacy_tf_bot",
+            "name": "Legacy Timeframe Bot",
+            "description": "Old bot without timeframe fields",
+            "strategy_type": "SCALPER",
+            "frequency": "HIGH",
+            "min_capital_req": 100.0,
+            "preferred_broker_type": "RAW_ECN",
+            "prop_firm_safe": True,
+            "symbols": ["EURUSD"],
+            "timeframes": ["M1"],
+            "max_positions": 1,
+            "max_daily_trades": 100,
+            "created_at": "2026-02-12T10:00:00",
+            "last_trade_at": None,
+            "total_trades": 0,
+            "win_rate": 0.0,
+            "tags": []
+            # Note: No preferred_timeframe, use_multi_timeframe, or secondary_timeframes
+        }
+        
+        manifest = BotManifest.from_dict(data)
+        
+        # Should use sensible defaults
+        assert manifest.preferred_timeframe == Timeframe.H1  # Default
+        assert manifest.use_multi_timeframe is False  # Default
+        assert manifest.secondary_timeframes == []  # Default
+
+    def test_backward_compatibility_invalid_timeframe(self):
+        """Test backward compatibility with invalid timeframe values."""
+        data = {
+            "bot_id": "invalid_tf_bot",
+            "name": "Invalid Timeframe Bot",
+            "description": "",
+            "strategy_type": "SCALPER",
+            "frequency": "HIGH",
+            "min_capital_req": 100.0,
+            "preferred_broker_type": "RAW_ECN",
+            "prop_firm_safe": True,
+            "symbols": ["EURUSD"],
+            "timeframes": ["M1"],
+            "preferred_timeframe": "INVALID_TF",  # Invalid value
+            "use_multi_timeframe": True,
+            "secondary_timeframes": ["M15", "INVALID"],  # Mix of valid and invalid
+            "max_positions": 1,
+            "max_daily_trades": 100,
+            "created_at": "2026-02-12T10:00:00",
+            "last_trade_at": None,
+            "total_trades": 0,
+            "win_rate": 0.0,
+            "tags": []
+        }
+        
+        manifest = BotManifest.from_dict(data)
+        
+        # Should fall back to default for invalid preferred_timeframe
+        assert manifest.preferred_timeframe == Timeframe.H1  # Default
+        # Should skip invalid secondary timeframes
+        assert manifest.secondary_timeframes == [Timeframe.M15]  # Only valid one
+
+    def test_default_timeframe_values(self):
+        """Test that BotManifest has correct default timeframe values."""
+        manifest = BotManifest(
+            bot_id="default_tf_bot",
+            name="Default Timeframe Bot",
+            strategy_type=StrategyType.STRUCTURAL,
+            frequency=TradeFrequency.LOW
+        )
+        
+        assert manifest.preferred_timeframe == Timeframe.H1
+        assert manifest.use_multi_timeframe is False
+        assert manifest.secondary_timeframes == []
+
+    def test_to_dict_defaults_for_optional_fields(self):
+        """Test that to_dict() includes default values for optional fields."""
+        manifest = BotManifest(
+            bot_id="default_tf_bot",
+            name="Default Timeframe Bot",
+            strategy_type=StrategyType.STRUCTURAL,
+            frequency=TradeFrequency.LOW
+        )
+        
+        data = manifest.to_dict()
+        
+        assert data["preferred_timeframe"] == "H1"
+        assert data["use_multi_timeframe"] is False
+        assert data["secondary_timeframes"] == []

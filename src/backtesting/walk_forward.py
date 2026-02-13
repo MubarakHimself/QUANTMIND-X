@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List, Tuple
 from dataclasses import dataclass, field
 import logging
+import asyncio  # For event loop parameter (Comment 3)
 
 # Import existing components
 from backtesting.mt5_engine import PythonStrategyTester, MQL5Timeframe, MT5BacktestResult
@@ -114,7 +115,10 @@ class WalkForwardOptimizer:
         use_regime_filter: bool = False,
         chaos_threshold: float = 0.6,
         banned_regimes: Optional[List[str]] = None,
-        broker_id: str = "icmarkets_raw"
+        broker_id: str = "icmarkets_raw",
+        backtest_id: Optional[str] = None,  # Forward backtest_id for WS correlation (Comment 3)
+        progress_streamer: Optional["BacktestProgressStreamer"] = None,  # Forward progress streamer (Comment 3)
+        loop: Optional[asyncio.AbstractEventLoop] = None  # Forward FastAPI event loop (Comment 3)
     ) -> WalkForwardResult:
         """Run walk-forward optimization.
 
@@ -133,7 +137,7 @@ class WalkForwardOptimizer:
         Returns:
             WalkForwardResult with aggregated metrics
         """
-        logger.info(f"Starting walk-forward optimization for {symbol}")
+        logger.info(f"Starting walk-forward optimization for {symbol} (backtest_id={backtest_id})")
 
         # Calculate window sizes
         total_bars = len(data)
@@ -173,7 +177,10 @@ class WalkForwardOptimizer:
                 use_regime_filter=use_regime_filter,
                 chaos_threshold=chaos_threshold,
                 banned_regimes=banned_regimes,
-                broker_id=broker_id
+                broker_id=broker_id,
+                backtest_id=backtest_id,  # Forward for WS correlation (Comment 3)
+                progress_streamer=progress_streamer,  # Forward progress streamer (Comment 3)
+                loop=loop  # Forward FastAPI event loop (Comment 3)
             )
 
             # Run test backtest (out-of-sample)
@@ -188,7 +195,10 @@ class WalkForwardOptimizer:
                 use_regime_filter=use_regime_filter,
                 chaos_threshold=chaos_threshold,
                 banned_regimes=banned_regimes,
-                broker_id=broker_id
+                broker_id=broker_id,
+                backtest_id=backtest_id,  # Forward for WS correlation (Comment 3)
+                progress_streamer=progress_streamer,  # Forward progress streamer (Comment 3)
+                loop=loop  # Forward FastAPI event loop (Comment 3)
             )
 
             # Extract regime stats if available
@@ -305,7 +315,10 @@ class WalkForwardOptimizer:
         use_regime_filter: bool,
         chaos_threshold: float,
         banned_regimes: Optional[List[str]],
-        broker_id: str = "icmarkets_raw"
+        broker_id: str = "icmarkets_raw",
+        backtest_id: Optional[str] = None,  # Forward for WS correlation (Comment 3)
+        progress_streamer: Optional["BacktestProgressStreamer"] = None,  # Forward progress streamer (Comment 3)
+        loop: Optional[asyncio.AbstractEventLoop] = None  # Forward FastAPI event loop (Comment 3)
     ) -> Optional[MT5BacktestResult]:
         """Run backtest for given data.
 
@@ -335,7 +348,10 @@ class WalkForwardOptimizer:
                     initial_cash=initial_cash,
                     commission=commission,
                     slippage=slippage,
-                    broker_id=broker_id
+                    broker_id=broker_id,
+                    backtest_id=backtest_id,  # Forward for WS correlation (Comment 3)
+                    progress_streamer=progress_streamer,  # Forward progress streamer (Comment 3)
+                    loop=loop  # Forward FastAPI event loop (Comment 3)
                 )
             else:
                 tester = PythonStrategyTester(

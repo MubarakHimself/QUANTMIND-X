@@ -6,6 +6,7 @@ Tests timezone-aware news event handling and kill zone detection.
 
 import pytest
 from datetime import datetime, timezone, timedelta
+from unittest.mock import patch
 from src.router.sensors.news import NewsSensor, NewsEvent
 
 
@@ -162,8 +163,12 @@ class TestNewsCalendarUpdates:
         # Naive datetime should be made aware as UTC
         assert event.time.tzinfo == timezone.utc
 
-    def test_update_calendar_appends_events(self):
-        """Test that update_calendar appends to existing events."""
+    def test_update_calendar_replaces_events(self):
+        """Test that update_calendar replaces existing events (clears stale ones).
+        
+        Per Comment 2: update_calendar() should clear old events at the start
+        to prevent stale events from persisting across calendar updates.
+        """
         sensor = NewsSensor()
         sensor.events = [
             NewsEvent(
@@ -185,9 +190,62 @@ class TestNewsCalendarUpdates:
 
         sensor.update_calendar(calendar_data)
 
+        # After update_calendar, should only have the new event (old one cleared)
+        assert len(sensor.events) == 1
+        assert sensor.events[0].title == "New Event"
+
+    def test_repeated_update_calendar_clears_stale_events(self):
+        """Test that repeated update_calendar calls don't keep old events.
+        
+        Per Comment 2: Ensures that NewsSensor clears existing events at the start
+        of update_calendar(), preventing stale events from accumulating in persistent
+        kill zones.
+        """
+        sensor = NewsSensor()
+        
+        # First update with two events
+        calendar_data_1 = [
+            {
+                "title": "NFP Employment Change",
+                "impact": "HIGH",
+                "time": "2026-02-12T08:30:00",
+                "timezone": "America/New_York",
+                "currency": "USD"
+            },
+            {
+                "title": "BoJ Interest Rate Decision",
+                "impact": "HIGH",
+                "time": "2026-02-12T03:00:00",
+                "timezone": "Asia/Tokyo",
+                "currency": "JPY"
+            }
+        ]
+        sensor.update_calendar(calendar_data_1)
         assert len(sensor.events) == 2
-        assert sensor.events[0].title == "Existing Event"
-        assert sensor.events[1].title == "New Event"
+        assert sensor.events[0].title == "NFP Employment Change"
+        assert sensor.events[1].title == "BoJ Interest Rate Decision"
+        
+        # Second update with one new event (different from first)
+        calendar_data_2 = [
+            {
+                "title": "ECB Rate Decision",
+                "impact": "HIGH",
+                "time": "2026-02-12T12:30:00",
+                "timezone": "Europe/London",
+                "currency": "EUR"
+            }
+        ]
+        sensor.update_calendar(calendar_data_2)
+        
+        # After second update, should only have the new event (stale ones cleared)
+        assert len(sensor.events) == 1
+        assert sensor.events[0].title == "ECB Rate Decision"
+        
+        # Verify check_state only uses current events
+        # At a time between old NFP and new ECB, should be SAFE (not in stale kill zone)
+        current_time = datetime(2026, 2, 12, 11, 0, tzinfo=timezone.utc)
+        state = sensor.check_state(current_time)
+        assert state == "SAFE"  # No old events affecting this
 
 
 class TestNewsKillZones:
@@ -342,8 +400,9 @@ class TestNewsSensorTimezoneHandling:
         ]
 
         # Pass datetime with different timezone (should be converted to UTC)
+        # EST 8:20 AM = UTC 13:20, which is 10 min before event at UTC 13:30
         from zoneinfo import ZoneInfo
-        est_time = datetime(2026, 2, 12, 13, 20, tzinfo=ZoneInfo("America/New_York"))
+        est_time = datetime(2026, 2, 12, 8, 20, tzinfo=ZoneInfo("America/New_York"))
         state = sensor.check_state(est_time)
 
         # Should still detect kill zone (after conversion)
@@ -358,7 +417,7 @@ class TestNewsUpcomingEvents:
         sensor = NewsSensor()
         now = datetime(2026, 2, 12, 10, 0, tzinfo=timezone.utc)
 
-        # Event in 2 hours
+        # Event in 2 hours and 23 hours (both within 24-hour window)
         sensor.events = [
             NewsEvent(
                 title="Event in 2h",
@@ -367,9 +426,9 @@ class TestNewsUpcomingEvents:
                 timezone_source="UTC"
             ),
             NewsEvent(
-                title="Event in 25h",
+                title="Event in 23h",
                 impact="HIGH",
-                time=now + timedelta(hours=25),
+                time=now + timedelta(hours=23),
                 timezone_source="UTC"
             ),
             NewsEvent(
@@ -380,11 +439,14 @@ class TestNewsUpcomingEvents:
             )
         ]
 
-        upcoming = sensor.get_upcoming_events(hours_ahead=24)
+        # Mock datetime.now(timezone.utc) to use fixed time
+        with patch('src.router.sensors.news.datetime') as mock_datetime:
+            mock_datetime.now.return_value = now
+            upcoming = sensor.get_upcoming_events(hours_ahead=24)
 
         assert len(upcoming) == 2
         assert upcoming[0].title == "Event in 2h"
-        assert upcoming[1].title == "Event in 25h"
+        assert upcoming[1].title == "Event in 23h"
 
     def test_get_upcoming_events_only_high_impact(self):
         """Test upcoming events only includes HIGH impact."""
@@ -406,7 +468,10 @@ class TestNewsUpcomingEvents:
             )
         ]
 
-        upcoming = sensor.get_upcoming_events(hours_ahead=24)
+        # Mock datetime.now(timezone.utc) to use fixed time
+        with patch('src.router.sensors.news.datetime') as mock_datetime:
+            mock_datetime.now.return_value = now
+            upcoming = sensor.get_upcoming_events(hours_ahead=24)
 
         # Should only include HIGH impact
         assert len(upcoming) == 1
@@ -449,8 +514,11 @@ class TestNewsClearOldEvents:
             )
         ]
 
-        # Clear events older than 24 hours
-        removed = sensor.clear_old_events(hours_ago=24)
+        # Mock datetime.now(timezone.utc) to use fixed time
+        with patch('src.router.sensors.news.datetime') as mock_datetime:
+            mock_datetime.now.return_value = now
+            # Clear events older than 24 hours
+            removed = sensor.clear_old_events(hours_ago=24)
 
         assert removed == 2
         assert len(sensor.events) == 2

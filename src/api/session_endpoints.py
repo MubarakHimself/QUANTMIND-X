@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 import logging
+from zoneinfo import ZoneInfo
 
 from src.router.sessions import SessionDetector, TradingSession, get_current_session, is_market_open, get_next_session_time
 
@@ -129,8 +130,8 @@ async def get_all_sessions_status() -> AllSessionsResponse:
     """
     Get status of all trading sessions.
     
-    Marks each session individually as active using is_in_session() check.
-    This correctly shows concurrent sessions (e.g., LONDON and NEW_YORK both active during overlap).
+    During London/NY overlap, only OVERLAP is marked active (LONDON/NEW_YORK forced inactive).
+    This ensures only one session is active at any given time.
     CLOSED is marked active only when no other sessions are active.
     
     Returns CLOSED as active on weekends (Saturday/Sunday), with all other sessions inactive.
@@ -144,8 +145,8 @@ async def get_all_sessions_status() -> AllSessionsResponse:
         Response:
         {
             "ASIAN": {"active": false, "name": "Asian Session"},
-            "LONDON": {"active": true, "name": "London Session"},
-            "NEW_YORK": {"active": true, "name": "New York Session"},
+            "LONDON": {"active": false, "name": "London Session"},
+            "NEW_YORK": {"active": false, "name": "New York Session"},
             "OVERLAP": {"active": true, "name": "London/NY Overlap"},
             "CLOSED": {"active": false, "name": "Market Closed"}
         }
@@ -177,11 +178,12 @@ async def get_all_sessions_status() -> AllSessionsResponse:
     try:
         utc_now = datetime.now(timezone.utc)
 
-        # Check each session individually using is_in_session()
-        # This correctly handles overlaps where LONDON and NEW_YORK can both be active
-        statuses = {}
+        # Check if overlap is active first - this determines LONDON/NEW_YORK status
+        overlap_active = SessionDetector.is_in_session("OVERLAP", utc_now)
         
         # Check individual sessions
+        statuses = {}
+        
         for session in TradingSession:
             if session == TradingSession.CLOSED:
                 # CLOSED is active when no other sessions are active
@@ -189,8 +191,15 @@ async def get_all_sessions_status() -> AllSessionsResponse:
                 london_active = SessionDetector.is_in_session("LONDON", utc_now)
                 ny_active = SessionDetector.is_in_session("NEW_YORK", utc_now)
                 is_active = not (asian_active or london_active or ny_active)
+            elif session == TradingSession.OVERLAP:
+                # OVERLAP is active when in overlap period
+                is_active = overlap_active
+            elif session in (TradingSession.LONDON, TradingSession.NEW_YORK):
+                # During overlap, LONDON and NEW_YORK are forced inactive
+                # Only active when in their respective sessions but NOT in overlap
+                is_active = SessionDetector.is_in_session(session.value, utc_now) and not overlap_active
             else:
-                # For active sessions, check if currently active
+                # For other sessions (ASIAN), check if currently active
                 is_active = SessionDetector.is_in_session(session.value, utc_now)
             
             session_name = SessionDetector.SESSIONS.get(session.value, {}).get("name", session.value)
@@ -249,13 +258,31 @@ async def convert_timezone(request: TimezoneConvertRequest) -> TimezoneConvertRe
                 detail=f"Invalid time format: {request.time_str}. Use ISO format (YYYY-MM-DDTHH:MM:SS)"
             )
 
+        # Validate and create source timezone, fall back to UTC on invalid
+        try:
+            source_tz = ZoneInfo(request.from_timezone)
+        except Exception:
+            logger.warning(f"Invalid timezone '{request.from_timezone}', falling back to UTC")
+            source_tz = ZoneInfo("UTC")
+            request.from_timezone = "UTC"
+
+        # Validate and create target timezone
+        if request.to_timezone.upper() != "UTC":
+            try:
+                target_tz = ZoneInfo(request.to_timezone)
+            except Exception:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid timezone: {request.to_timezone}"
+                )
+        else:
+            target_tz = None
+
         # Make input time aware in source timezone
         converted_time = SessionDetector.convert_to_utc(input_time, request.from_timezone)
 
         # If target is not UTC, convert from UTC to target
-        if request.to_timezone.upper() != "UTC":
-            from zoneinfo import ZoneInfo
-            target_tz = ZoneInfo(request.to_timezone)
+        if target_tz is not None:
             converted_time = converted_time.astimezone(target_tz)
 
         # Get session context for converted time
@@ -280,15 +307,22 @@ async def check_session_active(session_name: str) -> Dict[str, Any]:
     """
     Check if a specific session is currently active.
     
-    Returns is_active=false on weekends (Saturday/Sunday), even for CLOSED session check.
+    Special handling for CLOSED session:
+    - Returns is_active=true when no other session is active (i.e., market is closed)
+    - Returns is_active=false when any trading session is active (market is open)
+    - On weekends (Saturday/Sunday), CLOSED is always active since no trading sessions run
+    
+    For all other sessions (ASIAN, LONDON, NEW_YORK, OVERLAP):
+    - Returns is_active=true during their respective trading hours on weekdays
+    - Returns is_active=false outside trading hours and on weekends
 
     Args:
-        session_name: Session name to check (ASIAN, LONDON, NEW_YORK, OVERLAP)
+        session_name: Session name to check (ASIAN, LONDON, NEW_YORK, OVERLAP, CLOSED)
 
     Returns:
         Boolean indicating if session is active
 
-    Example (weekday):
+    Example (weekday during London session):
         GET /api/sessions/check/LONDON
 
         Response:
@@ -307,11 +341,61 @@ async def check_session_active(session_name: str) -> Dict[str, Any]:
             "is_active": false,
             "utc_time": "2026-02-15T10:00:00Z"
         }
+        
+    Example (weekend - CLOSED is active):
+        GET /api/sessions/check/CLOSED
+
+        Response:
+        {
+            "session": "CLOSED",
+            "is_active": true,
+            "utc_time": "2026-02-15T10:00:00Z"
+        }
+        
+    Example (weekday outside trading hours - CLOSED is active):
+        GET /api/sessions/check/CLOSED
+
+        Response:
+        {
+            "session": "CLOSED",
+            "is_active": true,
+            "utc_time": "2026-02-12T20:00:00Z"
+        }
+        
+    Example (weekday during trading - CLOSED is not active):
+        GET /api/sessions/check/CLOSED
+
+        Response:
+        {
+            "session": "CLOSED",
+            "is_active": false,
+            "utc_time": "2026-02-12T10:00:00Z"
+        }
     """
     try:
-        # Validate session name
+        session_upper = session_name.upper()
+        
+        # Special case: CLOSED session returns true when no other session is active
+        if session_upper == "CLOSED":
+            utc_now = datetime.now(timezone.utc)
+            
+            # Check if any trading session is active
+            asian_active = SessionDetector.is_in_session("ASIAN", utc_now)
+            london_active = SessionDetector.is_in_session("LONDON", utc_now)
+            ny_active = SessionDetector.is_in_session("NEW_YORK", utc_now)
+            
+            # CLOSED is active when no trading sessions are active
+            is_active = not (asian_active or london_active or ny_active)
+            
+            return {
+                "session": "CLOSED",
+                "is_active": is_active,
+                "utc_time": utc_now.isoformat()
+            }
+
+        # Validate session name for other sessions
         try:
-            target_session = TradingSession(session_name.upper())
+            target_session = TradingSession(session_upper)
         except ValueError:
             raise HTTPException(
                 status_code=400,
@@ -319,10 +403,10 @@ async def check_session_active(session_name: str) -> Dict[str, Any]:
             )
 
         utc_now = datetime.now(timezone.utc)
-        is_active = SessionDetector.is_in_session(session_name.upper(), utc_now)
+        is_active = SessionDetector.is_in_session(session_upper, utc_now)
 
         return {
-            "session": session_name.upper(),
+            "session": session_upper,
             "is_active": is_active,
             "utc_time": utc_now.isoformat()
         }

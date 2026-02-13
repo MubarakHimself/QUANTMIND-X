@@ -2,7 +2,7 @@
 WebSocket Log Handler for real-time backtest streaming.
 
 Provides:
-- WebSocketLogHandler: Custom logging handler that broadcasts logs to WebSocket clients
+- WebSocketLogHandler: Custom logging handler that broadcasts logs to WebSocket clients with batching (Phase 4.2).
 - BacktestProgressStreamer: Handles backtest lifecycle progress updates
 - setup_backtest_logging(): Creates configured logger with WebSocket streaming
 """
@@ -42,66 +42,61 @@ def get_connection_manager():
 
 class WebSocketLogHandler(logging.Handler):
     """
-    Custom logging handler that broadcasts log messages to WebSocket clients.
+    Custom logging handler that broadcasts log messages to WebSocket clients with batching (Phase 4.2).
     
-    Formats log records as JSON and sends them via the ConnectionManager
-    broadcast mechanism with optional topic filtering.
+    Formats log records as JSON and batches them for efficient broadcasting.
     """
     
-    def __init__(self, topic: str = "backtest", backtest_id: Optional[str] = None):
+    def __init__(self, topic: str = "backtest", connection_manager=None, backtest_id: Optional[str] = None, loop: Optional[asyncio.AbstractEventLoop] = None):
         """
         Initialize the WebSocket log handler.
         
         Args:
-            topic: Topic filter for message routing (e.g., "backtest", "trading", "logs")
-            backtest_id: Optional backtest ID to include in log messages
+            topic: Topic filter for message routing
+            connection_manager: Connection manager for broadcasting (default: global manager)
+            backtest_id: Backtest ID for log correlation (or drop the argument)
+            loop: Main event loop for thread-safe broadcasts
         """
         super().__init__()
         self.topic = topic
+        self.connection_manager = connection_manager or get_connection_manager()
         self.backtest_id = backtest_id
-        self._format_cache = {}
+        self.loop = loop
         
     def emit(self, record: logging.LogRecord):
         """
-        Emit a log record by broadcasting it to WebSocket clients.
+        Emit a log record immediately as individual log_entry message using thread-safe broadcast.
         
         Args:
-            record: Log record to broadcast
+            record: Log record to emit
         """
         try:
-            # Format the log record
             log_data = self._format_record(record)
             
-            # Broadcast via connection manager
-            manager = get_connection_manager()
-            if manager is not None:
-                # Use asyncio to run the coroutine
+            # Thread-safe broadcast (Comment 4: fixes RuntimeError in worker threads)
+            if self.connection_manager and self.loop:
+                future = asyncio.run_coroutine_threadsafe(
+                    self.connection_manager.broadcast(log_data, topic=self.topic), 
+                    self.loop
+                )
+                # Fire and forget (non-blocking)
+            elif self.connection_manager:
+                # Fallback: create temporary loop if no main loop
                 try:
                     loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # We're in an async context, use create_task
-                        asyncio.create_task(
-                            manager.broadcast(log_data, topic=self.topic)
-                        )
-                    else:
-                        # Synchronous context, use run_until_complete
-                        loop.run_until_complete(
-                            manager.broadcast(log_data, topic=self.topic)
-                        )
+                    loop.run_until_complete(self.connection_manager.broadcast(log_data, topic=self.topic))
                 except RuntimeError:
-                    # No event loop, create one
-                    asyncio.run(manager.broadcast(log_data, topic=self.topic))
-            else:
-                # No connection manager available, log locally
-                print(f"[WS Logger] No connection manager: {log_data}")
-                
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(self.connection_manager.broadcast(log_data, topic=self.topic))
+                    loop.close()
+                    
         except Exception as e:
-            # Never let logging failures crash the application
             self.handleError(record)
     
     def _format_record(self, record: logging.LogRecord) -> Dict[str, Any]:
         """
-        Format a log record as a dictionary.
+        Format a log record as a dictionary with all expected fields (Comment 1).
         
         Args:
             record: Log record to format
@@ -113,9 +108,9 @@ class WebSocketLogHandler(logging.Handler):
             "type": "log_entry",
             "data": {
                 "backtest_id": self.backtest_id,
-                "timestamp": datetime.utcnow().isoformat(),
                 "level": record.levelname,
                 "message": record.getMessage(),
+                "timestamp": datetime.utcnow().isoformat(),
                 "module": record.module,
                 "function": record.funcName,
                 "line": record.lineno,
@@ -301,7 +296,8 @@ class BacktestProgressStreamer:
 
 def setup_backtest_logging(backtest_id: Optional[str] = None,
                           level: int = logging.INFO,
-                          topic: str = "backtest") -> tuple:
+                          topic: str = "backtest",
+                          loop: Optional[asyncio.AbstractEventLoop] = None) -> tuple:
     """
     Setup a logger with WebSocket handler for backtest streaming.
     
@@ -309,6 +305,7 @@ def setup_backtest_logging(backtest_id: Optional[str] = None,
         backtest_id: Optional backtest ID (will generate UUID if not provided)
         level: Log level (default: logging.INFO)
         topic: Topic for WebSocket broadcasts (default: "backtest")
+        loop: Main event loop for thread-safe broadcasts
         
     Returns:
         Tuple of (logger, progress_streamer)
@@ -326,8 +323,8 @@ def setup_backtest_logging(backtest_id: Optional[str] = None,
     # Clear any existing handlers
     ws_logger.handlers.clear()
     
-    # Create WebSocket handler
-    ws_handler = WebSocketLogHandler(topic=topic, backtest_id=backtest_id)
+    # Create WebSocket handler with loop
+    ws_handler = WebSocketLogHandler(topic=topic, backtest_id=backtest_id, loop=loop)
     ws_handler.setLevel(level)
     ws_logger.addHandler(ws_handler)
     

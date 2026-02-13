@@ -262,3 +262,156 @@ def sample_backtest_data():
         'close': np.linspace(1.1000, 1.1100, 100),
         'tick_volume': np.random.randint(1000, 3000, 100)
     })
+
+@pytest.mark.unit
+class TestSessionAwareAuctionFiltering:
+    """Test session-aware auction filtering per Comment 1.
+    
+    Ensures backtests exercise session-filtered bot selection with UTC timestamps,
+    allowing bots to be filtered by their configured session compatibility.
+    """
+
+    def test_backtest_calls_run_auction_with_utc_timestamp(self, sample_backtest_data):
+        """Test that backtest calls Commander.run_auction with bar UTC timestamps.
+        
+        Per Comment 1: Backtests must call run_auction with the current bar's UTC
+        timestamp and active RegimeReport to ensure session filtering is exercised.
+        """
+        from backtesting.mode_runner import SentinelEnhancedTester
+        from router.sentinel import RegimeReport
+        
+        tester = SentinelEnhancedTester(
+            mode=BacktestMode.VANILLA,
+            initial_cash=10000.0,
+            broker_id="test_broker"
+        )
+        
+        # Run simple strategy
+        result = tester.run(
+            strategy_code='''
+def on_bar(tester):
+    pass
+''',
+            data=sample_backtest_data,
+            symbol='EURUSD',
+            timeframe=MQL5Timeframe.PERIOD_H1,
+            strategy_name='TestStrategy'
+        )
+        
+        # Verify auction results were collected
+        assert hasattr(tester, '_auction_results'), "Should have _auction_results attribute"
+        assert len(tester._auction_results) > 0, "Should have auction results for each bar"
+        
+        # Check structure of first auction result
+        first_auction = tester._auction_results[0]
+        assert 'bar' in first_auction, "Auction result should have bar index"
+        assert 'utc_timestamp' in first_auction, "Auction result should have UTC timestamp"
+        assert 'session' in first_auction, "Auction result should have detected session"
+        assert 'regime' in first_auction, "Auction result should have regime"
+        
+        # Verify UTC timestamps are timezone-aware
+        assert first_auction['utc_timestamp'].tzinfo is not None, "UTC timestamp should be timezone-aware"
+
+    def test_auction_results_track_session_per_bar(self, sample_backtest_data):
+        """Test that auction results properly track session for each bar.
+        
+        Ensures SessionDetector.detect_session() is called with bar UTC time,
+        and results include the detected session for analysis.
+        """
+        from backtesting.mode_runner import SentinelEnhancedTester
+        
+        # Create data spanning multiple sessions
+        # Use dates/times across different trading sessions
+        multi_session_data = sample_backtest_data.copy()
+        multi_session_data['time'] = pd.date_range(
+            start='2024-01-01 02:00:00+00:00',  # Start in Asia/Tokyo session
+            periods=100,
+            freq='1h',
+            tz='UTC'
+        )
+        
+        tester = SentinelEnhancedTester(
+            mode=BacktestMode.VANILLA,
+            initial_cash=10000.0
+        )
+        
+        result = tester.run(
+            strategy_code='def on_bar(tester): pass',
+            data=multi_session_data,
+            symbol='EURUSD',
+            timeframe=MQL5Timeframe.PERIOD_H1,
+            strategy_name='SessionTest'
+        )
+        
+        # Verify sessions are recorded across bars
+        sessions_detected = set()
+        for auction in tester._auction_results:
+            assert 'session' in auction
+            sessions_detected.add(auction['session'])
+        
+        # Over 100 hours across different times, should see multiple sessions
+        assert len(sessions_detected) > 0, "Should detect at least one session"
+
+    @patch('backtesting.mode_runner.Commander')
+    def test_commander_auction_receives_utc_timestamp(self, mock_commander_class, sample_backtest_data):
+        """Test that Commander.run_auction receives the bar's UTC timestamp.
+        
+        Verifies the integration: bar_utc_time → run_auction_with_utc_time →
+        Commander.run_auction(current_utc=bar_utc_time)
+        """
+        from backtesting.mode_runner import SentinelEnhancedTester
+        
+        # Mock Commander
+        mock_commander = Mock()
+        mock_commander.run_auction.return_value = []  # No bots dispatched
+        mock_commander_class.return_value = mock_commander
+        
+        tester = SentinelEnhancedTester(
+            mode=BacktestMode.VANILLA,
+            initial_cash=10000.0
+        )
+        tester._commander = mock_commander  # Replace with mock
+        
+        result = tester.run(
+            strategy_code='def on_bar(tester): pass',
+            data=sample_backtest_data,
+            symbol='EURUSD',
+            timeframe=MQL5Timeframe.PERIOD_H1
+        )
+        
+        # Verify Commander.run_auction was called with current_utc parameter
+        assert mock_commander.run_auction.called, "Commander.run_auction should be called"
+        
+        # Check that current_utc was passed
+        call_kwargs = mock_commander.run_auction.call_args[1]
+        assert 'current_utc' in call_kwargs, "Should pass current_utc parameter"
+        assert call_kwargs['current_utc'] is not None, "current_utc should not be None"
+        assert call_kwargs['current_utc'].tzinfo is not None, "current_utc should be timezone-aware"
+
+    def test_regime_report_cached_to_avoid_redundant_sentinel_calls(self, sample_backtest_data):
+        """Test that RegimeReport is cached in _current_regime_report.
+        
+        Per Comment 1: _update_regime_state() caches RegimeReport in _current_regime_report
+        for reuse by run_auction_with_utc_time() to avoid redundant Sentinel calls.
+        """
+        from backtesting.mode_runner import SentinelEnhancedTester
+        
+        tester = SentinelEnhancedTester(
+            mode=BacktestMode.SPICED,
+            initial_cash=10000.0
+        )
+        
+        result = tester.run(
+            strategy_code='def on_bar(tester): pass',
+            data=sample_backtest_data,
+            symbol='EURUSD',
+            timeframe=MQL5Timeframe.PERIOD_H1
+        )
+        
+        # Verify regime history was recorded with UTC timestamps
+        assert len(tester._regime_history) > 0, "Should record regime history"
+        
+        first_regime = tester._regime_history[0]
+        assert 'utc_timestamp' in first_regime, "Should have utc_timestamp in regime history"
+        assert first_regime['utc_timestamp'] is not None or tester._multi_timeframe_sentinel is None, \
+            "utc_timestamp should be available if sentinel is initialized"

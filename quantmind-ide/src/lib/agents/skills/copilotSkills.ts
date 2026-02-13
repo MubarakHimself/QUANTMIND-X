@@ -7,6 +7,7 @@
 
 import { z } from 'zod';
 import type { Skill, SkillContext } from './index';
+import { fileHistoryManager } from '../../services/fileHistoryManager';
 
 // ============================================================================
 // FILE OPERATIONS SKILLS
@@ -98,6 +99,22 @@ const writeFile: Skill = {
   defaultEnabled: true,
   execute: async ({ path, content, createBackup }, context) => {
     try {
+      // Get previous content for history tracking
+      let previousContent: string | undefined;
+      try {
+        const readResponse = await fetch('http://localhost:8000/api/files/read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path })
+        });
+        if (readResponse.ok) {
+          const readData = await readResponse.json();
+          previousContent = readData.content;
+        }
+      } catch {
+        // File doesn't exist, that's okay
+      }
+
       const response = await fetch('http://localhost:8000/api/files/write', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -110,12 +127,28 @@ const writeFile: Skill = {
 
       const data = await response.json();
 
+      // Record the operation in file history
+      const fileName = path.split('/').pop() || path;
+      const fileId = `file_${path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      const action = previousContent === undefined ? 'created' : 'modified';
+      
+      fileHistoryManager.recordOperation(
+        fileId,
+        fileName,
+        path,
+        'copilot', // Agent type
+        action,
+        content,
+        previousContent
+      );
+
       return {
         success: true,
         data: {
           path,
           size: data.size,
-          backup: data.backupPath
+          backup: data.backupPath,
+          action
         }
       };
     } catch (error: any) {

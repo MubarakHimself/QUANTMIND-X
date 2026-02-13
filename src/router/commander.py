@@ -14,14 +14,14 @@ if TYPE_CHECKING:
     from src.router.bot_manifest import BotRegistry, BotManifest
     from src.router.sentinel import RegimeReport
     from src.router.governor import Governor
+    from src.router.multi_timeframe_sentinel import MultiTimeframeSentinel, Timeframe
 
 from datetime import datetime, timezone
 from src.router.sessions import SessionDetector, TradingSession
 
-logger = logging.getLogger(__name__)
+from src.router.dynamic_bot_limits import DynamicBotLimiter
 
-# Global bot limit
-MAX_ACTIVE_BOTS = 50
+logger = logging.getLogger(__name__)
 
 
 class Commander:
@@ -80,6 +80,9 @@ class Commander:
             "NEWS_EVENT": [],  # Kill zone - no new trades
             "UNCERTAIN": ["STRUCTURAL"],  # Conservative only
         }
+        
+        # Multi-timeframe sentinel (Comment 1: shared from StrategyRouter)
+        self._multi_timeframe_sentinel: Optional["MultiTimeframeSentinel"] = None
     
     def _load_regime_map(self) -> Dict:
         """Load regime → bot mapping configuration."""
@@ -153,29 +156,25 @@ class Commander:
         current_session = SessionDetector.detect_session(current_utc)
         logger.info(f"Running auction for session: {current_session.value}, UTC time: {current_utc.isoformat()}")
 
-        # 1. Get eligible bots (filtered by regime, @primal tag, and session)
+        # Get eligible bots for current regime and session (Comment 1 fix)
         eligible_bots = self._get_bots_for_regime_and_session(regime_report.regime, current_session, current_utc)
-
-        if not eligible_bots:
-            logger.debug(f"No eligible bots for regime: {regime_report.regime}")
-            return []
-
-        # 2. Apply chaos-based filtering
+        
+        # Apply chaos-based filtering (high chaos reduces bot selection to lower frequency bots)
         if regime_report.chaos_score > 0.6:
             logger.info("High chaos detected - reducing bot selection")
-            # In high chaos, only allow conservative bots
-            eligible_bots = [b for b in eligible_bots
-                           if b.get('frequency') in ['LOW', 'MEDIUM']]
+            eligible_bots = [b for b in eligible_bots if b.get('frequency') in ['LOW', 'MEDIUM']]
+        
+        # Rank bots by score AND win_rate (higher is better) and sort descending
+        ranked_bots = sorted(eligible_bots, key=lambda b: b.get('score', 0.0) * b.get('win_rate', 0.5), reverse=True)
+        
+        # Default account_balance if falsy (prevents crashes in legacy usage - Comment 1)
+        account_balance = account_balance or getattr(self._governor, '_daily_start_balance', 100000.0)
+        logger.debug(f"Commander: Defaulted account_balance to {account_balance} (multi-timeframe)")
 
-        # 3. Rank by performance (win_rate * score)
-        ranked_bots = sorted(
-            eligible_bots,
-            key=lambda x: x.get('score', 0) * x.get('win_rate', 0.5),
-            reverse=True
-        )
-
-        # 4. Select top N (capped by global limit)
-        max_selection = min(3, MAX_ACTIVE_BOTS - self._count_active_positions())
+        # Use DynamicBotLimiter for max_selection
+        limiter = DynamicBotLimiter()
+        max_bots = limiter.get_max_bots(account_balance)
+        max_selection = min(3, max_bots - self._count_active_positions())
         top_bots = ranked_bots[:max(0, max_selection)]
 
         # 5. Calculate position sizes for each bot using Governor (if available)
@@ -270,6 +269,7 @@ class Commander:
                     logger.debug(f"Bot {manifest.bot_id} filtered by session")
                     continue
 
+                # Comment 3 fix: Include timeframe fields from BotManifest for multi-timeframe filtering
                 eligible.append({
                     "bot_id": manifest.bot_id,
                     "name": manifest.name,
@@ -279,7 +279,11 @@ class Commander:
                     "win_rate": manifest.win_rate,
                     "prop_firm_safe": manifest.prop_firm_safe,
                     "symbols": manifest.symbols,
-                    "manifest": manifest  # Include full manifest for downstream
+                    "manifest": manifest,  # Include full manifest for downstream
+                    # Timeframe fields for multi-timeframe filtering (Comment 3)
+                    "preferred_timeframe": manifest.preferred_timeframe.name if manifest.preferred_timeframe else None,
+                    "use_multi_timeframe": manifest.use_multi_timeframe,
+                    "secondary_timeframes": [tf.name for tf in manifest.secondary_timeframes] if manifest.secondary_timeframes else [],
                 })
 
             return eligible
@@ -515,10 +519,258 @@ class Commander:
             primal_count = len(self.bot_registry.list_by_tag("@primal"))
             pending_count = len(self.bot_registry.list_by_tag("@pending"))
         
+        limiter = DynamicBotLimiter()
+        default_balance = getattr(self._governor, '_daily_start_balance', 100000.0)
+        max_bots = limiter.get_max_bots(default_balance)
         return {
             "active_bots": len(self.active_bots),
             "primal_bots": primal_count,
             "pending_bots": pending_count,
-            "max_bots": MAX_ACTIVE_BOTS,
+            "max_bots": max_bots,
             "regime_strategy_map": self.regime_strategy_map
         }
+    
+    # ========== Multi-Timeframe Auction (Comment 1) ==========
+    
+    def run_auction_with_timeframes(
+        self,
+        primary_regime_report: "RegimeReport",
+        all_timeframe_regimes: Dict["Timeframe", "RegimeReport"],
+        account_balance: Optional[float] = None,
+        broker_id: str = "mt5_default",
+        current_utc: Optional[datetime] = None
+    ) -> List[dict]:
+        """
+        Multi-timeframe-aware bot auction.
+        
+        Comment 1: Extend run_auction to select bots by preferred_timeframe
+        and enforce secondary_timeframes alignment when use_multi_timeframe is true.
+        
+        This method:
+        1. Gets eligible bots from the registry
+        2. Filters bots by their preferred_timeframe vs available timeframe regimes
+        3. For bots with use_multi_timeframe=True, enforces secondary_timeframes alignment
+        4. Returns dispatches with timeframe context
+        
+        Args:
+            primary_regime_report: Primary regime report (fastest timeframe)
+            all_timeframe_regimes: Dict of timeframe -> regime report for all timeframes
+            account_balance: Account balance for position sizing
+            broker_id: Broker identifier for fee-aware Kelly
+            current_utc: UTC timestamp for session-aware filtering
+            
+        Returns:
+            List of bot dispatches with timeframe context
+        """
+        # Default to current UTC time if not provided
+        if current_utc is None:
+            current_utc = datetime.now(timezone.utc)
+        elif current_utc.tzinfo is None:
+            current_utc = current_utc.replace(tzinfo=timezone.utc)
+        elif current_utc.tzinfo != timezone.utc:
+            current_utc = current_utc.astimezone(timezone.utc)
+
+        # Detect current session
+        current_session = SessionDetector.detect_session(current_utc)
+        logger.info(
+            f"Running multi-timeframe auction for session: {current_session.value}, "
+            f"UTC time: {current_utc.isoformat()}, timeframes: {[tf.name for tf in all_timeframe_regimes.keys()]}"
+        )
+
+        # Get all eligible bots
+        eligible_bots = self._get_bots_for_regime_and_session(
+            primary_regime_report.regime, 
+            current_session, 
+            current_utc
+        )
+
+        if not eligible_bots:
+            logger.debug(f"No eligible bots for primary regime: {primary_regime_report.regime}")
+            return []
+
+        # Filter bots based on multi-timeframe preferences
+        filtered_bots = self._filter_bots_by_timeframe(
+            eligible_bots,
+            all_timeframe_regimes
+        )
+
+        if not filtered_bots:
+            logger.debug("No bots passed multi-timeframe filtering")
+            return []
+
+        # Apply chaos-based filtering
+        if primary_regime_report.chaos_score > 0.6:
+            logger.info("High chaos detected - reducing bot selection")
+            filtered_bots = [b for b in filtered_bots
+                           if b.get('frequency') in ['LOW', 'MEDIUM']]
+
+        # Rank by performance
+        ranked_bots = sorted(
+            filtered_bots,
+            key=lambda x: x.get('score', 0) * x.get('win_rate', 0.5),
+            reverse=True
+        )
+
+        # Default account_balance if falsy (prevents crashes in legacy usage - Comment 2)
+        account_balance = account_balance or getattr(self._governor, '_daily_start_balance', 100000.0)
+        logger.debug(f"Commander: Defaulted account_balance to {account_balance} (multi-timeframe)")
+
+        # Select top N
+        limiter = DynamicBotLimiter()
+        max_bots = limiter.get_max_bots(account_balance)
+        max_selection = min(3, max_bots - self._count_active_positions())
+        top_bots = ranked_bots[:max(0, max_selection)]
+
+        # Calculate position sizes and build dispatches
+        dispatches = []
+        for bot in top_bots:
+            trade_proposal = {
+                'symbol': bot.get('symbols', ['EURUSD'])[0],
+                'current_balance': account_balance,
+                'account_balance': account_balance,
+                'broker_id': broker_id,
+                'stop_loss_pips': bot.get('stop_loss_pips', 20.0),
+                'win_rate': bot.get('win_rate', 0.55),
+                'avg_win': bot.get('avg_win', 400.0),
+                'avg_loss': bot.get('avg_loss', 200.0),
+                'current_atr': bot.get('current_atr', 0.0012),
+                'average_atr': bot.get('average_atr', 0.0010),
+            }
+
+            mandate = self._governor.calculate_risk(
+                primary_regime_report,
+                trade_proposal,
+                account_balance,
+                broker_id
+            )
+
+            if self._use_enhanced_sizing:
+                if mandate.position_size <= 0:
+                    continue
+                position_size = mandate.position_size
+            else:
+                position_size = mandate.position_size if mandate.position_size > 0 else 0.01
+
+            dispatch = bot.copy()
+            dispatch.update({
+                'position_size': position_size,
+                'kelly_fraction': mandate.kelly_fraction,
+                'risk_amount': mandate.risk_amount,
+                'kelly_adjustments': mandate.kelly_adjustments,
+                'notes': mandate.notes,
+                'regime': primary_regime_report.regime,
+                'risk_mode': mandate.risk_mode
+            })
+            
+            # Add timeframe context to dispatch (Comment 1: ensure dispatch payloads include timeframe context)
+            dispatch['timeframe_context'] = {
+                'primary_timeframe': 'M5',  # Default, will be overridden by bot's preferred
+                'preferred_timeframe': bot.get('preferred_timeframe', 'H1'),
+                'use_multi_timeframe': bot.get('use_multi_timeframe', False),
+                'secondary_timeframes': bot.get('secondary_timeframes', []),
+                'all_regimes': {tf.name: r.regime for tf, r in all_timeframe_regimes.items()}
+            }
+            
+            dispatches.append(dispatch)
+
+        logger.info(f"Multi-timeframe auction result: {len(dispatches)} bots dispatched")
+        return dispatches
+    
+    def _filter_bots_by_timeframe(
+        self,
+        bots: List[dict],
+        all_timeframe_regimes: Dict["Timeframe", "RegimeReport"]
+    ) -> List[dict]:
+        """
+        Filter bots based on their preferred_timeframe and secondary_timeframes alignment.
+        
+        Comment 1: Select bots by preferred_timeframe and enforce secondary_timeframes alignment
+        when use_multi_timeframe is true.
+        
+        Args:
+            bots: List of eligible bot dicts
+            all_timeframe_regimes: Dict of timeframe -> regime report
+            
+        Returns:
+            Filtered list of bots
+        """
+        filtered = []
+        
+        for bot in bots:
+            # Get bot's timeframe preferences from manifest
+            preferred_tf = bot.get('preferred_timeframe')
+            use_mtf = bot.get('use_multi_timeframe', False)
+            secondary_tfs = bot.get('secondary_timeframes', [])
+            
+            # If no preferences, include the bot
+            if preferred_tf is None:
+                filtered.append(bot)
+                continue
+            
+            # Convert preferred_timeframe to Timeframe enum if string
+            if isinstance(preferred_tf, str):
+                try:
+                    from src.router.multi_timeframe_sentinel import Timeframe
+                    preferred_tf = Timeframe[preferred_tf]
+                except KeyError:
+                    logger.warning(f"Unknown timeframe: {preferred_tf}, including bot")
+                    filtered.append(bot)
+                    continue
+            
+            # Check if preferred timeframe's regime is suitable
+            if preferred_tf in all_timeframe_regimes:
+                tf_regime = all_timeframe_regimes[preferred_tf].regime
+                
+                # Check if regime is not extreme (HIGH_CHAOS, NEWS_EVENT)
+                if tf_regime in ["HIGH_CHAOS", "NEWS_EVENT"]:
+                    logger.debug(f"Bot {bot.get('bot_id')} filtered: preferred timeframe {preferred_tf.name} in {tf_regime}")
+                    continue
+            
+            # For multi-timeframe bots, check secondary_timeframes alignment
+            if use_mtf and secondary_tfs:
+                alignment_ok = self._check_secondary_timeframes_alignment(
+                    secondary_tfs, 
+                    all_timeframe_regimes
+                )
+                if not alignment_ok:
+                    logger.debug(f"Bot {bot.get('bot_id')} filtered: secondary timeframes not aligned")
+                    continue
+            
+            filtered.append(bot)
+        
+        return filtered
+    
+    def _check_secondary_timeframes_alignment(
+        self,
+        secondary_timeframes: List,
+        all_timeframe_regimes: Dict["Timeframe", "RegimeReport"]
+    ) -> bool:
+        """
+        Check if secondary timeframes are aligned for multi-timeframe strategy.
+        
+        A bot with use_multi_timeframe=True requires secondary timeframes to be in
+        compatible regimes (not extreme) before trading.
+        
+        Args:
+            secondary_timeframes: List of secondary timeframes
+            all_timeframe_regimes: Dict of timeframe -> regime report
+            
+        Returns:
+            True if all secondary timeframes are aligned (not in extreme regimes)
+        """
+        for tf in secondary_timeframes:
+            # Convert to Timeframe enum if string
+            if isinstance(tf, str):
+                try:
+                    from src.router.multi_timeframe_sentinel import Timeframe
+                    tf = Timeframe[tf]
+                except KeyError:
+                    continue
+            
+            if tf in all_timeframe_regimes:
+                regime = all_timeframe_regimes[tf].regime
+                # Filter out if any secondary timeframe is in extreme regime
+                if regime in ["HIGH_CHAOS", "NEWS_EVENT"]:
+                    return False
+        
+        return True

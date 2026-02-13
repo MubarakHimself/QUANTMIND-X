@@ -1,0 +1,7 @@
+{
+  "extraPaths": [
+    "./mcp-metatrader5-server/src"
+  ],
+  "typeCheckingMode": "basic",
+  "pythonVersion": "3.11"
+}

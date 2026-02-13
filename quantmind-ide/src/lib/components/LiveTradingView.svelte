@@ -25,7 +25,8 @@
     regime: 'Trending',
     kelly: 0.85
   };
-
+  
+  
   // Mock bots data
   let bots = [
     { id: 'ict-eu', name: 'ICT_Scalper @EURUSD', state: 'primal', symbol: 'EURUSD' },
@@ -144,7 +145,8 @@
             </div>
           </div>
         </div>
-      </div>
+
+              </div>
 
     {:else if activeView === 'bots'}
       <!-- Active Bots content -->
@@ -407,5 +409,125 @@
     font-size: 11px;
     font-weight: 500;
     text-transform: uppercase;
+  }
+
+  /* Terminal Section */
+  .terminal-section {
+    margin-top: 20px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+  }
+
+  .terminal-section.collapsed {
+    max-height: 48px;
+  }
+
+  .terminal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--bg-tertiary);
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .terminal-header:hover {
+    background: rgba(0, 255, 0, 0.05);
+  }
+
+  .terminal-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .terminal-icon {
+    color: var(--accent-primary);
+    font-family: 'Monaco', 'Courier New', monospace;
+  }
+
+  .terminal-toggle {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.15s;
+  }
+
+  .terminal-toggle:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .terminal-content {
+    padding: 16px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  .terminal-output {
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+  }
+
+  .terminal-line {
+    margin-bottom: 2px;
+    word-wrap: break-word;
+  }
+
+  .terminal-line:contains('INFO') {
+    color: var(--text-secondary);
+  }
+
+  .terminal-line:contains('TRADE') {
+    color: var(--accent-success);
+    font-weight: 600;
+  }
+
+  .terminal-line:contains('ERROR') {
+    color: var(--accent-danger);
+  }
+
+  .terminal-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+  }
+
+  .prompt {
+    color: var(--accent-primary);
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-weight: 600;
+  }
+
+  .terminal-input-field {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 12px;
+  }
+
+  .terminal-input-field::placeholder {
+    color: var(--text-muted);
   }
 </style>

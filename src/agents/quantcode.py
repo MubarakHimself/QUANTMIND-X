@@ -7,12 +7,16 @@ Implements the QuantCode agent using LangGraph for strategy development and back
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 
 from src.agents.state import QuantCodeState
+from src.agents.paper_trading_validator import PaperTradingValidator
+from mcp_mt5.paper_trading.deployer import PaperTradingDeployer
+from datetime import datetime, timezone
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +166,66 @@ Next Steps:
     }
 
 
+def paper_deployment_node(state: QuantCodeState) -> Dict[str, Any]:
+    deployer = PaperTradingDeployer()
+    
+    strategy_code = state.get('code_implementation', '// No code available')
+    
+    # Handle strategy_plan as both string and dict (Comment 3 fix)
+    plan = state.get('strategy_plan') or {}
+    if isinstance(plan, str):
+        # If it's a string (from str(strategy_plan)), extract strategy_type safely
+        strategy_type = 'unnamed_strategy'
+    else:
+        # If it's a dict, get strategy_type safely
+        strategy_type = plan.get('strategy_type') if isinstance(plan, dict) else str(plan)
+    
+    deployment_request = {
+        "strategy_code": strategy_code,
+        "symbol": "EURUSD",
+        "name": strategy_type,
+        "initial_balance": 10000.0,
+        "risk_params": {"max_daily_loss_pct": 5.0}
+    }
+    
+    result = deployer.deploy_agent(**deployment_request)
+    paper_agent_id = result.get('agent_id', str(uuid.uuid4())[:8])
+    
+    return {
+        "messages": [AIMessage(content=f"Deployed to paper trading: {paper_agent_id}")],
+        "paper_agent_id": paper_agent_id,
+        "validation_start_time": datetime.now(timezone.utc)
+    }
+
+def validation_monitoring_node(state: QuantCodeState) -> Dict[str, Any]:
+    validator = PaperTradingValidator()
+    paper_agent_id = state.get('paper_agent_id')
+    if not paper_agent_id:
+        return {
+            "messages": [AIMessage(content="No paper trading agent ID found")],
+            "paper_trading_metrics": {}
+        }
+    status = validator.check_validation_status(paper_agent_id)
+    report = validator.generate_validation_report(paper_agent_id)
+    
+    return {
+        "messages": [AIMessage(content=report)],
+        "paper_trading_metrics": status.get('metrics', {})
+    }
+
+def promotion_decision_node(state: QuantCodeState) -> Dict[str, Any]:
+    metrics = state.get('paper_trading_metrics', {})
+    if not metrics:
+        return {
+            "messages": [AIMessage(content="No metrics available for promotion decision")],
+            "promotion_approved": False
+        }
+    approved = PaperTradingValidator().meets_promotion_criteria(metrics)
+    return {
+        "messages": [AIMessage(content=f"Promotion {'approved' if approved else 'rejected'}")],
+        "promotion_approved": approved
+    }
+
 # ============================================================================
 # Conditional Edges
 # ============================================================================
@@ -178,13 +242,32 @@ def should_continue_after_backtest(state: QuantCodeState) -> str:
 
 def should_continue_to_end(state: QuantCodeState) -> str:
     """Determine if strategy meets quality criteria."""
-    backtest_results = state.get('backtest_results', {})
+    backtest_results = state.get('backtest_results')
+    if not backtest_results or not isinstance(backtest_results, dict):
+        return "planning"  # Retry from planning if no results
     kelly_score = backtest_results.get('kelly_score', 0)
     
     if kelly_score >= 0.8:
         return END
     else:
         return "planning"  # Retry from planning if quality insufficient
+
+
+def should_deploy_paper(state: QuantCodeState) -> str:
+    backtest_results = state.get('backtest_results')
+    if not backtest_results or not isinstance(backtest_results, dict):
+        return END
+    kelly = backtest_results.get('kelly_score', 0)
+    return "paper_deployment" if kelly > 0.8 else END
+
+def should_promote(state: QuantCodeState) -> str:
+    metrics = state.get('paper_trading_metrics', {})
+    if not metrics:
+        return "planning"  # retry if no metrics
+    validator = PaperTradingValidator()
+    if validator.meets_promotion_criteria(metrics):
+        return "promotion_decision"
+    return "planning"  # retry
 
 
 # ============================================================================
@@ -201,6 +284,9 @@ def create_quantcode_graph() -> StateGraph:
     workflow.add_node("backtesting", backtesting_node)
     workflow.add_node("analysis", analysis_node)
     workflow.add_node("reflection", reflection_node)
+    workflow.add_node("paper_deployment", paper_deployment_node)
+    workflow.add_node("validation_monitoring", validation_monitoring_node)
+    workflow.add_node("promotion_decision", promotion_decision_node)
     
     # Set entry point
     workflow.set_entry_point("planning")
@@ -219,17 +305,27 @@ def create_quantcode_graph() -> StateGraph:
     workflow.add_edge("analysis", "reflection")
     workflow.add_conditional_edges(
         "reflection",
-        should_continue_to_end,
+        should_deploy_paper,
         {
-            END: END,
+            "paper_deployment": "paper_deployment",
+            END: END
+        }
+    )
+    workflow.add_edge("paper_deployment", "validation_monitoring")
+    workflow.add_conditional_edges(
+        "validation_monitoring",
+        should_promote,
+        {
+            "promotion_decision": "promotion_decision",
             "planning": "planning"
         }
     )
+    workflow.add_edge("promotion_decision", END)
     
     return workflow
 
 
-def compile_quantcode_graph(checkpointer: MemorySaver = None) -> Any:
+def compile_quantcode_graph(checkpointer: Optional[MemorySaver] = None) -> Any:
     """Compile the QuantCode agent graph with optional checkpointing."""
     workflow = create_quantcode_graph()
     
@@ -253,18 +349,23 @@ def run_quantcode_workflow(
     memory_namespace: tuple = ("memories", "quantcode", "default")
 ) -> Dict[str, Any]:
     """Execute the QuantCode agent workflow."""
-    initial_state = QuantCodeState(
-        messages=[HumanMessage(content=strategy_request)],
-        current_task="strategy_development",
-        workspace_path=workspace_path,
-        context={},
-        memory_namespace=memory_namespace,
-        strategy_plan=None,
-        code_implementation=None,
-        backtest_results=None,
-        analysis_report=None,
-        reflection_notes=None
-    )
+    initial_state: QuantCodeState = {
+        "messages": [HumanMessage(content=strategy_request)],
+        "current_task": "strategy_development",
+        "workspace_path": workspace_path,
+        "context": {},
+        "memory_namespace": memory_namespace,
+        "strategy_plan": None,
+        "code_implementation": None,
+        "backtest_results": None,
+        "analysis_report": None,
+        "reflection_notes": None,
+        "paper_agent_id": None,
+        "validation_start_time": None,
+        "validation_period_days": 30,
+        "paper_trading_metrics": None,
+        "promotion_approved": False
+    }
     
     graph = compile_quantcode_graph()
     config = {"configurable": {"thread_id": "quantcode_001"}}

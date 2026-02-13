@@ -329,13 +329,29 @@
 
   function getCategoryBgColor(category: string) {
     const colors: Record<string, string> = {
-      'Indicator': 'rgba(59, 130, 246, 0.2)',
-      'Risk': 'rgba(245, 158, 11, 0.2)',
-      'Utils': 'rgba(139, 92, 246, 0.2)'
+      'Indicator': 'rgba(59, 130, 246, 0.1)',
+      'Risk': 'rgba(245, 158, 11, 0.1)',
+      'Utils': 'rgba(139, 92, 246, 0.1)'
     };
-    return colors[category] || 'rgba(107, 114, 128, 0.2)';
+    return colors[category] || 'rgba(107, 114, 128, 0.1)';
   }
 
+  function openInEditor(asset: SharedAsset) {
+    // Create a mock file object for the editor
+    const fileForEditor = {
+      id: asset.id,
+      name: asset.name,
+      category: `assets/${asset.category.toLowerCase()}`,
+      path: asset.filesystem_path,
+      content: `// ${asset.name}\n// Category: ${asset.category}\n// Version: ${asset.version}\n// Path: ${asset.filesystem_path}\n\n// Asset code would be loaded here\n\n// This is a ${asset.category} created by ${asset.created_by}\n// Created: ${formatDate(asset.created_at)}\n// Last Updated: ${formatDate(asset.updated_at)}\n\n${asset.description ? `// Description: ${asset.description}\n\n` : ''}// Dependencies:\n${asset.dependencies.map(dep => `// - ${dep}`).join('\n')}\n\n// Asset implementation would go here...`,
+      language: asset.filesystem_path.endsWith('.mq5') ? 'cpp' : 'plaintext'
+    };
+    
+    // Dispatch event to open in editor
+    dispatch('openInEditor', { article: fileForEditor });
+  }
+
+  
   function formatDate(dateStr: string) {
     const date = new Date(dateStr);
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -594,9 +610,9 @@
                     <Download size={14} />
                     <span>Export</span>
                   </button>
-                  <button class="action-btn">
-                    <Code size={14} />
-                    <span>View Source</span>
+                  <button class="action-btn" on:click={() => openInEditor(asset)}>
+                    <Edit size={14} />
+                    <span>Open in Editor</span>
                   </button>
                 </div>
               </div>

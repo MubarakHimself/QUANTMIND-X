@@ -9,6 +9,7 @@
     FolderOpen, Code, Terminal, Cpu, HardDrive,
     Brain, Sparkles, FileText
   } from 'lucide-svelte';
+  import ThemeSelector from './ThemeSelector.svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -729,82 +730,7 @@
         <!-- General Settings -->
         {#if activeTab === 'general'}
           <div class="panel">
-            <h3>General Settings</h3>
-
-            <div class="setting-group">
-              <label>Appearance</label>
-              <div class="setting-row">
-                <span>Theme</span>
-                <select bind:value={generalSettings.theme}>
-                  <option value="light">Light</option>
-                  <option value="dark">Dark</option>
-                  <option value="auto">Auto (System)</option>
-                </select>
-              </div>
-              <div class="setting-row">
-                <span>Language</span>
-                <select bind:value={generalSettings.language}>
-                  <option value="en">English</option>
-                  <option value="es">Español</option>
-                  <option value="fr">Français</option>
-                  <option value="de">Deutsch</option>
-                </select>
-              </div>
-              <div class="setting-row">
-                <span>Timezone</span>
-                <select bind:value={generalSettings.timezone}>
-                  <option value="UTC">UTC</option>
-                  <option value="America/New_York">Eastern Time</option>
-                  <option value="America/Chicago">Central Time</option>
-                  <option value="America/Los_Angeles">Pacific Time</option>
-                  <option value="Europe/London">London</option>
-                  <option value="Asia/Tokyo">Tokyo</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="setting-group">
-              <label>Editor</label>
-              <div class="setting-row">
-                <span>Auto-save</span>
-                <label class="switch">
-                  <input type="checkbox" bind:checked={generalSettings.autoSave} />
-                  <span class="slider"></span>
-                </label>
-              </div>
-              {#if generalSettings.autoSave}
-                <div class="setting-row">
-                  <span>Interval (seconds)</span>
-                  <input
-                    type="number"
-                    min="10"
-                    max="300"
-                    bind:value={generalSettings.autoSaveInterval}
-                    class="number-input"
-                  />
-                </div>
-              {/if}
-            </div>
-
-            <div class="setting-group">
-              <label>System</label>
-              <div class="setting-row">
-                <span>Debug Mode</span>
-                <label class="switch">
-                  <input type="checkbox" bind:checked={generalSettings.debugMode} />
-                  <span class="slider"></span>
-                </label>
-              </div>
-              <div class="setting-row">
-                <span>Log Level</span>
-                <select bind:value={generalSettings.logLevel}>
-                  <option value="debug">Debug</option>
-                  <option value="info">Info</option>
-                  <option value="warn">Warning</option>
-                  <option value="error">Error</option>
-                </select>
-              </div>
-            </div>
+            <ThemeSelector />
           </div>
         {/if}
 

@@ -86,6 +86,9 @@ class NewsSensor:
                 }
             ]
         """
+        # Clear existing events to prevent stale events from accumulating
+        self.events = []
+        
         for event_data in calendar_data:
             try:
                 # Parse event time

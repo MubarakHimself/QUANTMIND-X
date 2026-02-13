@@ -23,6 +23,7 @@ from src.router.sentinel import Sentinel
 from src.router.governor import Governor, RiskMandate
 from src.router.enhanced_governor import EnhancedGovernor
 from src.router.commander import Commander
+from src.router.multi_timeframe_sentinel import MultiTimeframeSentinel, Timeframe
 
 logger = logging.getLogger(__name__)
 
@@ -39,16 +40,29 @@ class StrategyRouter:
     - RoutingMatrix: Automatic bot → account assignment
     """
     
-    def __init__(self, use_smart_kill: bool = True, use_kelly_governor: bool = True):
+    def __init__(self, use_smart_kill: bool = True, use_kelly_governor: bool = True, 
+                 use_multi_timeframe: bool = True, multi_timeframes: Optional[List[Timeframe]] = None):
         """
         Initialize Strategy Router with all components.
 
         Args:
             use_smart_kill: If True, use SmartKillSwitch (default)
             use_kelly_governor: If True, use EnhancedGovernor with Kelly (default)
+            use_multi_timeframe: If True, use MultiTimeframeSentinel for multi-timeframe regime detection
+            multi_timeframes: List of timeframes for multi-timeframe sentinel (default: M5, H1, H4)
         """
         # Core Sentient Loop components
         self.sentinel = Sentinel()
+
+        # Multi-timeframe sentinel (Comment 1: instantiate and share with Commander)
+        self._use_multi_timeframe = use_multi_timeframe
+        if use_multi_timeframe:
+            if multi_timeframes is None:
+                multi_timeframes = [Timeframe.M5, Timeframe.H1, Timeframe.H4]
+            self.multi_timeframe_sentinel = MultiTimeframeSentinel(timeframes=multi_timeframes)
+            logger.info(f"StrategyRouter: MultiTimeframeSentinel initialized with timeframes={[tf.name for tf in multi_timeframes]}")
+        else:
+            self.multi_timeframe_sentinel = None
 
         # V3: Use Enhanced Governor with Kelly Calculator
         if use_kelly_governor:
@@ -57,6 +71,9 @@ class StrategyRouter:
             self.governor = Governor()
 
         self.commander = Commander(governor=self.governor)
+        
+        # Share multi_timeframe_sentinel with Commander
+        self.commander._multi_timeframe_sentinel = self.multi_timeframe_sentinel
         
         # Phase 2 components (lazy loaded)
         self._bot_registry: Optional["BotRegistry"] = None
@@ -219,7 +236,95 @@ class StrategyRouter:
             "tick_count": self._tick_count
         }
     
+    # ========== Multi-Timeframe Processing (Comment 1) ==========
+    
+    def process_tick_multi_timeframe(self, symbol: str, price: float, 
+                                     account_data: Optional[Dict] = None) -> Dict:
+        """
+        Process tick with multi-timeframe regime detection.
+        
+        Comment 1: Feed ticks into MultiTimeframeSentinel and pass 
+        timeframe-specific regime reports into run_auction.
+        
+        This method:
+        1. Feeds ticks into the multi_timeframe_sentinel
+        2. Gets regime reports for each timeframe
+        3. Passes timeframe-specific regime reports to Commander.run_auction
+        4. Returns dispatches with timeframe context
+        
+        Args:
+            symbol: Trading symbol
+            price: Current price
+            account_data: Optional account data for position sizing
+            
+        Returns:
+            Dict with multi-timeframe regime info and dispatches
+        """
+        if self.multi_timeframe_sentinel is None:
+            logger.warning("Multi-timeframe sentinel not enabled, falling back to single timeframe")
+            return self.process_tick(symbol, price, account_data)
+        
+        from datetime import datetime, timezone
+        
+        # Get current UTC time
+        current_utc = datetime.now(timezone.utc)
+        
+        # Feed tick into multi-timeframe sentinel
+        self.multi_timeframe_sentinel.on_tick(symbol, price, current_utc)
+        
+        # Comment 2 fix: Refresh self.sentinel to ensure auctions don't use stale/None primary regime
+        # This also updates the main sentinel's current_report for consistency
+        self.sentinel.on_tick(symbol, price)
+        
+        # Get regime reports for all timeframes
+        all_regimes = self.multi_timeframe_sentinel.get_all_regimes()
+        dominant_regime = self.multi_timeframe_sentinel.get_dominant_regime()
+        
+        logger.debug(f"Multi-timeframe regimes: {[(tf.name, r.regime) for tf, r in all_regimes.items()]}")
+        
+        # Comment 2 fix: Derive primary_regime_report from fastest entry in all_regimes if available
+        # This ensures auctions pass a non-None regime aligned with the chosen primary timeframe
+        if all_regimes:
+            # Get the fastest timeframe (smallest interval) as primary
+            sorted_timeframes = sorted(all_regimes.keys(), key=lambda tf: tf.seconds)
+            primary_timeframe = sorted_timeframes[0]
+            primary_regime_report = all_regimes[primary_timeframe]
+        else:
+            # Fallback to self.sentinel.current_report
+            primary_regime_report = self.sentinel.current_report
+        
+        # Extract account_balance and broker_id from account_data
+        account_balance = account_data.get('account_balance', 10000.0) if account_data else 10000.0
+        broker_id = account_data.get('broker_id', 'mt5_default') if account_data else 'mt5_default'
+        
+        # Run auction with multi-timeframe context
+        # Pass timeframe-specific regime reports and all_regimes dict
+        dispatches = self.commander.run_auction_with_timeframes(
+            primary_regime_report=primary_regime_report,
+            all_timeframe_regimes=all_regimes,
+            account_balance=account_balance,
+            broker_id=broker_id,
+            current_utc=current_utc
+        )
+        
+        # Apply timeframe context to dispatches
+        for dispatch in dispatches:
+            dispatch['timeframe_context'] = {
+                'dominant_regime': dominant_regime,
+                'all_regimes': {tf.name: r.regime for tf, r in all_regimes.items()}
+            }
+        
+        return {
+            "regime": dominant_regime,
+            "quality": self.sentinel.current_report.regime_quality if self.sentinel.current_report else 1.0,
+            "chaos_score": self.sentinel.current_report.chaos_score if self.sentinel.current_report else 0.0,
+            "all_timeframe_regimes": {tf.name: r.regime for tf, r in all_regimes.items()},
+            "dispatches": dispatches,
+            "tick_count": self._tick_count
+        }
+    
     # ========== Bot Lifecycle Management ==========
+
     
     def register_bot(self, bot_instance, initial_tag: str = "@pending") -> bool:
         """

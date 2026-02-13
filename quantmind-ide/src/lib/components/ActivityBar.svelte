@@ -2,7 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import {
     BookOpen, Boxes, Bot, TestTube, PlayCircle, Settings,
-    Database, Server, FileText
+    Database, Server, FileText, Edit3
   } from 'lucide-svelte';
   import { navigationStore } from '../stores/navigationStore';
 
@@ -20,9 +20,10 @@
     { id: 'live', icon: PlayCircle, label: 'Live Trading' },
     { id: 'router', icon: Server, label: 'Strategy Router' },
     { id: 'journal', icon: FileText, label: 'Trade Journal' },
+    { id: 'editor', icon: Edit3, label: 'Editor Workspace' },
   ];
 
-  export let activeView = 'ea';
+  export let activeView = 'live';
 
   // Subscribe to navigation store for view changes
   $: activeView = $navigationStore.currentView;

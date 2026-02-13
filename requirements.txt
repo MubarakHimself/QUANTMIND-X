@@ -38,6 +38,7 @@ pyarrow>=14.0.0
 
 # MCP Server
 mcp>=1.0.0
+-e ./mcp-metatrader5-server
 
 # Utilities
 python-dotenv>=1.0.0

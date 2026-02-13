@@ -9,7 +9,7 @@ Provides real-time updates for:
 - Trade journal entries
 """
 
-from typing import Set, Dict, Any, Optional, TYPE_CHECKING
+from typing import List, Set, Dict, Any, Optional, TYPE_CHECKING
 import asyncio
 import json
 import logging
@@ -32,11 +32,12 @@ except ImportError:
 
 
 class ConnectionManager:
-    """Manages WebSocket connections for UI updates."""
+    """Manages WebSocket connections with topic pooling (Phase 4.3)."""
     
     def __init__(self):
         self.active_connections: Set[WebSocket] = set()  # type: ignore
-        self.subscriptions: Dict[str, Set[WebSocket]] = {}  # type: ignore
+        self.subscriptions: Dict[str, Set[WebSocket]] = {}
+        self._topic_cache: Dict[str, List[WebSocket]] = {}  # Cache for faster lookup
     
     async def connect(self, websocket: WebSocket):  # type: ignore
         """Accept new WebSocket connection."""
@@ -47,9 +48,10 @@ class ConnectionManager:
     def disconnect(self, websocket: WebSocket):  # type: ignore
         """Remove WebSocket connection."""
         self.active_connections.discard(websocket)
-        # Remove from all subscriptions
+        # Remove from all subscriptions and invalidate caches
         for topic_subs in self.subscriptions.values():
             topic_subs.discard(websocket)
+        self._topic_cache.clear()  # Invalidate all caches
         logger.info(f"WebSocket disconnected. Total: {len(self.active_connections)}")
     
     async def subscribe(self, websocket: WebSocket, topic: str):  # type: ignore
@@ -57,23 +59,29 @@ class ConnectionManager:
         if topic not in self.subscriptions:
             self.subscriptions[topic] = set()
         self.subscriptions[topic].add(websocket)
+        
+        # Invalidate cache for this topic
+        self._topic_cache.pop(topic, None)
         logger.debug(f"WebSocket subscribed to: {topic}")
     
     async def broadcast(self, message: Dict[str, Any], topic: Optional[str] = None):
         """
-        Broadcast message to all connections or specific topic subscribers.
+        Broadcast message with topic connection pooling.
         
         Args:
             message: Message dict to send
-            topic: Optional topic filter (e.g., "backtest", "trading", "logs")
+            topic: Optional topic filter
         """
         message_json = json.dumps(message)
         
-        # Select target connections
-        if topic and topic in self.subscriptions:
-            targets = self.subscriptions[topic]
+        # Use cached topic connections if available
+        if topic and topic in self._topic_cache:
+            targets = self._topic_cache[topic]
+        elif topic and topic in self.subscriptions:
+            targets = list(self.subscriptions[topic])
+            self._topic_cache[topic] = targets  # Cache for next time
         else:
-            targets = self.active_connections
+            targets = list(self.active_connections)
         
         # Send to all targets
         disconnected = []
@@ -200,6 +208,32 @@ async def broadcast_log_entry(level: str, message: str, source: Optional[str] = 
     }, topic="logs")
 
 
+async def broadcast_paper_trading_update(agent_id: str, status: str, 
+                                         symbol: Optional[str] = None,
+                                         timeframe: Optional[str] = None,
+                                         uptime_seconds: Optional[int] = None):
+    """
+    Broadcast paper trading update to UI.
+    
+    Args:
+        agent_id: Agent identifier
+        status: Agent status (running, stopped, error, etc.)
+        symbol: Trading symbol (e.g., EURUSD)
+        timeframe: Timeframe (e.g., H1, M5)
+        uptime_seconds: Agent uptime in seconds
+    """
+    await manager.broadcast({
+        "type": "paper_trading_update",
+        "data": {
+            "agent_id": agent_id,
+            "status": status,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "uptime_seconds": uptime_seconds
+        }
+    }, topic="paper-trading")
+
+
 def get_manager():
     """Get the global connection manager for use by other modules."""
     return manager
@@ -210,5 +244,6 @@ __all__ = [
     'broadcast_backtest_progress',
     'broadcast_trading_update',
     'broadcast_log_entry',
+    'broadcast_paper_trading_update',
     'manager'
 ]

@@ -20,6 +20,7 @@
   
   // State
   let isRunning = false;
+  let currentBacktestId: string | null = null;
   let progress = 0;
   let status = '';
   let logs: Array<{ timestamp: string; level: string; message: string }> = [];
@@ -39,6 +40,18 @@
     { value: 'vanilla_full', label: 'Vanilla + Walk-Forward' },
     { value: 'spiced_full', label: 'Spiced + Walk-Forward' }
   ];
+  
+  // Log level filtering
+  let logLevelFilter = 'ALL';
+  const logLevels = ['ALL', 'INFO', 'WARNING', 'ERROR', 'PROGRESS', 'COMPLETE'];
+  
+  // Filtered logs based on selected level
+  $: filteredLogs = logLevelFilter === 'ALL' 
+    ? logs 
+    : logs.filter(log => log.level === logLevelFilter);
+  
+  // Auto-scroll control
+  let autoScroll = true;
   
   // Log container reference for auto-scroll
   let logContainer: HTMLDivElement;
@@ -86,10 +99,9 @@
   }
   
   function handleBacktestStart(message: WebSocketMessage) {
-    // Unwrap data property from WebSocket message
     const payload = message.data as Record<string, unknown> | undefined;
     const data = (payload || message) as Record<string, unknown>;
-
+    if (!currentBacktestId || data.backtest_id !== currentBacktestId) return;
     isRunning = true;
     progress = 0;
     status = `Starting ${(data.variant as string) || 'backtest'} for ${(data.symbol as string) || ''}`;
@@ -100,44 +112,42 @@
   }
   
   function handleBacktestProgress(message: WebSocketMessage) {
-    // Unwrap data property from WebSocket message
     const payload = message.data as Record<string, unknown> | undefined;
     const data = (payload || message) as Record<string, unknown>;
-
+    if (!currentBacktestId || data.backtest_id !== currentBacktestId) return;
     progress = (data.progress as number) || 0;
     status = (data.status as string) || '';
     addLog('PROGRESS', `[${(data.progress as number)?.toFixed(1) || '0'}%] ${data.status}`);
   }
   
   function handleBacktestComplete(message: WebSocketMessage) {
-    // Unwrap data property from WebSocket message
     const payload = message.data as Record<string, unknown> | undefined;
     const data = (payload || message) as Record<string, unknown>;
-
+    if (!currentBacktestId || data.backtest_id !== currentBacktestId) return;
     isRunning = false;
     progress = 100;
     status = 'Backtest completed';
     results = data;
     addLog('COMPLETE', `Backtest complete! Final balance: ${(data.final_balance as number)?.toFixed(2)}, Trades: ${data.total_trades}`);
+    currentBacktestId = null;
     dispatch('complete', results);
   }
   
   function handleBacktestError(message: WebSocketMessage) {
-    // Unwrap data property from WebSocket message
     const payload = message.data as Record<string, unknown> | undefined;
     const data = (payload || message) as Record<string, unknown>;
-
+    if (!currentBacktestId || data.backtest_id !== currentBacktestId) return;
     isRunning = false;
     error = (data.error as string) || 'Unknown error';
     addLog('ERROR', `Backtest error: ${data.error}`);
+    currentBacktestId = null;
     dispatch('error', data);
   }
   
   function handleLogEntry(message: WebSocketMessage) {
-    // Unwrap data property from WebSocket message
     const payload = message.data as Record<string, unknown> | undefined;
     const data = (payload || message) as Record<string, unknown>;
-
+    if (!currentBacktestId || data.backtest_id !== currentBacktestId) return;
     addLog((data.level as string) || 'INFO', (data.message as string) || '');
   }
   
@@ -149,12 +159,43 @@
     };
     logs = [...logs, logEntry];
     
-    // Auto-scroll to bottom
-    setTimeout(() => {
-      if (logContainer) {
-        logContainer.scrollTop = logContainer.scrollHeight;
-      }
-    }, 10);
+    // Auto-scroll to bottom only if enabled
+    if (autoScroll) {
+      setTimeout(() => {
+        if (logContainer) {
+          logContainer.scrollTop = logContainer.scrollHeight;
+        }
+      }, 10);
+    }
+  }
+  
+  function handleLogScroll(event: Event) {
+    const container = event.target as HTMLDivElement;
+    const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 50;
+    if (!isAtBottom && autoScroll) {
+      autoScroll = false;
+    }
+  }
+  
+  function toggleAutoScroll() {
+    autoScroll = !autoScroll;
+    if (autoScroll && logContainer) {
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+  }
+  
+  function exportLogs() {
+    const logText = logs.map(log => 
+      `[${new Date(log.timestamp).toISOString()}] ${log.level}: ${log.message}`
+    ).join('\n');
+    
+    const blob = new Blob([logText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backtest_logs_${Date.now()}.log`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
   
   async function runBacktest() {
@@ -191,6 +232,7 @@
       }
       
       const data = await response.json();
+      currentBacktestId = data.backtest_id;
       addLog('INFO', `Backtest started with ID: ${data.backtest_id}`);
       
     } catch (e) {
@@ -322,12 +364,27 @@
   {/if}
   
   <div class="logs-section">
-    <h3>Logs</h3>
-    <div class="logs-container" bind:this={logContainer}>
-      {#if logs.length === 0}
-        <div class="empty-logs">No logs yet</div>
+    <div class="logs-header">
+      <h3>Logs</h3>
+      <div class="logs-controls">
+        <select bind:value={logLevelFilter} disabled={isRunning}>
+          {#each logLevels as level}
+            <option value={level}>{level}</option>
+          {/each}
+        </select>
+        <button class="btn btn-small" class:active={autoScroll} on:click={toggleAutoScroll}>
+          {autoScroll ? 'Auto-Scroll ON' : 'Auto-Scroll OFF'}
+        </button>
+        <button class="btn btn-small btn-export" on:click={exportLogs} disabled={logs.length === 0}>
+          Export Logs
+        </button>
+      </div>
+    </div>
+    <div class="logs-container" bind:this={logContainer} on:scroll={handleLogScroll}>
+      {#if filteredLogs.length === 0}
+        <div class="empty-logs">{logs.length === 0 ? 'No logs yet' : 'No logs match filter'}</div>
       {:else}
-        {#each logs as log}
+        {#each filteredLogs as log}
           <div class="log-entry">
             <span class="log-timestamp">{new Date(log.timestamp).toLocaleTimeString()}</span>
             <span class="log-level" style="color: {getLogColor(log.level)}">{log.level}</span>
@@ -551,10 +608,59 @@
     margin-bottom: 1rem;
   }
   
-  .logs-section h3 {
-    margin: 0 0 0.5rem 0;
+  .logs-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+  
+  .logs-header h3 {
+    margin: 0;
     font-size: 1rem;
     font-weight: 500;
+  }
+  
+  .logs-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  
+  .logs-controls select {
+    padding: 0.25rem 0.5rem;
+    background: #2d2d2d;
+    border: 1px solid #4b5563;
+    border-radius: 4px;
+    color: #e0e0e0;
+    font-size: 0.75rem;
+  }
+  
+  .btn-small {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    background: #4b5563;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  
+  .btn-small:hover:not(:disabled) {
+    background: #6b7280;
+  }
+  
+  .btn-small.active {
+    background: #10b981;
+  }
+  
+  .btn-export {
+    background: #3b82f6;
+  }
+  
+  .btn-export:hover:not(:disabled) {
+    background: #2563eb;
   }
   
   .logs-container {

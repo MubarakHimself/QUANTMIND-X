@@ -20,6 +20,8 @@ import logging
 import pandas as pd
 import numpy as np
 import uuid
+import asyncio
+import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Tuple, Union
 from dataclasses import dataclass, field
@@ -30,7 +32,8 @@ from src.router.sentinel import Sentinel, RegimeReport
 from src.router.enhanced_governor import EnhancedGovernor
 from src.router.commander import Commander
 from src.router.sessions import SessionDetector, TradingSession
-from src.api.ws_logger import setup_backtest_logging, get_connection_manager
+from src.router.multi_timeframe_sentinel import MultiTimeframeSentinel, Timeframe
+from src.api.ws_logger import setup_backtest_logging, BacktestProgressStreamer
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +108,11 @@ class SentinelEnhancedTester(PythonStrategyTester):
         commission: float = 0.001,
         slippage: float = 0.0,
         broker_id: str = "icmarkets_raw",
-        enable_ws_streaming: bool = True
+        enable_ws_streaming: bool = True,
+        backtest_id: Optional[str] = None,
+        progress_streamer: Optional["BacktestProgressStreamer"] = None,
+        ws_logger: Optional[logging.Logger] = None,
+        loop: Optional[asyncio.AbstractEventLoop] = None  # Main loop for thread-safe WS (Comment 2)
     ):
         """Initialize Sentinel-enhanced tester with broker support.
 
@@ -117,6 +124,11 @@ class SentinelEnhancedTester(PythonStrategyTester):
             broker_id: Broker identifier for fee-aware Kelly (default: icmarkets_raw)
                 Used to auto-fetch pip values, commissions, and spreads during position sizing
             enable_ws_streaming: Enable WebSocket streaming for real-time updates (default: True)
+            backtest_id: Optional backtest ID from REST endpoint. If provided, WebSocket events
+                will use this ID for correlation with HTTP session. If None, a new UUID is generated.
+            progress_streamer: Optional progress streamer for WebSocket broadcasting
+            ws_logger: Optional WebSocket logger for streaming log_entry events (Comment 2)
+            loop: Optional event loop for thread-safe WebSocket broadcasts
         """
         super().__init__(
             initial_cash=initial_cash,
@@ -128,6 +140,17 @@ class SentinelEnhancedTester(PythonStrategyTester):
         self._sentinel = Sentinel()
         self._is_spiced_mode = mode in [BacktestMode.SPICED, BacktestMode.SPICED_FULL]
         self.broker_id = broker_id  # Store broker_id for Kelly calculation
+        
+        # Multi-timeframe sentinel (Comment 1: add for historical bars)
+        self._use_multi_timeframe = mode in [BacktestMode.SPICED, BacktestMode.SPICED_FULL]
+        if self._use_multi_timeframe:
+            # Default timeframes: M5, H1, H4
+            self._multi_timeframe_sentinel = MultiTimeframeSentinel(
+                timeframes=[Timeframe.M5, Timeframe.H1, Timeframe.H4]
+            )
+            logger.info("SentinelEnhancedTester: MultiTimeframeSentinel initialized for backtesting")
+        else:
+            self._multi_timeframe_sentinel = None
         
         # Initialize EnhancedGovernor for fee-aware Kelly position sizing
         self._governor = EnhancedGovernor(
@@ -148,25 +171,64 @@ class SentinelEnhancedTester(PythonStrategyTester):
         self._last_regime: Optional[str] = None
         self._filtered_trades = 0
         self._filter_reasons: Dict[str, int] = {}
+        
+        # Cached regime report from _update_regime_state() to avoid redundant Sentinel calls
+        self._current_regime_report: Optional[RegimeReport] = None
 
         # Quality metrics
         self._regime_qualities: List[float] = []
         self._chaos_scores: List[float] = []
 
         # WebSocket streaming (Phase 3 integration)
+        # Use provided backtest_id for correlation with REST session, or generate new one
         self._enable_ws_streaming = enable_ws_streaming
-        self._backtest_id: Optional[str] = None
-        self._ws_logger: Optional[logging.Logger] = None
-        self._progress_streamer = None
+        self._backtest_id: Optional[str] = backtest_id
+        self._ws_logger: Optional[logging.Logger] = ws_logger  # Use provided ws_logger (Comment 2)
+        self._progress_streamer = progress_streamer
+        # Initialize self.loop before it's used (Comment 1 fix)
+        if loop is not None:
+            self.loop = loop
+        else:
+            try:
+                self.loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # No running loop, create a new one
+                self.loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(self.loop)
         
-        if enable_ws_streaming:
-            self._backtest_id = str(uuid.uuid4())
-            self._ws_logger, self._progress_streamer = setup_backtest_logging(self._backtest_id)
+        # Use provided ws_logger, or create one if ws_logger is not provided (Comment 2)
+        # This ensures log_entry events are emitted during REST-initiated backtests
+        if self._ws_logger is None and enable_ws_streaming and self._progress_streamer is None:
+            self._ws_logger, self._progress_streamer = setup_backtest_logging(self._backtest_id, loop=self.loop)
             
+        # WebSocket streaming optimization (Phase 4)
+        self._ws_update_interval = 100  # Configurable
+        self._last_ws_update_time = None
+
         logger.info(
             f"SentinelEnhancedTester initialized with mode={mode.value}, broker_id={broker_id}, "
-            f"EnhancedGovernor ready for fee-aware Kelly position sizing"
+            f"backtest_id={self._backtest_id}, EnhancedGovernor ready for fee-aware Kelly position sizing"
         )
+
+    # -------------------------------------------------------------------------
+    # Override _log to emit WebSocket messages (Comment 1 fix)
+    # -------------------------------------------------------------------------
+
+    def _log(self, message: str):
+        """Add message to backtest log and emit via WebSocket if enabled.
+        
+        Overrides parent class method to ensure backtest logs are streamed
+        to WebSocket clients in real-time.
+        
+        Args:
+            message: Log message to record and broadcast
+        """
+        # First, call parent to store in _logs list
+        super()._log(message)
+        
+        # Also emit via WebSocket logger if available
+        if self._ws_logger is not None:
+            self._ws_logger.info(message)
 
     # -------------------------------------------------------------------------
     # Regime Detection Integration
@@ -291,6 +353,10 @@ class SentinelEnhancedTester(PythonStrategyTester):
         
         Overrides base class method to ensure regime history includes utc_timestamp
         field for session analysis per spec requirement Comment 1.
+        
+        Caches the RegimeReport in _current_regime_report for reuse by
+        run_auction_with_utc_time() to avoid redundant Sentinel calls with
+        dummy prices that could cause regime mismatch per bar.
         """
         if self._sentinel is None:
             return
@@ -310,6 +376,10 @@ class SentinelEnhancedTester(PythonStrategyTester):
                         symbol=self.symbol,
                         price=bar['close']
                     )
+                    
+                    # Cache the regime report for reuse by run_auction_with_utc_time()
+                    # This avoids a second Sentinel call with dummy price=1.0
+                    self._current_regime_report = report
 
                     # Store regime report with UTC timestamp for session filtering
                     regime_data = {
@@ -409,13 +479,22 @@ class SentinelEnhancedTester(PythonStrategyTester):
         if trade_proposal is None:
             trade_proposal = {}
 
-        # Ensure proposal has required fields
+        # Ensure proposal has required fields with scalar balance values
+        # Per Comment 1 fix: pass scalar balance (last equity value) instead of entire equity series
         if 'symbol' not in trade_proposal:
             trade_proposal['symbol'] = symbol
         if 'account_balance' not in trade_proposal:
-            trade_proposal['account_balance'] = self.equity
+            # Use scalar balance: last equity value if equity exists, otherwise default to initial_cash
+            if hasattr(self, 'equity') and self.equity and len(self.equity) > 0:
+                trade_proposal['account_balance'] = float(self.equity[-1])
+            else:
+                trade_proposal['account_balance'] = float(self.initial_cash)
         if 'current_balance' not in trade_proposal:
-            trade_proposal['current_balance'] = self.equity
+            # Use scalar balance: last equity value if equity exists, otherwise default to initial_cash
+            if hasattr(self, 'equity') and self.equity and len(self.equity) > 0:
+                trade_proposal['current_balance'] = float(self.equity[-1])
+            else:
+                trade_proposal['current_balance'] = float(self.initial_cash)
         if 'broker_id' not in trade_proposal:
             trade_proposal['broker_id'] = self.broker_id
 
@@ -469,7 +548,12 @@ class SentinelEnhancedTester(PythonStrategyTester):
     # Commander Integration for Session-Aware Bot Selection (Comment 1)
     # -------------------------------------------------------------------------
 
-    def run_auction_with_utc_time(self, symbol: str, bar_utc_time: Optional[datetime] = None) -> List[Dict[str, Any]]:
+    def run_auction_with_utc_time(
+        self,
+        symbol: str,
+        bar_utc_time: Optional[datetime] = None,
+        regime_report: Optional[RegimeReport] = None
+    ) -> List[Dict[str, Any]]:
         """Run Commander auction with session-aware filtering using bar UTC timestamp.
         
         SPEC: Backtest Commander Integration
@@ -486,6 +570,9 @@ class SentinelEnhancedTester(PythonStrategyTester):
         Args:
             symbol: Trading symbol for auction
             bar_utc_time: UTC timestamp from current bar. If None, extracted from bar.
+            regime_report: Optional pre-computed RegimeReport from _update_regime_state().
+                          If provided, skips the Sentinel call to avoid regime mismatch
+                          from calling on_tick() with a dummy price.
         
         Returns:
             List of eligible bot dispatches from Commander.run_auction()
@@ -502,12 +589,28 @@ class SentinelEnhancedTester(PythonStrategyTester):
             logger.warning("Cannot run auction: no bar UTC timestamp available")
             return []
         
-        # Get regime report from Sentinel for auction
-        report = self._sentinel.on_tick(symbol, price=1.0)  # type: ignore[union-attr]  # Price not used for regime detection
+        # Use provided regime_report or fall back to cached report from _update_regime_state()
+        # This avoids a second Sentinel call with dummy price=1.0 that could cause regime mismatch
+        if regime_report is None:
+            regime_report = self._current_regime_report
+        
+        if regime_report is None:
+            # Try to get from multi-timeframe sentinel if available (guard against None)
+            if self._multi_timeframe_sentinel is not None:
+                try:
+                    all_regimes = self._multi_timeframe_sentinel.get_all_regimes()
+                    fastest_tf = min(all_regimes.keys(), key=lambda tf: tf.seconds)
+                    regime_report = all_regimes.get(fastest_tf)
+                except Exception as e:
+                    logger.warning(f"Failed to get regime from multi-timeframe sentinel: {e}")
+        
+        if regime_report is None:
+            logger.warning("Cannot run auction: no regime report available")
+            return []
         
         # Run Commander auction with UTC timestamp for session-aware filtering
         auction_result = self._commander.run_auction(
-            regime_report=report,
+            regime_report=regime_report,
             account_balance=self.equity[-1] if self.equity else self.initial_cash,
             broker_id=self.broker_id,
             current_utc=bar_utc_time  # Pass bar UTC time for session detection
@@ -518,7 +621,7 @@ class SentinelEnhancedTester(PythonStrategyTester):
             'bar': self.current_bar,
             'utc_timestamp': bar_utc_time,
             'session': SessionDetector.detect_session(bar_utc_time).value,
-            'regime': report.regime,
+            'regime': regime_report.regime,
             'eligible_bots': len(auction_result),
             'dispatched_bots': auction_result
         }
@@ -526,7 +629,7 @@ class SentinelEnhancedTester(PythonStrategyTester):
         
         logger.debug(
             f"Auction at bar {self.current_bar} ({bar_utc_time.isoformat()}): "
-            f"session={auction_record['session']}, regime={report.regime}, "
+            f"session={auction_record['session']}, regime={regime_report.regime}, "
             f"eligible_bots={len(auction_result)}"
         )
         
@@ -596,13 +699,19 @@ class SentinelEnhancedTester(PythonStrategyTester):
             return None
 
         # Calculate Kelly-based position size with regime quality adjustment
+        # Per Comment 1 fix: pass scalar balance values instead of entire equity series
         regime_quality = report.regime_quality if report else 1.0
+        # Use scalar balance: last equity value if equity exists, otherwise default to initial_cash
+        if hasattr(self, 'equity') and self.equity and len(self.equity) > 0:
+            scalar_balance = float(self.equity[-1])
+        else:
+            scalar_balance = float(self.initial_cash)
         kelly_volume = self._calculate_kelly_position_size(
             symbol=symbol,
             trade_proposal={
                 'symbol': symbol,
-                'account_balance': self.equity,
-                'current_balance': self.equity,
+                'account_balance': scalar_balance,
+                'current_balance': scalar_balance,
                 'broker_id': self.broker_id,
                 'win_rate': 0.55,  # Conservative default
                 'avg_win': volume * 100.0,  # Rough estimate
@@ -727,35 +836,22 @@ class SentinelEnhancedTester(PythonStrategyTester):
         # Get timeframe string for display
         timeframe_str = str(timeframe)
         
-        # Broadcast backtest start (Phase 3 WebSocket integration)
-        if self._progress_streamer is not None:
-            import asyncio
+        # Broadcast backtest start with thread-safe call (Comment 2)
+        if self._progress_streamer is not None and self.loop:
             try:
-                # Get start/end dates from data
-                start_date = str(prepared_data.iloc[0]['time']) if 'time' in prepared_data.columns else 'unknown'
-                end_date = str(prepared_data.iloc[-1]['time']) if 'time' in prepared_data.columns else 'unknown'
+                start_date = str(prepared_data.iloc[0]['time']) if len(prepared_data) > 0 and 'time' in prepared_data.columns else 'unknown'
+                end_date = str(prepared_data.iloc[-1]['time']) if len(prepared_data) > 0 and 'time' in prepared_data.columns else 'unknown'
                 
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.create_task(
-                        self._progress_streamer.start(
-                            variant=self.mode.value,
-                            symbol=symbol,
-                            timeframe=timeframe_str,
-                            start_date=start_date,
-                            end_date=end_date
-                        )
-                    )
-                else:
-                    loop.run_until_complete(
-                        self._progress_streamer.start(
-                            variant=self.mode.value,
-                            symbol=symbol,
-                            timeframe=timeframe_str,
-                            start_date=start_date,
-                            end_date=end_date
-                        )
-                    )
+                future = asyncio.run_coroutine_threadsafe(
+                    self._progress_streamer.start(
+                        variant=self.mode.value,
+                        symbol=symbol,
+                        timeframe=timeframe_str,
+                        start_date=start_date,
+                        end_date=end_date
+                    ),
+                    self.loop
+                )
             except Exception as e:
                 logger.warning(f"Failed to broadcast backtest start: {e}")
         
@@ -795,13 +891,19 @@ class SentinelEnhancedTester(PythonStrategyTester):
                 bar_utc_time = self._get_bar_utc_timestamp()
                 
                 # Update regime state (includes UTC timestamp in history)
+                # This caches the RegimeReport in _current_regime_report for reuse
                 self._update_regime_state()
                 
                 # SPEC: Run Commander auction with UTC timestamp for session-aware bot filtering
                 # This is the key integration per Comment 1 - ensures session filters are exercised
+                # Pass the cached regime_report to avoid redundant Sentinel call with dummy price
                 if self._commander is not None and bar_utc_time is not None:
                     try:
-                        auction_result = self.run_auction_with_utc_time(symbol, bar_utc_time)
+                        auction_result = self.run_auction_with_utc_time(
+                            symbol,
+                            bar_utc_time,
+                            regime_report=self._current_regime_report
+                        )
                         logger.debug(
                             f"Bar {self.current_bar}: Commander auction with UTC={bar_utc_time.isoformat()}"
                         )
@@ -815,81 +917,71 @@ class SentinelEnhancedTester(PythonStrategyTester):
                 except Exception as e:
                     self._log(f"Strategy error at bar {self.current_bar}: {e}")
                 
-                # WebSocket progress update every 100 bars (Phase 3)
-                if self._progress_streamer is not None and self.current_bar > 0 and self.current_bar % 100 == 0:
-                    progress_pct = (self.current_bar / total_bars) * 100
-                    current_date = str(prepared_data.iloc[self.current_bar]['time']) if 'time' in prepared_data.columns else ''
+                # WebSocket progress update every 100 bars or 1s (Comment 2: restore emission)
+                current_time = time.time()
+                should_update = (
+                    self.current_bar % self._ws_update_interval == 0 or
+                    self._last_ws_update_time is None or
+                    (current_time - self._last_ws_update_time >= 1.0)
+                )
+                if self._progress_streamer is not None and should_update and self.loop:
+                    self._last_ws_update_time = current_time
+                    progress_pct = ((self.current_bar + 1) / total_bars * 100) if total_bars > 0 else 0.0
+                    status_msg = f"Processing bar {self.current_bar + 1}/{total_bars}"
+                    bars_proc = self.current_bar + 1
+                    curr_date = str(prepared_data.iloc[self.current_bar]['time']) if self.current_bar < len(prepared_data) and 'time' in prepared_data.columns else None
+                    trades_cnt = len(getattr(self, 'trades', []))
+                    curr_pnl = (self.equity[-1] if self.equity and len(self.equity) > 0 else self.initial_cash) - self.initial_cash
                     
-                    import asyncio
-                    try:
-                        loop = asyncio.get_event_loop()
-                        if loop.is_running():
-                            asyncio.create_task(
-                                self._progress_streamer.update_progress(
-                                    progress=progress_pct,
-                                    status=f"Processing bar {self.current_bar}/{total_bars}",
-                                    bars_processed=self.current_bar,
-                                    total_bars=total_bars,
-                                    current_date=current_date,
-                                    trades_count=len(self.trades) if hasattr(self, 'trades') else 0,
-                                    current_pnl=self.equity[-1] - self.initial_cash if hasattr(self, 'equity') and self.equity else 0
-                                )
-                            )
-                    except Exception as e:
-                        logger.warning(f"Failed to broadcast progress: {e}")
-        
+                    future = asyncio.run_coroutine_threadsafe(
+                        self._progress_streamer.update_progress(
+                            progress=progress_pct,
+                            status=status_msg,
+                            bars_processed=bars_proc,
+                            total_bars=total_bars,
+                            current_date=curr_date,
+                            trades_count=trades_cnt,
+                            current_pnl=curr_pnl
+                        ),
+                        self.loop
+                    )
+                # ...existing code...
         except Exception as e:
             self._log(f"Backtest error: {e}")
-            if self._progress_streamer is not None:
-                import asyncio
+            if self._progress_streamer is not None and self.loop:
                 try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        asyncio.create_task(self._progress_streamer.error(str(e)))
-                    else:
-                        loop.run_until_complete(self._progress_streamer.error(str(e)))
+                    future = asyncio.run_coroutine_threadsafe(
+                        self._progress_streamer.error(str(e)),
+                        self.loop
+                    )
                 except:
                     pass
-        
         # Close remaining positions
         self.close_all_positions()
         
         # Calculate final metrics
         result = self._calculate_result()
         
-        # Broadcast backtest complete (Phase 3)
-        if self._progress_streamer is not None:
-            import asyncio
+        # Broadcast backtest complete with thread-safe call (Comment 2)
+        if self._progress_streamer is not None and self.loop:
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.create_task(
-                        self._progress_streamer.complete(
-                            final_balance=result.final_cash,
-                            total_trades=result.trades,
-                            win_rate=(result.trades * result.win_rate / 100) if result.trades > 0 else 0,
-                            sharpe_ratio=result.sharpe,
-                            drawdown=result.drawdown,
-                            return_pct=result.return_pct,
-                            results=result.to_dict()
-                        )
-                    )
-                else:
-                    loop.run_until_complete(
-                        self._progress_streamer.complete(
-                            final_balance=result.final_cash,
-                            total_trades=result.trades,
-                            win_rate=(result.trades * result.win_rate / 100) if result.trades > 0 else 0,
-                            sharpe_ratio=result.sharpe,
-                            drawdown=result.drawdown,
-                            return_pct=result.return_pct,
-                            results=result.to_dict()
-                        )
-                    )
+                # Pass result.win_rate directly - it's already a percentage (0-100) (Comment 2)
+                future = asyncio.run_coroutine_threadsafe(
+                    self._progress_streamer.complete(
+                        final_balance=result.final_cash,
+                        total_trades=result.trades,
+                        win_rate=result.win_rate,  # Pass directly - no extra division (Comment 2)
+                        sharpe_ratio=result.sharpe,
+                        drawdown=result.drawdown,
+                        return_pct=result.return_pct,
+                        duration_seconds=None,
+                        results=result.to_dict()
+                    ),
+                    self.loop
+                )
             except Exception as e:
                 logger.warning(f"Failed to broadcast backtest complete: {e}")
         
-        # Return final result
         return result
 
     # -------------------------------------------------------------------------
@@ -947,6 +1039,121 @@ class SentinelEnhancedTester(PythonStrategyTester):
         # Return most recent regime quality
         return self._regime_qualities[-1]
 
+    # -------------------------------------------------------------------------
+    # Multi-Timeframe Sentinel Methods (Comment 1)
+    # -------------------------------------------------------------------------
+
+    def run_auction_with_timeframes(
+        self,
+        symbol: str,
+        bar_utc_time: Optional[datetime] = None,
+        regime_report: Optional[RegimeReport] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Run Commander auction with multi-timeframe regime detection.
+        
+        Comment 1: Use bot preferred_timeframe when evaluating regimes.
+        
+        This method:
+        1. Feeds historical bar data into multi-timeframe sentinel
+        2. Gets regime reports for all timeframes
+        3. Calls Commander.run_auction_with_timeframes for multi-timeframe filtering
+        4. Returns dispatches with timeframe context
+        
+        Args:
+            symbol: Trading symbol
+            bar_utc_time: UTC timestamp from current bar
+            regime_report: Optional pre-computed primary regime report
+            
+        Returns:
+            List of bot dispatches with timeframe context
+        """
+        if self._multi_timeframe_sentinel is None:
+            logger.warning("Multi-timeframe sentinel not enabled, falling back to single timeframe")
+            return self.run_auction_with_utc_time(symbol, bar_utc_time, regime_report)
+        
+        # Extract UTC timestamp if not provided
+        if bar_utc_time is None:
+            bar_utc_time = self._get_bar_utc_timestamp()
+        
+        if bar_utc_time is None:
+            logger.warning("Cannot run multi-timeframe auction: no bar UTC timestamp")
+            return []
+        
+        # Get current price for feeding into sentinel
+        if self.symbol and self.symbol in self._data_cache:
+            current_data = self._data_cache[self.symbol]
+            if self.current_bar < len(current_data):
+                bar = current_data.iloc[self.current_bar]
+                price = bar['close']
+                
+                # Feed tick into multi-timeframe sentinel
+                self._multi_timeframe_sentinel.on_tick(symbol, price, bar_utc_time)
+        
+        # Get regime reports for all timeframes
+        all_regimes = self._multi_timeframe_sentinel.get_all_regimes()
+        
+        if not all_regimes:
+            logger.warning("No regime reports from multi-timeframe sentinel")
+            return []
+        
+        # Use primary regime report or get from fastest timeframe
+        if regime_report is None:
+            regime_report = self._current_regime_report
+        
+        if regime_report is None:
+            # Get from fastest timeframe
+            fastest_tf = min(all_regimes.keys(), key=lambda tf: tf.seconds)
+            regime_report = all_regimes.get(fastest_tf)
+        
+        if regime_report is None:
+            logger.warning("Cannot run auction: no regime report available")
+            return []
+        
+        # Run multi-timeframe auction via Commander
+        # Share the multi-timeframe sentinel with Commander
+        self._commander._multi_timeframe_sentinel = self._multi_timeframe_sentinel
+        
+        auction_result = self._commander.run_auction_with_timeframes(
+            primary_regime_report=regime_report,
+            all_timeframe_regimes=all_regimes,
+            account_balance=self.equity[-1] if self.equity else self.initial_cash,
+            broker_id=self.broker_id,
+            current_utc=bar_utc_time
+        )
+        
+        # Track auction results
+        auction_record = {
+            'bar': self.current_bar,
+            'utc_timestamp': bar_utc_time,
+            'session': SessionDetector.detect_session(bar_utc_time).value,
+            'regime': regime_report.regime,
+            'all_timeframes': {tf.name: r.regime for tf, r in all_regimes.items()},
+            'eligible_bots': len(auction_result),
+            'dispatched_bots': auction_result
+        }
+        self._auction_results.append(auction_record)
+        
+        logger.debug(
+            f"Multi-timeframe auction at bar {self.current_bar}: "
+            f"timeframes={list(all_regimes.keys())}, dispatched={len(auction_result)}"
+        )
+        
+        return auction_result
+
+    def get_multi_timeframe_regimes(self) -> Dict[str, str]:
+        """
+        Get current regime for all configured timeframes.
+        
+        Returns:
+            Dict of timeframe name -> regime name
+        """
+        if self._multi_timeframe_sentinel is None:
+            return {}
+        
+        all_regimes = self._multi_timeframe_sentinel.get_all_regimes()
+        return {tf.name: r.regime for tf, r in all_regimes.items()}
+
 
 # =============================================================================
 # Mode Runner Functions
@@ -960,7 +1167,12 @@ def run_vanilla_backtest(
     initial_cash: float = 10000.0,
     commission: float = 0.001,
     slippage: float = 0.0,
-    broker_id: str = "icmarkets_raw"
+    broker_id: str = "icmarkets_raw",
+    enable_ws_streaming: bool = True,
+    backtest_id: Optional[str] = None,
+    progress_streamer: Optional["BacktestProgressStreamer"] = None,
+    ws_logger: Optional[logging.Logger] = None,  # Comment 2: Accept ws_logger
+    loop: Optional[asyncio.AbstractEventLoop] = None
 ) -> MT5BacktestResult:
     """Run Vanilla backtest (historical with static parameters).
 
@@ -974,20 +1186,44 @@ def run_vanilla_backtest(
         slippage: Slippage in price points
         broker_id: Broker identifier for fee-aware Kelly (default: icmarkets_raw)
             Used to fetch pip values, commissions, and spreads for accurate Kelly sizing
+        enable_ws_streaming: Enable WebSocket streaming for real-time updates (default: True).
+            When True, uses SentinelEnhancedTester with VANILLA mode for consistent streaming.
+        backtest_id: Optional backtest ID from REST endpoint for WebSocket correlation.
+            If provided, WebSocket events use this ID for status tracking.
+        ws_logger: Optional WebSocket logger for streaming log_entry events (Comment 2)
 
     Returns:
         MT5BacktestResult with standard metrics
         
     Note:
-        Vanilla mode uses standard PythonStrategyTester without fee-aware Kelly integration.
-        To enable Kelly position sizing, use run_spiced_backtest or run_full_system_backtest
-        with broker_id specified.
+        When enable_ws_streaming=True (default), Vanilla mode uses SentinelEnhancedTester
+        with regime filtering disabled for consistent WebSocket streaming across all modes.
+        This ensures the UI receives real-time progress updates and log entries.
+        To disable WebSocket streaming and use the simpler PythonStrategyTester, set
+        enable_ws_streaming=False.
     """
-    tester = PythonStrategyTester(
-        initial_cash=initial_cash,
-        commission=commission,
-        slippage=slippage
-    )
+    if enable_ws_streaming:
+        # Use SentinelEnhancedTester with VANILLA mode for WebSocket streaming
+        # Regime filtering is disabled in VANILLA mode (see _is_spiced_mode check)
+        tester = SentinelEnhancedTester(
+            mode=BacktestMode.VANILLA,
+            initial_cash=initial_cash,
+            commission=commission,
+            slippage=slippage,
+            broker_id=broker_id,
+            enable_ws_streaming=True,
+            backtest_id=backtest_id,
+            progress_streamer=progress_streamer,
+            ws_logger=ws_logger,  # Comment 2: Pass ws_logger
+            loop=loop
+        )
+    else:
+        # Use standard PythonStrategyTester without WebSocket streaming
+        tester = PythonStrategyTester(
+            initial_cash=initial_cash,
+            commission=commission,
+            slippage=slippage
+        )
 
     return tester.run(strategy_code, data, symbol, timeframe)
 
@@ -1000,7 +1236,11 @@ def run_spiced_backtest(
     initial_cash: float = 10000.0,
     commission: float = 0.001,
     slippage: float = 0.0,
-    broker_id: str = "icmarkets_raw"
+    broker_id: str = "icmarkets_raw",
+    backtest_id: Optional[str] = None,
+    progress_streamer: Optional["BacktestProgressStreamer"] = None,
+    ws_logger: Optional[logging.Logger] = None,  # Comment 2: Accept ws_logger
+    loop: Optional[asyncio.AbstractEventLoop] = None
 ) -> SpicedBacktestResult:
     """Run Spiced backtest (Vanilla + regime filtering + fee-aware Kelly position sizing).
 
@@ -1012,8 +1252,11 @@ def run_spiced_backtest(
     Position sizing integrates EnhancedGovernor for broker-aware Kelly calculation:
     - Auto-fetches pip values from broker registry
     - Auto-fetches commissions and spreads
-    - Adjusts risk based on regime quality from Sentinel
-    - Applies 3-layer Kelly protection (Kelly fraction, risk cap, ATR volatility)
+    - Adjusts risk based on regime quality from Sentinel (stable → aggressive, chaotic → conservative)
+    - Applies 3-layer Kelly protection:
+      1. Kelly Fraction (50% of full Kelly for safety)
+      2. Hard Risk Cap (max 2% per trade)
+      3. Dynamic Volatility Adjustment (ATR-based scaling)
     - Blocks trades when fees exceed expected profit (fee kill switch)
 
     Args:
@@ -1026,6 +1269,9 @@ def run_spiced_backtest(
         slippage: Slippage in price points
         broker_id: Broker identifier for fee-aware Kelly (default: icmarkets_raw)
             CRITICAL: Must match broker ID in broker registry for accurate fee-aware Kelly
+        backtest_id: Optional backtest ID from REST endpoint for WebSocket correlation.
+            If provided, WebSocket events use this ID for status tracking and correlation
+            with the HTTP session that initiated the backtest.
 
     Returns:
         SpicedBacktestResult with regime analytics and Kelly sizing details
@@ -1042,7 +1288,11 @@ def run_spiced_backtest(
         initial_cash=initial_cash,
         commission=commission,
         slippage=slippage,
-        broker_id=broker_id
+        broker_id=broker_id,
+        backtest_id=backtest_id,
+        progress_streamer=progress_streamer,  # Use shared
+        ws_logger=ws_logger,  # Comment 2: Pass ws_logger
+        loop=loop
     )
 
     return tester.run(strategy_code, data, symbol, timeframe)
@@ -1061,7 +1311,12 @@ def run_full_system_backtest(
     slippage: float = 0.0,
     chaos_threshold: float = 0.6,
     banned_regimes: Optional[List[str]] = None,
-    broker_id: str = "icmarkets_raw"
+    broker_id: str = "icmarkets_raw",
+    backtest_id: Optional[str] = None,
+    enable_ws_streaming: bool = True,
+    progress_streamer: Optional["BacktestProgressStreamer"] = None,
+    ws_logger: Optional[logging.Logger] = None,  # Comment 2: Accept ws_logger
+    loop: Optional[asyncio.AbstractEventLoop] = None  # FastAPI event loop for thread-safe WS broadcasts (Comment 1)
 ) -> Union[MT5BacktestResult, SpicedBacktestResult, Dict[str, MT5BacktestResult]]:
     """Run backtest with specified mode with optional broker-aware Kelly position sizing.
 
@@ -1100,6 +1355,9 @@ def run_full_system_backtest(
         broker_id: Broker identifier for fee-aware Kelly (default: icmarkets_raw)
             CRITICAL for accurate results: Must match broker in broker_registry
             Used to fetch pip values, commissions, spreads for Kelly sizing
+        backtest_id: Optional backtest ID from REST endpoint for WebSocket correlation.
+            If provided, WebSocket events use this ID for status tracking and correlation
+            with the HTTP session that initiated the backtest.
 
     Returns:
         MT5BacktestResult for Vanilla/Vanilla+Full
@@ -1115,7 +1373,8 @@ def run_full_system_backtest(
         ...     timeframe=MQL5Timeframe.PERIOD_H1,
         ...     strategy_code='def on_bar(tester): tester.buy("EURUSD", 0.1)',
         ...     initial_cash=10000.0,
-        ...     broker_id='icmarkets_raw'
+        ...     broker_id='icmarkets_raw',
+        ...     backtest_id='my-custom-backtest-id'
         ... )
         >>> print(f"Return: {result.return_pct:.2f}%")
         >>> print(f"Regime quality: {result.avg_regime_quality:.2f}")
@@ -1139,7 +1398,9 @@ def run_full_system_backtest(
             mode=backtest_mode,
             initial_cash=initial_cash,
             commission=commission,
-            slippage=slippage
+            slippage=slippage,
+            backtest_id=backtest_id,
+            loop=loop  # Propagate FastAPI event loop (Comment 1)
         )
 
     # Validate single symbol data
@@ -1151,12 +1412,21 @@ def run_full_system_backtest(
     if backtest_mode == BacktestMode.VANILLA:
         return run_vanilla_backtest(
             strategy_code, data, symbol, timeframe,
-            initial_cash, commission, slippage, broker_id
+            initial_cash, commission, slippage, broker_id,
+            enable_ws_streaming=enable_ws_streaming,
+            backtest_id=backtest_id,
+            progress_streamer=progress_streamer,
+            ws_logger=ws_logger,  # Comment 2: Pass ws_logger
+            loop=loop  # Propagate FastAPI event loop (Comment 1)
         )
     elif backtest_mode == BacktestMode.SPICED:
         return run_spiced_backtest(
             strategy_code, data, symbol, timeframe,
-            initial_cash, commission, slippage, broker_id
+            initial_cash, commission, slippage, broker_id,
+            backtest_id=backtest_id,
+            progress_streamer=progress_streamer,
+            ws_logger=ws_logger,  # Comment 2: Pass ws_logger
+            loop=loop  # Propagate FastAPI event loop (Comment 1)
         )
     elif backtest_mode in [BacktestMode.VANILLA_FULL, BacktestMode.SPICED_FULL]:
         # Import WalkForwardOptimizer
@@ -1183,7 +1453,10 @@ def run_full_system_backtest(
             use_regime_filter=use_regime_filter,
             chaos_threshold=chaos_threshold,
             banned_regimes=banned_regimes,
-            broker_id=broker_id
+            broker_id=broker_id,
+            backtest_id=backtest_id,  # Forward for WS correlation (Comment 3)
+            progress_streamer=progress_streamer,  # Forward progress streamer (Comment 3)
+            loop=loop  # Forward FastAPI event loop (Comment 3)
         )
 
         # Return appropriate result type
@@ -1239,7 +1512,9 @@ def run_multi_symbol_backtest(
     initial_cash: float = 10000.0,
     commission: float = 0.001,
     slippage: float = 0.0,
-    broker_id: str = "icmarkets_raw"
+    broker_id: str = "icmarkets_raw",
+    backtest_id: Optional[str] = None,
+    loop: Optional[asyncio.AbstractEventLoop] = None  # FastAPI event loop for thread-safe WS broadcasts (Comment 1)
 ) -> Dict[str, MT5BacktestResult]:
     """Run backtest across multiple symbols simultaneously with optional fee-aware Kelly sizing.
 
@@ -1257,6 +1532,7 @@ def run_multi_symbol_backtest(
         slippage: Slippage in price points
         broker_id: Broker identifier for fee-aware Kelly (default: icmarkets_raw)
             Applied to all symbols; for multi-broker scenarios, call run_spiced_backtest per symbol
+        backtest_id: Optional backtest ID from REST endpoint for WebSocket correlation.
 
     Returns:
         Dictionary mapping symbols to backtest results
@@ -1279,7 +1555,9 @@ def run_multi_symbol_backtest(
                 initial_cash=initial_cash,
                 commission=commission,
                 slippage=slippage,
-                broker_id=broker_id
+                broker_id=broker_id,
+                backtest_id=backtest_id,
+                loop=loop  # Propagate FastAPI event loop (Comment 1)
             )
             results[symbol] = result
         except Exception as e:

@@ -10,8 +10,9 @@
     Home, ArrowLeft, Grid, List, Play, Pause, AlertTriangle,
     Router, Zap, Clock, Link as LinkIcon, FileText,
     MonitorPlay, BarChart2, PieChart, ExternalLink, Target, Loader,
-    Library, ShieldAlert, Table, Newspaper
+    Library, ShieldAlert, Table, Newspaper, DollarSign
   } from 'lucide-svelte';
+  import CodeEditor from './CodeEditor.svelte';
 
   import MonteCarloChart from './charts/MonteCarloChart.svelte';
   import SettingsView from './SettingsView.svelte';
@@ -23,6 +24,8 @@
   import DatabaseView from './DatabaseView.svelte';
   import NewsView from './NewsView.svelte';
   import LiveTradingView from './LiveTradingView.svelte';
+  import ArticleViewer from './ArticleViewer.svelte';
+  import PaperTradingPanel from './PaperTradingPanel.svelte';
   import { navigationStore } from '../stores/navigationStore';
 
   const dispatch = createEventDispatcher();
@@ -79,6 +82,32 @@
   
   // Backtest History (Sprint 6)
   let backtestHistory: Array<any> = [];
+  
+  // Mock EA files for Windows Explorer navigation
+  let mockNprdFiles = [
+    { id: 'nprd1', name: 'ICT_Scalper_NPRD.txt', size: '2.4 KB', path: '/ea/ict-scaler/nprd' },
+    { id: 'nprd2', name: 'SMC_Reversal_NPRD.txt', size: '1.8 KB', path: '/ea/smc-reversal/nprd' },
+    { id: 'nprd3', name: 'Order_Block_Hunter_NPRD.txt', size: '3.1 KB', path: '/ea/order-block/nprd' }
+  ];
+  
+  let mockTrdFiles = [
+    { id: 'trd1', name: 'ICT_Scalper_TRD.txt', size: '4.2 KB', path: '/ea/ict-scaler/trd' },
+    { id: 'trd2', name: 'SMC_Reversal_TRD.txt', size: '3.7 KB', path: '/ea/smc-reversal/trd' },
+    { id: 'trd3', name: 'Order_Block_Hunter_TRD.txt', size: '5.1 KB', path: '/ea/order-block/trd' }
+  ];
+  
+  let mockEaFiles = [
+    { id: 'ea1', name: 'ICT_Scalper.mq5', size: '12.8 KB', path: '/ea/ict-scaler/ICT_Scalper.mq5' },
+    { id: 'ea2', name: 'SMC_Reversal.mq5', size: '15.3 KB', path: '/ea/smc-reversal/SMC_Reversal.mq5' },
+    { id: 'ea3', name: 'Order_Block_Hunter.mq5', size: '18.7 KB', path: '/ea/order-block/Order_Block_Hunter.mq5' },
+    { id: 'ea4', name: 'ICT_Scalper.mqh', size: '8.2 KB', path: '/ea/ict-scaler/ICT_Scalper.mqh' }
+  ];
+  
+  let mockBacktestFiles = [
+    { id: 'bt1', name: 'ICT_Scalper_Backtest_2024.txt', size: '6.4 KB', path: '/ea/ict-scaler/backtest' },
+    { id: 'bt2', name: 'SMC_Reversal_Backtest_2024.txt', size: '7.1 KB', path: '/ea/smc-reversal/backtest' },
+    { id: 'bt3', name: 'Order_Block_Hunter_Backtest_2024.txt', size: '8.9 KB', path: '/ea/order-block/backtest' }
+  ];
   
   // Load backtests when view activates
   $: if ($navigationStore.currentView === 'backtest' && !$navigationStore.subPage) {
@@ -295,6 +324,12 @@
     }
   }
 
+  // Close article viewer
+  function closeArticleViewer() {
+    viewingArticle = null;
+    relatedArticles = [];
+  }
+
   // Copy code snippet to clipboard
   function copyCode(code: string, event: Event) {
     event.stopPropagation();
@@ -319,6 +354,16 @@
   let bots: Array<any> = [];
   let systemStatus: any = { regime: 'Unknown', kelly: 0, pnl: 0 };
   
+  // Editor workspace state
+  let editorFiles: Array<{id: string, name: string, content: string, language: string, path: string, source?: string, category?: string}> = [];
+  let activeEditorFile: any = null;
+  let editorContent = '';
+  let editorLanguage = 'plaintext';
+  let editorFilename = 'untitled';
+  
+  // Breadcrumb navigation for editor
+  let editorBreadcrumb: Array<{name: string, path?: string}> = [];
+  
   onMount(async () => {
     await loadData();
     // Initialize navigation with the current view
@@ -331,8 +376,12 @@
       const articlesRes = await fetch('http://localhost:8000/api/knowledge');
       if (articlesRes.ok) {
         articles = await articlesRes.json();
+        console.log('[MainContent] Loaded articles:', articles.length, articles);
         updateCategoryCounts();
         applyArticleFilter();
+        console.log('[MainContent] After filter, filteredArticles:', filteredArticles.length);
+      } else {
+        console.error('[MainContent] Failed to load articles, status:', articlesRes.status);
       }
       
       // Load strategies for EA Management  
@@ -404,6 +453,11 @@
         { id: 'journal', name: 'Trade Journal', icon: FileText }
       ]
     },
+    'paper-trading': {
+      title: 'Paper Trading',
+      icon: MonitorPlay,
+      description: 'Backtest agents and paper trading simulations'
+    },
     router: {
       title: 'Strategy Router',
       icon: Router,
@@ -413,6 +467,11 @@
       title: 'Trade Journal',
       icon: FileText,
       description: 'Complete trade history with context'
+    },
+    editor: {
+      title: 'Editor Workspace',
+      icon: Edit3,
+      description: 'Code editor for articles, indicators, and agent workflows'
     },
     settings: {
       title: 'System Settings',
@@ -456,6 +515,150 @@
   
   function navigateTo(folderId: string, folderName: string) {
     navigationStore.navigateToFolder(folderId, folderName);
+  }
+  
+  // Editor workspace functions
+  async function openInEditor(item: any) {
+    console.log('[Editor] Opening item in editor:', item);
+    
+    try {
+      // Fetch content from API
+      const contentRes = await fetch(`http://localhost:8000/api/knowledge/${encodeURIComponent(item.id || item.path)}/content`);
+      let content = '';
+      
+      if (contentRes.ok) {
+        const data = await contentRes.json();
+        content = data.content || '';
+      } else {
+        // Try alternative endpoint for assets
+        try {
+          const assetRes = await fetch(`http://localhost:8000/api/assets/${item.id}/content`);
+          if (assetRes.ok) {
+            const assetData = await assetRes.json();
+            content = assetData.content || '';
+          }
+        } catch {
+          content = `// Could not load content for ${item.name}`;
+        }
+      }
+      
+      // Determine language from filename
+      const filename = item.name || item.filename || 'untitled';
+      const language = detectLanguage(filename);
+      
+      // Create breadcrumb navigation
+      const category = item.category?.split('/')[1]?.replace('_', ' ') || 'general';
+      const source = item.category?.split('/')[0] || 'unknown';
+      
+      // Map source to proper display names
+      const sourceMap: Record<string, string> = {
+        'scraped_articles': 'Knowledge',
+        'assets': 'Assets',
+        'ea': 'EA Management'
+      };
+      
+      editorBreadcrumb = [
+        { name: sourceMap[source] || source.charAt(0).toUpperCase() + source.slice(1) },
+        { name: category.charAt(0).toUpperCase() + category.slice(1) },
+        { name: filename }
+      ];
+      
+      // Create or update file in editor
+      const existingFile = editorFiles.find(f => f.id === item.id);
+      if (existingFile) {
+        existingFile.content = content;
+        existingFile.language = language;
+      } else {
+        editorFiles = [...editorFiles, {
+          id: item.id,
+          name: filename,
+          content: content,
+          language: language,
+          path: item.path || item.id,
+          source: source,
+          category: category
+        }];
+      }
+      
+      // Set as active file
+      activeEditorFile = editorFiles.find(f => f.id === item.id);
+      editorContent = content;
+      editorLanguage = language;
+      editorFilename = filename;
+      
+      // Switch to editor view
+      dispatch('viewChange', { view: 'editor' });
+      
+    } catch (error) {
+      console.error('[Editor] Failed to open file:', error);
+      alert('Failed to open file in editor');
+    }
+  }
+  
+  function detectLanguage(filename: string): string {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    const langMap: Record<string, string> = {
+      'js': 'javascript',
+      'ts': 'typescript',
+      'py': 'python',
+      'mql5': 'cpp',
+      'mq5': 'cpp',
+      'mqh': 'cpp',
+      'cpp': 'cpp',
+      'c': 'cpp',
+      'h': 'cpp',
+      'java': 'java',
+      'cs': 'csharp',
+      'php': 'php',
+      'rb': 'ruby',
+      'go': 'go',
+      'rs': 'rust',
+      'sql': 'sql',
+      'json': 'json',
+      'xml': 'xml',
+      'html': 'html',
+      'css': 'css',
+      'scss': 'scss',
+      'less': 'less',
+      'md': 'markdown',
+      'yaml': 'yaml',
+      'yml': 'yaml',
+      'sh': 'bash',
+      'bash': 'bash',
+      'zsh': 'bash'
+    };
+    return langMap[ext || ''] || 'plaintext';
+  }
+  
+  function saveEditorFile() {
+    if (!activeEditorFile) return;
+    
+    // Update file content
+    activeEditorFile.content = editorContent;
+    const fileIndex = editorFiles.findIndex(f => f.id === activeEditorFile.id);
+    if (fileIndex !== -1) {
+      editorFiles[fileIndex] = { ...activeEditorFile };
+    }
+    
+    // TODO: Save to backend API
+    console.log('[Editor] Saving file:', activeEditorFile.name);
+    alert('File saved (backend save not implemented yet)');
+  }
+  
+  function closeEditorFile(fileId: string) {
+    editorFiles = editorFiles.filter(f => f.id !== fileId);
+    if (activeEditorFile?.id === fileId) {
+      activeEditorFile = editorFiles.length > 0 ? editorFiles[0] : null;
+      if (activeEditorFile) {
+        editorContent = activeEditorFile.content;
+        editorLanguage = activeEditorFile.language;
+        editorFilename = activeEditorFile.name;
+      } else {
+        editorContent = '';
+        editorLanguage = 'plaintext';
+        editorFilename = 'untitled';
+      }
+    }
   }
 
   function navigateBack() {
@@ -668,11 +871,13 @@
   
   // Apply category filter
   function applyArticleFilter() {
+    console.log('[MainContent] Applying filter, selectedCategory:', selectedCategory, 'articles:', articles.length);
     if (selectedCategory === 'all') {
       filteredArticles = articles;
     } else {
       filteredArticles = articles.filter(a => a.category?.includes(selectedCategory));
     }
+    console.log('[MainContent] Filtered to:', filteredArticles.length, 'articles');
   }
   
   // Toggle edit mode
@@ -1088,96 +1293,19 @@
         {/if}
 
         {#if viewingArticle}
-          <!-- Article Viewer/Editor Modal with Split View -->
-          <div class="modal-overlay article-viewer-overlay" on:click={() => { viewingArticle = null; editMode = false; }}>
-            <div class="modal article-viewer-modal" class:edit-mode={editMode} on:click|stopPropagation>
-              <div class="article-viewer-header">
-                <div class="article-viewer-title">
-                  <h2>{viewingArticle.title || viewingArticle.name}</h2>
-                  <div class="article-viewer-meta">
-                    {#if viewingArticle.category}
-                      <span class="meta-tag">{viewingArticle.category}</span>
-                    {/if}
-                    <span class="meta-item">
-                      {Math.round((viewingArticle.size_bytes || 0) / 1024)} KB
-                    </span>
-                  </div>
-                </div>
-                <div class="article-viewer-actions">
-                  {#if !viewingArticle.loading && viewingArticle.content}
-                    <button class="btn-edit" class:active={editMode} on:click={toggleEditMode} title="{editMode ? 'View Only' : 'Edit Article'}">
-                      {#if editMode}
-                        <BookOpen size={16} /> View Mode
-                      {:else}
-                        <Edit3 size={16} /> Edit
-                      {/if}
-                    </button>
-                    {#if editMode}
-                      <button class="btn-save" on:click={saveArticle} title="Save Changes">
-                        <Save size={16} /> Save
-                      </button>
-                    {/if}
-                  {/if}
-                  <button class="icon-btn" on:click={() => { viewingArticle = null; editMode = false; }} title="Close">
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-
-              <div class="article-viewer-body">
-                {#if viewingArticle.loading}
-                  <div class="article-placeholder">
-                    <Loader size={48} class="spinner" />
-                    <p>Loading content...</p>
-                  </div>
-                {:else if viewingArticle.content}
-                  {#if editMode}
-                    <!-- Split View: Editor + Live Preview -->
-                    <div class="split-view-container">
-                      <div class="editor-pane">
-                        <div class="pane-header">
-                          <h4><Edit3 size={14} /> Markdown Editor</h4>
-                        </div>
-                        <textarea
-                          class="markdown-editor"
-                          bind:value={articleEditContent}
-                          on:input={updatePreview}
-                          placeholder="Write markdown here..."
-                        ></textarea>
-                      </div>
-                      
-                      <div class="preview-pane">
-                        <div class="pane-header">
-                          <h4><BookOpen size={14} /> Live Preview</h4>
-                        </div>
-                        <div class="article-content">
-                          {@html previewContent}
-                        </div>
-                      </div>
-                    </div>
-                  {:else}
-                    <!-- Read-only view -->
-                    <div class="article-content-wrapper">
-                      <div class="article-content">
-                        {@html renderMarkdown(viewingArticle.content)}
-                      </div>
-                    </div>
-                  {/if}
-                {:else if viewingArticle.error}
-                  <div class="article-placeholder">
-                    <AlertTriangle size={48} />
-                    <p>{viewingArticle.error}</p>
-                  </div>
-                {:else}
-                  <div class="article-placeholder">
-                    <FileText size={48} />
-                    <p>Content preview not available</p>
-                  </div>
-                {/if}
-              </div>
-            </div>
-          </div>
-        {/if}
+          <!-- Article Viewer Modal -->
+      <div class="modal-overlay article-viewer-overlay" on:click={closeArticleViewer}>
+        <div class="modal article-viewer-modal" on:click|stopPropagation>
+          <ArticleViewer 
+            article={viewingArticle} 
+            onClose={closeArticleViewer}
+            on:openInEditor={(e) => {
+              closeArticleViewer();
+              openInEditor(e.detail.article);
+            }}
+          />
+        </div>
+      </div>
 
         {:else if subPage === 'database'}
           <!-- Database Visualization Page -->
@@ -1239,6 +1367,10 @@
         {:else if activeView === 'live'}
           <!-- Live Trading View with sub-tabs -->
           <LiveTradingView />
+
+        {:else if activeView === 'paper-trading'}
+          <!-- Paper Trading View -->
+          <PaperTradingPanel baseUrl="http://localhost:8000" />
 
         {:else if activeView === 'router'}
           <!-- Strategy Router View -->
@@ -1357,23 +1489,72 @@
           {#if currentFolder}
             <!-- Inside a strategy folder - Windows Explorer style -->
             <div class="folder-contents">
+              <!-- Breadcrumb navigation -->
+              <div class="folder-breadcrumb">
+                <button class="breadcrumb-btn" on:click={() => currentFolder = ''}>
+                  <Home size={14} />
+                  <span>EA Management</span>
+                </button>
+                <ChevronRight size={12} class="breadcrumb-separator" />
+                <span class="breadcrumb-current">{currentFolder}</span>
+              </div>
+              
               <div class="folder-grid">
-                <div class="folder-item" role="button" tabindex="0" on:click={() => navigateTo('nprd', 'NPRD Output')} on:keydown={(e) => e.key === 'Enter' && navigateTo('nprd', 'NPRD Output')}>
-                  <Folder size={40} style="color: #f59e0b" />
-                  <span>NPRD Output</span>
-                </div>
-                <div class="folder-item" role="button" tabindex="0" on:click={() => navigateTo('trd', 'TRD')} on:keydown={(e) => e.key === 'Enter' && navigateTo('trd', 'TRD')}>
-                  <Folder size={40} style="color: #3b82f6" />
-                  <span>TRD</span>
-                </div>
-                <div class="folder-item" role="button" tabindex="0" on:click={() => navigateTo('ea', 'EA Code')} on:keydown={(e) => e.key === 'Enter' && navigateTo('ea', 'EA Code')}>
-                  <Folder size={40} style="color: #10b981" />
-                  <span>EA Code</span>
-                </div>
-                <div class="folder-item" role="button" tabindex="0" on:click={() => navigateTo('backtest', 'Backtest Reports')} on:keydown={(e) => e.key === 'Enter' && navigateTo('backtest', 'Backtest Reports')}>
-                  <Folder size={40} style="color: #8b5cf6" />
-                  <span>Backtest Reports</span>
-                </div>
+                {#if currentFolder === 'nprd'}
+                  <!-- NPRD Output files -->
+                  {#each mockNprdFiles as file}
+                    <div class="file-item" role="button" tabindex="0" on:click={() => openInEditor(file)} on:keydown={(e) => e.key === 'Enter' && openInEditor(file)}>
+                      <FileText size={32} style="color: #f59e0b" />
+                      <span>{file.name}</span>
+                      <span class="file-size">{file.size}</span>
+                    </div>
+                  {/each}
+                {:else if currentFolder === 'trd'}
+                  <!-- TRD files -->
+                  {#each mockTrdFiles as file}
+                    <div class="file-item" role="button" tabindex="0" on:click={() => openInEditor(file)} on:keydown={(e) => e.key === 'Enter' && openInEditor(file)}>
+                      <FileText size={32} style="color: #3b82f6" />
+                      <span>{file.name}</span>
+                      <span class="file-size">{file.size}</span>
+                    </div>
+                  {/each}
+                {:else if currentFolder === 'ea'}
+                  <!-- EA Code files -->
+                  {#each mockEaFiles as file}
+                    <div class="file-item" role="button" tabindex="0" on:click={() => openInEditor(file)} on:keydown={(e) => e.key === 'Enter' && openInEditor(file)}>
+                      <FileText size={32} style="color: #10b981" />
+                      <span>{file.name}</span>
+                      <span class="file-size">{file.size}</span>
+                    </div>
+                  {/each}
+                {:else if currentFolder === 'backtest'}
+                  <!-- Backtest Report files -->
+                  {#each mockBacktestFiles as file}
+                    <div class="file-item" role="button" tabindex="0" on:click={() => openInEditor(file)} on:keydown={(e) => e.key === 'Enter' && openInEditor(file)}>
+                      <FileText size={32} style="color: #8b5cf6" />
+                      <span>{file.name}</span>
+                      <span class="file-size">{file.size}</span>
+                    </div>
+                  {/each}
+                {:else}
+                  <!-- Default subfolders -->
+                  <div class="folder-item" role="button" tabindex="0" on:click={() => currentFolder = 'nprd'} on:keydown={(e) => e.key === 'Enter' && (currentFolder = 'nprd')}>
+                    <Folder size={40} style="color: #f59e0b" />
+                    <span>NPRD Output</span>
+                  </div>
+                  <div class="folder-item" role="button" tabindex="0" on:click={() => currentFolder = 'trd'} on:keydown={(e) => e.key === 'Enter' && (currentFolder = 'trd')}>
+                    <Folder size={40} style="color: #3b82f6" />
+                    <span>TRD</span>
+                  </div>
+                  <div class="folder-item" role="button" tabindex="0" on:click={() => currentFolder = 'ea'} on:keydown={(e) => e.key === 'Enter' && (currentFolder = 'ea')}>
+                    <Folder size={40} style="color: #10b981" />
+                    <span>EA Code</span>
+                  </div>
+                  <div class="folder-item" role="button" tabindex="0" on:click={() => currentFolder = 'backtest'} on:keydown={(e) => e.key === 'Enter' && (currentFolder = 'backtest')}>
+                    <Folder size={40} style="color: #8b5cf6" />
+                    <span>Backtest Reports</span>
+                  </div>
+                {/if}
               </div>
             </div>
           {/if}
@@ -1382,19 +1563,22 @@
           <!-- Backtest Results with Monte Carlo -->
           <div class="backtest-view">
             <div class="backtest-tabs">
-              <button class="backtest-tab" class:active={!currentFolder || currentFolder === 'run'} on:click={() => currentFolder = 'run'}>
-                <Play size={14} /> Run Backtest
-              </button>
-              <button class="backtest-tab" class:active={currentFolder === 'results'} on:click={() => currentFolder = 'results'}>
-                <BarChart2 size={14} /> Results
-              </button>
-              <button class="backtest-tab" class:active={currentFolder === 'montecarlo'} on:click={() => currentFolder = 'montecarlo'}>
-                <PieChart size={14} /> Monte Carlo
-              </button>
-              <button class="backtest-tab" class:active={currentFolder === 'walkforward'} on:click={() => currentFolder = 'walkforward'}>
-                <TrendingUp size={14} /> Walk-Forward
-              </button>
-            </div>
+                <button class="backtest-tab" class:active={!currentFolder || currentFolder === 'run'} on:click={() => currentFolder = 'run'}>
+                  <Play size={14} /> Run Backtest
+                </button>
+                <button class="backtest-tab" class:active={currentFolder === 'results'} on:click={() => currentFolder = 'results'}>
+                  <BarChart2 size={14} /> Results
+                </button>
+                <button class="backtest-tab" class:active={currentFolder === 'montecarlo'} on:click={() => currentFolder = 'montecarlo'}>
+                  <PieChart size={14} /> Monte Carlo
+                </button>
+                <button class="backtest-tab" class:active={currentFolder === 'walkforward'} on:click={() => currentFolder = 'walkforward'}>
+                  <TrendingUp size={14} /> Walk-Forward
+                </button>
+                <button class="backtest-tab" class:active={currentFolder === 'paper-trading'} on:click={() => currentFolder = 'paper-trading'}>
+                  <DollarSign size={14} /> Paper Trading
+                </button>
+              </div>
 
             {#if currentFolder === 'run'}
               <!-- Run Backtest Configuration -->
@@ -1597,6 +1781,9 @@
                   </div>
                 </div>
               </div>
+            {:else if currentFolder === 'paper-trading'}
+              <!-- Paper Trading Panel -->
+              <PaperTradingPanel baseUrl="http://localhost:8000" />
             {/if}
           </div>
         
@@ -1640,20 +1827,41 @@
                 </div>
                 
                 <div class="articles-grid">
-                  {#each filteredArticles as article}
-                    <div class="article-card" on:click={() => openArticleViewer(article)}>
-                      <div class="article-icon">
-                        <Newspaper size={20} />
-                      </div>
-                      <div class="article-info">
-                        <h4>{article.name}</h4>
-                        <div class="article-meta">
-                          <span class="category-tag">{article.category?.split('/')[1] || 'general'}</span>
-                          <span class="size">{(article.size_bytes / 1024).toFixed(1)} KB</span>
+                  {#if filteredArticles.length === 0}
+                    <div class="empty-state">
+                      <Newspaper size={48} />
+                      <p>No articles found in this category</p>
+                      <span class="hint">Try selecting a different category or check if the backend is running</span>
+                    </div>
+                  {:else}
+                    {#each filteredArticles as article}
+                      <div class="article-card">
+                        <div class="article-icon">
+                          <Newspaper size={20} />
+                        </div>
+                        <div class="article-info">
+                          <h4>{article.name}</h4>
+                          <div class="article-meta">
+                            <span class="category-tag" 
+                              class:expert-advisors={article.category?.includes('expert_advisors')} 
+                              class:integration={article.category?.includes('integration')} 
+                              class:trading={article.category?.includes('trading')} 
+                              class:trading-systems={article.category?.includes('trading-systems')}>
+                              {article.category?.split('/')[1]?.replace('_', ' ').toUpperCase() || 'GENERAL'}
+                            </span>
+                          </div>
+                        </div>
+                        <div class="article-actions">
+                          <button class="btn-icon" on:click={() => openArticleViewer(article)} title="View Article">
+                            <FileText size={14} />
+                          </button>
+                          <button class="btn-icon" on:click={() => openInEditor(article)} title="Open in Editor">
+                            <Edit3 size={14} />
+                          </button>
                         </div>
                       </div>
-                    </div>
-                  {/each}
+                    {/each}
+                  {/if}
                 </div>
               </div>
             </div>
@@ -1697,12 +1905,126 @@
             </div>
           {/if}
         
+        {:else if activeView === 'editor'}
+          <!-- Editor Workspace -->
+          <div class="editor-workspace">
+            <!-- Breadcrumb Navigation -->
+            {#if editorBreadcrumb.length > 0}
+              <div class="editor-breadcrumb">
+                <div class="breadcrumb-nav">
+                  {#each editorBreadcrumb as crumb, index}
+                    <button 
+                      class="breadcrumb-item"
+                      class:active={index === editorBreadcrumb.length - 1}
+                      on:click={() => {
+                        if (index < editorBreadcrumb.length - 1) {
+                          // Navigate back to source with correct view mapping
+                          const viewMap = {
+                            'Knowledge': 'knowledge',
+                            'Assets': 'assets', 
+                            'EA Management': 'ea',
+                            'Expert advisors': 'knowledge',
+                            'Integration': 'knowledge',
+                            'Trading': 'knowledge',
+                            'Trading systems': 'knowledge'
+                          };
+                          const targetView = viewMap[crumb.name] || 'knowledge';
+                          dispatch('viewChange', { view: targetView });
+                        }  
+                      }}
+                    >
+                      {crumb.name}
+                    </button>
+                    {#if index < editorBreadcrumb.length - 1}
+                      <ChevronRight size={12} class="breadcrumb-separator" />
+                    {/if}
+                  {/each}
+                </div>
+              </div>
+            {/if}
+            
+            <div class="editor-tabs">
+              <div class="tab-list">
+                {#each editorFiles as file}
+                  <button 
+                    class="tab-item"
+                    class:active={activeEditorFile?.id === file.id}
+                    on:click={() => {
+                      activeEditorFile = file;
+                      editorContent = file.content;
+                      editorLanguage = file.language;
+                      editorFilename = file.name;
+                    }}
+                  >
+                    <FileText size={12} />
+                    <span>{file.name}</span>
+                    <button 
+                      class="tab-close"
+                      on:click|stopPropagation={() => closeEditorFile(file.id)}
+                    >
+                      <X size={10} />
+                    </button>
+                  </button>
+                {/each}
+                {#if editorFiles.length === 0}
+                  <div class="empty-editor">
+                    <Edit3 size={24} />
+                    <p>No files open</p>
+                    <span class="hint">Open articles, indicators, or other files from the Knowledge Hub or Assets sections</span>
+                  </div>
+                {/if}
+              </div>
+              <div class="tab-actions">
+                <button class="toolbar-btn" on:click={() => dispatch('viewChange', { view: 'knowledge' })}>
+                  <BookOpen size={14} /> Browse Files
+                </button>
+              </div>
+            </div>
+            
+            {#if activeEditorFile}
+              <div class="editor-container">
+                <CodeEditor
+                  bind:content={editorContent}
+                  language={editorLanguage}
+                  filename={editorFilename}
+                  fileId={activeEditorFile?.id || ''}
+                  filePath={activeEditorFile?.path || ''}
+                  agent="copilot"
+                  readOnly={false}
+                  on:save={saveEditorFile}
+                  on:change={(e) => {
+                    if (activeEditorFile) {
+                      activeEditorFile.content = e.detail.content;
+                      const fileIndex = editorFiles.findIndex(f => f.id === activeEditorFile.id);
+                      if (fileIndex !== -1) {
+                        editorFiles[fileIndex] = { ...activeEditorFile };
+                      }
+                    }
+                  }}
+                />
+              </div>
+            {:else}
+              <div class="editor-placeholder">
+                <Edit3 size={48} />
+                <h3>Editor Workspace</h3>
+                <p>Open files from Knowledge Hub or Assets to start editing</p>
+                <div class="placeholder-actions">
+                  <button class="btn primary" on:click={() => dispatch('viewChange', { view: 'knowledge' })}>
+                    <BookOpen size={14} /> Browse Knowledge Hub
+                  </button>
+                  <button class="btn secondary" on:click={() => dispatch('viewChange', { view: 'assets' })}>
+                    <Boxes size={14} /> Browse Assets
+                  </button>
+                </div>
+              </div>
+            {/if}
+          </div>
+        
         {:else}
           <p class="placeholder">Select a view from the sidebar</p>
         {/if}
       </div>
     {/if}
-  </div>
 </main>
 
 <!-- Settings View (overlay) -->
@@ -2416,6 +2738,36 @@
     font-weight: 500;
   }
 
+  .category-tag {
+    padding: 2px 8px;
+    background: var(--accent-primary);
+    color: white;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+  }
+  
+  .category-tag.expert-advisors {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+  }
+  
+  .category-tag.integration {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+  }
+  
+  .category-tag.trading {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    color: white;
+  }
+  
+  .category-tag.trading-systems {
+    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+    color: white;
+  }
+
   .article-excerpt {
     margin: 0;
     font-size: 12px;
@@ -2921,6 +3273,31 @@
     color: var(--text-muted);
   }
   
+  .article-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  
+  .btn-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  
+  .btn-icon:hover {
+    background: var(--accent-primary);
+    color: white;
+  }
+  
   /* Article Viewer Modal Enhancements */
   .article-viewer-modal {
     max-width: 90vw;
@@ -3112,5 +3489,221 @@
     color: var(--text-secondary);
     border-radius: 4px;
     font-size: 11px;
+  }
+
+  /* Editor Workspace Styles */
+  .editor-workspace {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: var(--bg-primary);
+  }
+
+  .editor-tabs {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .tab-list {
+    display: flex;
+    gap: 0;
+    align-items: center;
+    overflow-x: auto;
+  }
+
+  .empty-editor {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 24px;
+    color: var(--text-muted);
+    text-align: center;
+  }
+
+  .empty-editor p {
+    margin: 0;
+    font-size: 13px;
+  }
+
+  .empty-editor .hint {
+    font-size: 11px;
+    opacity: 0.8;
+  }
+
+  .editor-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .editor-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 24px;
+    color: var(--text-muted);
+    text-align: center;
+  }
+
+  .editor-placeholder h3 {
+    margin: 0;
+    font-size: 18px;
+    color: var(--text-secondary);
+  }
+
+  .editor-placeholder p {
+    margin: 0;
+    font-size: 14px;
+  }
+
+  .placeholder-actions {
+    display: flex;
+    gap: 12px;
+  }
+
+  .btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn.primary {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: var(--bg-primary);
+  }
+
+  .btn.secondary {
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+  }
+
+  .btn:hover {
+    transform: translateY(-1px);
+  }
+
+  /* Editor Breadcrumb Navigation */
+  .editor-breadcrumb {
+    padding: 8px 16px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .breadcrumb-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+  }
+
+  .breadcrumb-item {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 11px;
+  }
+
+  .breadcrumb-item:hover:not(.active) {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .breadcrumb-item.active {
+    color: var(--accent-primary);
+    font-weight: 600;
+  }
+
+  .breadcrumb-separator {
+    color: var(--text-muted);
+    opacity: 0.5;
+  }
+
+  /* Folder Breadcrumb Navigation */
+  .folder-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: 16px;
+  }
+
+  .breadcrumb-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: transparent;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 12px;
+  }
+
+  .breadcrumb-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-color: var(--accent-primary);
+  }
+
+  .breadcrumb-current {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  /* File Items */
+  .file-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 20px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+  }
+
+  .file-item:hover {
+    background: var(--bg-tertiary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  .file-item span:first-of-type {
+    font-size: 12px;
+    color: var(--text-primary);
+    font-weight: 500;
+    word-break: break-all;
+  }
+
+  .file-size {
+    font-size: 10px;
+    color: var(--text-muted);
   }
 </style>

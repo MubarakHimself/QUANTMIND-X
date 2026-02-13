@@ -9,6 +9,7 @@ Defines the state structure for all agents in the system.
 from typing import TypedDict, Annotated, List, Dict, Any, Optional, Tuple
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
+from datetime import datetime
 
 
 class AgentState(TypedDict):
@@ -50,6 +51,11 @@ class QuantCodeState(AgentState):
     backtest_results: Optional[Dict[str, Any]]
     analysis_report: Optional[str]
     reflection_notes: Optional[str]
+    paper_agent_id: Optional[str]
+    validation_start_time: Optional[datetime]
+    validation_period_days: int
+    paper_trading_metrics: Optional[Dict[str, Any]]
+    promotion_approved: bool
 
 
 class CopilotState(AgentState):

@@ -424,6 +424,18 @@ class SessionDetector:
         Returns:
             True if session will open within the lookahead window
         """
+        # Ensure UTC
+        if utc_time.tzinfo is None:
+            utc_time = utc_time.replace(tzinfo=timezone.utc)
+        elif utc_time.tzinfo != timezone.utc:
+            utc_time = utc_time.astimezone(timezone.utc)
+
+        # Short-circuit on weekends - no sessions open on weekends
+        weekday = utc_time.weekday()
+        if weekday >= 5:  # 5=Saturday, 6=Sunday
+            logger.debug(f"Weekend detected (weekday {weekday}). Returning False for will_open_next.")
+            return False
+
         try:
             target_session = TradingSession(session_name)
         except ValueError:
@@ -463,6 +475,12 @@ class SessionDetector:
             utc_time = utc_time.replace(tzinfo=timezone.utc)
         elif utc_time.tzinfo != timezone.utc:
             utc_time = utc_time.astimezone(timezone.utc)
+        
+        # Short-circuit on weekends - no next session to report
+        weekday = utc_time.weekday()
+        if weekday >= 5:  # 5=Saturday, 6=Sunday
+            logger.debug(f"Weekend detected (weekday {weekday}). Returning None for next session.")
+            return None, None
         
         # Sessions to check (excluding OVERLAP and CLOSED)
         sessions_to_check = [
@@ -622,6 +640,12 @@ class SessionDetector:
             Minutes until session opens, or None if already open
         """
         if session == TradingSession.OVERLAP or session == TradingSession.CLOSED:
+            return None
+
+        # Short-circuit on weekends - no session opens on weekends
+        weekday = utc_time.weekday()
+        if weekday >= 5:  # 5=Saturday, 6=Sunday
+            logger.debug(f"Weekend detected (weekday {weekday}). Returning None for minutes until open.")
             return None
 
         # Check if already in this session

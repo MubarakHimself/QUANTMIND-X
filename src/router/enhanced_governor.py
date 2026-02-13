@@ -148,6 +148,12 @@ class EnhancedGovernor(Governor):
             account_balance: Current account balance (optional, extracts from trade_proposal if not provided)
             broker_id: Broker identifier for fee-aware Kelly (optional, extracts from trade_proposal if not provided)
 
+        Fee Precedence:
+            commission_per_lot and spread_pips are resolved as follows:
+            1. Explicit values from trade_proposal (highest priority)
+            2. Broker registry auto-lookup via broker_id (if values are 0.0)
+            3. Default values: commission_per_lot=5.0, spread_pips=1.0
+
         Returns:
             RiskMandate with Kelly-based allocation scalar, including position_size and kelly_fraction
         """
@@ -178,8 +184,15 @@ class EnhancedGovernor(Governor):
         # Kelly Calculator can still override via broker lookup even if we provide a default
         pip_value = trade_proposal.get('pip_value', self._get_pip_value(symbol, broker_id))
 
+        # Extract fee parameters from trade_proposal with sensible defaults
+        # Precedence: explicit from trade_proposal > broker registry auto-lookup > default
+        # Kelly Calculator handles the registry auto-lookup when values are 0.0
+        commission_per_lot = trade_proposal.get('commission_per_lot', 5.0)  # Default $5/lot (IC Markets typical)
+        spread_pips = trade_proposal.get('spread_pips', 1.0)  # Default 1 pip spread
+
         # Calculate Kelly position size with fee-aware parameters
         # Kelly Calculator will auto-fetch pip_value, commission, and spread from broker registry
+        # only if the passed values are 0.0 (to maintain backward compatibility)
         kelly_result = self.kelly_calculator.calculate(
             account_balance=account_balance,
             win_rate=win_rate,
@@ -192,8 +205,8 @@ class EnhancedGovernor(Governor):
             regime_quality=regime_report.regime_quality,
             broker_id=broker_id,
             symbol=symbol,
-            commission_per_lot=0.0,  # Kelly will auto-fetch from broker
-            spread_pips=0.0  # Kelly will auto-fetch from broker
+            commission_per_lot=commission_per_lot,
+            spread_pips=spread_pips
         )
 
         # Check for fee kill switch status
@@ -306,8 +319,10 @@ class EnhancedGovernor(Governor):
         Note:
             Queries broker_registry table for actual pip values if available.
             Falls back to standard values if not found or DB unavailable.
+            Uses correct metal pip values (XAUUSD=1.0, XAGUSD=50.0) to avoid 10x underestimation.
         """
-        # Standard pip values (fallback when DB unavailable)
+        # Correct metal pip values (fallback when DB/registry unavailable)
+        # These match BrokerRegistryManager.create_broker() defaults to avoid divergence
         pip_values = {
             'EURUSD': 10.0,
             'GBPUSD': 10.0,
@@ -316,8 +331,8 @@ class EnhancedGovernor(Governor):
             'AUDUSD': 10.0,
             'NZDUSD': 10.0,
             'USDCAD': 10.0,
-            'XAUUSD': 10.0,
-            'XAGUSD': 10.0,
+            'XAUUSD': 1.0,   # Gold: $1 per pip (not $10 - corrects 10x underestimation)
+            'XAGUSD': 50.0,  # Silver: $50 per pip (not $10 - corrects 5x underestimation)
         }
 
         # If DB not available, use fallback values
@@ -339,10 +354,11 @@ class EnhancedGovernor(Governor):
             if broker_record and broker_record.pip_values:
                 # Get pip value for symbol from JSON field
                 pip_values_dict = broker_record.pip_values
-                pip_value = pip_values_dict.get(symbol, 10.0)
+                # Use local pip_values dict as fallback for metals if not in registry
+                pip_value = pip_values_dict.get(symbol, pip_values.get(symbol, 10.0))
                 logger.debug(f"Pip value for {symbol}@{broker}: ${pip_value} (from registry)")
             else:
-                # Fall back to hardcoded values if broker not found
+                # Fall back to correct defaults (not hardcoded 10.0 for metals)
                 pip_value = pip_values.get(symbol, 10.0)
                 logger.debug(f"Pip value for {symbol}@{broker}: ${pip_value} (fallback)")
 
@@ -351,7 +367,7 @@ class EnhancedGovernor(Governor):
 
         except Exception as e:
             logger.error(f"Error getting pip value from broker registry: {e}")
-            # Return fallback value on error
+            # Return fallback value on error (use correct metal values)
             return pip_values.get(symbol, 10.0)
 
     def _load_daily_state(self, account_id: str) -> None:

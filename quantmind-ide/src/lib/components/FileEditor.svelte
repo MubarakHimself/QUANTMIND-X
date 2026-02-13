@@ -3,8 +3,10 @@
   import { 
     Save, Undo, Redo, Copy, Download, Search, 
     ChevronDown, ChevronUp, X, FileText, Code,
-    Maximize2, Minimize2, Eye, Edit3
+    Maximize2, Minimize2, Eye, Edit3, History
   } from 'lucide-svelte';
+  import { fileHistoryManager } from '../services/fileHistoryManager';
+  import type { AgentType } from '../stores/chatStore';
 
   export let file: {
     id: string;
@@ -18,10 +20,12 @@
   export let showLineNumbers = true;
   export let wordWrap = false;
   export let fontSize = 13;
+  export let agent: AgentType = 'copilot';
 
   const dispatch = createEventDispatcher();
 
   let editorContent = '';
+  let previousContent = '';
   let undoStack: string[] = [];
   let redoStack: string[] = [];
   let searchQuery = '';
@@ -32,6 +36,7 @@
   let copied = false;
   let cursorLine = 1;
   let cursorColumn = 1;
+  let showHistoryPanel = false;
 
   const API_BASE = 'http://localhost:8000/api';
 
@@ -56,6 +61,7 @@
   $: language = file?.name ? getLanguage(file.name) : 'text';
   $: if (file) {
     editorContent = file.content || '';
+    previousContent = file.content || '';
     undoStack = [];
     redoStack = [];
   }
@@ -153,6 +159,21 @@
   async function saveFile() {
     if (!file || readOnly) return;
     
+    // Record the operation in file history before saving
+    if (editorContent !== previousContent) {
+      const action = previousContent === '' ? 'created' : 'modified';
+      fileHistoryManager.recordOperation(
+        file.id,
+        file.name,
+        file.path || file.name,
+        agent,
+        action,
+        editorContent,
+        previousContent || undefined
+      );
+      previousContent = editorContent;
+    }
+    
     dispatch('save', { content: editorContent });
     
     try {
@@ -170,6 +191,18 @@
       console.error('Failed to save file:', e);
       dispatch('saved'); // Still emit saved event for local state
     }
+  }
+  
+  function toggleHistoryPanel() {
+    showHistoryPanel = !showHistoryPanel;
+    dispatch('toggle-history', { showHistoryPanel });
+  }
+  
+  function revertToVersion(versionContent: string) {
+    const oldContent = editorContent;
+    editorContent = versionContent;
+    previousContent = versionContent;
+    dispatch('revert', { content: versionContent, previousContent: oldContent });
   }
 
   function copyContent() {
@@ -383,6 +416,16 @@
           </button>
         {/if}
         <div class="divider"></div>
+        {#if file?.id}
+          <button 
+            class="action-btn" 
+            on:click={toggleHistoryPanel}
+            title="File History"
+            class:active={showHistoryPanel}
+          >
+            <History size={14} />
+          </button>
+        {/if}
         <button 
           class="action-btn save-btn" 
           on:click={saveFile}
@@ -573,6 +616,11 @@
   .action-btn:hover:not(:disabled) {
     background: var(--bg-secondary, #292a3e);
     color: var(--text-primary, #c0caf5);
+  }
+
+  .action-btn.active {
+    background: var(--accent-primary, #00ff00);
+    color: #000;
   }
 
   .action-btn:disabled {

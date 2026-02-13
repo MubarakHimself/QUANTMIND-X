@@ -20,6 +20,11 @@ project_root = os.path.abspath(os.path.join(current_dir, "../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+# Add mcp-metatrader5-server/src to path for mcp_mt5 imports
+mt5_src_path = os.path.join(project_root, "mcp-metatrader5-server", "src")
+if mt5_src_path not in sys.path:
+    sys.path.insert(0, mt5_src_path)
+
 try:
     from src.api.ide_endpoints import create_ide_api_app
     from src.api.analytics_endpoints import router as analytics_router
@@ -29,6 +34,7 @@ try:
     from src.api.router_endpoints import router as router_router
     from src.api.journal_endpoints import router as journal_router
     from src.api.session_endpoints import router as session_router
+    from src.api.paper_trading_endpoints import router as paper_trading_router
 except ImportError as e:
     logger.error(f"Import Error: {e}")
     # Fallback/Debug info
@@ -52,11 +58,12 @@ app.include_router(trd_router)
 app.include_router(router_router)
 app.include_router(journal_router)
 app.include_router(session_router)
+app.include_router(paper_trading_router)
 
 @app.on_event("startup")
 async def startup_event():
     logger.info("QuantMind API Server starting on port 8000...")
-    logger.info("Endpoints mounted: /api/ide, /api/chat, /api/analytics, /api/settings, /api/trd, /api/router, /api/journal, /api/sessions, /api/v1/backtest")
+    logger.info("Endpoints mounted: /api/ide, /api/chat, /api/analytics, /api/settings, /api/trd, /api/router, /api/journal, /api/sessions, /api/v1/backtest, /api/paper-trading")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -577,3 +577,55 @@ class TradeJournal(Base):
     
     def __repr__(self):
         return f"<TradeJournal(id={self.id}, bot={self.bot_id}, symbol={self.symbol}, pnl={self.pnl}, zone={self.balance_zone})>"
+
+
+class BotCloneHistory(Base):
+    __tablename__ = 'bot_clone_history'
+    
+    id = Column(Integer, primary_key=True)
+    original_bot_id = Column(String(100), nullable=False, index=True)
+    clone_bot_id = Column(String(100), nullable=False, index=True)
+    original_symbol = Column(String(20), nullable=False)
+    clone_symbol = Column(String(20), nullable=False)
+    performance_at_clone = Column(JSON, nullable=False)  # Sharpe, win rate, etc.
+    allocation_strategy = Column(String(50), nullable=False)  # 'adaptive' or 'equal'
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class DailyFeeTracking(Base):
+    """
+    Daily Fee Tracking for monitoring trading costs and fee burn.
+    
+    Tracks daily fees, trade counts, and fee burn percentage to trigger
+    kill switch when fees exceed acceptable thresholds.
+
+    Attributes:
+        id: Primary key
+        account_id: Account identifier for fee tracking
+        date: Calendar date (YYYY-MM-DD format)
+        total_fees: Total fees incurred for the day
+        total_trades: Number of trades executed
+        fee_burn_pct: Fee burn percentage (fees/balance * 100)
+        account_balance: Account balance at time of tracking
+        kill_switch_activated: Whether kill switch was triggered
+        created_at: Record creation timestamp
+    """
+    __tablename__ = 'daily_fee_tracking'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(String(50), nullable=False, index=True)
+    date = Column(String(10), nullable=False)  # YYYY-MM-DD format
+    total_fees = Column(Float, nullable=False, default=0.0)
+    total_trades = Column(Integer, nullable=False, default=0)
+    fee_burn_pct = Column(Float, nullable=False, default=0.0)
+    account_balance = Column(Float, nullable=False, default=0.0)
+    kill_switch_activated = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('account_id', 'date', name='uq_daily_fee_account_date'),
+        Index('idx_daily_fee_date', 'date'),
+    )
+
+    def __repr__(self):
+        return f"<DailyFeeTracking(id={self.id}, account_id={self.account_id}, date={self.date}, fees={self.total_fees}, trades={self.total_trades})>"
