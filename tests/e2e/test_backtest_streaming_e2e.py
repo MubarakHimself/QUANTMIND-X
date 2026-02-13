@@ -23,7 +23,7 @@ async def test_backtest_streaming_end_to_end():
     app = FastAPI()
     
     # Import the backtest endpoint function and real WebSocket endpoints
-    from src.api.ide_endpoints import BacktestRunRequest
+    from src.api.trading_endpoints import BacktestRunRequest
     from src.api.websocket_endpoints import create_websocket_endpoints, manager
     
     # Register real WebSocket endpoints
@@ -162,7 +162,7 @@ async def test_multiple_concurrent_backtest_streams():
     app = FastAPI()
     
     # Import the backtest endpoint function and real WebSocket endpoints
-    from src.api.ide_endpoints import BacktestRunRequest
+    from src.api.trading_endpoints import BacktestRunRequest
     from src.api.websocket_endpoints import create_websocket_endpoints, manager
     
     # Register real WebSocket endpoints
@@ -302,7 +302,7 @@ async def test_websocket_reconnection_during_backtest():
     app = FastAPI()
     
     # Import the backtest endpoint function and real WebSocket endpoints
-    from src.api.ide_endpoints import BacktestRunRequest
+    from src.api.trading_endpoints import BacktestRunRequest
     from src.api.websocket_endpoints import create_websocket_endpoints, manager
     
     # Register real WebSocket endpoints
