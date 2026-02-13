@@ -34,6 +34,11 @@ src-tauri/target/
 .vscode/
 .idea/
 
+# Development configuration files
+pyrightconfig.json
+pytest.ini
+prompt.txt
+
 # Agentic / AI Development Files (Keep Local Only)
 .gemini/
 .agent/
@@ -52,15 +57,60 @@ agent-os/
 TASK_GROUP*.md
 SESSION_SUMMARY.md
 
-# Project Specific
-data/db/
-data/chroma_db/
-scraped_data/
+# Project Specific - Data & Runtime
+data/
+!data/assets/README.md
+!data/assets/coding_standards.md
+!data/assets/registry.json
+!data/assets/timeframes.yaml
+!data/assets/skills/
+!data/assets/templates/
+!data/assets/indicators/
+!data/scraped_articles/
+
+# Database files
 *.db
 *.sqlite
 *.sqlite3
+*.duckdb
 
 # Temporary
 temp/
 tmp/
-al
+
+# API & Runtime directories
+.kilocode/
+.langgraph_api/
+
+# Archive (old wiki content)
+_archive/
+
+# Screenshots (development only)
+screenshots/
+
+# Development documentation (keep only essential docs)
+COMMANDER_POSITION_SIZE_FIX.md
+DATA_ARCHITECTURE_ANALYSIS.md
+ENHANCEMENT_PROPOSAL.md
+FIX_PLAN_DETAILED.md
+HOUSE_MONEY_SCALING_FIX.md
+IMPLEMENTATION_COMPLETE.md
+IMPLEMENTATION_REPORT.md
+IMPLEMENTATION_SESSION_INTEGRATION.md
+PHASE5_CHANGES.md
+PHASE5_EXACT_CHANGES.md
+SETUP.md
+SYNTAX_FIX_MISSING_COMMAS.md
+VERIFICATION_COMMENT_BROKER_REGISTRY_SEEDING.md
+VERIFICATION_TESTS_IMPLEMENTATION.md
+WEEKEND_MARKET_CLOSED_IMPLEMENTATION.md
+
+# Keep only essential docs
+!README.md
+!docs/
+!requirements.txt
+!package.json
+!package-lock.json
+!yarn.lock
+!.gitignore
+!LICENSE
