@@ -1,45 +1,84 @@
-# System & OS
+# ============================================================
+# SYSTEM & OS
+# ============================================================
 .DS_Store
 Thumbs.db
 *.log
+*.swp
+*.swo
+*~
 .env
 .env.*
 !.env.example
 
-# Python
+# ============================================================
+# PYTHON
+# ============================================================
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyo
+*.pyd
+.Python
 venv/
 .venv/
+.env/
 .pytest_cache/
 .hypothesis/
 *.egg-info/
 dist/
 build/
+eggs/
+.eggs/
+*.egg
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
 outputs/
 
-# Node / JS
+# ============================================================
+# NODE / JS
+# ============================================================
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.npm
+.yarn-integrity
 
-# Rust / Tauri
+# Package lock files (optional - uncomment if you don't want to track)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# ============================================================
+# RUST / TAURI
+# ============================================================
 target/
 src-tauri/target/
 **/*.rs.bk
+Cargo.lock
 
-# IDEs
+# ============================================================
+# IDEs & EDITORS
+# ============================================================
 .vscode/
 .idea/
+*.sublime-project
+*.sublime-workspace
+.project
+.pydevproject
+.settings/
 
 # Development configuration files
 pyrightconfig.json
 pytest.ini
 prompt.txt
 
-# Agentic / AI Development Files (Keep Local Only)
+# ============================================================
+# AGENTIC / AI DEVELOPMENT FILES (Keep Local Only)
+# ============================================================
 .gemini/
 .agent/
 .claude/
@@ -51,13 +90,17 @@ prompt.txt
 brain/
 artifacts/
 agent-os/
+.overstory/
+.mulch/
 
 # Development Summary Files
 *_SUMMARY.md
 TASK_GROUP*.md
 SESSION_SUMMARY.md
 
-# Project Specific - Data & Runtime
+# ============================================================
+# PROJECT SPECIFIC - DATA & RUNTIME
+# ============================================================
 data/
 !data/assets/README.md
 !data/assets/coding_standards.md
@@ -73,44 +116,143 @@ data/
 *.sqlite
 *.sqlite3
 *.duckdb
+*.db-journal
 
-# Temporary
+# ============================================================
+# BINARY & LARGE FILES
+# ============================================================
+# PDFs - allowing specific PDFs for documentation
+# *.pdf
+
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.svg
+*.webp
+*.bmp
+
+# Fonts
+*.woff
+*.woff2
+*.ttf
+*.eot
+*.otf
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+*.rar
+*.7z
+
+# ============================================================
+# BUILD OUTPUTS & GENERATED FILES
+# ============================================================
+# SvelteKit
+.svelte-kit/
+
+# Next.js
+.next/
+out/
+
+# Nuxt
+.nuxt/
+.output/
+
+# General build
+dist/
+build/
+.cache/
+
+# ============================================================
+# TEMPORARY & CACHE FILES
+# ============================================================
 temp/
 tmp/
+.cache/
+*.tmp
+*.temp
+*.bak
+*.backup
 
-# API & Runtime directories
+# ============================================================
+# API & RUNTIME DIRECTORIES
+# ============================================================
 .kilocode/
 .langgraph_api/
 
-# Archive (old wiki content)
+# ============================================================
+# ARCHIVE (old wiki content)
+# ============================================================
 _archive/
 
-# Screenshots (development only)
+# Epic exports (generated project management files)
+docs/epic-export/
+
+# ============================================================
+# SCREENSHOTS (development only)
+# ============================================================
 screenshots/
 
-# Development documentation (keep only essential docs)
-COMMANDER_POSITION_SIZE_FIX.md
-DATA_ARCHITECTURE_ANALYSIS.md
-ENHANCEMENT_PROPOSAL.md
-FIX_PLAN_DETAILED.md
-HOUSE_MONEY_SCALING_FIX.md
-IMPLEMENTATION_COMPLETE.md
-IMPLEMENTATION_REPORT.md
-IMPLEMENTATION_SESSION_INTEGRATION.md
-PHASE5_CHANGES.md
-PHASE5_EXACT_CHANGES.md
+# ============================================================
+# DEVELOPMENT DOCUMENTATION (Keep Local Only)
+# ============================================================
+# Root-level dev notes, implementation reports, verification summaries
+*_FIX.md
+*_ANALYSIS.md
+*_PROPOSAL.md
+*_PLAN*.md
+*IMPLEMENTATION*.md
+*SUMMARY.md
+*CHANGES.md
 SETUP.md
-SYNTAX_FIX_MISSING_COMMAS.md
-VERIFICATION_COMMENT_BROKER_REGISTRY_SEEDING.md
-VERIFICATION_TESTS_IMPLEMENTATION.md
-WEEKEND_MARKET_CLOSED_IMPLEMENTATION.md
+SYNTAX_*.md
+VERIFICATION_*.md
 
-# Keep only essential docs
+# Task/Plan directories
+plans/
+**/tasks.md
+TASK_GROUP*.md
+
+# Component-level dev notes (not main READMEs)
+**/components/*.README.md
+**/lib/agents/*.md
+**/AGENTS.md
+
+# Docker dev summaries
+docker/**/DOCKER_SETUP_*.md
+
+# ============================================================
+# COVERAGE & TEST REPORTS
+# ============================================================
+.coverage
+.coverage.*
+coverage/
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+pytestdebug.log
+
+# ============================================================
+# LOCK FILES (Generated - uncomment to ignore)
+# ============================================================
+# uv.lock
+# poetry.lock
+# pdm.lock
+
+# ============================================================
+# KEEP ESSENTIAL DOCS
+# ============================================================
 !README.md
-!docs/
-!requirements.txt
-!package.json
-!package-lock.json
-!yarn.lock
-!.gitignore
 !LICENSE
+!CONTRIBUTING.md
+!docs/
