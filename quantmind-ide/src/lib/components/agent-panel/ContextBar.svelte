@@ -1,59 +1,96 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount } from 'svelte';
-  import { fade, slide } from 'svelte/transition';
-  import { Plus, FileText, TrendingUp, Link, Activity, ChevronDown, ChevronUp, X } from 'lucide-svelte';
-  import ContextTag from './ContextTag.svelte';
-  import type { ChatContext, FileReference, StrategyReference, BrokerReference, BacktestReference } from '../../stores/chatStore';
-  
+  import { createEventDispatcher, onMount } from "svelte";
+  import { fade, slide } from "svelte/transition";
+  import {
+    Plus,
+    FileText,
+    TrendingUp,
+    Link,
+    Activity,
+    ChevronDown,
+    ChevronUp,
+    X,
+  } from "lucide-svelte";
+  import ContextTag from "./ContextTag.svelte";
+  import type {
+    ChatContext,
+    FileReference,
+    StrategyReference,
+    BrokerReference,
+    BacktestReference,
+  } from "../../stores/chatStore";
+
   // Props
   export let context: ChatContext;
-  
+
   const dispatch = createEventDispatcher();
-  
+
   // State
   let showAddMenu = false;
   let showAll = false;
   const maxVisible = 3;
-  
+
   // Count total context items
-  $: totalItems = context.files.length + context.strategies.length + context.brokers.length + context.backtests.length;
-  
+  $: totalItems =
+    context.files.length +
+    context.strategies.length +
+    context.brokers.length +
+    context.backtests.length;
+
   // Get all context items flattened with type info
   $: allContextItems = [
-    ...context.files.map(item => ({ ...item, type: 'file' as const, icon: FileText })),
-    ...context.strategies.map(item => ({ ...item, type: 'strategy' as const, icon: TrendingUp })),
-    ...context.brokers.map(item => ({ ...item, type: 'broker' as const, icon: Link })),
-    ...context.backtests.map(item => ({ ...item, type: 'backtest' as const, icon: Activity }))
+    ...context.files.map((item) => ({
+      ...item,
+      type: "file" as const,
+      icon: FileText,
+    })),
+    ...context.strategies.map((item) => ({
+      ...item,
+      type: "strategy" as const,
+      icon: TrendingUp,
+    })),
+    ...context.brokers.map((item) => ({
+      ...item,
+      type: "broker" as const,
+      icon: Link,
+    })),
+    ...context.backtests.map((item) => ({
+      ...item,
+      type: "backtest" as const,
+      icon: Activity,
+    })),
   ];
-  
+
   // Visible items (limited unless showAll)
-  $: visibleItems = showAll ? allContextItems : allContextItems.slice(0, maxVisible);
+  $: visibleItems = showAll
+    ? allContextItems
+    : allContextItems.slice(0, maxVisible);
   $: hiddenCount = allContextItems.length - maxVisible;
-  
+
   // Menu options for adding context
   const addOptions = [
-    { type: 'file', label: 'Attach File', icon: FileText },
-    { type: 'strategy', label: 'Add Strategy', icon: TrendingUp },
-    { type: 'broker', label: 'Connect Broker', icon: Link },
-    { type: 'backtest', label: 'Add Backtest', icon: Activity }
+    { type: "file", label: "Attach File", icon: FileText },
+    { type: "strategy", label: "Add Strategy", icon: TrendingUp },
+    { type: "broker", label: "Connect Broker", icon: Link },
+    { type: "backtest", label: "Add Backtest", icon: Activity },
   ];
-  
+
   // Toggle add menu
   function toggleAddMenu() {
     showAddMenu = !showAddMenu;
   }
-  
+
   // Handle add context
   function handleAddContext(type: string) {
-    dispatch('addContext', { type });
+    dispatch("addContext", { type });
     showAddMenu = false;
   }
-  
+
   // Handle remove context
   function handleRemoveContext(type: keyof ChatContext, id: string) {
-    dispatch('removeContext', { type, id });
+    dispatch("removeContext", { type, id });
   }
-  
+
   // Toggle show all
   function toggleShowAll() {
     showAll = !showAll;
@@ -63,11 +100,11 @@
   function getContextType(type: string): keyof ChatContext {
     return type as keyof ChatContext;
   }
-  
+
   // Close menu on outside click
   function handleClickOutside(e: MouseEvent) {
     const target = e.target as HTMLElement;
-    if (!target.closest('.add-menu-container')) {
+    if (!target.closest(".add-menu-container")) {
       showAddMenu = false;
     }
   }
@@ -81,23 +118,24 @@
     <div class="context-tags">
       {#each visibleItems as item (item.id)}
         <ContextTag
-          item={item}
-          on:remove={() => handleRemoveContext(getContextType(item.type), item.id)}
+          {item}
+          on:remove={() =>
+            handleRemoveContext(getContextType(item.type), item.id)}
         />
       {/each}
-      
+
       <!-- Show more/less button -->
       {#if hiddenCount > 0 && !showAll}
-        <button 
-          class="show-more-btn" 
+        <button
+          class="show-more-btn"
           on:click|stopPropagation={toggleShowAll}
           title="Show all context items"
         >
           +{hiddenCount} more
         </button>
       {:else if showAll && allContextItems.length > maxVisible}
-        <button 
-          class="show-more-btn" 
+        <button
+          class="show-more-btn"
           on:click|stopPropagation={toggleShowAll}
           title="Show fewer"
         >
@@ -105,24 +143,28 @@
         </button>
       {/if}
     </div>
-    
+
     <!-- Add Context Button -->
     <div class="add-menu-container">
-      <button 
-        class="add-btn" 
+      <button
+        class="add-btn"
         on:click|stopPropagation={toggleAddMenu}
         title="Add context"
         aria-label="Add context item"
       >
         <Plus size={14} />
       </button>
-      
+
       {#if showAddMenu}
         <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-        <div class="add-menu" transition:fade={{ duration: 100 }} on:click|stopPropagation>
+        <div
+          class="add-menu"
+          transition:fade={{ duration: 100 }}
+          on:click|stopPropagation
+        >
           {#each addOptions as option}
-            <button 
-              class="menu-option" 
+            <button
+              class="menu-option"
               on:click={() => handleAddContext(option.type)}
             >
               <svelte:component this={option.icon} size={14} />
@@ -137,8 +179,8 @@
   <!-- Empty context bar with add button -->
   <div class="context-bar empty" transition:slide={{ duration: 200 }}>
     <div class="add-menu-container">
-      <button 
-        class="add-btn empty" 
+      <button
+        class="add-btn empty"
         on:click|stopPropagation={toggleAddMenu}
         title="Add context"
         aria-label="Add context item"
@@ -146,13 +188,17 @@
         <Plus size={14} />
         <span>Add Context</span>
       </button>
-      
+
       {#if showAddMenu}
         <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-        <div class="add-menu" transition:fade={{ duration: 100 }} on:click|stopPropagation>
+        <div
+          class="add-menu"
+          transition:fade={{ duration: 100 }}
+          on:click|stopPropagation
+        >
           {#each addOptions as option}
-            <button 
-              class="menu-option" 
+            <button
+              class="menu-option"
               on:click={() => handleAddContext(option.type)}
             >
               <svelte:component this={option.icon} size={14} />
@@ -175,14 +221,14 @@
     border-bottom: 1px solid var(--border-subtle);
     min-height: 40px;
   }
-  
+
   .context-bar.empty {
     justify-content: center;
     background: transparent;
     border-bottom: none;
     padding: 4px 12px;
   }
-  
+
   .context-tags {
     display: flex;
     align-items: center;
@@ -190,7 +236,7 @@
     flex: 1;
     flex-wrap: wrap;
   }
-  
+
   .show-more-btn {
     padding: 4px 8px;
     background: var(--bg-tertiary);
@@ -201,16 +247,16 @@
     cursor: pointer;
     transition: all 0.15s;
   }
-  
+
   .show-more-btn:hover {
     background: var(--bg-secondary);
     color: var(--text-primary);
   }
-  
+
   .add-menu-container {
     position: relative;
   }
-  
+
   .add-btn {
     display: flex;
     align-items: center;
@@ -224,18 +270,18 @@
     cursor: pointer;
     transition: all 0.15s;
   }
-  
+
   .add-btn:hover {
     background: var(--bg-secondary);
     color: var(--text-primary);
     border-color: var(--accent-primary);
   }
-  
+
   .add-btn.empty {
     padding: 6px 12px;
     font-size: 11px;
   }
-  
+
   .add-menu {
     position: absolute;
     top: 100%;
@@ -249,7 +295,7 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     z-index: 100;
   }
-  
+
   .menu-option {
     display: flex;
     align-items: center;
@@ -265,11 +311,11 @@
     transition: background 0.15s;
     text-align: left;
   }
-  
+
   .menu-option:hover {
     background: var(--bg-tertiary);
   }
-  
+
   .menu-option span {
     flex: 1;
   }

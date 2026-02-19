@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, List
 from datetime import date, datetime, timezone
 import logging
 
@@ -50,23 +50,47 @@ class FeeMonitor:
                 )
                 session.add(record)
             
-            # Update fee tracking
-            record.total_fees += fee
-            record.total_trades += 1
-            record.fee_burn_pct = (record.total_fees / self.account_balance) * 100 if self.account_balance > 0 else 0.0
+            # Update fee tracking - use SQLAlchemy's Python-side attribute access
+            # These operations work at runtime but Pylance doesn't understand SQLAlchemy ORM
+            record.total_fees = float(record.total_fees) + fee  # type: ignore[assignment]
+            record.total_trades = int(record.total_trades) + 1  # type: ignore[assignment]
+            record.fee_burn_pct = (float(record.total_fees) / self.account_balance) * 100 if self.account_balance > 0 else 0.0  # type: ignore[assignment]
             
             # Check if this trade triggers kill switch and persist status
             should_halt, reason = self._check_kill_switch_conditions(
-                record.total_fees,
-                record.total_trades,
-                record.fee_burn_pct
+                float(record.total_fees),  # type: ignore[arg-type]
+                int(record.total_trades),  # type: ignore[arg-type]
+                float(record.fee_burn_pct)  # type: ignore[arg-type]
             )
             
             if should_halt:
-                record.kill_switch_activated = True
+                record.kill_switch_activated = True  # type: ignore[assignment]
                 logger.warning(f"Kill switch activated during fee recording: {reason}")
             
             session.commit()
+
+            # Broadcast fee update via WebSocket
+            try:
+                from src.api.websocket_endpoints import broadcast_fee_update
+                import asyncio
+
+                fee_data = {
+                    "daily_fees": float(record.total_fees),
+                    "daily_fee_burn_pct": float(record.fee_burn_pct),
+                    "kill_switch_active": bool(record.kill_switch_activated),
+                    "fee_breakdown": self.get_fee_breakdown_by_bot(date_str)
+                }
+
+                # Run async broadcast in sync context
+                try:
+                    loop = asyncio.get_running_loop()
+                    asyncio.create_task(broadcast_fee_update(fee_data))
+                except RuntimeError:
+                    # No running loop, create new one
+                    asyncio.run(broadcast_fee_update(fee_data))
+            except Exception as e:
+                logger.warning(f"Failed to broadcast fee update: {e}")
+
         logger.info(f"Recorded fee ${fee:.2f} for bot {bot_id} on {date_str}")
     
     def _check_kill_switch_conditions(self, total_fees: float, total_trades: int, fee_burn_pct: float) -> Tuple[bool, str]:
@@ -88,15 +112,15 @@ class FeeMonitor:
                 account_id=self.account_id, date=date_str
             ).first()
             if record:
-                avg_fee = record.total_fees / max(1, record.total_trades)
+                avg_fee = float(record.total_fees) / max(1, int(record.total_trades))  # type: ignore[arg-type]
                 return FeeReport(
-                    date=record.date,
-                    total_fees=record.total_fees,
-                    total_trades=record.total_trades,
+                    date=str(record.date),  # type: ignore[arg-type]
+                    total_fees=float(record.total_fees),  # type: ignore[arg-type]
+                    total_trades=int(record.total_trades),  # type: ignore[arg-type]
                     fee_per_trade=avg_fee,
-                    account_balance=record.account_balance,
-                    fee_burn_pct=record.fee_burn_pct,
-                    status="KILL_SWITCH_ACTIVE" if record.kill_switch_activated else "ACTIVE"
+                    account_balance=float(record.account_balance),  # type: ignore[arg-type]
+                    fee_burn_pct=float(record.fee_burn_pct),  # type: ignore[arg-type]
+                    status="KILL_SWITCH_ACTIVE" if bool(record.kill_switch_activated) else "ACTIVE"  # type: ignore[arg-type]
                 )
         return None
 
@@ -132,7 +156,7 @@ class FeeMonitor:
                 date=date_str
             ).first()
             if record:
-                record.kill_switch_activated = activated
+                record.kill_switch_activated = activated  # type: ignore[assignment]
                 session.commit()
                 logger.info(f"Updated kill switch status to {activated} for {self.account_id} on {date_str}")
             else:
@@ -143,3 +167,55 @@ class FeeMonitor:
         total_trades = trades_per_hour * hours
         total_fees = total_trades * fee_per_trade
         return (total_fees / self.account_balance) * 100
+
+    def get_fee_breakdown_by_bot(self, date_str: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Get fee breakdown by bot for specified date.
+        Returns list of dicts with bot_id, trades, fees_paid, fee_pct
+
+        Args:
+            date_str: Date string in YYYY-MM-DD format (defaults to today)
+
+        Returns:
+            List of dicts sorted by fees_paid (highest first)
+        """
+        from src.database.models import TradeJournal
+
+        if date_str is None:
+            date_str = date.today().strftime('%Y-%m-%d')
+
+        with self.db.get_session() as session:
+            # Query TradeJournal for the specified date
+            # Group by bot_id and aggregate commission and count
+            from sqlalchemy import func
+
+            results = session.query(
+                TradeJournal.bot_id,
+                func.count(TradeJournal.id).label('trades'),
+                func.sum(TradeJournal.commission).label('fees_paid')
+            ).filter(
+                func.date(TradeJournal.timestamp) == date_str,
+                TradeJournal.account_id == self.account_id
+            ).group_by(
+                TradeJournal.bot_id
+            ).all()
+
+            breakdown = []
+            for row in results:
+                bot_id = row.bot_id
+                trades = row.trades or 0
+                fees_paid = float(row.fees_paid or 0.0)
+                # Calculate fee percentage relative to account balance
+                fee_pct = (fees_paid / self.account_balance) * 100 if self.account_balance > 0 else 0.0
+
+                breakdown.append({
+                    'bot_id': bot_id,
+                    'trades': trades,
+                    'fees_paid': fees_paid,
+                    'fee_pct': round(fee_pct, 2)
+                })
+
+            # Sort by fees_paid (highest first)
+            breakdown.sort(key=lambda x: x['fees_paid'], reverse=True)
+
+            return breakdown

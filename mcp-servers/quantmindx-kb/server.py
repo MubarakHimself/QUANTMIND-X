@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-Qdrant MCP Server for QuantMindX Knowledge Base
-Provides semantic search over MQL5 articles via MCP protocol.
-Only works when run from the QuantMindX directory.
+PageIndex MCP Server for QuantMindX Knowledge Base
+Provides reasoning-based retrieval over MQL5 articles, books, and logs via PageIndex services.
+
+Architecture:
+- PageIndex Articles (port 3000): MQL5 scraped articles
+- PageIndex Books (port 3001): PDF books and documentation
+- PageIndex Logs (port 3002): Trading logs and historical data
 """
 
 import json
@@ -10,6 +14,8 @@ import asyncio
 import os
 import sys
 from pathlib import Path
+from typing import Dict, List, Any, Optional
+import httpx
 
 # Security check: Only run from QuantMindX directory
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -27,25 +33,110 @@ except ImportError:
     print("MCP SDK not found. Install with: pip install mcp")
     exit(1)
 
-try:
-    from qdrant_client import QdrantClient
-    from sentence_transformers import SentenceTransformer
-except ImportError:
-    print("Missing dependencies. Install with:")
-    print("  pip install qdrant-client sentence-transformers")
-    exit(1)
+# PageIndex Configuration
+PAGEINDEX_URLS = {
+    "articles": os.environ.get("PAGEINDEX_ARTICLES_URL", "http://localhost:3000"),
+    "books": os.environ.get("PAGEINDEX_BOOKS_URL", "http://localhost:3001"),
+    "logs": os.environ.get("PAGEINDEX_LOGS_URL", "http://localhost:3002"),
+}
 
-# Configuration
-QDRANT_PATH = PROJECT_ROOT / "data" / "qdrant_db"
-COLLECTION_NAME = "mql5_knowledge"
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+# HTTP client timeout
+HTTP_TIMEOUT = httpx.Timeout(30.0)
 
-# Initialize clients
-client = QdrantClient(path=str(QDRANT_PATH))
-model = SentenceTransformer(EMBEDDING_MODEL)
+
+async def pageindex_search(query: str, collection: str, limit: int = 5) -> List[Dict[str, Any]]:
+    """
+    Search PageIndex service asynchronously.
+    
+    Args:
+        query: Search query string
+        collection: Collection name (articles, books, logs)
+        limit: Maximum results to return
+        
+    Returns:
+        List of search results
+    """
+    if collection not in PAGEINDEX_URLS:
+        return []
+    
+    base_url = PAGEINDEX_URLS[collection]
+    search_url = f"{base_url}/search"
+    
+    try:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            response = await client.post(
+                search_url,
+                json={
+                    "query": query,
+                    "limit": limit,
+                }
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            # Format results with page/section references
+            results = []
+            for item in data.get("results", []):
+                results.append({
+                    "title": item.get("title", "Unknown"),
+                    "content": item.get("content", ""),
+                    "source": item.get("source", "unknown"),
+                    "page": item.get("page"),
+                    "section": item.get("section"),
+                    "score": item.get("score", 0.0),
+                    "file_path": item.get("file_path", ""),
+                    "collection": collection,
+                })
+            return results
+            
+    except httpx.HTTPStatusError as e:
+        print(f"PageIndex search failed with status {e.response.status_code}: {e}", file=sys.stderr)
+        return []
+    except httpx.RequestError as e:
+        print(f"PageIndex request failed: {e}", file=sys.stderr)
+        return []
+    except Exception as e:
+        print(f"Unexpected error during PageIndex search: {e}", file=sys.stderr)
+        return []
+
+
+async def pageindex_health(collection: str) -> Dict[str, Any]:
+    """Check health of a PageIndex service."""
+    if collection not in PAGEINDEX_URLS:
+        return {"status": "unknown", "error": f"Unknown collection: {collection}"}
+    
+    base_url = PAGEINDEX_URLS[collection]
+    health_url = f"{base_url}/health"
+    
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(5.0)) as client:
+            response = await client.get(health_url)
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        return {"status": "unhealthy", "error": str(e)}
+
+
+async def pageindex_stats(collection: str) -> Dict[str, Any]:
+    """Get statistics from a PageIndex service."""
+    if collection not in PAGEINDEX_URLS:
+        return {"error": f"Unknown collection: {collection}"}
+    
+    base_url = PAGEINDEX_URLS[collection]
+    stats_url = f"{base_url}/stats"
+    
+    try:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            response = await client.get(stats_url)
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        return {"error": str(e)}
+
 
 # MCP Server
 server = Server("quantmindx-kb")
+
 
 @server.list_tools()
 async def list_tools():
@@ -53,7 +144,14 @@ async def list_tools():
     return [
         Tool(
             name="search_knowledge_base",
-            description="Search the MQL5 knowledge base for articles about trading strategies, indicators, Expert Advisors, and MQL5 programming.",
+            description="""Search the QuantMindX knowledge base for articles, books, and logs about trading strategies, indicators, Expert Advisors, and MQL5 programming.
+            
+Uses PageIndex reasoning-based retrieval for better explainability with page/section references.
+
+Collections:
+- articles: MQL5 scraped articles from mql5.com
+- books: PDF books and documentation
+- logs: Trading logs and historical data""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -61,14 +159,16 @@ async def list_tools():
                         "type": "string",
                         "description": "Natural language search query"
                     },
+                    "collection": {
+                        "type": "string",
+                        "description": "Collection to search: 'articles', 'books', 'logs', or 'all' (default: articles)",
+                        "enum": ["articles", "books", "logs", "all"],
+                        "default": "articles"
+                    },
                     "limit": {
                         "type": "integer",
-                        "description": "Maximum number of results (default 5)",
+                        "description": "Maximum number of results per collection (default 5)",
                         "default": 5
-                    },
-                    "category_filter": {
-                        "type": "string",
-                        "description": "Optional category filter (e.g., 'Trading Systems', 'Integration')"
                     }
                 },
                 "required": ["query"]
@@ -90,7 +190,7 @@ async def list_tools():
         ),
         Tool(
             name="kb_stats",
-            description="Get statistics about the knowledge base.",
+            description="Get statistics about the knowledge base including PageIndex service health.",
             inputSchema={
                 "type": "object",
                 "properties": {}
@@ -98,56 +198,44 @@ async def list_tools():
         )
     ]
 
+
 @server.call_tool()
 async def call_tool(name: str, arguments: dict):
     """Handle tool calls."""
     
     if name == "search_knowledge_base":
         query = arguments.get("query", "")
+        collection = arguments.get("collection", "articles")
         limit = arguments.get("limit", 5)
-        category_filter = arguments.get("category_filter")
         
-        # Embed query
-        query_vector = model.encode(query).tolist()
-        
-        # Search
-        results = client.search(
-            collection_name=COLLECTION_NAME,
-            query_vector=query_vector,
-            limit=limit * 2  # Get more, filter later
-        )
-        
-        # Filter and dedupe by title
-        seen_titles = set()
-        filtered = []
-        
-        for r in results:
-            title = r.payload.get('title', '')
-            if title in seen_titles:
-                continue
+        if collection == "all":
+            # Search all collections
+            all_results = {}
+            for coll in ["articles", "books", "logs"]:
+                results = await pageindex_search(query, coll, limit)
+                all_results[coll] = results
             
-            if category_filter:
-                if category_filter.lower() not in r.payload.get('categories', '').lower():
-                    continue
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "query": query,
+                    "results_by_collection": all_results,
+                    "total_results": sum(len(r) for r in all_results.values())
+                }, indent=2)
+            )]
+        else:
+            # Search specific collection
+            results = await pageindex_search(query, collection, limit)
             
-            seen_titles.add(title)
-            filtered.append({
-                "title": r.payload.get('title', 'Unknown'),
-                "url": r.payload.get('url', ''),
-                "categories": r.payload.get('categories', ''),
-                "relevance_score": r.payload.get('relevance_score', 0),
-                "file_path": r.payload.get('file_path', ''),
-                "preview": r.payload.get('text', '')[:300],
-                "match_score": round(r.score, 3)
-            })
-            
-            if len(filtered) >= limit:
-                break
-        
-        return [TextContent(
-            type="text",
-            text=json.dumps({"results": filtered, "query": query}, indent=2)
-        )]
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "query": query,
+                    "collection": collection,
+                    "results": results,
+                    "total_results": len(results)
+                }, indent=2)
+            )]
     
     elif name == "get_article_content":
         file_path = arguments.get("file_path", "")
@@ -160,18 +248,49 @@ async def call_tool(name: str, arguments: dict):
             return [TextContent(type="text", text=f"Article not found: {file_path}")]
     
     elif name == "kb_stats":
-        collection_info = client.get_collection(COLLECTION_NAME)
-        
+        # Get health and stats from all PageIndex services
         stats = {
-            "collection": COLLECTION_NAME,
-            "total_vectors": collection_info.points_count,
-            "embedding_model": EMBEDDING_MODEL,
-            "storage_path": str(QDRANT_PATH)
+            "pageindex_services": {},
+            "data_directories": {}
         }
+        
+        for collection in ["articles", "books", "logs"]:
+            # Health check
+            health = await pageindex_health(collection)
+            # Stats
+            collection_stats = await pageindex_stats(collection)
+            
+            stats["pageindex_services"][collection] = {
+                "url": PAGEINDEX_URLS[collection],
+                "health": health,
+                "stats": collection_stats
+            }
+        
+        # Check data directories
+        data_dirs = {
+            "scraped_articles": PROJECT_ROOT / "data" / "scraped_articles",
+            "books": PROJECT_ROOT / "data" / "knowledge_base" / "books",
+            "logs": PROJECT_ROOT / "data" / "logs",
+        }
+        
+        for name, path in data_dirs.items():
+            if path.exists():
+                file_count = sum(1 for _ in path.rglob("*") if _.is_file())
+                stats["data_directories"][name] = {
+                    "path": str(path),
+                    "exists": True,
+                    "file_count": file_count
+                }
+            else:
+                stats["data_directories"][name] = {
+                    "path": str(path),
+                    "exists": False
+                }
         
         return [TextContent(type="text", text=json.dumps(stats, indent=2))]
     
     return [TextContent(type="text", text=f"Unknown tool: {name}")]
+
 
 async def main():
     """Run the MCP server."""

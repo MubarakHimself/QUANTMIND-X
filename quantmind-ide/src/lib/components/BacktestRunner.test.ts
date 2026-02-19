@@ -44,7 +44,7 @@ describe('BacktestRunner', () => {
     const logContainer = getByTestId('logs-container');
     
     // Simulate log message
-    mockClient.on.mock.calls.find(call => call[0] === 'log_entry')![1]({
+    mockClient.on.mock.calls.find((call: [string, Function]) => call[0] === 'log_entry')![1]({
       type: 'log_entry',
       data: { level: 'INFO', message: 'Test log' }
     });
@@ -62,7 +62,7 @@ describe('BacktestRunner', () => {
     const resultsSection = getByTestId('results-section');
     
     // Simulate complete message
-    mockClient.on.mock.calls.find(call => call[0] === 'backtest_complete')![1]({
+    mockClient.on.mock.calls.find((call: [string, Function]) => call[0] === 'backtest_complete')![1]({
       type: 'backtest_complete',
       data: { final_balance: 12500, total_trades: 45 }
     });

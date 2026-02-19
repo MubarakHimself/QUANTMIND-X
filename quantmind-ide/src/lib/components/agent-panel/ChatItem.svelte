@@ -1,68 +1,73 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
-  import { fade } from 'svelte/transition';
-  import { Pin, Trash2, MessageSquare } from 'lucide-svelte';
-  import type { Chat } from '../../stores/chatStore';
-  
+  import { createEventDispatcher } from "svelte";
+  import { fade } from "svelte/transition";
+  import { Pin, Trash2, MessageSquare } from "lucide-svelte";
+  import type { Chat } from "../../stores/chatStore";
+
   // Props
   export let chat: Chat;
   export let isActive: boolean = false;
-  
+
   const dispatch = createEventDispatcher();
-  
+
   // State
   let isHovered = false;
-  
+
   // Format date for display
   function formatDate(date: Date): string {
     const now = new Date();
     const chatDate = new Date(date);
-    const diffDays = Math.floor((now.getTime() - chatDate.getTime()) / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
+    const diffDays = Math.floor(
+      (now.getTime() - chatDate.getTime()) / (1000 * 60 * 60 * 24),
+    );
+
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Yesterday";
     if (diffDays < 7) return `${diffDays}d ago`;
-    return chatDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return chatDate.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
   }
-  
+
   // Get message count
   function getMessageCount(): number {
     return chat.messages.length;
   }
-  
+
   // Handle click
   function handleClick() {
-    dispatch('select');
+    dispatch("select");
   }
-  
+
   // Handle context menu
   function handleContextMenu(e: MouseEvent) {
-    dispatch('contextMenu', e);
+    dispatch("contextMenu", e);
   }
-  
+
   // Handle pin click
   function handlePinClick(e: MouseEvent) {
     e.stopPropagation();
-    dispatch('pin');
+    dispatch("pin");
   }
-  
+
   // Handle delete click
   function handleDeleteClick(e: MouseEvent) {
     e.stopPropagation();
-    dispatch('delete');
+    dispatch("delete");
   }
 </script>
 
 <!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
-<div 
+<div
   class="chat-item"
   class:active={isActive}
   class:pinned={chat.isPinned}
   on:click={handleClick}
   on:contextmenu={handleContextMenu}
-  on:keydown={(e) => e.key === 'Enter' && handleClick()}
-  on:mouseenter={() => isHovered = true}
-  on:mouseleave={() => isHovered = false}
+  on:keydown={(e) => e.key === "Enter" && handleClick()}
+  on:mouseenter={() => (isHovered = true)}
+  on:mouseleave={() => (isHovered = false)}
   role="button"
   tabindex="0"
   aria-pressed={isActive}
@@ -72,12 +77,12 @@
   {#if isActive}
     <div class="active-indicator" transition:fade={{ duration: 100 }}></div>
   {/if}
-  
+
   <!-- Chat icon -->
   <div class="chat-icon">
     <MessageSquare size={14} />
   </div>
-  
+
   <!-- Chat info -->
   <div class="chat-info">
     <span class="chat-title" title={chat.title}>{chat.title}</span>
@@ -86,27 +91,27 @@
       <span class="chat-count">{getMessageCount()} messages</span>
     </div>
   </div>
-  
+
   <!-- Pin indicator -->
   {#if chat.isPinned}
     <div class="pin-indicator">
       <Pin size={12} />
     </div>
   {/if}
-  
+
   <!-- Hover actions -->
   {#if isHovered}
     <div class="hover-actions" transition:fade={{ duration: 100 }}>
-      <button 
-        class="action-btn pin-btn" 
+      <button
+        class="action-btn pin-btn"
         on:click={handlePinClick}
-        title={chat.isPinned ? 'Unpin' : 'Pin'}
-        aria-label={chat.isPinned ? 'Unpin chat' : 'Pin chat'}
+        title={chat.isPinned ? "Unpin" : "Pin"}
+        aria-label={chat.isPinned ? "Unpin chat" : "Pin chat"}
       >
         <Pin size={12} />
       </button>
-      <button 
-        class="action-btn delete-btn" 
+      <button
+        class="action-btn delete-btn"
         on:click={handleDeleteClick}
         title="Delete"
         aria-label="Delete chat"
@@ -130,20 +135,20 @@
     background: transparent;
     border: 1px solid transparent;
   }
-  
+
   .chat-item:hover {
     background: var(--bg-tertiary);
   }
-  
+
   .chat-item.active {
     background: var(--bg-tertiary);
     border-color: var(--border-subtle);
   }
-  
+
   .chat-item.active:hover {
     background: var(--bg-secondary);
   }
-  
+
   .active-indicator {
     position: absolute;
     left: 0;
@@ -153,7 +158,7 @@
     background: var(--accent-primary);
     border-radius: 0 2px 2px 0;
   }
-  
+
   .chat-icon {
     display: flex;
     align-items: center;
@@ -165,12 +170,12 @@
     color: var(--text-muted);
     flex-shrink: 0;
   }
-  
+
   .chat-item.active .chat-icon {
     background: var(--accent-primary);
     color: var(--bg-primary);
   }
-  
+
   .chat-info {
     flex: 1;
     min-width: 0;
@@ -178,7 +183,7 @@
     flex-direction: column;
     gap: 2px;
   }
-  
+
   .chat-title {
     font-size: 12px;
     font-weight: 500;
@@ -187,7 +192,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  
+
   .chat-meta {
     display: flex;
     align-items: center;
@@ -195,15 +200,15 @@
     font-size: 10px;
     color: var(--text-muted);
   }
-  
+
   .chat-date {
     opacity: 0.8;
   }
-  
+
   .chat-count {
     opacity: 0.6;
   }
-  
+
   .pin-indicator {
     display: flex;
     align-items: center;
@@ -211,7 +216,7 @@
     color: var(--accent-primary);
     opacity: 0.7;
   }
-  
+
   .hover-actions {
     display: flex;
     align-items: center;
@@ -225,7 +230,7 @@
     padding: 2px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   }
-  
+
   .action-btn {
     display: flex;
     align-items: center;
@@ -239,26 +244,26 @@
     cursor: pointer;
     transition: all 0.15s;
   }
-  
+
   .action-btn:hover {
     background: var(--bg-tertiary);
     color: var(--text-primary);
   }
-  
+
   .delete-btn:hover {
     color: var(--accent-danger);
     background: rgba(239, 68, 68, 0.1);
   }
-  
+
   .pin-btn:hover {
     color: var(--accent-primary);
   }
-  
+
   /* Pinned state */
   .chat-item.pinned {
     background: rgba(107, 33, 168, 0.1);
   }
-  
+
   .chat-item.pinned:hover {
     background: rgba(107, 33, 168, 0.15);
   }

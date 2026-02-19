@@ -1,11 +1,7 @@
+import { PUBLIC_WS_BASE } from '$env/static/public';
+
 /**
  * WebSocket Client for QuantMind IDE real-time updates.
- * 
- * Provides WebSocket connection management with:
- * - Topic-based subscriptions
- * - Automatic reconnection with exponential backoff
- * - Event handler registration/deregistration
- * - Message routing to registered handlers
  */
 
 export interface WebSocketMessage {
@@ -82,6 +78,44 @@ export interface PaperTradingUpdateMessage {
   [key: string]: unknown;
 }
 
+// =============================================================================
+// Chart Data Streaming Types (TradingView Integration)
+// =============================================================================
+
+export interface BarUpdateMessage {
+  symbol: string;
+  timeframe: string;
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  timestamp: string;
+}
+
+export interface RegimeChangeMessage {
+  symbol: string;
+  regime: 'TRENDING' | 'RANGING' | 'VOLATILE' | 'CHOPPY';
+  confidence: number;
+  timestamp: string;
+}
+
+export interface TradeExecutionMessage {
+  type: 'buy' | 'sell';
+  symbol: string;
+  price: number;
+  volume: number;
+  bot_id?: string;
+  timestamp: string;
+}
+
+export interface ChartSubscriptionMessage {
+  type: 'chart_subscription';
+  symbol: string;
+  timeframe: string;
+}
+
 export interface SubscriptionConfirmation {
   type: 'subscription_confirmed';
   topic: string;
@@ -100,11 +134,11 @@ export class WebSocketClient {
   private isConnecting = false;
   private isDisconnecting = false;
   private subscriptionTopics: Set<string> = new Set();
-  
+
   constructor(url: string) {
     this.url = url;
   }
-  
+
   /**
    * Connect to WebSocket server.
    * @returns Promise that resolves when connected
@@ -115,27 +149,27 @@ export class WebSocketClient {
         resolve();
         return;
       }
-      
+
       this.isConnecting = true;
-      
+
       try {
         this.ws = new WebSocket(this.url);
         this.ws.binaryType = 'arraybuffer';
-        
+
         this.ws.onopen = () => {
           this.isConnecting = false;
           this.reconnectAttempts = 0;
           this.reconnectDelay = 1000;
           console.log('[WS] Connected to', this.url);
-          
+
           // Re-subscribe to topics
           for (const topic of this.subscriptionTopics) {
             this.send({ action: 'subscribe', topic });
           }
-          
+
           resolve();
         };
-        
+
         this.ws.onmessage = (event) => {
           try {
             const message = JSON.parse(event.data) as WebSocketMessage;
@@ -144,17 +178,17 @@ export class WebSocketClient {
             console.error('[WS] Failed to parse message:', e);
           }
         };
-        
+
         this.ws.onerror = (error) => {
           console.error('[WS] Error:', error);
           this.isConnecting = false;
           reject(error);
         };
-        
+
         this.ws.onclose = (event) => {
           this.isConnecting = false;
           console.log('[WS] Disconnected:', event.code, event.reason);
-          
+
           // Attempt reconnection if not intentionally disconnecting
           if (!this.isDisconnecting) {
             this._attemptReconnect();
@@ -166,21 +200,21 @@ export class WebSocketClient {
       }
     });
   }
-  
+
   /**
    * Disconnect from WebSocket server.
    */
   disconnect(): void {
     this.isDisconnecting = true;
-    
+
     if (this.ws) {
       this.ws.close();
       this.ws = null;
     }
-    
+
     this.isDisconnecting = false;
   }
-  
+
   /**
    * Send a message to the server.
    * @param data - JSON-serializable data to send
@@ -192,29 +226,29 @@ export class WebSocketClient {
       console.warn('[WS] Cannot send message: not connected');
     }
   }
-  
+
   /**
    * Subscribe to a topic.
    * @param topic - Topic name (e.g., "backtest", "trading", "logs")
    */
   subscribe(topic: string): void {
     this.subscriptionTopics.add(topic);
-    
+
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.send({ action: 'subscribe', topic });
     }
   }
-  
+
   /**
    * Unsubscribe from a topic.
    * @param topic - Topic name
    */
   unsubscribe(topic: string): void {
     this.subscriptionTopics.delete(topic);
-    
+
     // Note: Server doesn't have an unsubscribe action, but we track locally
   }
-  
+
   /**
    * Register an event handler.
    * @param type - Event type (e.g., "backtest_start", "backtest_progress", "log")
@@ -226,7 +260,7 @@ export class WebSocketClient {
     }
     this.handlers.get(type)!.add(handler);
   }
-  
+
   /**
    * Remove an event handler.
    * @param type - Event type
@@ -238,21 +272,21 @@ export class WebSocketClient {
       handlers.delete(handler);
     }
   }
-  
+
   /**
    * Check if connected.
    */
   isConnected(): boolean {
     return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
   }
-  
+
   /**
    * Get connection state.
    */
   getState(): number {
     return this.ws ? this.ws.readyState : WebSocket.CLOSED;
   }
-  
+
   private _handleMessage(message: WebSocketMessage): void {
     const handlers = this.handlers.get(message.type);
     if (handlers) {
@@ -265,22 +299,22 @@ export class WebSocketClient {
       }
     }
   }
-  
+
   private _attemptReconnect(): void {
     if (this.isConnecting || this.isDisconnecting) {
       return;
     }
-    
+
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error('[WS] Max reconnection attempts reached');
       return;
     }
-    
+
     this.reconnectAttempts++;
     const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelay);
-    
+
     console.log(`[WS] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-    
+
     setTimeout(() => {
       this.connect().catch((error) => {
         console.error('[WS] Reconnection failed:', error);
@@ -325,4 +359,34 @@ export async function createTradingClient(baseUrl: string): Promise<WebSocketCli
   return client;
 }
 
+/**
+ * Create a chart WebSocket client.
+ * Connects to /ws and subscribes to "chart" topic for real-time bar updates.
+ * @param baseUrl - Base URL (e.g., "http://localhost:8000")
+ * @param symbol - Trading symbol to subscribe to (e.g., "EURUSD")
+ * @param timeframe - Chart timeframe (e.g., "M1", "M5", "H1")
+ * @returns Connected WebSocket client subscribed to chart data
+ */
+export async function createChartClient(
+  baseUrl: string,
+  symbol?: string,
+  timeframe?: string
+): Promise<WebSocketClient> {
+  const client = await createWebSocketClient(baseUrl);
+  client.subscribe('chart');
+
+  // Send chart subscription with symbol and timeframe if provided
+  if (symbol && timeframe) {
+    client.send({
+      action: 'subscribe',
+      topic: 'chart',
+      symbol,
+      timeframe
+    } as unknown as Record<string, unknown>);
+  }
+
+  return client;
+}
+
+export const wsClient = new WebSocketClient(`${PUBLIC_WS_BASE}/ws`);
 export default WebSocketClient;

@@ -450,6 +450,171 @@ def get_analytics_connection(
     return DuckDBConnection(db_path=db_path, read_only=read_only)
 
 
+# =============================================================================
+# WARM TIER - Market Data Table (DuckDB) - 30-day retention
+# =============================================================================
+
+WARM_DB_PATH = "data/market_data.duckdb"
+
+
+def create_market_data_table(db_path: str = WARM_DB_PATH) -> None:
+    """
+    Create the WARM tier market_data table.
+    
+    Schema:
+    - symbol: Trading symbol
+    - timeframe: Timeframe (M1, M5, M15, H1, H4, D1)
+    - timestamp: Bar timestamp
+    - open, high, low, close: OHLC prices
+    - volume: Trading volume
+    - tick_volume: Tick volume
+    - spread: Spread
+    - is_synthetic: Whether data was synthesized (gap-filled)
+    """
+    with DuckDBConnection(db_path) as conn:
+        conn.execute_query("""
+            CREATE TABLE IF NOT EXISTS market_data (
+                symbol VARCHAR(20) NOT NULL,
+                timeframe VARCHAR(5) NOT NULL,
+                timestamp TIMESTAMP NOT NULL,
+                open DOUBLE NOT NULL,
+                high DOUBLE NOT NULL,
+                low DOUBLE NOT NULL,
+                close DOUBLE NOT NULL,
+                volume BIGINT,
+                tick_volume INTEGER,
+                spread INTEGER,
+                is_synthetic BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Create indexes
+        conn.execute_query("""
+            CREATE INDEX IF NOT EXISTS idx_market_data_lookup 
+            ON market_data(symbol, timeframe, timestamp)
+        """)
+        
+        conn.execute_query("""
+            CREATE INDEX IF NOT EXISTS idx_market_data_symbol 
+            ON market_data(symbol)
+        """)
+        
+        logger.info("Created market_data table in DuckDB")
+
+
+def insert_market_data(
+    data: List[dict],
+    db_path: str = WARM_DB_PATH
+) -> int:
+    """
+    Insert market data into WARM tier.
+    
+    Args:
+        data: List of dictionaries with OHLC data
+        db_path: Path to DuckDB file
+        
+    Returns:
+        Number of rows inserted
+    """
+    if not data:
+        return 0
+    
+    with DuckDBConnection(db_path) as conn:
+        # Ensure table exists
+        if not conn.table_exists('market_data'):
+            create_market_data_table(db_path)
+        
+        # Prepare insert statement
+        query = """
+            INSERT INTO market_data 
+            (symbol, timeframe, timestamp, open, high, low, close, volume, tick_volume, spread, is_synthetic)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        
+        count = 0
+        for bar in data:
+            try:
+                conn.execute_query(query, (
+                    bar.get('symbol'),
+                    bar.get('timeframe'),
+                    bar.get('timestamp'),
+                    bar.get('open'),
+                    bar.get('high'),
+                    bar.get('low'),
+                    bar.get('close'),
+                    bar.get('volume', 0),
+                    bar.get('tick_volume', 0),
+                    bar.get('spread', 0),
+                    bar.get('is_synthetic', False)
+                ))
+                count += 1
+            except Exception as e:
+                logger.error(f"Failed to insert market data: {e}")
+        
+        return count
+
+
+def query_market_data(
+    symbol: str,
+    timeframe: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db_path: str = WARM_DB_PATH
+) -> pd.DataFrame:
+    """
+    Query market data from WARM tier.
+    
+    Args:
+        symbol: Trading symbol
+        timeframe: Timeframe
+        start_date: Start date (YYYY-MM-DD)
+        end_date: End date (YYYY-MM-DD)
+        db_path: Path to DuckDB file
+        
+    Returns:
+        DataFrame with market data
+    """
+    with DuckDBConnection(db_path) as conn:
+        query = "SELECT * FROM market_data WHERE symbol = ? AND timeframe = ?"
+        params = [symbol, timeframe]
+        
+        if start_date:
+            query += " AND timestamp >= ?"
+            params.append(start_date)
+        if end_date:
+            query += " AND timestamp <= ?"
+            params.append(end_date)
+        
+        query += " ORDER BY timestamp ASC"
+        
+        result = conn.execute_query(query, tuple(params))
+        return result.df()
+
+
+def cleanup_old_market_data(
+    days: int = 30,
+    db_path: str = WARM_DB_PATH
+) -> int:
+    """
+    Clean up market data older than specified days.
+    
+    Args:
+        days: Number of days to retain
+        db_path: Path to DuckDB file
+        
+    Returns:
+        Number of rows deleted
+    """
+    with DuckDBConnection(db_path) as conn:
+        query = f"""
+            DELETE FROM market_data 
+            WHERE timestamp < CURRENT_DATE - INTERVAL '{days} days'
+        """
+        result = conn.execute_query(query)
+        return result.rowcount
+
+
 def query_historical_data(
     symbol: str,
     timeframe: str,

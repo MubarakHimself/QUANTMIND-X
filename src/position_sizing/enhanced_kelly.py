@@ -28,7 +28,10 @@ Reference: docs/trds/enhanced_kelly_position_sizing_v1.md
 import logging
 import math
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.backtesting.lean_commission import CommissionModel
 
 from .kelly_config import EnhancedKellyConfig
 

@@ -1,12 +1,15 @@
 <script lang="ts">
   import { X, FileText, Code, BookOpen, Image } from 'lucide-svelte';
-  
+  import MonacoEditor from './MonacoEditor.svelte';
+  import CodeEditor from './CodeEditor.svelte';
+
   // Tabs and content state
   export let openFiles: Array<{id: string, name: string, path?: string, content?: string, type?: string}> = [];
   export let activeTabId: string = '';
-  
+  export let useMonaco: boolean = true; // Toggle between Monaco and legacy editor
+
   const API_BASE = 'http://localhost:8000/api';
-  
+
   // File type icons
   function getFileIcon(name: string) {
     const ext = name.split('.').pop()?.toLowerCase();
@@ -15,7 +18,7 @@
     if (ext === 'png' || ext === 'jpg') return Image;
     return FileText;
   }
-  
+
   // Close a tab
   function closeTab(e: Event, fileId: string) {
     e.stopPropagation();
@@ -24,7 +27,7 @@
       activeTabId = openFiles[0].id;
     }
   }
-  
+
   // Load file content
   export async function openFile(file: {id: string, name: string, path?: string, view?: string}) {
     // Check if already open
@@ -33,7 +36,7 @@
       activeTabId = file.id;
       return;
     }
-    
+
     // Determine endpoint based on view type
     let endpoint = '';
     if (file.view === 'knowledge') {
@@ -41,7 +44,7 @@
     } else if (file.view === 'assets') {
       endpoint = `${API_BASE}/assets/${file.id}/content`;
     }
-    
+
     let content = '';
     if (endpoint) {
       try {
@@ -56,7 +59,7 @@
     } else {
       content = getDemoContent(file.name);
     }
-    
+
     openFiles = [...openFiles, {
       id: file.id,
       name: file.name,
@@ -66,7 +69,7 @@
     }];
     activeTabId = file.id;
   }
-  
+
   function getFileType(name: string): string {
     const ext = name.split('.').pop()?.toLowerCase();
     if (ext === 'mq5' || ext === 'mqh') return 'mql5';
@@ -75,7 +78,7 @@
     if (ext === 'json') return 'json';
     return 'text';
   }
-  
+
   function getDemoContent(name: string): string {
     if (name.includes('.mqh') || name.includes('.mq5')) {
       return `//+------------------------------------------------------------------+
@@ -115,7 +118,21 @@ input double Lots = 0.01;
     }
     return `// ${name}\n// Demo content - connect backend for real data`;
   }
-  
+
+  function handleEditorChange(event: CustomEvent) {
+    const { content, filename } = event.detail;
+    // Update the file content
+    openFiles = openFiles.map(f =>
+      f.id === activeTabId ? { ...f, content } : f
+    );
+  }
+
+  function handleEditorSave(event: CustomEvent) {
+    const { content, filename } = event.detail;
+    // TODO: Save to backend
+    console.log('Saving file:', filename);
+  }
+
   $: activeFile = openFiles.find(f => f.id === activeTabId);
 </script>
 
@@ -128,8 +145,8 @@ input double Lots = 0.01;
       </div>
     {:else}
       {#each openFiles as file}
-        <div 
-          class="tab" 
+        <div
+          class="tab"
           class:active={activeTabId === file.id}
           on:click={() => activeTabId = file.id}
           on:keypress={(e) => e.key === 'Enter' && (activeTabId = file.id)}
@@ -144,8 +161,26 @@ input double Lots = 0.01;
         </div>
       {/each}
     {/if}
+
+    <!-- Editor Toggle -->
+    <div class="editor-toggle">
+      <button
+        class:active={useMonaco}
+        on:click={() => useMonaco = true}
+        title="Use Monaco Editor"
+      >
+        <Code size={12} />
+      </button>
+      <button
+        class:active={!useMonaco}
+        on:click={() => useMonaco = false}
+        title="Use Legacy Editor"
+      >
+        <FileText size={12} />
+      </button>
+    </div>
   </div>
-  
+
   <!-- Editor Content -->
   <div class="editor-content">
     {#if openFiles.length === 0}
@@ -153,7 +188,7 @@ input double Lots = 0.01;
       <div class="welcome-screen">
         <h1>QuantMind IDE</h1>
         <p class="subtitle">Algorithmic Trading Development Environment</p>
-        
+
         <div class="quick-actions">
           <button class="action-btn">
             <span class="icon">📹</span>
@@ -184,8 +219,19 @@ input double Lots = 0.01;
             </div>
           </button>
         </div>
-        
+
         <p class="hint">Select a file from the sidebar to begin editing</p>
+
+        <div class="editor-info">
+          <p>Using: {useMonaco ? 'Monaco Editor' : 'Legacy Editor'}</p>
+          <p class="features">
+            {#if useMonaco}
+              MQL5 IntelliSense • Syntax Highlighting • Debug Support • Git Integration
+            {:else}
+              Basic syntax highlighting • Fast loading
+            {/if}
+          </p>
+        </div>
       </div>
     {:else if activeFile}
       <!-- File Content -->
@@ -194,10 +240,26 @@ input double Lots = 0.01;
           <div class="markdown-preview">
             <pre>{activeFile.content}</pre>
           </div>
+        {:else if useMonaco}
+          <MonacoEditor
+            content={activeFile.content || ''}
+            filename={activeFile.name}
+            language={activeFile.type || 'text'}
+            fileId={activeFile.id}
+            filePath={activeFile.path || ''}
+            on:change={handleEditorChange}
+            on:save={handleEditorSave}
+          />
         {:else}
-          <div class="code-viewer">
-            <pre class="code-content"><code>{activeFile.content}</code></pre>
-          </div>
+          <CodeEditor
+            content={activeFile.content || ''}
+            filename={activeFile.name}
+            language={activeFile.type || 'text'}
+            fileId={activeFile.id}
+            filePath={activeFile.path || ''}
+            on:change={handleEditorChange}
+            on:save={handleEditorSave}
+          />
         {/if}
       </div>
     {/if}
@@ -213,7 +275,7 @@ input double Lots = 0.01;
     background: var(--bg-primary);
     overflow: hidden;
   }
-  
+
   .tab-bar {
     display: flex;
     background: var(--bg-secondary);
@@ -221,7 +283,7 @@ input double Lots = 0.01;
     height: 36px;
     overflow-x: auto;
   }
-  
+
   .tab {
     display: flex;
     align-items: center;
@@ -234,21 +296,21 @@ input double Lots = 0.01;
     min-width: fit-content;
     max-width: 180px;
   }
-  
+
   .tab.active {
     background: var(--bg-primary);
     color: var(--text-primary);
     border-bottom: 1px solid var(--bg-primary);
     margin-bottom: -1px;
   }
-  
+
   .tab-name {
     font-size: 12px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  
+
   .tab-close {
     display: flex;
     align-items: center;
@@ -262,22 +324,52 @@ input double Lots = 0.01;
     opacity: 0;
     transition: opacity 0.1s;
   }
-  
+
   .tab:hover .tab-close {
     opacity: 1;
   }
-  
+
   .tab-close:hover {
     background: var(--bg-tertiary);
     color: var(--text-primary);
   }
-  
+
+  .editor-toggle {
+    display: flex;
+    margin-left: auto;
+    padding: 4px;
+    gap: 2px;
+    background: var(--bg-tertiary);
+  }
+
+  .editor-toggle button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 8px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .editor-toggle button:hover {
+    color: var(--text-primary);
+  }
+
+  .editor-toggle button.active {
+    background: var(--accent-primary);
+    color: #000;
+  }
+
   .editor-content {
     flex: 1;
     overflow-y: auto;
     display: flex;
   }
-  
+
   .welcome-screen {
     flex: 1;
     display: flex;
@@ -287,7 +379,7 @@ input double Lots = 0.01;
     padding: 40px;
     text-align: center;
   }
-  
+
   h1 {
     font-size: 32px;
     font-weight: 600;
@@ -297,13 +389,13 @@ input double Lots = 0.01;
     background-clip: text;
     margin-bottom: 8px;
   }
-  
+
   .subtitle {
     color: var(--text-secondary);
     font-size: 14px;
     margin-bottom: 32px;
   }
-  
+
   .quick-actions {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -311,7 +403,7 @@ input double Lots = 0.01;
     max-width: 500px;
     margin-bottom: 32px;
   }
-  
+
   .action-btn {
     display: flex;
     align-items: center;
@@ -325,60 +417,66 @@ input double Lots = 0.01;
     transition: all 0.15s ease;
     text-align: left;
   }
-  
+
   .action-btn:hover {
     background: var(--glass-bg);
     border-color: var(--accent-primary);
     transform: translateY(-2px);
   }
-  
+
   .action-btn .icon {
     font-size: 24px;
   }
-  
+
   .action-text {
     display: flex;
     flex-direction: column;
     gap: 2px;
   }
-  
+
   .action-title {
     font-size: 13px;
     font-weight: 500;
   }
-  
+
   .action-desc {
     font-size: 11px;
     color: var(--text-muted);
   }
-  
+
   .hint {
     color: var(--text-muted);
     font-size: 12px;
+    margin-bottom: 24px;
   }
-  
+
+  .editor-info {
+    padding: 16px 24px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-subtle);
+  }
+
+  .editor-info p {
+    margin: 4px 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .editor-info .features {
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
   .file-viewer {
     flex: 1;
     overflow: auto;
-    padding: 16px;
+    display: flex;
+    flex-direction: column;
   }
-  
-  .code-viewer, .markdown-preview {
-    height: 100%;
-  }
-  
-  .code-content {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    line-height: 1.6;
-    color: var(--text-primary);
-    background: transparent;
-    margin: 0;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-  }
-  
+
   .markdown-preview pre {
+    padding: 16px;
     font-family: 'Inter', sans-serif;
     font-size: 14px;
     line-height: 1.7;

@@ -1,0 +1,6 @@
+# QuantMindX Cloudzy VPS Crontab
+# ================================
+# Install with: crontab config/crontab.cloudzy
+
+# Config sync (every 15 minutes)
+*/15 * * * * /opt/quantmindx/scripts/sync_config.sh >> /var/log/quantmindx/sync_config.log 2>&1

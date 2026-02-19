@@ -1,0 +1,36 @@
+{
+  "mcpServers": {
+    "context7": {
+      "name": "Context7",
+      "url": "https://context7.com/websites/pinescript",
+      "type": "context7",
+      "enabled": true,
+      "description": "Pine Script documentation retrieval",
+      "tools": ["get_pinescript_documentation", "get_pinescript_examples"],
+      "config": {
+        "cache_ttl": 3600,
+        "max_results": 10,
+        "timeout": 30
+      }
+    },
+    "pageindex-books": {
+      "name": "PageIndex Books",
+      "url": "http://pageindex-books:3001",
+      "type": "pageindex",
+      "enabled": true,
+      "description": "Trading books and patterns search",
+      "tools": ["search_books", "get_book_section"],
+      "config": {
+        "namespace": "books",
+        "timeout": 30
+      }
+    }
+  },
+  "defaultServer": "context7",
+  "fallbackOrder": ["context7", "pageindex-books"],
+  "healthCheck": {
+    "interval": 60,
+    "timeout": 10,
+    "retryAttempts": 3
+  }
+}

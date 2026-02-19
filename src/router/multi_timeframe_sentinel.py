@@ -9,8 +9,11 @@ selection and multi-timeframe alignment checks in the Commander.
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING
 import logging
+
+if TYPE_CHECKING:
+    from src.router.sentinel import RegimeReport
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +153,7 @@ class MultiTimeframeSentinel:
     instances per timeframe and aggregates their regime reports.
     """
 
-    def __init__(self, timeframes: List[Timeframe] = None):
+    def __init__(self, timeframes: Optional[List[Timeframe]] = None):
         if timeframes is None:
             timeframes = [Timeframe.M5, Timeframe.H1, Timeframe.H4]
 
@@ -193,10 +196,12 @@ class MultiTimeframeSentinel:
                 sentinel.on_tick(symbol, completed_bar.close)
 
                 # Store the updated regime report
-                self.regime_reports[timeframe] = sentinel.current_report
-                updated_regimes[timeframe] = sentinel.current_report
+                current_report = sentinel.current_report
+                if current_report is not None:
+                    self.regime_reports[timeframe] = current_report
+                    updated_regimes[timeframe] = current_report
 
-                logger.debug(f"Bar completed for {timeframe.name}: {completed_bar}")
+                    logger.debug(f"Bar completed for {timeframe.name}: {completed_bar}")
 
         return updated_regimes
 

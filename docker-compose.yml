@@ -1,16 +1,49 @@
 version: '3.8'
 
 services:
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: quantmindx-qdrant
-    ports:
-      - "6333:6333"
-      - "6334:6334"
+  # PageIndex for Articles (MQL5 scraped articles)
+  pageindex-articles:
+    build:
+      context: .
+      dockerfile: docker/pageindex/Dockerfile.articles
+    container_name: quantmindx-pageindex-articles
     volumes:
-      - ./data/qdrant:/qdrant/storage
+      - ./data/scraped_articles:/data/articles:ro
+    ports:
+      - "3000:3000"
     restart: unless-stopped
+    networks:
+      - quantmind-network
 
+  # PageIndex for Books/PDFs
+  pageindex-books:
+    build:
+      context: .
+      dockerfile: docker/pageindex/Dockerfile.books
+    container_name: quantmindx-pageindex-books
+    volumes:
+      - ./data/knowledge_base/books:/data/books:ro
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+    networks:
+      - quantmind-network
+
+  # PageIndex for Trading Logs
+  pageindex-logs:
+    build:
+      context: .
+      dockerfile: docker/pageindex/Dockerfile.logs
+    container_name: quantmindx-pageindex-logs
+    volumes:
+      - ./data/logs:/data/logs:ro
+    ports:
+      - "3002:3002"
+    restart: unless-stopped
+    networks:
+      - quantmind-network
+
+  # Knowledge Base Indexer (PageIndex-based)
   kb-indexer:
     build:
       context: .
@@ -20,7 +53,17 @@ services:
       - ./data:/app/data
       - ./scripts:/app/scripts
     environment:
-      - QDRANT_URL=http://qdrant:6333
+      - PAGEINDEX_ARTICLES_URL=http://pageindex-articles:3000
+      - PAGEINDEX_BOOKS_URL=http://pageindex-books:3001
+      - PAGEINDEX_LOGS_URL=http://pageindex-logs:3002
     depends_on:
-      - qdrant
+      - pageindex-articles
+      - pageindex-books
+      - pageindex-logs
     restart: "no"
+    networks:
+      - quantmind-network
+
+networks:
+  quantmind-network:
+    driver: bridge

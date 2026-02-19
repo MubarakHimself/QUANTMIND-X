@@ -457,25 +457,30 @@ LangGraph manages workflow state transitions:
 
 ## Architectural Decisions (ADR)
 
-### ADR-001: Use ChromaDB for Knowledge Base
+### ADR-001: Use PageIndex for Knowledge Retrieval
 
 **Status:** Accepted
 
 **Context:**
-- Existing ChromaDB installation with 1,805 MQL5 articles
-- Need filtered collection (~330 articles) for analyst use
-- Local deployment preferred
+- Need efficient knowledge retrieval for MQL5 articles, books, and logs
+- Previous implementations used ChromaDB and Qdrant vector databases
+- Vector databases require embedding generation overhead
+- Need reasoning-based retrieval with page/section references
 
 **Decision:**
-- Use existing ChromaDB at `data/chromadb/`
-- Create filtered `analyst_kb` collection
-- No migration to Qdrant for v1.0
+- Use PageIndex services for knowledge retrieval
+- Three separate services: articles (port 3000), books (port 3001), logs (port 3002)
+- HTTP-based API for search and indexing operations
+- No embedding model dependencies required
 
 **Consequences:**
-- + No data migration needed
-- + Faster implementation
-- - ChromaDB less scalable than Qdrant
-- - Can mitigate in v2.0 if needed
+- + Reasoning-based retrieval instead of similarity-based
+- + No embedding generation overhead (faster retrieval)
+- + Better explainability with page/section references
+- + Reduced resource usage (no vector database overhead)
+- + Simpler architecture with HTTP-based services
+- - Requires running three separate PageIndex Docker services
+- - Less suitable for pure semantic similarity searches
 
 ### ADR-002: LangGraph for Workflow Orchestration
 

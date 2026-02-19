@@ -9,7 +9,9 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     # Security: Restrict where Python can write
-    PYTHONPATH=/app/src:$PYTHONPATH
+    PYTHONPATH=/app/src:$PYTHONPATH \
+    # Claude CLI API key (inherited by trader user)
+    ANTHROPIC_API_KEY=""
 
 # Install system dependencies and security tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -25,6 +27,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Clean up
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+# Install Node.js 20.x and Claude CLI tools
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g @anthropic-ai/claude-code claude-mem \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security (CVE-2021-3711 mitigation)
 RUN groupadd -r trader && \

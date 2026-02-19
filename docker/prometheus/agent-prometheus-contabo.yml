@@ -1,0 +1,55 @@
+# QuantMindX Prometheus Agent Configuration for Contabo VPS
+# Runs in agent mode to scrape HMM services and remote_write to Grafana Cloud
+# This provides metrics for the training/inference workloads on Contabo
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'quantmindx-contabo'
+    environment: 'production'
+    role: 'training'
+
+# Scrape configurations for Contabo services
+scrape_configs:
+  # HMM Inference API metrics
+  - job_name: 'hmm-inference-api'
+    static_configs:
+      - targets: ['hmm-inference-api:8001']
+        labels:
+          service: 'hmm-inference-api'
+          component: 'inference'
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # HMM Scheduler/Training metrics
+  - job_name: 'hmm-scheduler'
+    static_configs:
+      - targets: ['hmm-scheduler:9093']
+        labels:
+          service: 'hmm-scheduler'
+          component: 'training'
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+# Remote write to Grafana Cloud
+# Environment variables are expanded by Prometheus
+remote_write:
+  - url: "${GRAFANA_PROMETHEUS_URL}/api/prom/push"
+    basic_auth:
+      username: "${GRAFANA_INSTANCE_ID}"
+      password: "${GRAFANA_API_KEY}"
+    headers:
+      X-Scope-OrgID: "${GRAFANA_INSTANCE_ID}"
+    queue_config:
+      max_samples_per_send: 1000
+      max_shards: 200
+      capacity: 2500
+    metadata_config:
+      send: true
+      send_interval: 1m
+      max_samples_per_send: 500
+    # Enable native histograms
+    send_native_histograms: true

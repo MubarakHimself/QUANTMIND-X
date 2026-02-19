@@ -100,14 +100,14 @@ class BotCircuitBreakerManager:
         """
         state = self.get_or_create_state(bot_id)
 
-        # Check if quarantined
-        if state.is_quarantined:
-            reason = state.quarantine_reason or "Bot is quarantined"
+        # Check if quarantined - use bool() to handle SQLAlchemy Column type
+        if bool(state.is_quarantined):  # type: ignore[arg-type]
+            reason = str(state.quarantine_reason) if state.quarantine_reason else "Bot is quarantined"  # type: ignore[arg-type]
             return False, reason
 
-        # Check daily trade limit
-        if state.daily_trade_count >= self.DEFAULT_DAILY_TRADE_LIMIT:
-            return False, f"Daily trade limit reached ({state.daily_trade_count}/{self.DEFAULT_DAILY_TRADE_LIMIT})"
+        # Check daily trade limit - use int() to handle SQLAlchemy Column type
+        if int(state.daily_trade_count) >= self.DEFAULT_DAILY_TRADE_LIMIT:  # type: ignore[arg-type]
+            return False, f"Daily trade limit reached ({int(state.daily_trade_count)}/{self.DEFAULT_DAILY_TRADE_LIMIT})"  # type: ignore[arg-type]
 
         return True, None
 
@@ -139,26 +139,27 @@ class BotCircuitBreakerManager:
 
         state = self.get_or_create_state(bot_id)
 
-        # Check if we need to reset daily counters (new day)
-        if state.last_trade_time:
-            last_trade_date = state.last_trade_time.date()
+        # Check if we need to reset daily counters (new day) - handle None and Column types
+        last_trade_time = state.last_trade_time  # type: ignore[attr-defined]
+        if last_trade_time is not None:
+            last_trade_date = last_trade_time.date()
             if last_trade_date < trade_date:
                 # New day - reset counters
-                state.daily_trade_count = 0
+                state.daily_trade_count = 0  # type: ignore[assignment]
                 logger.info(f"New day detected: reset daily trade count for {bot_id}")
 
-        # Update trade count
-        state.daily_trade_count += 1
-        state.last_trade_time = datetime.now(timezone.utc)
+        # Update trade count - use SQLAlchemy's Python-side attribute access
+        state.daily_trade_count = int(state.daily_trade_count) + 1  # type: ignore[assignment]
+        state.last_trade_time = datetime.now(timezone.utc)  # type: ignore[assignment]
 
         # Update consecutive losses
         if is_loss:
-            state.consecutive_losses += 1
+            state.consecutive_losses = int(state.consecutive_losses) + 1  # type: ignore[assignment]
         else:
             # Reset on win
-            if state.consecutive_losses > 0:
+            if int(state.consecutive_losses) > 0:  # type: ignore[arg-type]
                 logger.info(f"Win recorded: reset consecutive losses for {bot_id}")
-            state.consecutive_losses = 0
+            state.consecutive_losses = 0  # type: ignore[assignment]
 
         # Record fee (Phase 3.2)
         self.fee_monitor.record_trade_fee(bot_id, fee, trade_date)
@@ -167,25 +168,25 @@ class BotCircuitBreakerManager:
         should_halt, reason = self.fee_monitor.should_halt_trading()
         if should_halt:
             self.quarantine_bot(bot_id, reason=f"FEE_KILL_SWITCH: {reason}")
-            state.is_quarantined = True
+            state.is_quarantined = True  # type: ignore[assignment]
 
         # Check quarantine triggers
-        if state.consecutive_losses >= self.MAX_CONSECUTIVE_LOSSES:
+        if int(state.consecutive_losses) >= self.MAX_CONSECUTIVE_LOSSES:  # type: ignore[arg-type]
             self.quarantine_bot(
                 bot_id,
-                reason=f"{state.consecutive_losses} consecutive losses"
+                reason=f"{int(state.consecutive_losses)} consecutive losses"  # type: ignore[arg-type]
             )
-            state.is_quarantined = True
-        elif state.daily_trade_count > self.DEFAULT_DAILY_TRADE_LIMIT:
+            state.is_quarantined = True  # type: ignore[assignment]
+        elif int(state.daily_trade_count) > self.DEFAULT_DAILY_TRADE_LIMIT:  # type: ignore[arg-type]
             self.quarantine_bot(
                 bot_id,
-                reason=f"Daily trade limit exceeded ({state.daily_trade_count}/{self.DEFAULT_DAILY_TRADE_LIMIT})"
+                reason=f"Daily trade limit exceeded ({int(state.daily_trade_count)}/{self.DEFAULT_DAILY_TRADE_LIMIT})"  # type: ignore[arg-type]
             )
-            state.is_quarantined = True
+            state.is_quarantined = True  # type: ignore[assignment]
 
         # Save to database
         with self.db.get_session() as session:
-            state.updated_at = datetime.now(timezone.utc)
+            state.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
             session.merge(state)
             session.flush()
             session.refresh(state)
@@ -193,8 +194,8 @@ class BotCircuitBreakerManager:
 
         logger.info(
             f"Trade recorded: bot={bot_id}, loss={is_loss}, "
-            f"consecutive_losses={state.consecutive_losses}, "
-            f"daily_trades={state.daily_trade_count}"
+            f"consecutive_losses={int(state.consecutive_losses)}, "  # type: ignore[arg-type]
+            f"daily_trades={int(state.daily_trade_count)}"  # type: ignore[arg-type]
         )
 
         return state
@@ -216,13 +217,13 @@ class BotCircuitBreakerManager:
         """
         state = self.get_or_create_state(bot_id)
 
-        state.is_quarantined = True
-        state.quarantine_reason = reason
-        state.quarantine_start = datetime.now(timezone.utc)
+        state.is_quarantined = True  # type: ignore[assignment]
+        state.quarantine_reason = reason  # type: ignore[attr-defined]
+        state.quarantine_start = datetime.now(timezone.utc)  # type: ignore[assignment]
 
         # Save to database
         with self.db.get_session() as session:
-            state.updated_at = datetime.now(timezone.utc)
+            state.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
             session.merge(state)
             session.flush()
             session.refresh(state)
@@ -245,14 +246,14 @@ class BotCircuitBreakerManager:
         """
         state = self.get_or_create_state(bot_id)
 
-        state.is_quarantined = False
-        state.quarantine_reason = None
-        state.quarantine_start = None
-        state.consecutive_losses = 0
+        state.is_quarantined = False  # type: ignore[assignment]
+        state.quarantine_reason = None  # type: ignore[attr-defined]
+        state.quarantine_start = None  # type: ignore[assignment]
+        state.consecutive_losses = 0  # type: ignore[assignment]
 
         # Save to database
         with self.db.get_session() as session:
-            state.updated_at = datetime.now(timezone.utc)
+            state.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
             session.merge(state)
             session.flush()
             session.refresh(state)
@@ -282,12 +283,12 @@ class BotCircuitBreakerManager:
             return {
                 "id": state.id,
                 "bot_id": state.bot_id,
-                "consecutive_losses": state.consecutive_losses,
-                "daily_trade_count": state.daily_trade_count,
-                "last_trade_time": state.last_trade_time.isoformat() if state.last_trade_time else None,
-                "is_quarantined": state.is_quarantined,
-                "quarantine_reason": state.quarantine_reason,
-                "quarantine_start": state.quarantine_start.isoformat() if state.quarantine_start else None,
+                "consecutive_losses": int(state.consecutive_losses),  # type: ignore[arg-type]
+                "daily_trade_count": int(state.daily_trade_count),  # type: ignore[arg-type]
+                "last_trade_time": state.last_trade_time.isoformat() if state.last_trade_time else None,  # type: ignore[attr-defined]
+                "is_quarantined": bool(state.is_quarantined),  # type: ignore[arg-type]
+                "quarantine_reason": state.quarantine_reason,  # type: ignore[attr-defined]
+                "quarantine_start": state.quarantine_start.isoformat() if state.quarantine_start else None,  # type: ignore[attr-defined]
             }
 
     def get_quarantined_bots(self) -> List[Dict[str, Any]]:
@@ -305,10 +306,10 @@ class BotCircuitBreakerManager:
             return [
                 {
                     "bot_id": s.bot_id,
-                    "consecutive_losses": s.consecutive_losses,
-                    "daily_trade_count": s.daily_trade_count,
-                    "quarantine_reason": s.quarantine_reason,
-                    "quarantine_start": s.quarantine_start.isoformat() if s.quarantine_start else None,
+                    "consecutive_losses": int(s.consecutive_losses),  # type: ignore[arg-type]
+                    "daily_trade_count": int(s.daily_trade_count),  # type: ignore[arg-type]
+                    "quarantine_reason": s.quarantine_reason,  # type: ignore[attr-defined]
+                    "quarantine_start": s.quarantine_start.isoformat() if s.quarantine_start else None,  # type: ignore[attr-defined]
                 }
                 for s in states
             ]
@@ -327,12 +328,12 @@ class BotCircuitBreakerManager:
                 {
                     "id": s.id,
                     "bot_id": s.bot_id,
-                    "consecutive_losses": s.consecutive_losses,
-                    "daily_trade_count": s.daily_trade_count,
-                    "last_trade_time": s.last_trade_time.isoformat() if s.last_trade_time else None,
-                    "is_quarantined": s.is_quarantined,
-                    "quarantine_reason": s.quarantine_reason,
-                    "quarantine_start": s.quarantine_start.isoformat() if s.quarantine_start else None,
+                    "consecutive_losses": int(s.consecutive_losses),  # type: ignore[arg-type]
+                    "daily_trade_count": int(s.daily_trade_count),  # type: ignore[arg-type]
+                    "last_trade_time": s.last_trade_time.isoformat() if s.last_trade_time else None,  # type: ignore[attr-defined]
+                    "is_quarantined": bool(s.is_quarantined),  # type: ignore[arg-type]
+                    "quarantine_reason": s.quarantine_reason,  # type: ignore[attr-defined]
+                    "quarantine_start": s.quarantine_start.isoformat() if s.quarantine_start else None,  # type: ignore[attr-defined]
                 }
                 for s in states
             ]
@@ -350,11 +351,11 @@ class BotCircuitBreakerManager:
             Updated BotCircuitBreaker object
         """
         state = self.get_or_create_state(bot_id)
-        state.daily_trade_count = 0
+        state.daily_trade_count = 0  # type: ignore[assignment]
 
         # Save to database
         with self.db.get_session() as session:
-            state.updated_at = datetime.now(timezone.utc)
+            state.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
             session.merge(state)
             session.flush()
             session.refresh(state)
@@ -377,33 +378,6 @@ class BotCircuitBreakerManager:
         # Store custom limit in bot_id metadata or separate config
         logger.info(f"Custom trade limit set for {bot_id}: {limit} trades/day")
         # Implementation would extend schema to store custom limits
-    
-    def update_account_balance(self, new_balance: float) -> None:
-        """
-        Update the account balance used for fee calculations.
-        
-        Args:
-            new_balance: New account balance
-        """
-        self.account_balance = new_balance
-        self.fee_monitor.account_balance = new_balance
-        logger.info(f"Updated account balance to ${new_balance:.2f} for fee monitoring")
-    
-    def update_account_id(self, new_account_id: str) -> None:
-        """
-        Update the account ID used for fee tracking.
-        
-        Args:
-            new_account_id: New account identifier
-        """
-        self.account_id = new_account_id
-        # Create new fee monitor with updated account ID
-        self.fee_monitor = FeeMonitor(
-            account_id=self.account_id,
-            db_manager=self.db,
-            account_balance=self.account_balance
-        )
-        logger.info(f"Updated account ID to {new_account_id} for fee monitoring")
     
     def update_account_balance(self, new_balance: float) -> None:
         """

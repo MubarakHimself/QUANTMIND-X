@@ -209,3 +209,74 @@ def run_router_workflow(
     logger.info(f"Router workflow completed, delegated to {final_state.get('target_agent')}")
     
     return final_state
+
+
+# =============================================================================
+# Factory-Based Agent Creation (Phase 4)
+# =============================================================================
+
+def create_router_from_config(config: AgentConfig) -> CompiledAgent:
+    """
+    Create a Router agent from configuration using the factory pattern.
+    
+    Args:
+        config: AgentConfig instance with router configuration
+        
+    Returns:
+        CompiledAgent instance
+        
+    Raises:
+        ValueError: If config is not for a router agent
+    """
+    import warnings
+    
+    if config.agent_type != "router":
+        raise ValueError(f"Expected agent_type='router', got '{config.agent_type}'")
+    
+    warnings.warn(
+        "create_router_from_config() uses the factory pattern. "
+        "Consider using AgentFactory directly for new code.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    
+    from src.agents.factory import get_factory
+    from src.agents.di_container import get_container
+    from src.agents.observers.logging_observer import LoggingObserver
+    from src.agents.observers.prometheus_observer import PrometheusObserver
+    
+    container = get_container()
+    factory = get_factory(container)
+    
+    if not container.get_observers():
+        container.add_observer(LoggingObserver())
+        container.add_observer(PrometheusObserver())
+    
+    agent = factory.create(config)
+    
+    logger.info(f"Created router agent from config: {config.agent_id}")
+    
+    return agent
+
+
+def create_router_agent(
+    agent_id: str = "router_001",
+    name: str = "Router Agent",
+    llm_model: str = "anthropic/claude-sonnet-4",
+    temperature: float = 0.0,
+    **kwargs
+) -> CompiledAgent:
+    """
+    Convenience function to create a Router agent.
+    """
+    config = AgentConfig(
+        agent_id=agent_id,
+        agent_type="router",
+        name=name,
+        llm_model=llm_model,
+        temperature=temperature,
+        tools=[],  # Router uses classification, not direct tools
+        **kwargs
+    )
+    
+    return create_router_from_config(config)

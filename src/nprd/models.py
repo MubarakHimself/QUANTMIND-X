@@ -255,11 +255,19 @@ class NPRDConfig:
     
     Loaded from environment variables and configuration files.
     """
-    # Model provider settings
-    gemini_api_key: Optional[str] = None
-    gemini_yolo_mode: bool = True
+    # OpenRouter provider settings (primary)
+    openrouter_api_key: Optional[str] = None
+    openrouter_model: str = "anthropic/claude-sonnet-4"  # Default model
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    
+    # Qwen Code CLI provider settings (fallback)
     qwen_api_key: Optional[str] = None
     qwen_headless: bool = True
+    qwen_model: str = "qwen-vl-plus"
+    
+    # Gemini CLI provider settings (tertiary fallback)
+    gemini_api_key: Optional[str] = None
+    gemini_yolo_mode: bool = True
     
     # Rate limits
     qwen_requests_per_day: int = 2000
@@ -292,10 +300,14 @@ class NPRDConfig:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
-            "gemini_api_key": "***" if self.gemini_api_key else None,
-            "gemini_yolo_mode": self.gemini_yolo_mode,
+            "openrouter_api_key": "***" if self.openrouter_api_key else None,
+            "openrouter_model": self.openrouter_model,
+            "openrouter_base_url": self.openrouter_base_url,
             "qwen_api_key": "***" if self.qwen_api_key else None,
             "qwen_headless": self.qwen_headless,
+            "qwen_model": self.qwen_model,
+            "gemini_api_key": "***" if self.gemini_api_key else None,
+            "gemini_yolo_mode": self.gemini_yolo_mode,
             "qwen_requests_per_day": self.qwen_requests_per_day,
             "cache_dir": str(self.cache_dir),
             "cache_max_size_gb": self.cache_max_size_gb,
@@ -318,22 +330,36 @@ class NPRDConfig:
         import os
         
         return cls(
-            gemini_api_key=os.getenv("GEMINI_API_KEY"),
-            gemini_yolo_mode=os.getenv("GEMINI_YOLO_MODE", "true").lower() == "true",
+            # OpenRouter settings (primary provider)
+            openrouter_api_key=os.getenv("OPENROUTER_API_KEY"),
+            openrouter_model=os.getenv("OPENROUTER_MODEL", "anthropic/claude-sonnet-4"),
+            openrouter_base_url=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+            # Qwen Code CLI settings (fallback provider)
             qwen_api_key=os.getenv("QWEN_API_KEY"),
             qwen_headless=os.getenv("QWEN_HEADLESS", "true").lower() == "true",
+            qwen_model=os.getenv("QWEN_MODEL", "qwen-vl-plus"),
+            # Gemini CLI settings (tertiary fallback)
+            gemini_api_key=os.getenv("GEMINI_API_KEY"),
+            gemini_yolo_mode=os.getenv("GEMINI_YOLO_MODE", "true").lower() == "true",
+            # Rate limits
             qwen_requests_per_day=int(os.getenv("QWEN_REQUESTS_PER_DAY", "2000")),
+            # Cache settings
             cache_dir=Path(os.getenv("NPRD_CACHE_DIR", "data/nprd/cache")),
             cache_max_size_gb=int(os.getenv("NPRD_CACHE_MAX_SIZE_GB", "50")),
             cache_max_age_days=int(os.getenv("NPRD_CACHE_MAX_AGE_DAYS", "30")),
+            # Job queue settings
             max_concurrent_jobs=int(os.getenv("NPRD_MAX_CONCURRENT_JOBS", "3")),
             job_db_path=Path(os.getenv("NPRD_JOB_DB_PATH", "data/nprd/jobs.db")),
+            # Output settings
             output_dir=Path(os.getenv("NPRD_OUTPUT_DIR", "docs/knowledge/nprd_outputs")),
+            # Processing settings
             default_frame_interval=int(os.getenv("NPRD_FRAME_INTERVAL", "30")),
             default_audio_bitrate=os.getenv("NPRD_AUDIO_BITRATE", "128k"),
             default_audio_channels=int(os.getenv("NPRD_AUDIO_CHANNELS", "1")),
+            # Retry settings
             max_retry_attempts=int(os.getenv("NPRD_MAX_RETRY_ATTEMPTS", "3")),
             base_retry_delay=float(os.getenv("NPRD_BASE_RETRY_DELAY", "1.0")),
+            # Logging
             log_level=os.getenv("NPRD_LOG_LEVEL", "INFO"),
             log_file=Path(os.getenv("NPRD_LOG_FILE", "data/nprd/nprd.log")) if os.getenv("NPRD_LOG_FILE") else None,
         )

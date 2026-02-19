@@ -6,13 +6,21 @@ daily snapshots, trade proposals, agent tasks, and strategy performance.
 """
 
 from datetime import datetime, timezone
+from enum import Enum as PyEnum
+
 from sqlalchemy import (
     Column, Integer, String, Float, Boolean, DateTime,
-    ForeignKey, UniqueConstraint, Index, JSON, Text
+    ForeignKey, UniqueConstraint, Index, JSON, Text, Enum
 )
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
+
+
+class TradingMode(PyEnum):
+    """Trading mode enum for demo/live distinction."""
+    DEMO = "demo"
+    LIVE = "live"
 
 
 class PropFirmAccount(Base):
@@ -28,6 +36,7 @@ class PropFirmAccount(Base):
         target_profit_pct: Profit target to trigger preservation mode (e.g., 8.0 = 8%)
         min_trading_days: Minimum trading days required (e.g., 5 days)
         risk_mode: V8 Tiered Risk Engine mode ('growth', 'scaling', 'guardian')
+        mode: Trading mode (demo or live)
         created_at: Account creation timestamp
         updated_at: Last update timestamp
     """
@@ -41,6 +50,7 @@ class PropFirmAccount(Base):
     target_profit_pct = Column(Float, nullable=False, default=8.0)
     min_trading_days = Column(Integer, nullable=False, default=5)
     risk_mode = Column(String(20), nullable=False, default='growth', index=True)  # V8: 'growth', 'scaling', 'guardian'
+    mode = Column(Enum(TradingMode), nullable=False, default=TradingMode.LIVE, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -67,6 +77,7 @@ class DailySnapshot(Base):
         daily_drawdown_pct: Drawdown percentage from daily start
         is_breached: Whether daily loss limit was breached
         snapshot_timestamp: When snapshot was recorded
+        mode: Trading mode (demo or live)
     """
     __tablename__ = 'daily_snapshots'
 
@@ -79,6 +90,7 @@ class DailySnapshot(Base):
     daily_drawdown_pct = Column(Float, nullable=False, default=0.0)
     is_breached = Column(Boolean, nullable=False, default=False)
     snapshot_timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    mode = Column(Enum(TradingMode), nullable=False, default=TradingMode.LIVE, index=True)
 
     # Relationship to account
     prop_account = relationship("PropFirmAccount", back_populates="daily_snapshots")
@@ -178,6 +190,7 @@ class StrategyPerformance(Base):
         win_rate: Win rate percentage
         profit_factor: Profit factor
         total_trades: Total number of trades
+        mode: Trading mode (demo or live)
         created_at: Record creation timestamp
     """
     __tablename__ = 'strategy_performance'
@@ -191,6 +204,7 @@ class StrategyPerformance(Base):
     win_rate = Column(Float, nullable=True)
     profit_factor = Column(Float, nullable=True)
     total_trades = Column(Integer, nullable=True)
+    mode = Column(Enum(TradingMode), nullable=False, default=TradingMode.LIVE, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
 
     __table_args__ = (
@@ -200,6 +214,82 @@ class StrategyPerformance(Base):
 
     def __repr__(self):
         return f"<StrategyPerformance(id={self.id}, strategy={self.strategy_name}, kelly={self.kelly_score:.2f}, sharpe={self.sharpe_ratio:.2f})>"
+
+
+class PaperTradingPerformance(Base):
+    """
+    Paper trading agent performance tracking for validation and promotion.
+    
+    Stores historical performance metrics for paper trading agents,
+    enabling trend analysis and validation tracking.
+    
+    Attributes:
+        id: Primary key
+        agent_id: Paper trading agent identifier
+        timestamp: When metrics were calculated
+        total_trades: Total number of trades executed
+        winning_trades: Number of winning trades
+        losing_trades: Number of losing trades
+        win_rate: Win rate as decimal (0-1)
+        total_pnl: Total profit/loss
+        average_pnl: Average PnL per trade
+        sharpe_ratio: Risk-adjusted return metric
+        max_drawdown: Maximum equity drawdown
+        profit_factor: Gross wins / gross losses
+        validation_status: Current validation state (pending, validating, validated)
+        days_validated: Days since deployment
+        meets_criteria: Whether agent meets promotion criteria
+        mode: Trading mode (demo or live - defaults to demo for paper trading)
+    """
+    __tablename__ = 'paper_trading_performance'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    agent_id = Column(String(100), nullable=False, index=True)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    total_trades = Column(Integer, nullable=False, default=0)
+    winning_trades = Column(Integer, nullable=False, default=0)
+    losing_trades = Column(Integer, nullable=False, default=0)
+    win_rate = Column(Float, nullable=False, default=0.0)
+    total_pnl = Column(Float, nullable=False, default=0.0)
+    average_pnl = Column(Float, nullable=False, default=0.0)
+    sharpe_ratio = Column(Float, nullable=True)
+    max_drawdown = Column(Float, nullable=False, default=0.0)
+    profit_factor = Column(Float, nullable=False, default=0.0)
+    validation_status = Column(String(20), nullable=False, default='pending', index=True)
+    days_validated = Column(Integer, nullable=False, default=0)
+    meets_criteria = Column(Boolean, nullable=False, default=False)
+    extra_data = Column(JSON, nullable=True)  # For additional metrics
+    mode = Column(Enum(TradingMode), nullable=False, default=TradingMode.DEMO, index=True)
+
+    __table_args__ = (
+        Index('ix_paper_trading_agent_timestamp', 'agent_id', 'timestamp'),
+        Index('ix_paper_trading_validation_status', 'validation_status'),
+    )
+
+    def __repr__(self):
+        return f"<PaperTradingPerformance(id={self.id}, agent={self.agent_id}, status={self.validation_status}, sharpe={self.sharpe_ratio})>"
+
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "agent_id": self.agent_id,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "total_trades": self.total_trades,
+            "winning_trades": self.winning_trades,
+            "losing_trades": self.losing_trades,
+            "win_rate": self.win_rate,
+            "total_pnl": self.total_pnl,
+            "average_pnl": self.average_pnl,
+            "sharpe_ratio": self.sharpe_ratio,
+            "max_drawdown": self.max_drawdown,
+            "profit_factor": self.profit_factor,
+            "validation_status": self.validation_status,
+            "days_validated": self.days_validated,
+            "meets_criteria": self.meets_criteria,
+            "extra_data": self.extra_data,
+            "mode": self.mode.value if self.mode else None
+        }
 
 
 class RiskTierTransition(Base):
@@ -254,6 +344,7 @@ class CryptoTrade(Base):
         take_profit: Take profit price (optional)
         profit: Realized profit/loss (null if still open)
         status: Trade status ('open', 'closed', 'cancelled')
+        mode: Trading mode (demo or live)
         open_timestamp: When trade was opened
         close_timestamp: When trade was closed (null if still open)
         metadata: JSON field for additional trade data (fees, slippage, etc.)
@@ -273,6 +364,7 @@ class CryptoTrade(Base):
     take_profit = Column(Float, nullable=True)
     profit = Column(Float, nullable=True)
     status = Column(String(20), nullable=False, default='open', index=True)  # 'open', 'closed', 'cancelled'
+    mode = Column(Enum(TradingMode), nullable=False, default=TradingMode.LIVE, index=True)
     open_timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     close_timestamp = Column(DateTime, nullable=True)
     trade_metadata = Column(JSON, nullable=True)  # Fees, slippage, shadow stops, etc. (renamed from 'metadata' to avoid SQLAlchemy conflict)
@@ -479,6 +571,7 @@ class BotCircuitBreaker(Base):
         is_quarantined: Whether bot is currently quarantined
         quarantine_reason: Reason for quarantine
         quarantine_start: When quarantine started
+        mode: Trading mode (demo or live)
         created_at: Record creation timestamp
         updated_at: Last update timestamp
     """
@@ -492,6 +585,7 @@ class BotCircuitBreaker(Base):
     is_quarantined = Column(Boolean, nullable=False, default=False, index=True)
     quarantine_reason = Column(String(200), nullable=True)
     quarantine_start = Column(DateTime, nullable=True)
+    mode = Column(Enum(TradingMode), nullable=False, default=TradingMode.LIVE, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -524,6 +618,7 @@ class TradeJournal(Base):
         kelly_recommendation: Kelly calculator recommendation
         actual_risk: Actual risk taken (USD)
         house_money_adjustment: Whether house money adjustment was applied
+        mode: Trading mode (demo or live)
         broker: Broker used for execution
         spread_at_entry: Spread at entry in pips
         commission: Commission paid
@@ -549,6 +644,7 @@ class TradeJournal(Base):
     kelly_recommendation = Column(Float, nullable=True)
     actual_risk = Column(Float, nullable=False)
     house_money_adjustment = Column(Boolean, nullable=False, default=False)
+    mode = Column(Enum(TradingMode), nullable=False, default=TradingMode.LIVE, index=True)
     
     # Execution Details
     broker = Column(String(100), nullable=True)
@@ -595,7 +691,7 @@ class BotCloneHistory(Base):
 class DailyFeeTracking(Base):
     """
     Daily Fee Tracking for monitoring trading costs and fee burn.
-    
+
     Tracks daily fees, trade counts, and fee burn percentage to trigger
     kill switch when fees exceed acceptable thresholds.
 
@@ -629,3 +725,766 @@ class DailyFeeTracking(Base):
 
     def __repr__(self):
         return f"<DailyFeeTracking(id={self.id}, account_id={self.account_id}, date={self.date}, fees={self.total_fees}, trades={self.total_trades})>"
+
+
+# =============================================================================
+# Progressive Kill Switch Models (Phase 9)
+# =============================================================================
+
+class StrategyFamilyState(Base):
+    """
+    Strategy Family State for Tier 2 protection.
+
+    Tracks the state of each strategy family for quarantine management.
+
+    Attributes:
+        id: Primary key
+        family: Strategy type (SCALPER, STRUCTURAL, SWING, HFT)
+        failed_bots: JSON list of failed bot IDs
+        total_pnl: Combined P&L for the family
+        initial_capital: Starting capital allocation
+        is_quarantined: Whether family is quarantined
+        quarantine_time: When quarantine started
+        quarantine_reason: Why family was quarantined
+        created_at: Record creation timestamp
+        updated_at: Last update timestamp
+    """
+    __tablename__ = 'strategy_family_states'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    family = Column(String(20), nullable=False, unique=True, index=True)
+    failed_bots = Column(JSON, nullable=False, default=list)
+    total_pnl = Column(Float, nullable=False, default=0.0)
+    initial_capital = Column(Float, nullable=False, default=10000.0)
+    is_quarantined = Column(Boolean, nullable=False, default=False, index=True)
+    quarantine_time = Column(DateTime, nullable=True)
+    quarantine_reason = Column(String(200), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        Index('idx_strategy_family_quarantined', 'is_quarantined'),
+    )
+
+    def __repr__(self):
+        return f"<StrategyFamilyState(id={self.id}, family={self.family}, quarantined={self.is_quarantined})>"
+
+
+class AccountLossState(Base):
+    """
+    Account Loss State for Tier 3 protection.
+
+    Tracks daily and weekly P&L for account-level loss limits.
+
+    Attributes:
+        id: Primary key
+        account_id: Account identifier
+        daily_pnl: Today's profit/loss
+        weekly_pnl: This week's profit/loss
+        last_reset_date: When daily counters were last reset
+        week_start: Start of the current week
+        daily_stop_triggered: Whether daily stop is active
+        weekly_stop_triggered: Whether weekly stop is active
+        created_at: Record creation timestamp
+        updated_at: Last update timestamp
+    """
+    __tablename__ = 'account_loss_states'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(String(50), nullable=False, unique=True, index=True)
+    initial_balance = Column(Float, nullable=False, default=10000.0)
+    daily_pnl = Column(Float, nullable=False, default=0.0)
+    weekly_pnl = Column(Float, nullable=False, default=0.0)
+    last_reset_date = Column(String(10), nullable=True)  # YYYY-MM-DD
+    week_start = Column(String(10), nullable=True)  # YYYY-MM-DD
+    daily_stop_triggered = Column(Boolean, nullable=False, default=False)
+    weekly_stop_triggered = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        Index('idx_account_loss_stops', 'daily_stop_triggered', 'weekly_stop_triggered'),
+    )
+
+    def __repr__(self):
+        return f"<AccountLossState(id={self.id}, account={self.account_id}, daily_stop={self.daily_stop_triggered})>"
+
+
+class AlertHistory(Base):
+    """
+    Alert History for Progressive Kill Switch System.
+
+    Stores all raised alerts for audit and analysis.
+
+    Attributes:
+        id: Primary key
+        level: Alert level (GREEN, YELLOW, ORANGE, RED, BLACK)
+        tier: Protection tier (1-5)
+        message: Alert description
+        threshold_pct: Threshold percentage when raised
+        triggered_at: When alert was raised
+        source: Component that raised the alert
+        alert_metadata: JSON with additional context
+        is_active: Whether alert is still active
+        cleared_at: When alert was cleared
+        created_at: Record creation timestamp
+    """
+    __tablename__ = 'alert_history'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    level = Column(String(10), nullable=False, index=True)
+    tier = Column(Integer, nullable=False, index=True)
+    message = Column(Text, nullable=False)
+    threshold_pct = Column(Float, nullable=False)
+    triggered_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    source = Column(String(50), nullable=False, index=True)
+    alert_metadata = Column(JSON, nullable=True)  # Renamed from 'metadata' to avoid SQLAlchemy conflict
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    cleared_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        Index('idx_alert_history_level_tier', 'level', 'tier'),
+        Index('idx_alert_history_triggered', 'triggered_at'),
+    )
+
+    def __repr__(self):
+        return f"<AlertHistory(id={self.id}, level={self.level}, tier={self.tier}, source={self.source})>"
+
+
+# =============================================================================
+# HMM Regime Detection Models
+# =============================================================================
+
+class HMMModel(Base):
+    """
+    HMM Model for Regime Detection.
+
+    Stores trained Hidden Markov Model metadata for regime detection.
+    Models are trained on Contabo (training server) and synced to Cloudzy.
+
+    Attributes:
+        id: Primary key
+        version: Model version string (e.g., "1.0.0", "1.1.0")
+        model_type: Training hierarchy level ('universal', 'per_symbol', 'per_symbol_timeframe')
+        symbol: Trading symbol (e.g., "EURUSD", "GBPUSD") - null for universal
+        timeframe: Timeframe (e.g., "M5", "H1", "H4") - null for universal/per_symbol
+        n_states: Number of hidden states (typically 4)
+        log_likelihood: Training log-likelihood score
+        state_distribution: JSON with state distribution percentages
+        transition_matrix: JSON with transition probability matrix
+        training_samples: Number of samples used for training
+        training_date: When model was trained
+        checksum: SHA256 checksum of model file for integrity
+        file_path: Path to .pkl model file
+        is_active: Whether model is currently active
+        validation_status: Validation status (pending, validated, rejected)
+        validation_notes: Notes from validation process
+        created_at: Record creation timestamp
+    """
+    __tablename__ = 'hmm_models'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    version = Column(String(20), nullable=False, index=True)
+    model_type = Column(String(30), nullable=False, index=True)
+    symbol = Column(String(20), nullable=True, index=True)
+    timeframe = Column(String(10), nullable=True, index=True)
+    n_states = Column(Integer, nullable=False, default=4)
+    log_likelihood = Column(Float, nullable=True)
+    state_distribution = Column(JSON, nullable=True)  # {"state_0": 0.25, "state_1": 0.28, ...}
+    transition_matrix = Column(JSON, nullable=True)  # [[0.85, 0.10, ...], ...]
+    training_samples = Column(Integer, nullable=False, default=0)
+    training_date = Column(DateTime, nullable=True)
+    checksum = Column(String(64), nullable=True)
+    file_path = Column(String(500), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    validation_status = Column(String(20), nullable=False, default='pending', index=True)
+    validation_notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    # Relationships
+    deployments = relationship("HMMDeployment", back_populates="model", cascade="all, delete-orphan")
+    shadow_logs = relationship("HMMShadowLog", back_populates="model")
+
+    __table_args__ = (
+        Index('idx_hmm_models_version', 'version'),
+        Index('idx_hmm_models_type_symbol', 'model_type', 'symbol'),
+        Index('idx_hmm_models_active', 'is_active'),
+        UniqueConstraint('version', 'symbol', 'timeframe', name='uq_hmm_model_version_symbol_tf'),
+    )
+
+    def __repr__(self):
+        return f"<HMMModel(id={self.id}, version={self.version}, type={self.model_type}, symbol={self.symbol}, tf={self.timeframe})>"
+
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "version": self.version,
+            "model_type": self.model_type,
+            "symbol": self.symbol,
+            "timeframe": self.timeframe,
+            "n_states": self.n_states,
+            "log_likelihood": self.log_likelihood,
+            "state_distribution": self.state_distribution,
+            "transition_matrix": self.transition_matrix,
+            "training_samples": self.training_samples,
+            "training_date": self.training_date.isoformat() if self.training_date else None,
+            "checksum": self.checksum,
+            "file_path": self.file_path,
+            "is_active": self.is_active,
+            "validation_status": self.validation_status,
+            "validation_notes": self.validation_notes,
+            "created_at": self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class HMMShadowLog(Base):
+    """
+    HMM Shadow Mode Log for prediction comparison.
+
+    Records HMM vs Ising predictions during shadow mode for validation
+    and performance comparison.
+
+    Attributes:
+        id: Primary key
+        model_id: Foreign key to HMMModel
+        timestamp: When the prediction was made
+        symbol: Trading symbol
+        timeframe: Timeframe
+        ising_regime: Ising model regime prediction
+        ising_confidence: Ising model confidence (0-1)
+        hmm_regime: HMM regime prediction
+        hmm_state: HMM state ID (0-3)
+        hmm_confidence: HMM confidence (0-1)
+        agreement: Whether Ising and HMM agree
+        decision_source: Which model was used for final decision
+        market_context: JSON with market data at prediction time
+        created_at: Record creation timestamp
+    """
+    __tablename__ = 'hmm_shadow_logs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    model_id = Column(Integer, ForeignKey('hmm_models.id'), nullable=True, index=True)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    timeframe = Column(String(10), nullable=False, index=True)
+    ising_regime = Column(String(50), nullable=False)
+    ising_confidence = Column(Float, nullable=False, default=0.0)
+    hmm_regime = Column(String(50), nullable=False)
+    hmm_state = Column(Integer, nullable=False)
+    hmm_confidence = Column(Float, nullable=False, default=0.0)
+    agreement = Column(Boolean, nullable=False, default=False)
+    decision_source = Column(String(20), nullable=False, default='ising')  # 'ising', 'hmm', 'weighted'
+    market_context = Column(JSON, nullable=True)  # volatility, price, etc.
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    # Relationship
+    model = relationship("HMMModel", back_populates="shadow_logs")
+
+    __table_args__ = (
+        Index('idx_hmm_shadow_timestamp', 'timestamp'),
+        Index('idx_hmm_shadow_symbol_tf', 'symbol', 'timeframe'),
+        Index('idx_hmm_shadow_agreement', 'agreement'),
+    )
+
+    def __repr__(self):
+        return f"<HMMShadowLog(id={self.id}, symbol={self.symbol}, ising={self.ising_regime}, hmm={self.hmm_regime}, agree={self.agreement})>"
+
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "model_id": self.model_id,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "symbol": self.symbol,
+            "timeframe": self.timeframe,
+            "ising_regime": self.ising_regime,
+            "ising_confidence": self.ising_confidence,
+            "hmm_regime": self.hmm_regime,
+            "hmm_state": self.hmm_state,
+            "hmm_confidence": self.hmm_confidence,
+            "agreement": self.agreement,
+            "decision_source": self.decision_source,
+            "market_context": self.market_context,
+            "created_at": self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class HMMDeployment(Base):
+    """
+    HMM Deployment State for tracking deployment history.
+
+    Tracks the state transitions and deployment history for HMM models
+    from shadow mode through hybrid to production.
+
+    Attributes:
+        id: Primary key
+        model_id: Foreign key to HMMModel
+        mode: Current deployment mode ('ising_only', 'hmm_shadow', 'hmm_hybrid_20', 'hmm_hybrid_50', 'hmm_hybrid_80', 'hmm_only')
+        previous_mode: Previous deployment mode
+        transition_date: When the mode transition occurred
+        approved_by: Who approved the transition (user ID or 'auto')
+        approval_token: Token used for approval
+        performance_metrics: JSON with performance metrics at transition
+        rollback_count: Number of rollbacks for this deployment
+        is_active: Whether this is the current active deployment
+        notes: Deployment notes
+        created_at: Record creation timestamp
+    """
+    __tablename__ = 'hmm_deployments'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    model_id = Column(Integer, ForeignKey('hmm_models.id'), nullable=False, index=True)
+    mode = Column(String(20), nullable=False, index=True)
+    previous_mode = Column(String(20), nullable=True)
+    transition_date = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    approved_by = Column(String(100), nullable=True)
+    approval_token = Column(String(64), nullable=True)
+    performance_metrics = Column(JSON, nullable=True)  # agreement_pct, sharpe, pnl, etc.
+    rollback_count = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    # Relationship
+    model = relationship("HMMModel", back_populates="deployments")
+
+    __table_args__ = (
+        Index('idx_hmm_deployments_mode', 'mode'),
+        Index('idx_hmm_deployments_active', 'is_active'),
+    )
+
+    def __repr__(self):
+        return f"<HMMDeployment(id={self.id}, model_id={self.model_id}, mode={self.mode}, active={self.is_active})>"
+
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "model_id": self.model_id,
+            "mode": self.mode,
+            "previous_mode": self.previous_mode,
+            "transition_date": self.transition_date.isoformat() if self.transition_date else None,
+            "approved_by": self.approved_by,
+            "performance_metrics": self.performance_metrics,
+            "rollback_count": self.rollback_count,
+            "is_active": self.is_active,
+            "notes": self.notes,
+            "created_at": self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class HMMSyncStatus(Base):
+    """
+    HMM Sync Status for tracking model synchronization between servers.
+
+    Tracks the synchronization state between Contabo (training) and
+    Cloudzy (trading) servers for HMM models.
+
+    Attributes:
+        id: Primary key
+        contabo_version: Current model version on Contabo
+        contabo_last_trained: Last training date on Contabo
+        cloudzy_version: Current model version on Cloudzy
+        cloudzy_last_deployed: Last deployment date on Cloudzy
+        version_mismatch: Whether versions are out of sync
+        last_sync_attempt: When last sync was attempted
+        last_sync_status: Status of last sync ('success', 'failed', 'in_progress')
+        sync_progress: Sync progress percentage (0-100)
+        sync_message: Current sync status message
+        created_at: Record creation timestamp
+        updated_at: Last update timestamp
+    """
+    __tablename__ = 'hmm_sync_status'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    contabo_version = Column(String(20), nullable=True)
+    contabo_last_trained = Column(DateTime, nullable=True)
+    cloudzy_version = Column(String(20), nullable=True)
+    cloudzy_last_deployed = Column(DateTime, nullable=True)
+    version_mismatch = Column(Boolean, nullable=False, default=False, index=True)
+    last_sync_attempt = Column(DateTime, nullable=True)
+    last_sync_status = Column(String(20), nullable=True)
+    sync_progress = Column(Float, nullable=False, default=0.0)
+    sync_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    def __repr__(self):
+        return f"<HMMSyncStatus(id={self.id}, contabo={self.contabo_version}, cloudzy={self.cloudzy_version}, mismatch={self.version_mismatch})>"
+
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "contabo_version": self.contabo_version,
+            "contabo_last_trained": self.contabo_last_trained.isoformat() if self.contabo_last_trained else None,
+            "cloudzy_version": self.cloudzy_version,
+            "cloudzy_last_deployed": self.cloudzy_last_deployed.isoformat() if self.cloudzy_last_deployed else None,
+            "version_mismatch": self.version_mismatch,
+            "last_sync_attempt": self.last_sync_attempt.isoformat() if self.last_sync_attempt else None,
+            "last_sync_status": self.last_sync_status,
+            "sync_progress": self.sync_progress,
+            "sync_message": self.sync_message,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+# =============================================================================
+# HOT TIER TABLES (PostgreSQL) - Real-time tick storage with 1-hour retention
+# =============================================================================
+
+class SymbolSubscription(Base):
+    """
+    Symbol Subscription tracking for tick streaming.
+
+    Tracks which bots are subscribed to which symbols for priority-based
+    routing and single ZMQ subscription aggregation.
+
+    Attributes:
+        id: Primary key
+        symbol: Trading symbol (e.g., EURUSD)
+        timeframe: Timeframe for the subscription (e.g., M1, M5, H1)
+        bot_id: Bot identifier
+        priority: Priority level (1=LIVE, 2=DEMO, 3=PAPER)
+        subscribed_at: When subscription was created
+    """
+    __tablename__ = 'symbol_subscriptions'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    timeframe = Column(String(10), nullable=False, default='M1', index=True)  # M1, M5, M15, H1, H4, D1
+    bot_id = Column(String(100), nullable=False, index=True)
+    priority = Column(Integer, nullable=False, default=3)  # 1=LIVE, 2=DEMO, 3=PAPER
+    subscribed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        Index('idx_symbol_subscriptions_symbol', 'symbol'),
+        Index('idx_symbol_subscriptions_bot', 'bot_id'),
+        Index('idx_symbol_subscriptions_timeframe', 'timeframe'),
+        UniqueConstraint('symbol', 'timeframe', 'bot_id', name='uq_symbol_timeframe_bot'),
+    )
+
+    def __repr__(self):
+        return f"<SymbolSubscription(id={self.id}, symbol={self.symbol}, timeframe={self.timeframe}, bot_id={self.bot_id}, priority={self.priority})>"
+
+
+class TickCache(Base):
+    """
+    HOT tier tick cache for real-time tick storage.
+    
+    Stores real-time tick data with 1-hour retention.
+    Auto-cleanup job runs every 5 minutes to delete old ticks.
+    
+    Attributes:
+        id: Primary key
+        symbol: Trading symbol
+        bid: Bid price
+        ask: Ask price
+        timestamp: Tick timestamp
+        sequence: Sequence number for ordering
+        flags: Tick flags
+        created_at: Record creation time
+    """
+    __tablename__ = 'tick_cache'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    bid = Column(Float, nullable=False)
+    ask = Column(Float, nullable=False)
+    timestamp = Column(DateTime, nullable=False, index=True)
+    sequence = Column(Integer, nullable=False, default=0)
+    flags = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        Index('idx_tick_cache_symbol_timestamp', 'symbol', 'timestamp'),
+    )
+
+    def __repr__(self):
+        return f"<TickCache(id={self.id}, symbol={self.symbol}, time={self.timestamp})>"
+
+
+# =============================================================================
+# TradingView Integration Models
+# =============================================================================
+
+class WebhookLog(Base):
+    """
+    Webhook Log for TradingView alert tracking.
+
+    Records all incoming webhook alerts from TradingView for audit,
+    debugging, and performance analysis.
+
+    Attributes:
+        id: Primary key
+        timestamp: When the webhook was received
+        source_ip: IP address of the sender
+        alert_payload: JSON with the full alert data
+        signature_valid: Whether HMAC signature was valid
+        bot_triggered: Whether a bot was successfully triggered
+        order_id: MT5 order ID if trade was placed
+        execution_time_ms: Processing time in milliseconds
+        error_message: Error message if processing failed
+        created_at: Record creation timestamp
+    """
+    __tablename__ = 'webhook_logs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    source_ip = Column(String(50), nullable=False, index=True)
+    alert_payload = Column(JSON, nullable=False)
+    signature_valid = Column(Boolean, nullable=False, default=False)
+    bot_triggered = Column(Boolean, nullable=False, default=False, index=True)
+    order_id = Column(String(100), nullable=True)
+    execution_time_ms = Column(Float, nullable=False, default=0.0)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        Index('idx_webhook_logs_timestamp', 'timestamp'),
+        Index('idx_webhook_logs_bot_triggered', 'bot_triggered'),
+        Index('idx_webhook_logs_source_ip', 'source_ip'),
+    )
+
+    def __repr__(self):
+        return f"<WebhookLog(id={self.id}, ip={self.source_ip}, triggered={self.bot_triggered}, time={self.execution_time_ms}ms)>"
+
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "source_ip": self.source_ip,
+            "alert_payload": self.alert_payload,
+            "signature_valid": self.signature_valid,
+            "bot_triggered": self.bot_triggered,
+            "order_id": self.order_id,
+            "execution_time_ms": self.execution_time_ms,
+            "error_message": self.error_message,
+            "created_at": self.created_at.isoformat() if self.created_at else None
+        }
+
+
+# =============================================================================
+# GitHub EA Sync Models
+# =============================================================================
+
+class ImportedEA(Base):
+    """
+    Imported EA from GitHub Repository.
+
+    Tracks Expert Advisors imported from GitHub repositories for
+    automated bot manifest generation and deployment.
+
+    Attributes:
+        id: Primary key
+        ea_filename: Name of the EA file (e.g., "ICTSilverBullet.mq5")
+        github_path: Full path in GitHub repository
+        bot_manifest_id: Generated bot manifest ID (if imported)
+        imported_at: When EA was first imported
+        last_synced: Last sync timestamp
+        version: EA version string
+        checksum: SHA256 checksum for change detection
+        status: Import status (new, updated, unchanged, error)
+        input_parameters: JSON list of extracted input parameters
+        strategy_type: Detected strategy type
+        timeframe: Detected or specified timeframe
+        symbols: JSON list of compatible symbols
+        lines_of_code: Total lines of code
+        metadata: Additional metadata JSON
+        error_message: Error message if import failed
+        created_at: Record creation timestamp
+        updated_at: Last update timestamp
+    """
+    __tablename__ = 'imported_eas'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ea_filename = Column(String(200), nullable=False, index=True)
+    github_path = Column(String(500), nullable=False)
+    bot_manifest_id = Column(String(100), nullable=True, index=True)
+    imported_at = Column(DateTime, nullable=True)
+    last_synced = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    version = Column(String(50), nullable=True)
+    checksum = Column(String(64), nullable=False)
+    status = Column(String(20), nullable=False, default='new', index=True)  # new, updated, unchanged, error
+    input_parameters = Column(JSON, nullable=True)  # [{"name": "LotSize", "type": "double", "default": 0.1}]
+    strategy_type = Column(String(100), nullable=True)
+    timeframe = Column(String(20), nullable=True)
+    symbols = Column(JSON, nullable=True)  # ["EURUSD", "GBPUSD"]
+    lines_of_code = Column(Integer, nullable=True)
+    ea_metadata = Column(JSON, nullable=True)  # Additional metadata
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        Index('idx_imported_eas_filename', 'ea_filename'),
+        Index('idx_imported_eas_status', 'status'),
+        Index('idx_imported_eas_checksum', 'checksum'),
+        UniqueConstraint('github_path', name='uq_imported_eas_github_path'),
+    )
+
+    def __repr__(self):
+        return f"<ImportedEA(id={self.id}, filename={self.ea_filename}, status={self.status})>"
+
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "ea_filename": self.ea_filename,
+            "github_path": self.github_path,
+            "bot_manifest_id": self.bot_manifest_id,
+            "imported_at": self.imported_at.isoformat() if self.imported_at else None,
+            "last_synced": self.last_synced.isoformat() if self.last_synced else None,
+            "version": self.version,
+            "checksum": self.checksum,
+            "status": self.status,
+            "input_parameters": self.input_parameters,
+            "strategy_type": self.strategy_type,
+            "timeframe": self.timeframe,
+            "symbols": self.symbols,
+            "lines_of_code": self.lines_of_code,
+            "ea_metadata": self.ea_metadata,
+            "error_message": self.error_message,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+# =============================================================================
+# Lifecycle Management Models
+# =============================================================================
+
+class BotLifecycleLog(Base):
+    """
+    Bot Lifecycle Log for tracking tag transitions.
+    
+    Records all bot tag transitions (promotions, quarantines, deaths)
+    for audit trail and analytics.
+    
+    Attributes:
+        id: Primary key
+        bot_id: Bot identifier
+        from_tag: Source tag
+        to_tag: Destination tag
+        reason: Reason for transition
+        timestamp: When transition occurred
+        triggered_by: System or manual
+        performance_stats: JSON snapshot of performance at transition
+        notes: Additional notes
+    """
+    __tablename__ = 'bot_lifecycle_log'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    bot_id = Column(String(255), nullable=False, index=True)
+    from_tag = Column(String(50), nullable=False)
+    to_tag = Column(String(50), nullable=False)
+    reason = Column(Text, nullable=True)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    triggered_by = Column(String(50), default='system')
+    performance_stats = Column(JSON, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    
+    __table_args__ = (
+        Index('idx_lifecycle_bot_id', 'bot_id'),
+        Index('idx_lifecycle_timestamp', 'timestamp'),
+        Index('idx_lifecycle_from_tag', 'from_tag'),
+        Index('idx_lifecycle_to_tag', 'to_tag'),
+    )
+    
+    def __repr__(self):
+        return f"<BotLifecycleLog(id={self.id}, bot_id={self.bot_id}, {self.from_tag}->{self.to_tag})>"
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "bot_id": self.bot_id,
+            "from_tag": self.from_tag,
+            "to_tag": self.to_tag,
+            "reason": self.reason,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "triggered_by": self.triggered_by,
+            "performance_stats": self.performance_stats,
+            "notes": self.notes,
+            "created_at": self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class MarketOpportunity(Base):
+    """
+    Market Opportunity detected by MarketScanner.
+    
+    Stores detected trading opportunities from session breakouts,
+    volatility spikes, news events, and ICT setups.
+    
+    Attributes:
+        id: Primary key
+        scan_type: Type of scan (SESSION_BREAKOUT, VOLATILITY_SPIKE, etc.)
+        symbol: Trading symbol
+        session: Market session
+        setup: Specific setup detected
+        confidence: Confidence score 0-1
+        recommended_bots: JSON list of recommended bot IDs
+        metadata: Additional details JSON
+        timestamp: When detected
+        expires_at: When opportunity expires
+        status: active, expired, triggered
+        triggered_by: Bot ID activated for this opportunity
+    """
+    __tablename__ = 'market_opportunities'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    scan_type = Column(String(50), nullable=False, index=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    session = Column(String(20), nullable=True)
+    setup = Column(String(100), nullable=True)
+    confidence = Column(Float, default=0.0)
+    recommended_bots = Column(JSON, nullable=True)
+    opportunity_metadata = Column(JSON, nullable=True)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=True)
+    status = Column(String(20), default='active', index=True)
+    triggered_by = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    
+    __table_args__ = (
+        Index('idx_opportunities_symbol', 'symbol'),
+        Index('idx_opportunities_timestamp', 'timestamp'),
+        Index('idx_opportunities_scan_type', 'scan_type'),
+        Index('idx_opportunities_status', 'status'),
+        Index('idx_opportunities_session', 'session'),
+    )
+    
+    def __repr__(self):
+        return f"<MarketOpportunity(id={self.id}, type={self.scan_type}, symbol={self.symbol}, confidence={self.confidence})>"
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "scan_type": self.scan_type,
+            "symbol": self.symbol,
+            "session": self.session,
+            "setup": self.setup,
+            "confidence": self.confidence,
+            "recommended_bots": self.recommended_bots,
+            "metadata": self.opportunity_metadata,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "status": self.status,
+            "triggered_by": self.triggered_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None
+        }
+
+
+# =============================================================================
+# Session Factory
+# =============================================================================
+
+from sqlalchemy.orm import sessionmaker
+from src.database import engine
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

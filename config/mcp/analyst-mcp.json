@@ -1,0 +1,60 @@
+{
+  "mcpServers": {
+    "pageindex-articles": {
+      "name": "PageIndex Articles",
+      "url": "http://pageindex-articles:3000",
+      "type": "pageindex",
+      "enabled": true,
+      "description": "Search indexed trading articles",
+      "tools": ["search_articles", "get_article"],
+      "config": {
+        "namespace": "articles",
+        "timeout": 30
+      }
+    },
+    "pageindex-books": {
+      "name": "PageIndex Books",
+      "url": "http://pageindex-books:3001",
+      "type": "pageindex",
+      "enabled": true,
+      "description": "MQL5 books and documentation search",
+      "tools": ["search_books", "get_book_section"],
+      "config": {
+        "namespace": "books",
+        "timeout": 30
+      }
+    },
+    "sequential-thinking": {
+      "name": "Sequential Thinking",
+      "url": "local://sequential-thinking",
+      "type": "sequential_thinking",
+      "enabled": true,
+      "description": "Task decomposition and step-by-step reasoning",
+      "tools": ["sequential_thinking", "analyze_errors", "decompose_task"],
+      "config": {
+        "max_steps": 15,
+        "timeout": 60
+      }
+    },
+    "context7": {
+      "name": "Context7",
+      "url": "https://context7.com/websites/mql5_en",
+      "type": "context7",
+      "enabled": true,
+      "description": "MQL5 documentation retrieval",
+      "tools": ["get_mql5_documentation", "get_mql5_examples"],
+      "config": {
+        "cache_ttl": 3600,
+        "max_results": 10,
+        "timeout": 30
+      }
+    }
+  },
+  "defaultServer": "pageindex-books",
+  "fallbackOrder": ["pageindex-books", "pageindex-articles", "context7", "sequential-thinking"],
+  "healthCheck": {
+    "interval": 60,
+    "timeout": 10,
+    "retryAttempts": 3
+  }
+}

@@ -6,19 +6,23 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt sentence-transformers
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install httpx for PageIndex HTTP calls
+RUN pip install --no-cache-dir httpx
 
 # Copy scripts
 COPY scripts/ /app/scripts/
+
+# Copy data directories
 COPY data/scraped_articles/ /app/data/scraped_articles/
-COPY data/knowledge_index/ /app/data/knowledge_index/
+COPY data/knowledge_base/ /app/data/knowledge_base/
+COPY data/logs/ /app/data/logs/
 
-# Install Qdrant client and additional deps
-RUN pip install --no-cache-dir qdrant-client sentence-transformers tqdm
-
-# Default command
-CMD ["python", "scripts/index_to_qdrant.py", "--input", "data/scraped_articles/"]
+# Default command - index all collections to PageIndex
+CMD ["python", "scripts/index_to_pageindex.py", "--check-health", "--all"]

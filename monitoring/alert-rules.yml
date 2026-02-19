@@ -1,0 +1,719 @@
+groups:
+  - name: quantmindx_alerts
+    interval: 1m
+    rules:
+      # ============================================
+      # MT5 Connection Alerts
+      # ============================================
+      - alert: MT5ConnectionDown
+        expr: quantmind_mt5_connection_status == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: mt5-bridge
+        annotations:
+          summary: "MT5 Connection Lost"
+          description: "MT5 Bridge has lost connection to the MetaTrader 5 terminal for more than 2 minutes. Trading operations may be affected."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-MT5-Connection"
+
+      - alert: MT5HighLatency
+        expr: histogram_quantile(0.95, rate(quantmind_mt5_latency_seconds_bucket[5m])) > 2.5
+        for: 5m
+        labels:
+          severity: warning
+          component: mt5-bridge
+        annotations:
+          summary: "MT5 High Latency Detected"
+          description: "MT5 p95 latency is above 2.5 seconds for the last 5 minutes. This may affect trade execution timing."
+
+      # ============================================
+      # API Error Rate Alerts
+      # ============================================
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(quantmind_api_requests_total{status=~"5.."}[5m])) 
+          / 
+          sum(rate(quantmind_api_requests_total[5m])) 
+          > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "High API Error Rate"
+          description: "API 5xx error rate is above 10% for the last 5 minutes. This indicates server-side issues."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-API-Errors"
+
+      - alert: Elevated4xxErrors
+        expr: |
+          sum(rate(quantmind_api_requests_total{status=~"4.."}[5m])) 
+          / 
+          sum(rate(quantmind_api_requests_total[5m])) 
+          > 0.25
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "Elevated Client Error Rate"
+          description: "API 4xx error rate is above 25% for the last 10 minutes. This may indicate client issues or invalid requests."
+
+      # ============================================
+      # Trading System Alerts
+      # ============================================
+      - alert: HighChaosScore
+        expr: quantmind_chaos_score > 0.8
+        for: 10m
+        labels:
+          severity: critical
+          component: trading
+        annotations:
+          summary: "Market Chaos Score Elevated"
+          description: "Market chaos score has been above 0.8 for 10 minutes. Consider enabling protective measures or reducing position sizes."
+
+      - alert: NoLiveTrades
+        expr: |
+          increase(quantmind_trades_executed_total{mode="live"}[2h]) == 0
+          and
+          quantmind_active_eas{status="primal"} > 0
+        for: 0m
+        labels:
+          severity: warning
+          component: trading
+        annotations:
+          summary: "No Live Trades Executed"
+          description: "No live trades have been executed in the last 2 hours despite having active EAs. This may indicate market conditions or configuration issues."
+
+      - alert: NoActiveEAs
+        expr: quantmind_active_eas{status="primal"} == 0
+        for: 15m
+        labels:
+          severity: warning
+          component: trading
+        annotations:
+          summary: "No Active Expert Advisors"
+          description: "There are no active (primal) Expert Advisors for more than 15 minutes. The trading system may be offline."
+
+      - alert: TooManyQuarantinedEAs
+        expr: quantmind_active_eas{status="quarantine"} > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: trading
+        annotations:
+          summary: "Many EAs in Quarantine"
+          description: "There are more than 5 EAs in quarantine. Review recent failures and consider investigation."
+
+      # ============================================
+      # System Health Alerts
+      # ============================================
+      - alert: SlowDatabaseQueries
+        expr: histogram_quantile(0.95, rate(quantmind_db_query_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Slow Database Queries"
+          description: "Database p95 query time is above 1 second for the last 5 minutes. This may affect system performance."
+
+      - alert: SystemShutdownTriggered
+        expr: increase(quantmind_system_shutdowns_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "System Shutdown Triggered"
+          description: "A nuclear shutdown has been triggered. Manual review is required before resuming trading."
+          runbook_url: "https://github.com/MubarkaHimself/QUANTMIND-X/wiki/Runbook-Nuclear-Shutdown"
+
+      # ============================================
+      # API Performance Alerts
+      # ============================================
+      - alert: HighAPILatency
+        expr: histogram_quantile(0.95, rate(quantmind_api_request_duration_seconds_bucket[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High API Latency"
+          description: "API p95 latency is above 5 seconds. Users may experience slow response times."
+
+      - alert: APIRequestsSpike
+        expr: |
+          rate(quantmind_api_requests_total[1m]) > 100
+        for: 2m
+        labels:
+          severity: info
+          component: api
+        annotations:
+          summary: "API Request Spike Detected"
+          description: "API request rate is above 100 requests/second. This may indicate increased usage or a potential issue."
+
+      # ============================================
+      # Regime Change Alerts
+      # ============================================
+      - alert: FrequentRegimeChanges
+        expr: increase(quantmind_regime_changes_total[1h]) > 10
+        for: 0m
+        labels:
+          severity: warning
+          component: trading
+        annotations:
+          summary: "Frequent Market Regime Changes"
+          description: "More than 10 market regime changes in the last hour. Market conditions are highly unstable."
+
+      # ============================================
+      # WebSocket Alerts
+      # ============================================
+      - alert: NoWebSocketConnections
+        expr: quantmind_websocket_connections == 0
+        for: 30m
+        labels:
+          severity: info
+          component: api
+        annotations:
+          summary: "No WebSocket Connections"
+          description: "No active WebSocket connections for 30 minutes. Dashboard or monitoring clients may be disconnected."
+
+      - alert: ManyWebSocketConnections
+        expr: quantmind_websocket_connections > 50
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "Many WebSocket Connections"
+          description: "More than 50 WebSocket connections active. This may indicate connection leaks or unexpected usage."
+
+      # ============================================
+      # Trade P&L Alerts
+      # ============================================
+      - alert: LargeLossTrade
+        expr: |
+          quantmind_trade_profit_loss_bucket{le="-500"} > 0
+        for: 0m
+        labels:
+          severity: warning
+          component: trading
+        annotations:
+          summary: "Large Loss Trade Detected"
+          description: "A trade with loss greater than $500 has been recorded. Review position sizing and risk management."
+
+      # ============================================
+      # Tick Streaming Alerts
+      # ============================================
+      - alert: HighTickLatency
+        expr: histogram_quantile(0.99, rate(quantmind_tick_stream_latency_ms_bucket[1m])) > 10
+        for: 1m
+        labels:
+          severity: warning
+          component: streaming
+        annotations:
+          summary: "High Tick Streaming Latency"
+          description: "Tick streaming p99 latency is above 10ms for 1 minute."
+
+      - alert: TickStreamingDown
+        expr: rate(quantmind_tick_stream_rate[30s]) == 0
+        for: 30s
+        labels:
+          severity: critical
+          component: streaming
+        annotations:
+          summary: "Tick Streaming Down"
+          description: "No tick data received for 30 seconds. Check ZMQ connection and MT5 EA."
+
+      - alert: HighTickDropRate
+        expr: rate(quantmind_tick_stream_drops_total[2m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          component: streaming
+        annotations:
+          summary: "High Tick Drop Rate"
+          description: "Tick drop rate exceeds 10 drops/second for 2 minutes."
+
+      # ============================================
+      # Resource Alerts
+      # ============================================
+      - alert: HighCPUUsage
+        expr: quantmind_mt5_cpu_percent > 80
+        for: 2m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High CPU Usage"
+          description: "CPU usage has been above 80% for 2 minutes. Consider reducing active bots."
+
+      - alert: HighRAMUsage
+        expr: quantmind_mt5_ram_mb > 6000
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High RAM Usage"
+          description: "RAM usage has exceeded 6GB for 5 minutes. Check for memory leaks."
+
+      - alert: EODImportFailed
+        expr: quantmind_eod_import_duration_seconds > 300
+        for: 0m
+        labels:
+          severity: critical
+          component: data
+        annotations:
+          summary: "EOD Import Failed"
+          description: "EOD import took longer than 5 minutes or failed. Manual intervention may be required."
+
+      # ============================================
+      # Database Tier Alerts
+      # ============================================
+      - alert: SlowHOTQueries
+        expr: histogram_quantile(0.95, rate(quantmind_db_tier_query_latency_seconds_bucket{tier="hot"}[5m])) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Slow HOT Database Queries"
+          description: "HOT tier (PostgreSQL) p95 query latency exceeds 10ms."
+
+      - alert: SlowWARMQueries
+        expr: histogram_quantile(0.95, rate(quantmind_db_tier_query_latency_seconds_bucket{tier="warm"}[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Slow WARM Database Queries"
+          description: "WARM tier (DuckDB) p95 query latency exceeds 100ms."
+
+      - alert: SlowCOLDQueries
+        expr: histogram_quantile(0.95, rate(quantmind_db_tier_query_latency_seconds_bucket{tier="cold"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Slow COLD Database Queries"
+          description: "COLD tier (Parquet) p95 query latency exceeds 1 second."
+
+      - alert: DatabaseMigrationFailed
+        expr: quantmind_db_migration_status == 0
+        for: 0m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Database Migration Failed"
+          description: "A database migration job has failed. Check migration logs for details."
+
+      # ============================================
+      # Circuit Breaker Alerts
+      # ============================================
+      - alert: CircuitBreakerOpen
+        expr: quantmind_circuit_breaker_state == 1
+        for: 1m
+        labels:
+          severity: critical
+          component: streaming
+        annotations:
+          summary: "Circuit Breaker Open"
+          description: "Tick stream circuit breaker is open. System is using fallback polling mode."
+
+  # ============================================
+  # Cross-VPS & Storage Alerts
+  # ============================================
+  - name: quantmindx_cross_vps_alerts
+    interval: 1m
+    rules:
+      - alert: HMMSyncStale
+        expr: (time() - quantmind_hmm_sync_last_success_timestamp) > 90000
+        for: 0m
+        labels:
+          severity: warning
+          component: cross-vps
+        annotations:
+          summary: "HMM Model Sync Stale"
+          description: "HMM model sync from Contabo has not succeeded in over 25 hours (90000 seconds). The trading VPS may be using outdated HMM models for regime detection."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-HMM-Sync"
+
+      - alert: HMMSyncFailed
+        expr: increase(quantmind_hmm_sync_failures_total[1h]) > 3
+        for: 0m
+        labels:
+          severity: critical
+          component: cross-vps
+        annotations:
+          summary: "HMM Model Sync Failures Detected"
+          description: "More than 3 HMM model sync failures occurred in the last hour. Check network connectivity between Cloudzy and Contabo VPS, and verify authentication credentials."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-HMM-Sync"
+
+      - alert: DataMigrationStale
+        expr: |
+          (time() - quantmind_hmm_sync_last_success_timestamp) > 7200
+          or
+          absent(quantmind_data_migration_rows_total)
+        for: 0m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Data Migration May Be Stale"
+          description: "No data migration activity detected in over 2 hours or migration metrics are absent. The scheduled migration jobs may not be running."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-Data-Migration"
+
+      - alert: ContaboUnreachable
+        expr: quantmind_contabo_reachable == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: cross-vps
+        annotations:
+          summary: "Contabo VPS Unreachable"
+          description: "Contabo VPS has been unreachable for more than 5 minutes. HMM model training, cold storage, and cross-VPS synchronization are affected."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-Contabo-Connection"
+
+      - alert: ColdStorageFull
+        expr: quantmind_cold_storage_size_bytes > 375809638400
+        for: 0m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "Cold Storage Approaching Capacity"
+          description: "Cold storage (Parquet files) has exceeded 350 GB. Consider archiving old data or expanding storage capacity to prevent data loss."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-Storage-Management"
+
+      - alert: DeploymentFailed
+        expr: increase(quantmind_system_shutdowns_total{reason="deployment_failure"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "Deployment Failure Detected"
+          description: "A deployment failure has triggered a system shutdown. Review deployment logs and resolve the issue before resuming operations."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-Deployment-Failure"
+
+  # ============================================
+  # VPS Health & Connectivity Alerts
+  # ============================================
+  - name: quantmindx_vps_health_alerts
+    interval: 30s
+    rules:
+      - alert: VPSHeartbeatMissing
+        expr: (time() - quantmind_vps_heartbeat_timestamp) > 300
+        for: 1m
+        labels:
+          severity: critical
+          component: vps
+        annotations:
+          summary: "VPS Heartbeat Missing"
+          description: "No heartbeat received from VPS {{ $labels.vps_name }} ({{ $labels.vps_role }}) for more than 5 minutes. The VPS may be offline or experiencing network issues."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-VPS-Heartbeat"
+
+      - alert: VPSHighNetworkLatency
+        expr: histogram_quantile(0.95, rate(quantmind_vps_network_latency_seconds_bucket[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: vps
+        annotations:
+          summary: "High Network Latency Between VPS Instances"
+          description: "Network latency from {{ $labels.source_vps }} to {{ $labels.target_vps }} is above 500ms for 5 minutes. This may affect cross-VPS synchronization."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-VPS-Network"
+
+      - alert: VPSSSHConnectionLost
+        expr: quantmind_vps_ssh_connection_status == 0
+        for: 2m
+        labels:
+          severity: warning
+          component: vps
+        annotations:
+          summary: "SSH Connection to VPS Lost"
+          description: "SSH connection to {{ $labels.target_vps }} has been lost for more than 2 minutes. Automated synchronization may be affected."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-VPS-SSH"
+
+      - alert: VPSHighCPUUsage
+        expr: quantmind_vps_resource_cpu_percent > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: vps
+        annotations:
+          summary: "VPS High CPU Usage"
+          description: "VPS {{ $labels.vps_name }} CPU usage has been above 85% for 5 minutes. Consider scaling or investigating resource-intensive processes."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-VPS-Resources"
+
+      - alert: VPSHighMemoryUsage
+        expr: quantmind_vps_resource_memory_percent > 90
+        for: 5m
+        labels:
+          severity: critical
+          component: vps
+        annotations:
+          summary: "VPS High Memory Usage"
+          description: "VPS {{ $labels.vps_name }} memory usage has been above 90% for 5 minutes. Risk of OOM kills and service degradation."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-VPS-Resources"
+
+      - alert: VPSDiskSpaceLow
+        expr: quantmind_vps_resource_disk_percent > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: vps
+        annotations:
+          summary: "VPS Disk Space Low"
+          description: "VPS {{ $labels.vps_name }} disk usage on {{ $labels.mount_point }} is above 85%. Consider cleaning up old data or expanding storage."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-VPS-Storage"
+
+      - alert: VPSDiskSpaceCritical
+        expr: quantmind_vps_resource_disk_percent > 95
+        for: 1m
+        labels:
+          severity: critical
+          component: vps
+        annotations:
+          summary: "VPS Disk Space Critical"
+          description: "VPS {{ $labels.vps_name }} disk usage on {{ $labels.mount_point }} is above 95%. Immediate action required to prevent service failure."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-VPS-Storage"
+
+  # ============================================
+  # HMM Training Alerts
+  # ============================================
+  - name: quantmindx_hmm_training_alerts
+    interval: 1m
+    rules:
+      - alert: HMMTrainingJobFailed
+        expr: increase(quantmind_hmm_training_jobs_total{status="failed"}[1h]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          component: hmm
+        annotations:
+          summary: "HMM Training Job Failed"
+          description: "An HMM training job for {{ $labels.model_type }} (symbol: {{ $labels.symbol }}) has failed. Check training logs for details."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-HMM-Training"
+
+      - alert: HMMTrainingTakingTooLong
+        expr: histogram_quantile(0.95, rate(quantmind_hmm_training_duration_seconds_bucket[1h])) > 3600
+        for: 0m
+        labels:
+          severity: warning
+          component: hmm
+        annotations:
+          summary: "HMM Training Taking Too Long"
+          description: "HMM training for {{ $labels.model_type }} is taking longer than 1 hour. This may indicate issues with data size or model convergence."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-HMM-Training"
+
+      - alert: HMMModelQualityDegraded
+        expr: quantmind_hmm_model_validation_score < -2500
+        for: 0m
+        labels:
+          severity: warning
+          component: hmm
+        annotations:
+          summary: "HMM Model Quality Degraded"
+          description: "HMM model {{ $labels.model_type }}/{{ $labels.symbol }} v{{ $labels.version }} has a low validation score. Consider retraining with more data."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-HMM-Quality"
+
+      - alert: HMMInferenceLatencyHigh
+        expr: histogram_quantile(0.99, rate(quantmind_hmm_inference_latency_seconds_bucket[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: hmm
+        annotations:
+          summary: "HMM Inference Latency High"
+          description: "HMM inference latency for {{ $labels.symbol }} is above 100ms. This may affect real-time regime detection."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-HMM-Performance"
+
+      - alert: HMMTrainingJobSuccess
+        expr: increase(quantmind_hmm_training_jobs_total{status="success"}[1h]) > 0
+        for: 0m
+        labels:
+          severity: info
+          component: hmm
+        annotations:
+          summary: "HMM Training Job Completed"
+          description: "HMM training job for {{ $labels.model_type }} (symbol: {{ $labels.symbol }}) completed successfully."
+
+  # ============================================
+  # Sync Job Alerts
+  # ============================================
+  - name: quantmindx_sync_alerts
+    interval: 1m
+    rules:
+      - alert: SyncJobStale
+        expr: (time() - quantmind_sync_last_success_timestamp) > 7200
+        for: 0m
+        labels:
+          severity: warning
+          component: sync
+        annotations:
+          summary: "Sync Job Not Running"
+          description: "No successful {{ $labels.sync_type }} sync in over 2 hours. Cross-VPS synchronization may be stopped."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-Sync-Jobs"
+
+      - alert: SyncErrorsIncreasing
+        expr: increase(quantmind_sync_errors_total[1h]) > 5
+        for: 0m
+        labels:
+          severity: warning
+          component: sync
+        annotations:
+          summary: "Sync Errors Increasing"
+          description: "More than 5 {{ $labels.sync_type }} sync errors in the last hour. Error type: {{ $labels.error_type }}."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-Sync-Errors"
+
+      - alert: SyncQueueBacklog
+        expr: quantmind_sync_queue_depth > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: sync
+        annotations:
+          summary: "Sync Queue Backlog"
+          description: "Sync queue for {{ $labels.sync_type }} ({{ $labels.priority }} priority) has more than 100 items waiting. Sync may be falling behind."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-Sync-Queue"
+
+      - alert: SyncJobSlow
+        expr: histogram_quantile(0.95, rate(quantmind_sync_job_duration_seconds_bucket[30m])) > 300
+        for: 15m
+        labels:
+          severity: warning
+          component: sync
+        annotations:
+          summary: "Sync Job Running Slow"
+          description: "{{ $labels.sync_type }} sync from {{ $labels.source }} to {{ $labels.target }} is taking longer than 5 minutes."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-Sync-Performance"
+
+      - alert: SyncFilesFailing
+        expr: |
+          sum(rate(quantmind_sync_job_files_total{status="failed"}[5m])) 
+          / 
+          sum(rate(quantmind_sync_job_files_total[5m])) 
+          > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: sync
+        annotations:
+          summary: "High Sync File Failure Rate"
+          description: "More than 10% of file syncs are failing. Check network connectivity and permissions."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-Sync-Files"
+
+  # ============================================
+  # Multi-VPS Coordination Alerts
+  # ============================================
+  - name: quantmindx_coordination_alerts
+    interval: 30s
+    rules:
+      - alert: VPSCoordinatorDown
+        expr: quantmind_vps_coordinator_status == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: coordination
+        annotations:
+          summary: "VPS Coordinator Down"
+          description: "VPS coordinator on {{ $labels.vps_name }} is inactive. Cross-VPS coordination may be impaired."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-Coordinator"
+
+      - alert: VPSFailoverOccurred
+        expr: increase(quantmind_vps_failover_events_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          component: coordination
+        annotations:
+          summary: "VPS Failover Occurred"
+          description: "Failover from {{ $labels.from_vps }} to {{ $labels.to_vps }} due to: {{ $labels.reason }}. Verify services are running correctly on the new VPS."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-Failover"
+
+      - alert: VPSReplicationLagHigh
+        expr: quantmind_vps_replication_lag_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+          component: coordination
+        annotations:
+          summary: "VPS Replication Lag High"
+          description: "Replication lag for {{ $labels.data_type }} from {{ $labels.source_vps }} to {{ $labels.target_vps }} is above 5 minutes. Data may be stale."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-Replication"
+
+      - alert: ConfigSyncMismatch
+        expr: |
+          count by (config_file) (quantmind_config_sync_checksum) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: coordination
+        annotations:
+          summary: "Configuration Sync Mismatch"
+          description: "Configuration file {{ $labels.config_file }} has different checksums across VPS instances. Configuration may be out of sync."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-Config-Sync"
+
+  # ============================================
+  # Combined Cross-VPS Health Alerts
+  # ============================================
+  - name: quantmindx_cross_vps_health
+    interval: 1m
+    rules:
+      - alert: CrossVPSServiceDegradation
+        expr: |
+          (quantmind_contabo_reachable == 0)
+          or (quantmind_vps_ssh_connection_status == 0)
+          or ((time() - quantmind_vps_heartbeat_timestamp) > 600)
+        for: 5m
+        labels:
+          severity: critical
+          component: cross-vps
+        annotations:
+          summary: "Cross-VPS Service Degradation"
+          description: "Multiple cross-VPS connectivity issues detected. HMM model sync, data replication, and coordination may all be affected."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-Cross-VPS"
+
+      - alert: TradingVPSIsolated
+        expr: |
+          (quantmind_contabo_reachable == 0)
+          and (time() - quantmind_hmm_sync_last_success_timestamp > 86400)
+        for: 0m
+        labels:
+          severity: critical
+          component: cross-vps
+        annotations:
+          summary: "Trading VPS Isolated from Training VPS"
+          description: "The trading VPS (Cloudzy) has been isolated from the training VPS (Contabo) for over 24 hours. HMM models may be stale and regime detection could be using outdated models."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-VPS-Isolation"
+
+      - alert: MultiVPSDataStale
+        expr: |
+          (time() - quantmind_sync_last_success_timestamp{sync_type="market_data"} > 14400)
+          or (time() - quantmind_sync_last_success_timestamp{sync_type="hmm_models"} > 86400)
+        for: 0m
+        labels:
+          severity: warning
+          component: cross-vps
+        annotations:
+          summary: "Multi-VPS Data is Stale"
+          description: "Cross-VPS data synchronization for {{ $labels.sync_type }} has not occurred in an extended period. Data may be out of date."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-Data-Stale"
+
+      - alert: AllVPSHeartbeatsMissing
+        expr: |
+          count(quantmind_vps_heartbeat_timestamp) == 0
+          or
+          count((time() - quantmind_vps_heartbeat_timestamp) < 300) == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: cross-vps
+        annotations:
+          summary: "All VPS Heartbeats Missing"
+          description: "No VPS heartbeats have been received in the last 5 minutes. This may indicate a monitoring system failure or widespread network issue."
+          runbook_url: "https://github.com/MubarakHimself/QUANTMIND-X/wiki/Runbook-Monitoring-Failure"

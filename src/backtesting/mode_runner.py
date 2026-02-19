@@ -31,9 +31,9 @@ from src.backtesting.mt5_engine import PythonStrategyTester, MT5BacktestResult, 
 from src.router.sentinel import Sentinel, RegimeReport
 from src.router.enhanced_governor import EnhancedGovernor
 from src.router.commander import Commander
-from src.router.sessions import SessionDetector, TradingSession
+from src.router.session_detector import SessionDetector, TradingSession
 from src.router.multi_timeframe_sentinel import MultiTimeframeSentinel, Timeframe
-from src.api.ws_logger import setup_backtest_logging, BacktestProgressStreamer
+from src.api.ws_logger import setup_backtest_logging, BacktestProgressStreamer, WebSocketLogHandler
 
 logger = logging.getLogger(__name__)
 
@@ -196,10 +196,26 @@ class SentinelEnhancedTester(PythonStrategyTester):
                 self.loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(self.loop)
         
-        # Use provided ws_logger, or create one if ws_logger is not provided (Comment 2)
-        # This ensures log_entry events are emitted during REST-initiated backtests
-        if self._ws_logger is None and enable_ws_streaming and self._progress_streamer is None:
-            self._ws_logger, self._progress_streamer = setup_backtest_logging(self._backtest_id, loop=self.loop)
+        # Comment 2 fix: Initialize WebSocket streaming when enabled
+        # This ensures log_entry events and progress updates are emitted during backtests
+        # There are three scenarios:
+        # 1. Both ws_logger and progress_streamer provided - use them as-is
+        # 2. Only progress_streamer provided - create ws_logger for log streaming
+        # 3. Neither provided but streaming enabled - create both
+        if enable_ws_streaming:
+            # Generate backtest_id if not provided
+            if self._backtest_id is None:
+                self._backtest_id = str(uuid.uuid4())
+            
+            # Create ws_logger if not provided
+            if self._ws_logger is None:
+                # Create a new logger with WebSocket handler
+                self._ws_logger, _ = setup_backtest_logging(self._backtest_id, loop=self.loop)
+            
+            # Create progress_streamer if not provided
+            if self._progress_streamer is None:
+                # Create progress streamer for lifecycle events
+                self._progress_streamer = BacktestProgressStreamer(self._backtest_id, topic="backtest")
             
         # WebSocket streaming optimization (Phase 4)
         self._ws_update_interval = 100  # Configurable

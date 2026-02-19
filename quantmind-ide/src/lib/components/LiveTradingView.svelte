@@ -1,38 +1,104 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
   import { createEventDispatcher } from 'svelte';
   import { PlayCircle, ShieldAlert, Newspaper, FileText, Activity, Bot, Wallet, TrendingUp, ExternalLink } from 'lucide-svelte';
   import KillSwitchView from './KillSwitchView.svelte';
   import NewsView from './NewsView.svelte';
   import TradeJournalView from './TradeJournalView.svelte';
+  import FeeMonitorPanel from './FeeMonitorPanel.svelte';
+  import MultiTimeframeRegimePanel from './MultiTimeframeRegimePanel.svelte';
+  import TradingViewChart from './TradingViewChart.svelte';
   import { navigationStore } from '../stores/navigationStore';
+  import { createTradingClient } from '$lib/ws-client';
+  import type { WebSocketClient } from '$lib/ws-client';
+  import { PUBLIC_API_BASE } from '$env/static/public';
 
   const dispatch = createEventDispatcher();
+
+  // Use configured API base or default to same origin
+  const apiBase = PUBLIC_API_BASE || '';
 
   export let activeView = 'dashboard';
 
   const subTabs = [
     { id: 'dashboard', icon: Activity, label: 'Dashboard' },
     { id: 'bots', icon: PlayCircle, label: 'Active Bots' },
+    { id: 'chart', icon: TrendingUp, label: 'Live Chart' },
     { id: 'kill-switch', icon: ShieldAlert, label: 'Kill Switch' },
     { id: 'news', icon: Newspaper, label: 'News & Kill Zones' },
     { id: 'journal', icon: FileText, label: 'Trade Journal' }
   ];
+  
+  // Chart settings
+  let chartSymbol = 'EURUSD';
+  let chartTimeframe = 'H1';
 
-  // System status mock data
+  // Real-time data from API
   let systemStatus = {
-    active_bots: 3,
-    pnl_today: 1250.50,
-    regime: 'Trending',
-    kelly: 0.85
+    active_bots: 0,
+    pnl_today: 0,
+    regime: 'UNKNOWN',
+    kelly: 0
   };
   
-  
-  // Mock bots data
-  let bots = [
-    { id: 'ict-eu', name: 'ICT_Scalper @EURUSD', state: 'primal', symbol: 'EURUSD' },
-    { id: 'ict-gb', name: 'ICT_Scalper @GBPUSD', state: 'primal', symbol: 'GBPUSD' },
-    { id: 'smc-ej', name: 'SMC_Reversal @USDJPY', state: 'ready', symbol: 'USDJPY' }
-  ];
+  let bots: Array<{id: string, name: string, state: string, symbol: string}> = [];
+  let brokerAccounts: Array<{broker_id: string, broker_name: string, balance: number, equity: number, connected: boolean}> = [];
+  let wsClient: WebSocketClient | null = null;
+  let isConnected = false;
+
+  onMount(async () => {
+    try {
+      // Build absolute URL for REST calls (use apiBase or default to same origin)
+      const baseUrl = apiBase || window.location.origin;
+
+      // Fetch initial data from REST API (using existing backend routes)
+      const [statusRes, botsRes, accountsRes] = await Promise.all([
+        fetch(`${baseUrl}/api/router/system-status`),
+        fetch(`${baseUrl}/api/router/active-bots`),
+        fetch(`${baseUrl}/api/trading/broker-accounts`)
+      ]);
+
+      if (statusRes.ok) {
+        systemStatus = await statusRes.json();
+      }
+
+      if (botsRes.ok) {
+        bots = await botsRes.json();
+      }
+
+      if (accountsRes.ok) {
+        brokerAccounts = await accountsRes.json();
+      }
+
+      // Connect to WebSocket for real-time updates
+      // Pass the base URL so WebSocket helper derives ws:// vs wss:// correctly
+      wsClient = await createTradingClient(baseUrl);
+      isConnected = true;
+
+      // Subscribe to system status updates
+      wsClient.on('system_status', (message) => {
+        if (message.data) {
+          systemStatus = message.data as typeof systemStatus;
+        }
+      });
+
+      // Subscribe to bot updates
+      wsClient.on('bot_update', (message) => {
+        if (message.data?.bots) {
+          bots = message.data.bots;
+        }
+      });
+
+    } catch (error) {
+      console.error('Failed to connect to trading API:', error);
+    }
+  });
+
+  onDestroy(() => {
+    if (wsClient) {
+      wsClient.disconnect();
+    }
+  });
 
   function selectSubTab(tabId: string) {
     activeView = tabId;
@@ -107,6 +173,12 @@
           </div>
         </div>
 
+        <!-- Fee Monitoring Panel -->
+        <FeeMonitorPanel />
+        
+        <!-- Multi-Timeframe Regime Panel -->
+        <MultiTimeframeRegimePanel />
+
         <div class="sections-row">
           <div class="section-card clickable" on:click={() => selectSubTab('bots')}>
             <PlayCircle size={20} />
@@ -121,28 +193,32 @@
         <div class="broker-section">
           <h3>Broker Accounts</h3>
           <div class="account-cards">
-            <div class="account-card">
-              <span class="broker-name">RoboForex Prime</span>
-              <div class="balance-row">
-                <span>Balance: $5,000</span>
-                <span>Equity: $5,250.50</span>
+            {#if brokerAccounts.length > 0}
+              {#each brokerAccounts as account}
+                <div class="account-card">
+                  <span class="broker-name">{account.broker_name}</span>
+                  <div class="balance-row">
+                    <span>Balance: {formatCurrency(account.balance)}</span>
+                    <span>Equity: {formatCurrency(account.equity)}</span>
+                  </div>
+                  <button class="login-btn" class:connected={account.connected}>
+                    <ExternalLink size={12} />
+                    {account.connected ? 'Connected' : 'Connect'}
+                  </button>
+                </div>
+              {/each}
+            {:else}
+              <div class="account-card">
+                <span class="broker-name">No accounts configured</span>
+                <div class="balance-row">
+                  <span>Add a broker account to start trading</span>
+                </div>
+                <button class="login-btn">
+                  <ExternalLink size={12} />
+                  Add Account
+                </button>
               </div>
-              <button class="login-btn">
-                <ExternalLink size={12} />
-                Connect
-              </button>
-            </div>
-            <div class="account-card">
-              <span class="broker-name">Exness Raw</span>
-              <div class="balance-row">
-                <span>Balance: $2,500</span>
-                <span>Equity: $2,500</span>
-              </div>
-              <button class="login-btn">
-                <ExternalLink size={12} />
-                Connect
-              </button>
-            </div>
+            {/if}
           </div>
         </div>
 
@@ -175,6 +251,44 @@
     {:else if activeView === 'news'}
       <!-- News & Kill Zones View -->
       <NewsView />
+
+    {:else if activeView === 'chart'}
+      <!-- Live Chart View -->
+      <div class="chart-view">
+        <div class="chart-controls-bar">
+          <div class="symbol-selector">
+            <label>Symbol:</label>
+            <select bind:value={chartSymbol}>
+              <option value="EURUSD">EURUSD</option>
+              <option value="GBPUSD">GBPUSD</option>
+              <option value="USDJPY">USDJPY</option>
+              <option value="XAUUSD">XAUUSD</option>
+              <option value="NAS100">NAS100</option>
+            </select>
+          </div>
+          <div class="timeframe-selector">
+            <label>Timeframe:</label>
+            <select bind:value={chartTimeframe}>
+              <option value="M1">M1</option>
+              <option value="M5">M5</option>
+              <option value="M15">M15</option>
+              <option value="H1">H1</option>
+              <option value="H4">H4</option>
+              <option value="D1">D1</option>
+            </select>
+          </div>
+        </div>
+        <div class="chart-wrapper">
+          <TradingViewChart 
+            symbol={chartSymbol} 
+            timeframe={chartTimeframe}
+            wsEnabled={true}
+            showVolume={true}
+            showTrades={true}
+            showRegimes={true}
+          />
+        </div>
+      </div>
 
     {:else if activeView === 'journal'}
       <!-- Trade Journal View -->
@@ -529,5 +643,57 @@
 
   .terminal-input-field::placeholder {
     color: var(--text-muted);
+  }
+
+  .chart-view {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 16px;
+  }
+
+  .chart-controls-bar {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+    padding: 12px;
+    background-color: #111827;
+    border-radius: 8px;
+  }
+
+  .symbol-selector,
+  .timeframe-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .symbol-selector label,
+  .timeframe-selector label {
+    color: #9ca3af;
+    font-size: 14px;
+  }
+
+  .symbol-selector select,
+  .timeframe-selector select {
+    padding: 6px 12px;
+    background-color: #1f2937;
+    color: #f3f4f6;
+    border: 1px solid #374151;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  .symbol-selector select:hover,
+  .timeframe-selector select:hover {
+    border-color: #4b5563;
+  }
+
+  .chart-wrapper {
+    flex: 1;
+    min-height: 400px;
+    border-radius: 8px;
+    overflow: hidden;
   }
 </style>

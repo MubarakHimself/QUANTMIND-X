@@ -718,8 +718,26 @@ class MT5AccountClient:
             elif symbol.startswith("USD") and not symbol.endswith("USD"):
                 # USD/XXX pairs: need currency conversion
                 # For USD account, pip value = contract_size * tick_size * volume / exchange_rate
-                # This is simplified; actual implementation needs exchange rates
-                pass
+                quote_currency = symbol[3:6]  # e.g., "CAD" for USDCAD, "JPY" for USDJPY
+                exchange_rate = 1.0
+                
+                # Try to get conversion rate
+                try:
+                    # First try direct conversion (e.g., CADUSD for USDCAD)
+                    direct_tick = self.symbol_info_tick(f"{quote_currency}USD")
+                    if direct_tick and direct_tick.ask:
+                        exchange_rate = direct_tick.ask
+                    else:
+                        # Try inverse conversion (e.g., USDCAD for USDCAD)
+                        inverse_tick = self.symbol_info_tick(f"USD{quote_currency}")
+                        if inverse_tick and inverse_tick.ask:
+                            exchange_rate = 1.0 / inverse_tick.ask
+                except Exception as e:
+                    logger.warning(f"Could not get conversion rate for {symbol}: {e}")
+                
+                # Calculate pip value with conversion
+                pip_value = (symbol_info.tick_value * volume) / exchange_rate if exchange_rate != 1.0 else symbol_info.tick_value * volume
+                logger.debug(f"Converted pip value for {symbol} using rate {exchange_rate}: {pip_value}")
 
             logger.debug(f"Calculated pip value for {symbol}: {pip_value} {account_currency}")
             return pip_value

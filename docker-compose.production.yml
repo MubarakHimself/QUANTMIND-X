@@ -1,0 +1,223 @@
+version: "3.8"
+
+# QuantMindX Production Docker Compose
+# Includes: API Server, MT5 Bridge, Prometheus Agent, and Promtail for log aggregation
+# Usage: docker-compose -f docker-compose.production.yml up -d
+
+services:
+  # ========== PageIndex Services for Knowledge Base ==========
+  pageindex-articles:
+    build:
+      context: .
+      dockerfile: docker/pageindex/Dockerfile.articles
+    container_name: quantmindx-pageindex-articles
+    volumes:
+      - ./data/scraped_articles:/data/articles:ro
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    networks:
+      - quantmind-network
+    labels:
+      - "com.docker.compose.project=quantmindx"
+      - "service=pageindex-articles"
+
+  pageindex-books:
+    build:
+      context: .
+      dockerfile: docker/pageindex/Dockerfile.books
+    container_name: quantmindx-pageindex-books
+    volumes:
+      - ./data/knowledge_base/books:/data/books:ro
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+    networks:
+      - quantmind-network
+    labels:
+      - "com.docker.compose.project=quantmindx"
+      - "service=pageindex-books"
+
+  pageindex-logs:
+    build:
+      context: .
+      dockerfile: docker/pageindex/Dockerfile.logs
+    container_name: quantmindx-pageindex-logs
+    volumes:
+      - ./data/logs:/data/logs:ro
+    ports:
+      - "3002:3002"
+    restart: unless-stopped
+    networks:
+      - quantmind-network
+    labels:
+      - "com.docker.compose.project=quantmindx"
+      - "service=pageindex-logs"
+
+  # ========== QuantMindX API Server ==========
+  quantmind-api:
+    build:
+      context: .
+      dockerfile: docker/strategy-agent/Dockerfile
+    container_name: quantmind-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"    # API port
+      - "9090:9090"    # Prometheus metrics port
+      # Dev-only: add "- 37777:37777" for claude-mem web viewer
+      # Enable with: docker-compose --profile dev up
+    volumes:
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+      - ./workspaces:/app/workspaces
+      - claude-mem-data:/home/trader/.claude-mem
+    environment:
+      - QUANTMIND_ENV=production
+      - QUANTMIND_VERSION=1.0.0
+      - PROMETHEUS_PORT=9090
+      - GRAFANA_PROMETHEUS_URL=${GRAFANA_PROMETHEUS_URL}
+      - GRAFANA_LOKI_URL=${GRAFANA_LOKI_URL}
+      - GRAFANA_INSTANCE_ID=${GRAFANA_INSTANCE_ID}
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY}
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}
+      - PAGEINDEX_ARTICLES_URL=http://pageindex-articles:3000
+      - PAGEINDEX_BOOKS_URL=http://pageindex-books:3001
+      - PAGEINDEX_LOGS_URL=http://pageindex-logs:3002
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_MEM_PORT=37777
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - quantmind-network
+    depends_on:
+      - pageindex-articles
+      - pageindex-books
+      - pageindex-logs
+    labels:
+      - "com.docker.compose.project=quantmindx"
+      - "service=api"
+
+  # ========== MT5 Bridge Server ==========
+  mt5-bridge:
+    build:
+      context: ./mt5-bridge
+      dockerfile: Dockerfile
+    container_name: quantmind-mt5-bridge
+    restart: unless-stopped
+    ports:
+      - "5005:5005"    # API port
+      - "9091:9091"    # Prometheus metrics port
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - MT5_BRIDGE_TOKEN=${MT5_BRIDGE_TOKEN:-secret-token-change-me}
+      - MT5_PROMETHEUS_PORT=9091
+      - GRAFANA_PROMETHEUS_URL=${GRAFANA_PROMETHEUS_URL}
+      - GRAFANA_INSTANCE_ID=${GRAFANA_INSTANCE_ID}
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY}
+    # MT5 requires Windows - this service should run on Windows host
+    # For VPS, use host network mode or configure appropriately
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - quantmind-network
+    labels:
+      - "com.docker.compose.project=quantmindx"
+      - "service=mt5-bridge"
+
+  # ========== Prometheus Agent for Grafana Cloud ==========
+  # Scrapes local metrics and remote_writes to Grafana Cloud
+  prometheus-agent:
+    image: prom/prometheus:latest
+    container_name: quantmind-prometheus-agent
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.agent.path=/prometheus/wal'
+      - '--enable-feature=agent'  # Run in agent mode (remote_write only)
+    ports:
+      - "9099:9090"    # Prometheus agent UI (optional, for debugging)
+    volumes:
+      - ./docker/prometheus/agent-prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-wal:/prometheus/wal
+    environment:
+      - GRAFANA_PROMETHEUS_URL=${GRAFANA_PROMETHEUS_URL}
+      - GRAFANA_INSTANCE_ID=${GRAFANA_INSTANCE_ID}
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY}
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - quantmind-network
+    labels:
+      - "com.docker.compose.project=quantmindx"
+      - "service=prometheus-agent"
+    depends_on:
+      - quantmind-api
+      - mt5-bridge
+
+  # ========== Promtail Log Shipper ==========
+  promtail:
+    image: grafana/promtail:latest
+    container_name: quantmind-promtail
+    restart: unless-stopped
+    command:
+      - -config.file=/etc/promtail/config.yml
+      - -config.expand-env=true
+    volumes:
+      - ./docker/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - ./logs:/app/logs:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - GRAFANA_LOKI_URL=${GRAFANA_LOKI_URL}
+      - GRAFANA_INSTANCE_ID=${GRAFANA_INSTANCE_ID}
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY}
+      - HOSTNAME=quantmindx-vps
+    deploy:
+      resources:
+        limits:
+          memory: 100M
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9080/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - quantmind-network
+    labels:
+      - "com.docker.compose.project=quantmindx"
+      - "service=promtail"
+    depends_on:
+      - quantmind-api
+
+# ========== Networks ==========
+networks:
+  quantmind-network:
+    driver: bridge
+    name: quantmind-network
+
+# ========== Volumes ==========
+volumes:
+  logs:
+    driver: local
+  prometheus-wal:
+    driver: local
+  claude-mem-data:
+    driver: local

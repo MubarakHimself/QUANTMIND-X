@@ -2,7 +2,9 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-    plugins: [sveltekit()],
+    plugins: [
+        sveltekit()
+    ],
     server: {
         host: true,
         port: 1420,
@@ -11,10 +13,18 @@ export default defineConfig({
             '/api': {
                 target: 'http://localhost:8000',
                 changeOrigin: true
+            },
+            '/ws': {
+                target: 'ws://localhost:8000',
+                ws: true
             }
         }
     },
     optimizeDeps: {
-        exclude: ['@sveltejs/kit']
+        exclude: ['@sveltejs/kit'],
+        include: ['monaco-editor', 'chart.js', 'd3']
+    },
+    worker: {
+        format: 'es'
     }
 });

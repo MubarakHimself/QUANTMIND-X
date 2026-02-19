@@ -1,34 +1,42 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy } from "svelte";
 
   // Simple toast notification system
-  let toastMessage = '';
+  let toastMessage = "";
   let toastVisible = false;
-  let toastType: 'success' | 'error' = 'success';
+  let toastType: "success" | "error" = "success";
 
-  function showToast(message: string, type: 'success' | 'error' = 'success') {
+  function showToast(message: string, type: "success" | "error" = "success") {
     toastMessage = message;
     toastType = type;
     toastVisible = true;
-    setTimeout(() => toastVisible = false, 3000);
+    setTimeout(() => (toastVisible = false), 3000);
   }
 
   // Simple confirmation dialog
   let confirmDialog = {
     open: false,
-    title: '',
-    message: '',
-    onConfirm: () => {}
+    title: "",
+    message: "",
+    onConfirm: () => {},
   };
 
-  function showConfirmDialog(title: string, message: string, onConfirm: () => void) {
+  function showConfirmDialog(
+    title: string,
+    message: string,
+    onConfirm: () => void,
+  ) {
     confirmDialog = { open: true, title, message, onConfirm };
   }
 
   // Types for our data structures
-  type KillSwitchStrategy = 'immediate' | 'breakeven' | 'trailing' | 'scale_out';
-  type BotStatus = 'active' | 'suspended' | 'quarantine';
-  type TriggerReason = 'manual' | 'circuit_breaker' | 'news' | 'drawdown';
+  type KillSwitchStrategy =
+    | "immediate"
+    | "breakeven"
+    | "trailing"
+    | "scale_out";
+  type BotStatus = "active" | "suspended" | "quarantine";
+  type TriggerReason = "manual" | "circuit_breaker" | "news" | "drawdown";
 
   interface BotKillSwitchConfig {
     bot_id: string;
@@ -57,198 +65,202 @@
       end: string; // HH:mm format
       days: number[]; // 0-6 (Sunday-Saturday)
     }>;
-    newsImpactThreshold: 'high' | 'medium' | 'low';
+    newsImpactThreshold: "high" | "medium" | "low";
   }
 
   // Reactive state
-  let selectedStrategy: KillSwitchStrategy = 'immediate';
+  let selectedStrategy: KillSwitchStrategy = "immediate";
   let showHistory = false;
   let pollingInterval: number | null = null;
 
   // Mock data - replace with actual API calls
   let bots: BotKillSwitchConfig[] = [
     {
-      bot_id: '1',
-      bot_name: 'EURUSD_M5_Trend',
-      status: 'active',
-      strategy: 'immediate',
-      today_pnl: 1250.50,
+      bot_id: "1",
+      bot_name: "EURUSD_M5_Trend",
+      status: "active",
+      strategy: "immediate",
+      today_pnl: 1250.5,
       loss_count: 2,
       max_losses: 5,
-      positions_open: 3
+      positions_open: 3,
     },
     {
-      bot_id: '2',
-      bot_name: 'GBPUSD_H1_Breakout',
-      status: 'active',
-      strategy: 'breakeven',
+      bot_id: "2",
+      bot_name: "GBPUSD_H1_Breakout",
+      status: "active",
+      strategy: "breakeven",
       today_pnl: -890.25,
       loss_count: 4,
       max_losses: 5,
-      positions_open: 2
+      positions_open: 2,
     },
     {
-      bot_id: '3',
-      bot_name: 'USDJPY_M15_Scalp',
-      status: 'suspended',
-      strategy: 'trailing',
-      today_pnl: -1450.00,
+      bot_id: "3",
+      bot_name: "USDJPY_M15_Scalp",
+      status: "suspended",
+      strategy: "trailing",
+      today_pnl: -1450.0,
       loss_count: 5,
       max_losses: 5,
-      positions_open: 0
+      positions_open: 0,
     },
     {
-      bot_id: '4',
-      bot_name: 'XAUUSD_H4_Swing',
-      status: 'quarantine',
-      strategy: 'immediate',
-      today_pnl: -2100.00,
+      bot_id: "4",
+      bot_name: "XAUUSD_H4_Swing",
+      status: "quarantine",
+      strategy: "immediate",
+      today_pnl: -2100.0,
       loss_count: 6,
       max_losses: 5,
-      positions_open: 1
-    }
+      positions_open: 1,
+    },
   ];
 
   let killSwitchHistory: KillSwitchEvent[] = [
     {
-      id: '1',
-      timestamp: '2025-01-15T14:32:00Z',
-      trigger_reason: 'circuit_breaker',
-      strategy_used: 'immediate',
+      id: "1",
+      timestamp: "2025-01-15T14:32:00Z",
+      trigger_reason: "circuit_breaker",
+      strategy_used: "immediate",
       positions_closed: 2,
-      total_pnl_preserved: -450.00
+      total_pnl_preserved: -450.0,
     },
     {
-      id: '2',
-      timestamp: '2025-01-15T10:15:00Z',
-      trigger_reason: 'manual',
-      strategy_used: 'breakeven',
+      id: "2",
+      timestamp: "2025-01-15T10:15:00Z",
+      trigger_reason: "manual",
+      strategy_used: "breakeven",
       positions_closed: 3,
-      total_pnl_preserved: 890.50
+      total_pnl_preserved: 890.5,
     },
     {
-      id: '3',
-      timestamp: '2025-01-14T16:45:00Z',
-      trigger_reason: 'news',
-      strategy_used: 'trailing',
+      id: "3",
+      timestamp: "2025-01-14T16:45:00Z",
+      trigger_reason: "news",
+      strategy_used: "trailing",
       positions_closed: 1,
-      total_pnl_preserved: 320.00
-    }
+      total_pnl_preserved: 320.0,
+    },
   ];
 
   let killZoneConfig: KillZoneConfig = {
     enabled: true,
     timeRanges: [
       {
-        start: '08:30',
-        end: '10:00',
-        days: [1, 2, 3, 4, 5] // Weekdays
+        start: "08:30",
+        end: "10:00",
+        days: [1, 2, 3, 4, 5], // Weekdays
       },
       {
-        start: '13:30',
-        end: '15:00',
-        days: [1, 2, 3, 4, 5] // US market open
-      }
+        start: "13:30",
+        end: "15:00",
+        days: [1, 2, 3, 4, 5], // US market open
+      },
     ],
-    newsImpactThreshold: 'high'
+    newsImpactThreshold: "high",
   };
 
   // Computed metrics
   $: totalPositions = bots.reduce((sum, bot) => sum + bot.positions_open, 0);
   $: totalDailyPnL = bots.reduce((sum, bot) => sum + bot.today_pnl, 0);
-  $: activeBots = bots.filter(b => b.status === 'active').length;
-  $: circuitBreakerTripped = bots.some(b => b.loss_count >= b.max_losses);
+  $: activeBots = bots.filter((b) => b.status === "active").length;
+  $: circuitBreakerTripped = bots.some((b) => b.loss_count >= b.max_losses);
   $: dailyDrawdown = Math.min(0, totalDailyPnL);
-  $: dailyDrawdownPercent = dailyDrawdown < 0 ? Math.abs(dailyDrawdown) / 10000 * 100 : 0; // Assume 10k account
+  $: dailyDrawdownPercent =
+    dailyDrawdown < 0 ? (Math.abs(dailyDrawdown) / 10000) * 100 : 0; // Assume 10k account
 
   // Strategy display names and descriptions
   const strategies = {
     immediate: {
-      name: 'Immediate Exit',
-      description: 'Close all positions immediately at market price',
-      icon: '⚡',
-      color: 'text-red-500'
+      name: "Immediate Exit",
+      description: "Close all positions immediately at market price",
+      icon: "⚡",
+      color: "text-red-500",
     },
     breakeven: {
-      name: 'Breakeven Exit',
-      description: 'Move stops to breakeven, let profits run',
-      icon: '🛡️',
-      color: 'text-amber-500'
+      name: "Breakeven Exit",
+      description: "Move stops to breakeven, let profits run",
+      icon: "🛡️",
+      color: "text-amber-500",
     },
     trailing: {
-      name: 'Trailing Stop',
-      description: 'Activate trailing stops on all positions',
-      icon: '📈',
-      color: 'text-blue-500'
+      name: "Trailing Stop",
+      description: "Activate trailing stops on all positions",
+      icon: "📈",
+      color: "text-blue-500",
     },
     scale_out: {
-      name: 'Scale-Out',
-      description: 'Partially close positions incrementally',
-      icon: '📊',
-      color: 'text-green-500'
-    }
+      name: "Scale-Out",
+      description: "Partially close positions incrementally",
+      icon: "📊",
+      color: "text-green-500",
+    },
   };
 
   // Actions
   async function handleEmergencyStop() {
     showConfirmDialog(
-      '🚨 EMERGENCY STOP ALL',
+      "🚨 EMERGENCY STOP ALL",
       `This will immediately activate the kill switch on ALL active bots!\n\nAffected Positions: ${totalPositions}\nActive Bots: ${activeBots}\nStrategy: ${strategies[selectedStrategy].name}\n\n${strategies[selectedStrategy].description}\n\nThis action cannot be undone. Please confirm you understand the consequences.`,
       async () => {
-        await executeKillSwitch('all', selectedStrategy);
-        showToast('Emergency stop activated for all bots');
-      }
+        await executeKillSwitch("all", selectedStrategy);
+        showToast("Emergency stop activated for all bots");
+      },
     );
   }
 
-  async function executeKillSwitch(botId: string | 'all', strategy: KillSwitchStrategy) {
+  async function executeKillSwitch(
+    botId: string | "all",
+    strategy: KillSwitchStrategy,
+  ) {
     // API call to execute kill switch
     // POST /api/router/kill-switch
     const payload = {
       bot_id: botId,
       strategy: strategy,
-      trigger_reason: 'manual' as TriggerReason
+      trigger_reason: "manual" as TriggerReason,
     };
 
-    console.log('Executing kill switch:', payload);
+    console.log("Executing kill switch:", payload);
 
     // Update local state
-    if (botId === 'all') {
-      bots = bots.map(bot => ({
+    if (botId === "all") {
+      bots = bots.map((bot) => ({
         ...bot,
-        status: 'suspended' as BotStatus,
-        positions_open: 0
+        status: "suspended" as BotStatus,
+        positions_open: 0,
       }));
 
       // Add to history
       const newEvent: KillSwitchEvent = {
         id: Date.now().toString(),
         timestamp: new Date().toISOString(),
-        trigger_reason: 'manual',
+        trigger_reason: "manual",
         strategy_used: strategy,
         positions_closed: totalPositions,
-        total_pnl_preserved: totalDailyPnL
+        total_pnl_preserved: totalDailyPnL,
       };
       killSwitchHistory = [newEvent, ...killSwitchHistory];
     } else {
-      const bot = bots.find(b => b.bot_id === botId);
+      const bot = bots.find((b) => b.bot_id === botId);
       if (bot) {
-        bot.status = 'suspended';
+        bot.status = "suspended";
         bot.positions_open = 0;
       }
     }
   }
 
   async function suspendBot(botId: string) {
-    const bot = bots.find(b => b.bot_id === botId);
+    const bot = bots.find((b) => b.bot_id === botId);
     if (bot) {
-      bot.status = 'suspended';
+      bot.status = "suspended";
       showToast(`Suspended ${bot.bot_name}`);
     }
   }
 
   async function killBot(botId: string) {
-    const bot = bots.find(b => b.bot_id === botId);
+    const bot = bots.find((b) => b.bot_id === botId);
     if (!bot) return;
 
     showConfirmDialog(
@@ -257,27 +269,34 @@
       async () => {
         await executeKillSwitch(botId, bot.strategy);
         showToast(`Kill switch activated for ${bot.bot_name}`);
-      }
+      },
     );
   }
 
-  function updateBotStrategy(botId: string, strategy: KillSwitchStrategy) {
-    const bot = bots.find(b => b.bot_id === botId);
+  function updateBotStrategy(
+    botId: string,
+    strategy: string | KillSwitchStrategy,
+  ) {
+    const bot = bots.find((b) => b.bot_id === botId);
     if (bot) {
-      bot.strategy = strategy;
-      showToast(`Updated ${bot.bot_name} strategy to ${strategies[strategy].name}`);
+      bot.strategy = strategy as KillSwitchStrategy;
+      showToast(
+        `Updated ${bot.bot_name} strategy to ${
+          strategies[strategy as KillSwitchStrategy].name
+        }`,
+      );
     }
   }
 
   function toggleKillZone() {
     killZoneConfig.enabled = !killZoneConfig.enabled;
-    showToast(`Kill zone ${killZoneConfig.enabled ? 'enabled' : 'disabled'}`);
+    showToast(`Kill zone ${killZoneConfig.enabled ? "enabled" : "disabled"}`);
   }
 
   function formatCurrency(value: number): string {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
     }).format(value);
   }
 
@@ -287,20 +306,29 @@
 
   function getStatusColor(status: BotStatus): string {
     switch (status) {
-      case 'active': return 'text-green-500';
-      case 'suspended': return 'text-amber-500';
-      case 'quarantine': return 'text-red-500';
-      default: return 'text-gray-500';
+      case "active":
+        return "text-green-500";
+      case "suspended":
+        return "text-amber-500";
+      case "quarantine":
+        return "text-red-500";
+      default:
+        return "text-gray-500";
     }
   }
 
   function getTriggerReasonIcon(reason: TriggerReason): string {
     switch (reason) {
-      case 'manual': return '👤';
-      case 'circuit_breaker': return '⚡';
-      case 'news': return '📰';
-      case 'drawdown': return '📉';
-      default: return '❓';
+      case "manual":
+        return "👤";
+      case "circuit_breaker":
+        return "⚡";
+      case "news":
+        return "📰";
+      case "drawdown":
+        return "📉";
+      default:
+        return "❓";
     }
   }
 
@@ -324,7 +352,9 @@
   <!-- Header -->
   <div class="flex items-center justify-between">
     <div>
-      <h1 class="text-2xl font-bold text-red-600 dark:text-red-400 flex items-center gap-2">
+      <h1
+        class="text-2xl font-bold text-red-600 dark:text-red-400 flex items-center gap-2"
+      >
         <span>🚨</span>
         Kill Switch Control
       </h1>
@@ -336,12 +366,14 @@
       on:click={() => (showHistory = !showHistory)}
       class="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
     >
-      {showHistory ? 'Hide' : 'Show'} History
+      {showHistory ? "Hide" : "Show"} History
     </button>
   </div>
 
   <!-- Emergency Controls -->
-  <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6">
+  <div
+    class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6"
+  >
     <div class="flex items-center justify-between">
       <div class="space-y-2">
         <h2 class="text-xl font-bold text-red-700 dark:text-red-300">
@@ -387,15 +419,19 @@
               value={key}
               class="hidden"
             />
-            <div class="border-2 rounded-lg p-4 transition-all hover:border-red-400"
-                 class:border-red-500={selectedStrategy === key}
-                 class:bg-red-100={selectedStrategy === key}
-                 class:dark:bg-red-900={selectedStrategy === key}
-                 class:border-gray-300={selectedStrategy !== key}
-                 class:dark:border-gray-700={selectedStrategy !== key}>
+            <div
+              class="border-2 rounded-lg p-4 transition-all hover:border-red-400"
+              class:border-red-500={selectedStrategy === key}
+              class:bg-red-100={selectedStrategy === key}
+              class:dark:bg-red-900={selectedStrategy === key}
+              class:border-gray-300={selectedStrategy !== key}
+              class:dark:border-gray-700={selectedStrategy !== key}
+            >
               <div class="flex items-center gap-2 mb-2">
                 <span class="text-2xl">{strategy.icon}</span>
-                <span class="font-semibold {strategy.color}">{strategy.name}</span>
+                <span class="font-semibold {strategy.color}"
+                  >{strategy.name}</span
+                >
               </div>
               <p class="text-xs text-gray-600 dark:text-gray-400">
                 {strategy.description}
@@ -408,7 +444,9 @@
   </div>
 
   <!-- Bleeding Metrics -->
-  <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+  <div
+    class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6"
+  >
     <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
       <span>📊</span>
       Bleeding Metrics
@@ -439,13 +477,17 @@
           Daily Drawdown
         </h3>
         <div class="space-y-2">
-          <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+          <div
+            class="h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden"
+          >
             <div
               class="h-full bg-gradient-to-r from-green-500 via-amber-500 to-red-500 transition-all"
               style="width: {Math.min(dailyDrawdownPercent, 100)}%"
             ></div>
           </div>
-          <div class="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+          <div
+            class="flex justify-between text-xs text-gray-600 dark:text-gray-400"
+          >
             <span>0%</span>
             <span>{dailyDrawdownPercent.toFixed(1)}%</span>
             <span>Max: 10%</span>
@@ -481,7 +523,9 @@
     </div>
 
     <!-- House Money Effect -->
-    <div class="mt-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+    <div
+      class="mt-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg"
+    >
       <div class="flex items-center gap-3">
         <span class="text-2xl">💰</span>
         <div>
@@ -490,9 +534,11 @@
           </h3>
           <p class="text-sm text-amber-700 dark:text-amber-300">
             {#if totalDailyPnL > 0}
-              You're up {formatCurrency(totalDailyPnL)} today - Consider tightening stops to protect profits
+              You're up {formatCurrency(totalDailyPnL)} today - Consider tightening
+              stops to protect profits
             {:else}
-              You're down {formatCurrency(Math.abs(totalDailyPnL))} - Reduce position sizes until recovery
+              You're down {formatCurrency(Math.abs(totalDailyPnL))} - Reduce position
+              sizes until recovery
             {/if}
           </p>
         </div>
@@ -501,7 +547,9 @@
   </div>
 
   <!-- Per-Bot Kill Switch Configuration -->
-  <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+  <div
+    class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6"
+  >
     <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
       <span>🤖</span>
       Per-Bot Configuration
@@ -521,18 +569,24 @@
         </thead>
         <tbody>
           {#each bots as bot (bot.bot_id)}
-            <tr class="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750">
+            <tr
+              class="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750"
+            >
               <td class="py-3 px-4">
                 <div class="font-medium">{bot.bot_name}</div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">ID: {bot.bot_id}</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">
+                  ID: {bot.bot_id}
+                </div>
               </td>
               <td class="py-3 px-4">
-                <div class="flex items-center gap-2 {getStatusColor(bot.status)}">
+                <div
+                  class="flex items-center gap-2 {getStatusColor(bot.status)}"
+                >
                   <span
                     class="w-2 h-2 rounded-full animate-pulse"
-                    class:bg-green-500={bot.status === 'active'}
-                    class:bg-amber-500={bot.status === 'suspended'}
-                    class:bg-red-500={bot.status === 'quarantine'}
+                    class:bg-green-500={bot.status === "active"}
+                    class:bg-amber-500={bot.status === "suspended"}
+                    class:bg-red-500={bot.status === "quarantine"}
                   ></span>
                   <span class="capitalize">{bot.status}</span>
                 </div>
@@ -540,7 +594,8 @@
               <td class="py-3 px-4">
                 <select
                   value={bot.strategy}
-                  on:change={(e) => updateBotStrategy(bot.bot_id, e.currentTarget.value)}
+                  on:change={(e) =>
+                    updateBotStrategy(bot.bot_id, e.currentTarget.value)}
                   class="px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-700 text-sm"
                 >
                   {#each Object.entries(strategies) as [key, strategy]}
@@ -548,19 +603,25 @@
                   {/each}
                 </select>
               </td>
-              <td class="py-3 px-4 text-right font-mono"
-                  class:text-green-600={bot.today_pnl >= 0}
-                  class:text-red-600={bot.today_pnl < 0}>
+              <td
+                class="py-3 px-4 text-right font-mono"
+                class:text-green-600={bot.today_pnl >= 0}
+                class:text-red-600={bot.today_pnl < 0}
+              >
                 {formatCurrency(bot.today_pnl)}
               </td>
               <td class="py-3 px-4 text-center">
-                <div class="inline-flex items-center gap-1 px-2 py-1 rounded"
-                     class:bg-red-100={bot.loss_count >= bot.max_losses}
-                     class:dark:bg-red-900={bot.loss_count >= bot.max_losses}
-                     class:bg-amber-100={bot.loss_count < bot.max_losses && bot.loss_count > 0}
-                     class:dark:bg-amber-900={bot.loss_count < bot.max_losses && bot.loss_count > 0}
-                     class:bg-green-100={bot.loss_count === 0}
-                     class:dark:bg-green-900={bot.loss_count === 0}>
+                <div
+                  class="inline-flex items-center gap-1 px-2 py-1 rounded"
+                  class:bg-red-100={bot.loss_count >= bot.max_losses}
+                  class:dark:bg-red-900={bot.loss_count >= bot.max_losses}
+                  class:bg-amber-100={bot.loss_count < bot.max_losses &&
+                    bot.loss_count > 0}
+                  class:dark:bg-amber-900={bot.loss_count < bot.max_losses &&
+                    bot.loss_count > 0}
+                  class:bg-green-100={bot.loss_count === 0}
+                  class:dark:bg-green-900={bot.loss_count === 0}
+                >
                   <span>{bot.loss_count}</span>
                   <span class="text-gray-400">/</span>
                   <span>{bot.max_losses}</span>
@@ -571,7 +632,7 @@
               </td>
               <td class="py-3 px-4">
                 <div class="flex items-center gap-2">
-                  {#if bot.status === 'active'}
+                  {#if bot.status === "active"}
                     <button
                       on:click={() => suspendBot(bot.bot_id)}
                       class="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
@@ -588,7 +649,10 @@
                     </button>
                   {:else}
                     <button
-                      on:click={() => { bot.status = 'active'; showToast(`Resumed ${bot.bot_name}`); }}
+                      on:click={() => {
+                        bot.status = "active";
+                        showToast(`Resumed ${bot.bot_name}`);
+                      }}
                       class="px-2 py-1 rounded bg-green-600 hover:bg-green-700 text-white text-sm"
                       title="Resume bot"
                     >
@@ -605,7 +669,9 @@
   </div>
 
   <!-- Kill Zone Configuration -->
-  <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+  <div
+    class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6"
+  >
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-lg font-bold flex items-center gap-2">
         <span>🕐</span>
@@ -626,30 +692,43 @@
       {#if killZoneConfig.enabled}
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           {#each killZoneConfig.timeRanges as range, index}
-            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+            <div
+              class="border border-gray-200 dark:border-gray-700 rounded-lg p-4"
+            >
               <h3 class="font-semibold mb-3">Time Range {index + 1}</h3>
               <div class="space-y-3">
                 <div class="flex items-center gap-3">
-                  <label class="text-sm w-16">Start:</label>
+                  <label for="start-{index}" class="text-sm w-16">Start:</label>
                   <input
+                    id="start-{index}"
                     type="time"
                     bind:value={range.start}
                     class="px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-700 text-sm w-full"
                   />
                 </div>
                 <div class="flex items-center gap-3">
-                  <label class="text-sm w-16">End:</label>
+                  <label for="end-{index}" class="text-sm w-16">End:</label>
                   <input
+                    id="end-{index}"
                     type="time"
                     bind:value={range.end}
                     class="px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-700 text-sm w-full"
                   />
                 </div>
                 <div>
-                  <label class="text-sm block mb-2">Active Days:</label>
-                  <div class="flex flex-wrap gap-2">
-                    {#each ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as day, dayIndex}
-                      <label class="flex items-center gap-1 text-xs cursor-pointer">
+                  <span
+                    class="text-sm block mb-2"
+                    id="active-days-label-{index}">Active Days:</span
+                  >
+                  <div
+                    class="flex flex-wrap gap-2"
+                    role="group"
+                    aria-labelledby="active-days-label-{index}"
+                  >
+                    {#each ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as day, dayIndex}
+                      <label
+                        class="flex items-center gap-1 text-xs cursor-pointer"
+                      >
                         <input
                           type="checkbox"
                           bind:group={range.days}
@@ -669,7 +748,7 @@
         <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
           <h3 class="font-semibold mb-3">News Impact Threshold</h3>
           <div class="flex flex-wrap gap-3">
-            {#each ['high', 'medium', 'low'] as level}
+            {#each ["high", "medium", "low"] as level}
               <label class="cursor-pointer">
                 <input
                   type="radio"
@@ -679,11 +758,17 @@
                 />
                 <div
                   class="px-4 py-2 rounded-lg border-2 transition-all"
-                  class:border-blue-500={killZoneConfig.newsImpactThreshold === level}
-                  class:bg-blue-50={killZoneConfig.newsImpactThreshold === level}
-                  class:dark:bg-blue-900={killZoneConfig.newsImpactThreshold === level}
-                  class:border-gray-300={killZoneConfig.newsImpactThreshold !== level}
-                  class:dark:border-gray-700={killZoneConfig.newsImpactThreshold !== level}>
+                  class:border-blue-500={killZoneConfig.newsImpactThreshold ===
+                    level}
+                  class:bg-blue-50={killZoneConfig.newsImpactThreshold ===
+                    level}
+                  class:dark:bg-blue-900={killZoneConfig.newsImpactThreshold ===
+                    level}
+                  class:border-gray-300={killZoneConfig.newsImpactThreshold !==
+                    level}
+                  class:dark:border-gray-700={killZoneConfig.newsImpactThreshold !==
+                    level}
+                >
                   <span class="capitalize font-medium">{level}</span>
                   <span class="text-xs text-gray-500 ml-2">+ impact</span>
                 </div>
@@ -691,7 +776,8 @@
             {/each}
           </div>
           <p class="text-xs text-gray-500 mt-2">
-            Automatically pause trading before {killZoneConfig.newsImpactThreshold} impact news events
+            Automatically pause trading before {killZoneConfig.newsImpactThreshold}
+            impact news events
           </p>
         </div>
       {:else}
@@ -705,30 +791,44 @@
 
   <!-- Kill Switch History -->
   {#if showHistory}
-    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+    <div
+      class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6"
+    >
       <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
         <span>📜</span>
         Kill Switch History
       </h2>
       <div class="space-y-3">
         {#each killSwitchHistory as event (event.id)}
-          <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
+          <div
+            class="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+          >
             <div class="flex items-start justify-between">
               <div class="flex items-start gap-3">
-                <span class="text-2xl">{getTriggerReasonIcon(event.trigger_reason)}</span>
+                <span class="text-2xl"
+                  >{getTriggerReasonIcon(event.trigger_reason)}</span
+                >
                 <div>
-                  <h3 class="font-semibold capitalize">{event.trigger_reason.replace('_', ' ')} Trigger</h3>
+                  <h3 class="font-semibold capitalize">
+                    {event.trigger_reason.replace("_", " ")} Trigger
+                  </h3>
                   <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
                     Strategy: {event.strategy_used}
                   </p>
                   <div class="flex gap-4 mt-2 text-sm">
                     <span>
                       <span class="text-gray-500">Positions Closed:</span>
-                      <span class="font-medium ml-1">{event.positions_closed}</span>
+                      <span class="font-medium ml-1"
+                        >{event.positions_closed}</span
+                      >
                     </span>
                     <span>
                       <span class="text-gray-500">P&L Preserved:</span>
-                      <span class="font-medium ml-1 {event.total_pnl_preserved >= 0 ? 'text-green-600' : 'text-red-600'}">
+                      <span
+                        class="font-medium ml-1 {event.total_pnl_preserved >= 0
+                          ? 'text-green-600'
+                          : 'text-red-600'}"
+                      >
                         {formatCurrency(event.total_pnl_preserved)}
                       </span>
                     </span>
@@ -741,7 +841,6 @@
             </div>
           </div>
         {/each}
-
         {#if killSwitchHistory.length === 0}
           <div class="text-center py-8 text-gray-500 dark:text-gray-400">
             <p class="text-lg mb-2">No kill switch events yet</p>
@@ -754,25 +853,27 @@
 
   <!-- Toast Notification -->
   {#if toastVisible}
-    <div class="toast" class:success={toastType === 'success'} class:error={toastType === 'error'}>
+    <div
+      class="toast"
+      class:success={toastType === "success"}
+      class:error={toastType === "error"}
+    >
       {toastMessage}
     </div>
   {/if}
 
   <!-- Confirmation Dialog -->
   {#if confirmDialog.open}
-    <div
+    <button
       class="dialog-overlay"
-      on:click={() => confirmDialog.open = false}
-      on:keydown={(e) => e.key === 'Escape' && (confirmDialog.open = false)}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="dialog-title"
+      on:click={() => (confirmDialog.open = false)}
+      on:keydown={(e) => e.key === "Escape" && (confirmDialog.open = false)}
+      aria-label="Close dialog"
     >
       <div
         class="dialog"
         on:click|stopPropagation
-        on:keydown={(e) => e.key === 'Escape' && (confirmDialog.open = false)}
+        on:keydown={(e) => e.key === "Escape" && (confirmDialog.open = false)}
         role="document"
         tabindex="-1"
       >
@@ -780,21 +881,31 @@
         <p>{confirmDialog.message}</p>
         <div class="dialog-actions">
           <button
-            on:click={() => confirmDialog.open = false}
-            on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (confirmDialog.open = false)}
+            on:click={() => (confirmDialog.open = false)}
+            on:keydown={(e) =>
+              (e.key === "Enter" || e.key === " ") &&
+              (confirmDialog.open = false)}
           >
             Cancel
           </button>
           <button
             class="danger"
-            on:click={() => { confirmDialog.onConfirm(); confirmDialog.open = false; }}
-            on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { confirmDialog.onConfirm(); confirmDialog.open = false; }}}
+            on:click={() => {
+              confirmDialog.onConfirm();
+              confirmDialog.open = false;
+            }}
+            on:keydown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                confirmDialog.onConfirm();
+                confirmDialog.open = false;
+              }
+            }}
           >
             Confirm
           </button>
         </div>
-      </div>
-    </div>
+      </div></button
+    >
   {/if}
 </div>
 
@@ -815,7 +926,8 @@
   }
 
   @keyframes pulse-slow {
-    0%, 100% {
+    0%,
+    100% {
       opacity: 1;
       transform: scale(1);
     }

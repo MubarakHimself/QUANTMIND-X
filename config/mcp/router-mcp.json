@@ -1,0 +1,11 @@
+{
+  "mcpServers": {},
+  "defaultServer": null,
+  "fallbackOrder": [],
+  "healthCheck": {
+    "interval": 60,
+    "timeout": 10,
+    "retryAttempts": 3
+  },
+  "description": "Router agent uses minimal MCP - primarily bash tools for internal state management"
+}

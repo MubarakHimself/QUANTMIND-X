@@ -16,6 +16,7 @@ from src.router.bot_manifest import (
     BrokerType
 )
 from src.router.multi_timeframe_sentinel import Timeframe
+from src.router.sessions import TradingSession
 
 
 class TestTimeWindow:
@@ -69,7 +70,10 @@ class TestPreferredConditions:
     def test_preferred_conditions_sessions_only(self):
         """Test PreferredConditions with sessions only."""
         prefs = PreferredConditions(sessions=["LONDON", "NEW_YORK"])
-        assert prefs.sessions == ["LONDON", "NEW_YORK"]
+        # Sessions are now stored as TradingSession enums
+        assert len(prefs.sessions) == 2
+        assert TradingSession.LONDON in prefs.sessions
+        assert TradingSession.NEW_YORK in prefs.sessions
         assert prefs.time_windows == []
         assert prefs.min_volatility is None
         assert prefs.max_volatility is None
@@ -85,6 +89,7 @@ class TestPreferredConditions:
             max_volatility=0.005
         )
         assert len(prefs.time_windows) == 2
+        assert TradingSession.NEW_YORK in prefs.sessions
         assert prefs.min_volatility == 0.001
         assert prefs.max_volatility == 0.005
 
@@ -98,6 +103,7 @@ class TestPreferredConditions:
             max_volatility=0.003
         )
         data = prefs.to_dict()
+        # to_dict() should serialize sessions as strings
         assert data["sessions"] == ["LONDON"]
         assert len(data["time_windows"]) == 1
         assert data["time_windows"][0]["timezone"] == "America/New_York"
@@ -115,7 +121,10 @@ class TestPreferredConditions:
             "max_volatility": 0.01
         }
         prefs = PreferredConditions.from_dict(data)
-        assert prefs.sessions == ["ASIAN", "OVERLAP"]
+        # Sessions are stored as TradingSession enums internally
+        assert len(prefs.sessions) == 2
+        assert TradingSession.ASIAN in prefs.sessions
+        assert TradingSession.OVERLAP in prefs.sessions
         assert len(prefs.time_windows) == 1
         assert prefs.time_windows[0].start == "00:00"
         assert prefs.min_volatility == 0.001
@@ -128,6 +137,21 @@ class TestPreferredConditions:
         assert prefs.time_windows == []
         assert prefs.min_volatility is None
         assert prefs.max_volatility is None
+
+    def test_preferred_conditions_with_enum_sessions(self):
+        """Test PreferredConditions accepts TradingSession enums directly."""
+        prefs = PreferredConditions(sessions=[TradingSession.LONDON, TradingSession.NEW_YORK])
+        assert len(prefs.sessions) == 2
+        assert TradingSession.LONDON in prefs.sessions
+        assert TradingSession.NEW_YORK in prefs.sessions
+
+    def test_preferred_conditions_mixed_session_types(self):
+        """Test PreferredConditions handles mixed string/enum sessions."""
+        prefs = PreferredConditions(sessions=["LONDON", TradingSession.NEW_YORK])
+        # Both should be converted to TradingSession enums
+        assert len(prefs.sessions) == 2
+        assert TradingSession.LONDON in prefs.sessions
+        assert TradingSession.NEW_YORK in prefs.sessions
 
 
 class TestBotManifestWithSessions:
@@ -146,7 +170,8 @@ class TestBotManifestWithSessions:
             preferred_conditions=prefs
         )
         assert manifest.preferred_conditions is not None
-        assert manifest.preferred_conditions.sessions == ["NEW_YORK"]
+        # Sessions are stored as TradingSession enums
+        assert TradingSession.NEW_YORK in manifest.preferred_conditions.sessions
 
     def test_bot_manifest_to_dict_with_sessions(self):
         """Test BotManifest serialization with PreferredConditions."""
@@ -162,6 +187,7 @@ class TestBotManifestWithSessions:
         )
         data = manifest.to_dict()
         assert "preferred_conditions" in data
+        # to_dict() should serialize sessions as strings
         assert data["preferred_conditions"]["sessions"] == ["LONDON"]
 
     def test_bot_manifest_from_dict_with_sessions(self):
@@ -181,7 +207,8 @@ class TestBotManifestWithSessions:
         }
         manifest = BotManifest.from_dict(data)
         assert manifest.preferred_conditions is not None
-        assert manifest.preferred_conditions.sessions == ["OVERLAP"]
+        # Sessions are stored as TradingSession enums internally
+        assert TradingSession.OVERLAP in manifest.preferred_conditions.sessions
         assert manifest.preferred_conditions.min_volatility == 0.002
 
 
@@ -263,7 +290,8 @@ class TestBotManifestBackwardCompatibility:
         }
         manifest = BotManifest.from_dict(data)
         assert manifest.preferred_conditions is not None
-        assert manifest.preferred_conditions.sessions == ["LONDON"]
+        # Sessions are stored as TradingSession enums internally
+        assert TradingSession.LONDON in manifest.preferred_conditions.sessions
         assert manifest.preferred_conditions.time_windows == []
         assert manifest.preferred_conditions.min_volatility is None
 
@@ -284,7 +312,8 @@ class TestExampleManifests:
 
         assert ict_bot is not None
         assert ict_bot.preferred_conditions is not None
-        assert "NEW_YORK" in ict_bot.preferred_conditions.sessions
+        # Sessions are stored as TradingSession enums
+        assert TradingSession.NEW_YORK in ict_bot.preferred_conditions.sessions
         assert len(ict_bot.preferred_conditions.time_windows) > 0
 
     def test_london_breakout_example_has_sessions(self):
@@ -300,7 +329,8 @@ class TestExampleManifests:
 
         assert london_bot is not None
         assert london_bot.preferred_conditions is not None
-        assert "LONDON" in london_bot.preferred_conditions.sessions
+        # Sessions are stored as TradingSession enums
+        assert TradingSession.LONDON in london_bot.preferred_conditions.sessions
 
     def test_overlap_scalper_example_has_sessions(self):
         """Test overlap_scalper_01 example has Overlap session preference."""
@@ -315,7 +345,8 @@ class TestExampleManifests:
 
         assert overlap_bot is not None
         assert overlap_bot.preferred_conditions is not None
-        assert "OVERLAP" in overlap_bot.preferred_conditions.sessions
+        # Sessions are stored as TradingSession enums
+        assert TradingSession.OVERLAP in overlap_bot.preferred_conditions.sessions
 
     def test_legacy_bots_without_sessions(self):
         """Test other example manifests don't break without sessions."""

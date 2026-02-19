@@ -1,0 +1,11 @@
+{
+  "mcpServers": {},
+  "defaultServer": null,
+  "fallbackOrder": [],
+  "healthCheck": {
+    "interval": 60,
+    "timeout": 10,
+    "retryAttempts": 3
+  },
+  "description": "Executor agent uses minimal MCP - primarily bash tools for order execution and position management"
+}

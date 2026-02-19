@@ -7,6 +7,7 @@
     Zap, Layers, BarChart3, FileText, Globe, Compass, ExternalLink,
     Tag, Package, Settings as SettingsIcon, Maximize2, Minimize2
   } from 'lucide-svelte';
+  import ModeIndicator from './ModeIndicator.svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -19,6 +20,7 @@
   let filters = {
     symbol: 'all',
     status: 'all',
+    mode: 'all',
     dateFrom: null as Date | null,
     dateTo: null as Date | null,
     minProfit: null as number | null,
@@ -51,9 +53,16 @@
 
   async function loadTrades() {
     try {
-      const res = await fetch('http://localhost:8000/api/journal/trades');
-      if (res.ok) {
-        trades = await res.json();
+      // Build query params including mode filter
+      const params = new URLSearchParams();
+      if (filters.symbol !== 'all') params.append('symbol', filters.symbol);
+      if (filters.status !== 'all') params.append('status', filters.status);
+      if (filters.mode !== 'all') params.append('mode', filters.mode);
+      params.append('limit', '100');
+      
+      const response = await fetch(`/api/journal/trades?${params.toString()}`);
+      if (response.ok) {
+        trades = await response.json();
         applyFilters();
         calculateStats();
       }
@@ -66,6 +75,7 @@
     filteredTrades = trades.filter(trade => {
       if (filters.symbol !== 'all' && trade.symbol !== filters.symbol) return false;
       if (filters.status !== 'all' && trade.status !== filters.status) return false;
+      if (filters.mode !== 'all' && trade.mode !== filters.mode) return false;
       if (filters.dateFrom && new Date(trade.timestamp) < filters.dateFrom) return false;
       if (filters.dateTo && new Date(trade.timestamp) > filters.dateTo) return false;
       if (filters.minProfit && trade.profit < filters.minProfit) return false;
@@ -103,9 +113,17 @@
   }
 
   function calculateStats() {
-    const relevantTrades = filters.status === 'all'
-      ? filteredTrades
-      : filteredTrades.filter(t => t.status === filters.status);
+    let relevantTrades = filteredTrades;
+    
+    // Apply status filter
+    if (filters.status !== 'all') {
+      relevantTrades = relevantTrades.filter(t => t.status === filters.status);
+    }
+    
+    // Apply mode filter (server-side handles this, but double-check)
+    if (filters.mode !== 'all') {
+      relevantTrades = relevantTrades.filter(t => t.mode === filters.mode);
+    }
 
     stats.total = relevantTrades.length;
     stats.wins = relevantTrades.filter(t => t.profit > 0).length;
@@ -189,71 +207,6 @@
   function formatDate(dateStr: string) {
     const date = new Date(dateStr);
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
-
-  // Mock data for development
-  if (trades.length === 0) {
-    trades = [
-      {
-        id: 'trade-1',
-        timestamp: new Date(Date.now() - 3600000).toISOString(),
-        symbol: 'EURUSD',
-        type: 'BUY',
-        lots: 0.05,
-        openPrice: 1.0876,
-        closePrice: 1.0912,
-        profit: 18.00,
-        strategy: 'ICT Scalper',
-        status: 'closed',
-        reason: 'FVG setup confirmed with ATR filter',
-        context: {
-          regime: { quality: 0.82, trend: 'bullish', chaos: 18.5 },
-          kelly: { fraction: 0.025, edge: 0.52, odds: 2.0 },
-          houseMoney: { enabled: true, amount: 87.15 },
-          sentiment: 'London session, low spread, FVG at key level'
-        }
-      },
-      {
-        id: 'trade-2',
-        timestamp: new Date(Date.now() - 7200000).toISOString(),
-        symbol: 'GBPUSD',
-        type: 'SELL',
-        lots: 0.04,
-        openPrice: 1.2654,
-        closePrice: 1.2678,
-        profit: -9.60,
-        strategy: 'SMC Reversal',
-        status: 'closed',
-        reason: 'Order block fail, volatility spike',
-        context: {
-          regime: { quality: 0.65, trend: 'ranging', chaos: 35.2 },
-          kelly: { fraction: 0.02, edge: 0.45, odds: 1.8 },
-          houseMoney: { enabled: true, amount: 77.55 },
-          sentiment: 'Late session, widening spreads'
-        }
-      },
-      {
-        id: 'trade-3',
-        timestamp: new Date(Date.now() - 10800000).toISOString(),
-        symbol: 'USDJPY',
-        type: 'BUY',
-        lots: 0.03,
-        openPrice: 149.85,
-        closePrice: 150.12,
-        profit: 8.10,
-        strategy: 'ICT Scalper',
-        status: 'closed',
-        reason: 'Premium discount zone with RSI divergence',
-        context: {
-          regime: { quality: 0.78, trend: 'bullish', chaos: 22.1 },
-          kelly: { fraction: 0.022, edge: 0.50, odds: 1.9 },
-          houseMoney: { enabled: true, amount: 87.15 },
-          sentiment: 'Asian session, clean move'
-        }
-      }
-    ];
-    filteredTrades = trades;
-    calculateStats();
   }
 </script>
 
@@ -370,6 +323,15 @@
       </select>
     </div>
 
+    <div class="filter-group">
+      <Filter size={14} />
+      <select bind:value={filters.mode} on:change={loadTrades}>
+        <option value="all">All Modes</option>
+        <option value="demo">Demo</option>
+        <option value="live">Live</option>
+      </select>
+    </div>
+
     <div class="filter-group date-range">
       <Calendar size={14} />
       <input
@@ -397,6 +359,7 @@
         <span>Symbol</span>
       </div>
       <div class="header-cell">Type</div>
+      <div class="header-cell">Mode</div>
       <div class="header-cell">Strategy</div>
       <div class="header-cell sortable" on:click={() => handleSort('profit')}>
         <span>Profit</span>
@@ -422,6 +385,10 @@
             <span class="type-badge" class:buy={trade.type === 'BUY'} class:sell={trade.type === 'SELL'}>
               {trade.type}
             </span>
+          </div>
+
+          <div class="cell mode">
+            <ModeIndicator mode={trade.mode || 'live'} size="sm" showLabel={false} />
           </div>
 
           <div class="cell strategy">

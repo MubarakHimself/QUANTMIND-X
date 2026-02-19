@@ -1,0 +1,35 @@
+{
+  "mcpServers": {
+    "pageindex-articles": {
+      "name": "PageIndex Articles",
+      "url": "http://pageindex-articles:3000",
+      "type": "pageindex",
+      "enabled": true,
+      "description": "Search indexed trading articles",
+      "tools": ["search_articles", "get_article"],
+      "config": {
+        "namespace": "articles",
+        "timeout": 30
+      }
+    },
+    "sequential-thinking": {
+      "name": "Sequential Thinking",
+      "url": "local://sequential-thinking",
+      "type": "sequential_thinking",
+      "enabled": true,
+      "description": "Task decomposition and step-by-step reasoning",
+      "tools": ["sequential_thinking", "analyze_errors", "decompose_task"],
+      "config": {
+        "max_steps": 15,
+        "timeout": 60
+      }
+    }
+  },
+  "defaultServer": "sequential-thinking",
+  "fallbackOrder": ["sequential-thinking", "pageindex-articles"],
+  "healthCheck": {
+    "interval": 60,
+    "timeout": 10,
+    "retryAttempts": 3
+  }
+}

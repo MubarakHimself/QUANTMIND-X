@@ -1,0 +1,24 @@
+[Unit]
+Description=QuantMind TUI Server
+After=network.target quantmind-api.service
+
+[Service]
+Type=simple
+User=quantmind
+WorkingDirectory=/home/mubarkahimself/Desktop/QUANTMINDX
+# Launch TUI in tmux session for interactive use
+ExecStart=/usr/bin/tmux new-session -d -s quantmind-tui '/usr/bin/python3 -m src.tui.tui_server'
+Restart=always
+RestartSec=10
+
+# Environment
+Environment=PYTHONPATH=/home/mubarkahimself/Desktop/QUANTMINDX
+Environment=QUANTMIND_VPS_NAME=Trading VPS
+Environment=QUANTMIND_API_URL=http://localhost:8000
+
+# Logging
+StandardOutput=append:/data/tui/logs/tui.stdout.log
+StandardError=append:/data/tui/logs/tui.stderr.log
+
+[Install]
+WantedBy=multi-user.target

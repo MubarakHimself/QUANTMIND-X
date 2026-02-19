@@ -740,3 +740,811 @@ class QwenVLProvider(ModelProvider):
         minutes = (delta.seconds % 3600) // 60
         
         return f"{hours}h {minutes}m"
+
+
+class OpenRouterProvider(ModelProvider):
+    """
+    OpenRouter provider with multi-model support.
+    
+    This provider uses OpenRouter API to access multiple AI models through
+    a unified interface. Supports Claude, Gemini, DeepSeek, and GLM models.
+    
+    Requirements:
+    - OpenRouter API key: OPENROUTER_API_KEY env var
+    - OpenRouter API endpoint: https://openrouter.ai/api/v1
+    
+    Supported Models:
+    - anthropic/claude-sonnet-4
+    - google/gemini-2.0-flash-exp
+    - deepseek/deepseek-coder
+    - zhipu/glm-4-plus
+    
+    Rate Limits:
+    - Subscription-based (no hard daily limit)
+    - Tracks usage for monitoring purposes
+    """
+    
+    # Available models with their capabilities
+    SUPPORTED_MODELS = {
+        "anthropic/claude-sonnet-4": {
+            "multimodal": True,
+            "audio": False,
+            "description": "Claude Sonnet 4 - excellent for complex analysis"
+        },
+        "google/gemini-2.0-flash-exp": {
+            "multimodal": True,
+            "audio": True,
+            "description": "Gemini 2.0 Flash - fast multimodal with audio support"
+        },
+        "deepseek/deepseek-coder": {
+            "multimodal": False,
+            "audio": False,
+            "description": "DeepSeek Coder - specialized for code analysis"
+        },
+        "zhipu/glm-4-plus": {
+            "multimodal": True,
+            "audio": False,
+            "description": "GLM-4 Plus - Chinese-English bilingual support"
+        }
+    }
+    
+    DEFAULT_MODEL = "anthropic/claude-sonnet-4"
+    
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: str = None,
+        base_url: str = "https://openrouter.ai/api/v1",
+    ):
+        """
+        Initialize OpenRouter provider.
+        
+        Args:
+            api_key: OpenRouter API key (uses OPENROUTER_API_KEY env var if not provided)
+            model: Model to use (default: anthropic/claude-sonnet-4)
+            base_url: OpenRouter API base URL
+        """
+        import os
+        self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY")
+        self.model = model or self.DEFAULT_MODEL
+        self.base_url = base_url
+        self.rate_limit = RateLimit(requests_per_day=None)  # Subscription-based, no hard limit
+        
+        # Validate model
+        if self.model not in self.SUPPORTED_MODELS:
+            logger.warning(f"Model {self.model} not in supported models list. Using anyway.")
+        
+        logger.info(f"Initialized OpenRouterProvider with model={self.model}")
+    
+    def analyze(self, frames: List[Path], audio: Path, prompt: str) -> TimelineOutput:
+        """
+        Analyze video content using OpenRouter API.
+        
+        This method processes extracted frames and audio using the OpenRouter API
+        with LangChain integration for unified model access.
+        
+        Args:
+            frames: List of paths to extracted frame images (JPEG format)
+            audio: Path to extracted audio file (MP3 format)
+            prompt: Analysis prompt instructing the model on extraction methodology
+            
+        Returns:
+            TimelineOutput containing timeline clips with transcripts and descriptions
+            
+        Raises:
+            AuthenticationError: If OpenRouter API authentication fails
+            NetworkError: If network communication fails
+            ValidationError: If input data is invalid
+            ProviderError: For other provider-specific errors
+        """
+        # Validate inputs
+        if not frames:
+            logger.warning("No frames provided for analysis")
+            return self._create_empty_timeline()
+        
+        if not audio.exists():
+            raise ValidationError(f"Audio file not found: {audio}")
+        
+        for frame in frames:
+            if not frame.exists():
+                raise ValidationError(f"Frame file not found: {frame}")
+        
+        logger.info(f"Analyzing {len(frames)} frames with OpenRouter (model: {self.model})")
+        
+        try:
+            # Call OpenRouter API via LangChain
+            timeline = self._call_openrouter_api(frames, audio, prompt)
+            
+            # Increment rate limit counter
+            self.rate_limit.increment()
+            
+            logger.info(f"Successfully analyzed video with {len(timeline.timeline)} clips")
+            return timeline
+            
+        except Exception as e:
+            # Check for authentication errors
+            if "authentication" in str(e).lower() or "api key" in str(e).lower() or "401" in str(e):
+                error_msg = "OpenRouter API authentication failed. Please check OPENROUTER_API_KEY environment variable."
+                logger.error(error_msg)
+                raise AuthenticationError(error_msg) from e
+            
+            # Check for rate limit errors
+            if "rate limit" in str(e).lower() or "429" in str(e):
+                error_msg = f"OpenRouter API rate limit exceeded: {str(e)}"
+                logger.error(error_msg)
+                raise RateLimitError(error_msg, provider="openrouter", limit=None) from e
+            
+            # Check for network errors
+            if "network" in str(e).lower() or "connection" in str(e).lower():
+                error_msg = f"Network error communicating with OpenRouter API: {str(e)}"
+                logger.error(error_msg)
+                raise NetworkError(error_msg) from e
+            
+            # Generic provider error
+            error_msg = f"OpenRouter API call failed: {str(e)}"
+            logger.error(error_msg)
+            raise ProviderError(error_msg) from e
+    
+    def get_rate_limit(self) -> RateLimit:
+        """
+        Get current rate limit status for OpenRouter.
+        
+        OpenRouter is subscription-based with no hard daily limit.
+        This method returns the current usage statistics for monitoring.
+        
+        Returns:
+            RateLimit object with requests_per_day=None (unlimited) and current usage
+        """
+        return self.rate_limit
+    
+    def _call_openrouter_api(self, frames: List[Path], audio: Path, prompt: str) -> TimelineOutput:
+        """
+        Call OpenRouter API using LangChain ChatOpenAI integration.
+        
+        Args:
+            frames: List of frame paths
+            audio: Audio file path
+            prompt: Analysis prompt
+            
+        Returns:
+            TimelineOutput object
+        """
+        try:
+            from langchain_openai import ChatOpenAI
+            from langchain_core.messages import HumanMessage, SystemMessage
+        except ImportError:
+            # Fallback to direct API call if langchain not available
+            return self._call_openrouter_api_direct(frames, audio, prompt)
+        
+        import base64
+        
+        # Initialize ChatOpenAI with OpenRouter base URL
+        llm = ChatOpenAI(
+            base_url=self.base_url,
+            api_key=self.api_key,
+            model=self.model,
+            temperature=0.1,  # Low temperature for objective extraction
+            timeout=300,  # 5 minute timeout
+        )
+        
+        # Prepare multimodal content
+        content = [{"type": "text", "text": prompt}]
+        
+        # Add frames as images
+        for i, frame in enumerate(frames):
+            with open(frame, 'rb') as f:
+                image_data = base64.b64encode(f.read()).decode('utf-8')
+            
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{image_data}"
+                }
+            })
+        
+        # Check if model supports audio and add audio content
+        model_info = self.SUPPORTED_MODELS.get(self.model, {})
+        if model_info.get("audio", False) and audio.exists():
+            # For models that support audio (e.g., Gemini)
+            with open(audio, 'rb') as f:
+                audio_data = base64.b64encode(f.read()).decode('utf-8')
+            
+            # Note: Audio format depends on model - some use different formats
+            content.append({
+                "type": "audio_url",
+                "audio_url": {
+                    "url": f"data:audio/mp3;base64,{audio_data}"
+                }
+            })
+        
+        # Create messages
+        messages = [
+            SystemMessage(content="You are a video analysis assistant that extracts verbatim transcripts and objective visual descriptions."),
+            HumanMessage(content=content)
+        ]
+        
+        # Call API
+        response = llm.invoke(messages)
+        
+        # Parse response
+        response_content = response.content
+        
+        # Parse content into timeline clips
+        clips = self._parse_openrouter_response(response_content, frames)
+        
+        # Create TimelineOutput
+        return TimelineOutput(
+            video_url="unknown",
+            title="OpenRouter Analysis",
+            duration_seconds=len(frames) * 30,  # Estimate from frame count
+            processed_at=datetime.now().isoformat(),
+            model_provider="openrouter",
+            timeline=clips
+        )
+    
+    def _call_openrouter_api_direct(self, frames: List[Path], audio: Path, prompt: str) -> TimelineOutput:
+        """
+        Call OpenRouter API directly without LangChain.
+        
+        Args:
+            frames: List of frame paths
+            audio: Audio file path
+            prompt: Analysis prompt
+            
+        Returns:
+            TimelineOutput object
+        """
+        import requests
+        import base64
+        
+        # Prepare multimodal content
+        content = [{"type": "text", "text": prompt}]
+        
+        # Add frames as images
+        for i, frame in enumerate(frames):
+            with open(frame, 'rb') as f:
+                image_data = base64.b64encode(f.read()).decode('utf-8')
+            
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{image_data}"
+                }
+            })
+        
+        # Check if model supports audio and add audio content
+        model_info = self.SUPPORTED_MODELS.get(self.model, {})
+        if model_info.get("audio", False) and audio.exists():
+            with open(audio, 'rb') as f:
+                audio_data = base64.b64encode(f.read()).decode('utf-8')
+            
+            content.append({
+                "type": "audio_url",
+                "audio_url": {
+                    "url": f"data:audio/mp3;base64,{audio_data}"
+                }
+            })
+        
+        # Make API request
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://quantmindx.ai",  # Optional, for rankings
+            "X-Title": "QuantMindX NPRD Processor",  # Optional, for rankings
+        }
+        
+        payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a video analysis assistant that extracts verbatim transcripts and objective visual descriptions."
+                },
+                {
+                    "role": "user",
+                    "content": content
+                }
+            ],
+            "temperature": 0.1,  # Low temperature for objective extraction
+        }
+        
+        response = requests.post(
+            f"{self.base_url}/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=300,  # 5 minute timeout
+        )
+        
+        response.raise_for_status()
+        
+        # Parse response
+        result = response.json()
+        response_content = result["choices"][0]["message"]["content"]
+        
+        # Parse content into timeline clips
+        clips = self._parse_openrouter_response(response_content, frames)
+        
+        # Create TimelineOutput
+        return TimelineOutput(
+            video_url="unknown",
+            title="OpenRouter Analysis",
+            duration_seconds=len(frames) * 30,  # Estimate from frame count
+            processed_at=datetime.now().isoformat(),
+            model_provider="openrouter",
+            timeline=clips
+        )
+    
+    def _parse_openrouter_response(self, content: str, frames: List[Path]) -> List[TimelineClip]:
+        """
+        Parse OpenRouter API response into timeline clips.
+        
+        Args:
+            content: Response content from OpenRouter API
+            frames: List of frame paths
+            
+        Returns:
+            List of TimelineClip objects
+        """
+        clips = []
+        
+        # Split content into segments (one per frame)
+        segments = content.split("\n\n")
+        
+        for i, frame in enumerate(frames):
+            clip_id = i + 1
+            start_seconds = i * 30
+            end_seconds = (i + 1) * 30
+            
+            # Format timestamps
+            timestamp_start = self._format_timestamp(start_seconds)
+            timestamp_end = self._format_timestamp(end_seconds)
+            
+            # Extract segment content
+            segment_content = segments[i] if i < len(segments) else ""
+            
+            # Try to parse structured content
+            if "|" in segment_content:
+                parts = segment_content.split("|")
+                transcript = parts[0].replace("Transcript:", "").strip()
+                visual_description = parts[1].replace("Visual:", "").strip() if len(parts) > 1 else ""
+            else:
+                # Unstructured content - use as transcript
+                transcript = segment_content.strip()
+                visual_description = f"Frame {clip_id} content"
+            
+            clip = TimelineClip(
+                clip_id=clip_id,
+                timestamp_start=timestamp_start,
+                timestamp_end=timestamp_end,
+                transcript=transcript,
+                visual_description=visual_description,
+                frame_path=str(frame)
+            )
+            
+            clips.append(clip)
+        
+        return clips
+    
+    def _format_timestamp(self, seconds: int) -> str:
+        """
+        Format seconds as HH:MM:SS timestamp.
+        
+        Args:
+            seconds: Time in seconds
+            
+        Returns:
+            Formatted timestamp string
+        """
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    
+    def _create_empty_timeline(self) -> TimelineOutput:
+        """
+        Create an empty timeline output.
+        
+        Returns:
+            Empty TimelineOutput object
+        """
+        return TimelineOutput(
+            video_url="unknown",
+            title="Empty",
+            duration_seconds=0,
+            processed_at=datetime.now().isoformat(),
+            model_provider="openrouter",
+            timeline=[]
+        )
+
+
+class QwenCodeCLIProvider(ModelProvider):
+    """
+    Qwen Code CLI provider with headless mode support.
+    
+    This provider uses the Qwen Code CLI tool to analyze video content.
+    Headless mode allows automated processing without GUI dependencies.
+    
+    Requirements:
+    - Qwen Code CLI installed: pip install qwen-code
+    - API key configured: QWEN_API_KEY env var
+    - Headless mode enabled for automated processing
+    
+    Rate Limits:
+    - Free tier: 2000 requests/day
+    - Tracks usage to stay within limits
+    """
+    
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        headless: bool = True,
+        model: str = "qwen-vl-plus",
+    ):
+        """
+        Initialize Qwen Code CLI provider.
+        
+        Args:
+            api_key: Qwen API key (uses QWEN_API_KEY env var if not provided)
+            headless: Run in headless mode (no GUI) (default: True)
+            model: Model to use (default: qwen-vl-plus)
+        """
+        import os
+        self.api_key = api_key or os.environ.get("QWEN_API_KEY")
+        self.headless = headless
+        self.model = model
+        self.rate_limit = RateLimit(requests_per_day=2000)  # Free tier limit
+        
+        logger.info(f"Initialized QwenCodeCLIProvider with headless={headless}, model={model}")
+    
+    def analyze(self, frames: List[Path], audio: Path, prompt: str) -> TimelineOutput:
+        """
+        Analyze video content using Qwen Code CLI.
+        
+        This method processes extracted frames and audio using the Qwen Code CLI tool.
+        It runs the CLI in headless mode for automated processing.
+        
+        Args:
+            frames: List of paths to extracted frame images (JPEG format)
+            audio: Path to extracted audio file (MP3 format)
+            prompt: Analysis prompt instructing the model on extraction methodology
+            
+        Returns:
+            TimelineOutput containing timeline clips with transcripts and descriptions
+            
+        Raises:
+            AuthenticationError: If Qwen Code CLI authentication fails
+            NetworkError: If network communication fails
+            ValidationError: If input data is invalid
+            RateLimitError: If rate limit is exceeded
+            ProviderError: For other provider-specific errors
+        """
+        # Validate inputs
+        if not frames:
+            logger.warning("No frames provided for analysis")
+            return self._create_empty_timeline()
+        
+        if not audio.exists():
+            raise ValidationError(f"Audio file not found: {audio}")
+        
+        for frame in frames:
+            if not frame.exists():
+                raise ValidationError(f"Frame file not found: {frame}")
+        
+        # Check rate limit
+        if self.rate_limit.is_exceeded():
+            remaining_time = self._get_reset_time()
+            raise RateLimitError(
+                f"Qwen rate limit exceeded (2000 requests/day). Resets in {remaining_time}",
+                provider="qwen-code-cli",
+                limit=2000,
+                reset_time=remaining_time,
+            )
+        
+        logger.info(f"Analyzing {len(frames)} frames with Qwen Code CLI (headless mode: {self.headless})")
+        
+        try:
+            # Build Qwen Code CLI command
+            cmd = self._build_command(frames, audio, prompt)
+            
+            # Execute Qwen Code CLI
+            result = self._execute_command(cmd)
+            
+            # Parse JSON output
+            timeline = self._parse_output(result, frames)
+            
+            # Increment rate limit counter
+            self.rate_limit.increment()
+            
+            logger.info(f"Successfully analyzed video with {len(timeline.timeline)} clips")
+            return timeline
+            
+        except subprocess.CalledProcessError as e:
+            # Check for authentication errors
+            if "authentication" in str(e.stderr).lower() or "api key" in str(e.stderr).lower():
+                error_msg = "Qwen Code CLI authentication failed. Please set QWEN_API_KEY environment variable."
+                logger.error(error_msg)
+                raise AuthenticationError(error_msg) from e
+            
+            # Check for rate limit errors
+            if "rate limit" in str(e.stderr).lower() or "429" in str(e.stderr):
+                error_msg = f"Qwen Code CLI rate limit exceeded: {e.stderr}"
+                logger.error(error_msg)
+                raise RateLimitError(error_msg, provider="qwen-code-cli", limit=2000) from e
+            
+            # Check for network errors
+            if "network" in str(e.stderr).lower() or "connection" in str(e.stderr).lower():
+                error_msg = f"Network error communicating with Qwen API: {e.stderr}"
+                logger.error(error_msg)
+                raise NetworkError(error_msg) from e
+            
+            # Generic provider error
+            error_msg = f"Qwen Code CLI execution failed: {e.stderr}"
+            logger.error(error_msg)
+            raise ProviderError(error_msg) from e
+            
+        except json.JSONDecodeError as e:
+            error_msg = f"Failed to parse Qwen Code CLI JSON output: {e}"
+            logger.error(error_msg)
+            raise ProviderError(error_msg) from e
+        
+        except Exception as e:
+            error_msg = f"Unexpected error during Qwen Code CLI analysis: {e}"
+            logger.error(error_msg)
+            raise ProviderError(error_msg) from e
+    
+    def get_rate_limit(self) -> RateLimit:
+        """
+        Get current rate limit status for Qwen Code CLI.
+        
+        Qwen free tier has 2000 requests/day limit.
+        This method returns the current usage statistics.
+        
+        Returns:
+            RateLimit object with requests_per_day=2000 and current usage
+        """
+        return self.rate_limit
+    
+    def _build_command(self, frames: List[Path], audio: Path, prompt: str) -> List[str]:
+        """
+        Build Qwen Code CLI command with headless mode.
+        
+        Args:
+            frames: List of frame paths
+            audio: Audio file path
+            prompt: Analysis prompt
+            
+        Returns:
+            Command as list of strings
+        """
+        cmd = ["qwen-code", "run"]
+        
+        # Add headless mode flag if enabled
+        if self.headless:
+            cmd.append("--headless")
+        
+        # Add API key if provided
+        if self.api_key:
+            cmd.extend(["--api-key", self.api_key])
+        
+        # Add model
+        cmd.extend(["--model", self.model])
+        
+        # Add prompt
+        cmd.append(prompt)
+        
+        # Add audio file
+        cmd.extend(["-f", str(audio)])
+        
+        # Add frame files
+        for frame in frames:
+            cmd.extend(["-f", str(frame)])
+        
+        # Request JSON output
+        cmd.extend(["--format", "json"])
+        
+        return cmd
+    
+    def _execute_command(self, cmd: List[str]) -> str:
+        """
+        Execute Qwen Code CLI command and return output.
+        
+        Args:
+            cmd: Command to execute
+            
+        Returns:
+            Command stdout as string
+            
+        Raises:
+            subprocess.CalledProcessError: If command fails
+        """
+        logger.debug(f"Executing command: {' '.join(cmd)}")
+        
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=300  # 5 minute timeout
+        )
+        
+        return result.stdout
+    
+    def _parse_output(self, output: str, frames: List[Path]) -> TimelineOutput:
+        """
+        Parse Qwen Code CLI JSON output into TimelineOutput.
+        
+        Args:
+            output: JSON output from Qwen Code CLI
+            frames: List of frame paths (for reference)
+            
+        Returns:
+            TimelineOutput object
+            
+        Raises:
+            json.JSONDecodeError: If output is not valid JSON
+            KeyError: If required fields are missing
+        """
+        data = json.loads(output)
+        
+        # Extract timeline clips from Qwen response
+        clips = []
+        
+        # Qwen Code CLI may return different formats, handle common cases
+        if "timeline" in data:
+            timeline_data = data["timeline"]
+        elif "clips" in data:
+            timeline_data = data["clips"]
+        elif "segments" in data:
+            timeline_data = data["segments"]
+        else:
+            # If no structured timeline, create clips from frames
+            timeline_data = self._create_clips_from_frames(data, frames)
+        
+        # Parse clips
+        for i, clip_data in enumerate(timeline_data):
+            clip = self._parse_clip(clip_data, i + 1, frames)
+            clips.append(clip)
+        
+        # Create TimelineOutput
+        return TimelineOutput(
+            video_url=data.get("video_url", "unknown"),
+            title=data.get("title", "Untitled"),
+            duration_seconds=len(frames) * 30,  # Estimate from frame count
+            processed_at=datetime.now().isoformat(),
+            model_provider="qwen-code-cli",
+            timeline=clips
+        )
+    
+    def _parse_clip(self, clip_data: dict, clip_id: int, frames: List[Path]) -> TimelineClip:
+        """
+        Parse a single clip from Qwen output.
+        
+        Args:
+            clip_data: Clip data from Qwen
+            clip_id: Clip ID (1-indexed)
+            frames: List of frame paths
+            
+        Returns:
+            TimelineClip object
+        """
+        # Calculate timestamps based on clip ID
+        start_seconds = (clip_id - 1) * 30
+        end_seconds = clip_id * 30
+        
+        # Format timestamps as HH:MM:SS
+        timestamp_start = self._format_timestamp(start_seconds)
+        timestamp_end = self._format_timestamp(end_seconds)
+        
+        # Extract transcript and visual description
+        transcript = clip_data.get("transcript", clip_data.get("text", ""))
+        visual_description = clip_data.get("visual_description", clip_data.get("description", ""))
+        
+        # Get frame path
+        frame_index = clip_id - 1
+        frame_path = str(frames[frame_index]) if frame_index < len(frames) else ""
+        
+        return TimelineClip(
+            clip_id=clip_id,
+            timestamp_start=timestamp_start,
+            timestamp_end=timestamp_end,
+            transcript=transcript,
+            visual_description=visual_description,
+            frame_path=frame_path
+        )
+    
+    def _create_clips_from_frames(self, data: dict, frames: List[Path]) -> List[dict]:
+        """
+        Create clip data from frames when Qwen doesn't return structured timeline.
+        
+        Args:
+            data: Qwen response data
+            frames: List of frame paths
+            
+        Returns:
+            List of clip dictionaries
+        """
+        clips = []
+        
+        # Extract text content (may be a single string or list)
+        text_content = data.get("text", data.get("content", ""))
+        
+        if isinstance(text_content, str):
+            # Split text into segments (one per frame)
+            segments = text_content.split("\n\n")
+            for i, segment in enumerate(segments[:len(frames)]):
+                clips.append({
+                    "transcript": segment,
+                    "visual_description": f"Frame {i+1} content"
+                })
+        elif isinstance(text_content, list):
+            # Use list items as clips
+            for item in text_content[:len(frames)]:
+                if isinstance(item, dict):
+                    clips.append(item)
+                else:
+                    clips.append({
+                        "transcript": str(item),
+                        "visual_description": ""
+                    })
+        
+        # Ensure we have at least one clip per frame
+        while len(clips) < len(frames):
+            clips.append({
+                "transcript": "",
+                "visual_description": ""
+            })
+        
+        return clips
+    
+    def _format_timestamp(self, seconds: int) -> str:
+        """
+        Format seconds as HH:MM:SS timestamp.
+        
+        Args:
+            seconds: Time in seconds
+            
+        Returns:
+            Formatted timestamp string
+        """
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    
+    def _create_empty_timeline(self) -> TimelineOutput:
+        """
+        Create an empty timeline output.
+        
+        Returns:
+            Empty TimelineOutput object
+        """
+        return TimelineOutput(
+            video_url="unknown",
+            title="Empty",
+            duration_seconds=0,
+            processed_at=datetime.now().isoformat(),
+            model_provider="qwen-code-cli",
+            timeline=[]
+        )
+    
+    def _get_reset_time(self) -> str:
+        """
+        Get time until rate limit resets.
+        
+        Returns:
+            Human-readable time string
+        """
+        if self.rate_limit.window_start is None:
+            return "unknown"
+        
+        reset_time = self.rate_limit.window_start + timedelta(days=1)
+        now = datetime.now()
+        
+        if reset_time <= now:
+            return "now"
+        
+        delta = reset_time - now
+        hours = delta.seconds // 3600
+        minutes = (delta.seconds % 3600) // 60
+        
+        return f"{hours}h {minutes}m"

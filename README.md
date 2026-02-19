@@ -206,6 +206,31 @@ python3 -m src.router.commander
 npm run dev
 ```
 
+### Starting PageIndex Services
+
+PageIndex provides knowledge retrieval services for articles, books, and trading logs.
+
+```bash
+# Start PageIndex services (articles, books, logs)
+docker-compose -f docker-compose.pageindex.yml up -d
+
+# Services run on:
+# - Articles API: http://localhost:3000
+# - Books API: http://localhost:3001
+# - Logs API: http://localhost:3002
+```
+
+### Starting Monitoring Stack (Production)
+
+For production monitoring with Grafana, Prometheus, and Loki:
+
+```bash
+# Start full monitoring stack
+docker-compose -f docker-compose.production.yml up -d
+
+# Access Grafana at your configured instance URL
+```
+
 ---
 
 ## 📊 Core Technologies
@@ -215,7 +240,7 @@ npm run dev
 - **FastAPI** - REST API framework
 - **LangGraph** - Agent orchestration
 - **ZeroMQ** - Low-latency messaging
-- **ChromaDB** - Vector database
+- **PageIndex** - Knowledge retrieval (articles, books, logs)
 - **Pydantic** - Data validation
 
 ### Frontend Stack

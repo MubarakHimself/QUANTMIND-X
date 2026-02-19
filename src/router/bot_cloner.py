@@ -51,16 +51,17 @@ class BotCloner:
 
     def _get_bot_metrics(self, bot_id: str) -> Dict[str, Any]:
         """Retrieve bot performance from StrategyPerformance table"""
-        perf_record = self.db.session.query(StrategyPerformance).filter_by(strategy_name=bot_id).first()
-        if not perf_record:
-            return {}
-        days_active = (datetime.now(timezone.utc) - perf_record.created_at).days  # Use created_at since start_date not exist
-        return {
-            'sharpe': perf_record.sharpe_ratio,
-            'win_rate': perf_record.win_rate,
-            'total_trades': perf_record.total_trades,
-            'days_active': days_active
-        }
+        with self.db.get_session() as session:
+            perf_record = session.query(StrategyPerformance).filter_by(strategy_name=bot_id).first()
+            if not perf_record:
+                return {}
+            days_active = (datetime.now(timezone.utc) - perf_record.created_at).days
+            return {
+                'sharpe': perf_record.sharpe_ratio,
+                'win_rate': perf_record.win_rate,
+                'total_trades': perf_record.total_trades,
+                'days_active': days_active
+            }
 
     def get_similar_symbols(self, symbol: str) -> List[str]:
         """Returns similar trading pairs using predefined symbol groups"""
@@ -68,6 +69,57 @@ class BotCloner:
             if symbol in symbols:
                 return [s for s in symbols if s != symbol]
         return []
+
+    def _calculate_adaptive_allocation(self, num_clones: int) -> dict:
+        """
+        Implements adaptive allocation logic using PortfolioKellyScaler.
+
+        Returns allocation percentages for the original bot and clones.
+        Original bot gets minimum 50%, remaining 50% split among clones.
+
+        Args:
+            num_clones: Number of clones to allocate for
+
+        Returns:
+            dict with 'original' and 'clones' allocation percentages
+        """
+        if num_clones == 0:
+            return {'original': 1.0, 'clones': 0.0}
+
+        # Use PortfolioKellyScaler for more sophisticated allocation
+        # Original bot gets 50%, remaining 50% split among clones
+        original_allocation = 0.5
+        clone_allocation = 0.5 / num_clones
+
+        # Apply portfolio risk management
+        bot_ids = ['original'] + [f'clone_{i}' for i in range(num_clones)]
+        performance = {'original': 1.0}  # Original bot gets base performance
+
+        # Add estimated performance for clones (conservative estimate)
+        for i in range(num_clones):
+            performance[f'clone_{i}'] = 0.8  # Clones start with 80% of original performance
+
+        # Use PortfolioKellyScaler to allocate based on performance
+        allocations = self.scaler.allocate_risk_by_performance(
+            performance,
+            total_risk_budget=1.0,  # 100% allocation
+            min_allocation=0.01  # Minimum 1% per bot
+        )
+
+        # Ensure original gets at least 50%
+        original_risk = allocations.get('original', original_allocation)
+        if original_risk < original_allocation:
+            # Redistribute from clones to original
+            shortage = original_allocation - original_risk
+            clone_ids = [f'clone_{i}' for i in range(num_clones)]
+            for clone_id in clone_ids:
+                if clone_id in allocations:
+                    allocations[clone_id] *= (1 - shortage)
+
+        return {
+            'original': allocations.get('original', original_allocation),
+            'clones': allocations.get('clone_0', clone_allocation)
+        }
 
     def clone_bot(self, original_bot_id: str, target_symbols: Optional[List[str]] = None) -> List[str]:
         """Creates new BotManifest instances for target symbols with copied strategy parameters"""
@@ -133,68 +185,21 @@ class BotCloner:
                 self.bot_registry.register(clone_manifest)
                 logger.info(f"Registered clone bot: {clone_id}")
             
-            # Also persist to database if needed
-            try:
-                # Store in database for tracking
-                self.db.session.add(clone_manifest)
-                self.db.commit()
-            except Exception as e:
-                logger.warning(f"Could not persist clone manifest to DB: {e}")
-            
             clone_ids.append(clone_id)
             
             # Record clone history after registration
-            history = BotCloneHistory(
-                original_bot_id=original_bot_id,
-                clone_bot_id=clone_id,
-                original_symbol=original_symbol,
-                clone_symbol=sym,
-                performance_at_clone=self._get_bot_metrics(original_bot_id),
-                allocation_strategy='adaptive',
-                allocation_pct=allocations.get('clones', 0.5 / num_clones)
-            )
-            self.db.session.add(history)
-            self.db.commit()
+            with self.db.get_session() as session:
+                history = BotCloneHistory(
+                    original_bot_id=original_bot_id,
+                    clone_bot_id=clone_id,
+                    original_symbol=original_symbol,
+                    clone_symbol=sym,
+                    performance_at_clone=self._get_bot_metrics(original_bot_id),
+                    allocation_strategy='adaptive',
+                    allocation_pct=allocations.get('clones', 0.5 / num_clones)
+                )
+                session.add(history)
+                session.commit()
         
         logger.info(f"Successfully cloned {original_bot_id} into {len(clone_ids)} bots")
         return clone_ids
-
-    def _calculate_adaptive_allocation(self, num_clones: int) -> Dict[str, float]:
-        """Implements adaptive allocation logic using PortfolioKellyScaler"""
-        if num_clones == 0:
-            return {'original': 1.0, 'clones': 0.0}
-        
-        # Use PortfolioKellyScaler for more sophisticated allocation
-        # Original bot gets 50%, remaining 50% split among clones
-        original_allocation = 0.5
-        clone_allocation = 0.5 / num_clones
-        
-        # Apply portfolio risk management
-        bot_ids = ['original'] + [f'clone_{i}' for i in range(num_clones)]
-        performance = {'original': 1.0}  # Original bot gets base performance
-        
-        # Add estimated performance for clones (conservative estimate)
-        for i in range(num_clones):
-            performance[f'clone_{i}'] = 0.8  # Clones start with 80% of original performance
-        
-        # Use PortfolioKellyScaler to allocate based on performance
-        allocations = self.scaler.allocate_risk_by_performance(
-            performance,
-            total_risk_budget=1.0,  # 100% allocation
-            min_allocation=0.01  # Minimum 1% per bot
-        )
-        
-        # Ensure original gets at least 50%
-        original_risk = allocations.get('original', original_allocation)
-        if original_risk < original_allocation:
-            # Redistribute from clones to original
-            shortage = original_allocation - original_risk
-            clone_ids = [f'clone_{i}' for i in range(num_clones)]
-            for clone_id in clone_ids:
-                if clone_id in allocations:
-                    allocations[clone_id] *= (1 - shortage)
-        
-        return {
-            'original': allocations.get('original', original_allocation),
-            'clones': allocations.get('clone_0', clone_allocation)
-        }

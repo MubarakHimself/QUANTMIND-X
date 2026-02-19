@@ -1,36 +1,33 @@
-/* QuantMind IDE - Dark Mineral Glassmorphism Theme */
+/* QuantMind IDE - Midnight Finance Theme */
 
 :root {
-  /* OKLCH Color System - Dark Mineral */
-  --bg-primary: oklch(12% 0.02 250);
-  --bg-secondary: oklch(15% 0.02 250);
-  --bg-tertiary: oklch(18% 0.025 250);
-  --bg-glass: oklch(20% 0.03 250 / 0.7);
+  /* OKLCH Color System - Midnight Finance */
+  /* Backgrounds */
+  --bg-primary: oklch(15% 0.02 260);    /* Deep Navy/Slate 900 */
+  --bg-secondary: oklch(18% 0.02 260);  /* Lighter Navy/Slate 800 */
+  --bg-tertiary: oklch(22% 0.03 260);   /* Slate 700 */
+  --bg-input: oklch(12% 0.02 260);      /* Darker input background */
   
-  /* Accent Colors */
-  --accent-primary: oklch(70% 0.2 200);    /* Cyan */
-  --accent-secondary: oklch(65% 0.18 280); /* Purple */
-  --accent-success: oklch(75% 0.2 145);    /* Green */
-  --accent-warning: oklch(80% 0.18 85);    /* Amber */
-  --accent-danger: oklch(65% 0.22 25);     /* Red */
+  /* Accents */
+  --accent-primary: oklch(65% 0.18 250);     /* Tech Blue */
+  --accent-secondary: oklch(60% 0.15 280);   /* Deep Purple */
+  --accent-finance: oklch(75% 0.15 85);      /* Gold/Amber */
+  --accent-success: oklch(70% 0.18 145);     /* Green */
+  --accent-warning: oklch(80% 0.15 85);      /* Amber */
+  --accent-danger: oklch(65% 0.20 25);       /* Red */
   
   /* Text Colors */
-  --text-primary: oklch(95% 0.01 250);
-  --text-secondary: oklch(70% 0.02 250);
-  --text-muted: oklch(50% 0.02 250);
+  --text-primary: oklch(92% 0.01 260);
+  --text-secondary: oklch(70% 0.02 260);
+  --text-muted: oklch(50% 0.03 260);
   
-  /* Borders */
-  --border-subtle: oklch(25% 0.02 250);
-  --border-glass: oklch(40% 0.03 250 / 0.3);
+  /* Borders & Dividers */
+  --border-subtle: oklch(25% 0.03 260);
+  --border-strong: oklch(35% 0.04 260);
   
-  /* Glassmorphism */
-  --glass-blur: 16px;
-  --glass-bg: oklch(18% 0.02 250 / 0.6);
-  --glass-border: oklch(35% 0.03 250 / 0.4);
-  
-  /* Spacing */
+  /* Dimensions */
   --sidebar-width: 48px;
-  --panel-width: 280px;
+  --panel-width: 300px;
   --header-height: 40px;
   --status-height: 24px;
 }
@@ -43,18 +40,19 @@
 
 html, body {
   height: 100%;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-size: 13px;
   line-height: 1.5;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Scrollbar Styling */
+/* Scrollbar Styling - Minimal */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -62,21 +60,13 @@ html, body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-subtle);
-  border-radius: 4px;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--bg-primary);
+  border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
-}
-
-/* Glass Panel */
-.glass-panel {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
-  border-radius: 8px;
+  background: var(--border-strong);
 }
 
 /* Utility Classes */
@@ -98,3 +88,9 @@ html, body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Code / Monospace */
+code, pre, .font-mono {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+

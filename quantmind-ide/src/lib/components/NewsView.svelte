@@ -1,11 +1,33 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount, onDestroy, tick } from 'svelte';
+  import { createEventDispatcher, onMount, onDestroy, tick } from "svelte";
   import {
-    Newspaper, Calendar, Clock, AlertTriangle, Shield, Settings as SettingsIcon,
-    RefreshCw, Play, Pause, SkipForward, ChevronDown, ChevronUp, X,
-    Filter, TrendingUp, Globe, DollarSign, Zap, Bell, BellOff,
-    Info, BarChart3, Activity, Eye, CheckCircle, XCircle
-  } from 'lucide-svelte';
+    Newspaper,
+    Calendar,
+    Clock,
+    AlertTriangle,
+    Shield,
+    Settings as SettingsIcon,
+    RefreshCw,
+    Play,
+    Pause,
+    SkipForward,
+    ChevronDown,
+    ChevronUp,
+    X,
+    Filter,
+    TrendingUp,
+    Globe,
+    DollarSign,
+    Zap,
+    Bell,
+    BellOff,
+    Info,
+    BarChart3,
+    Activity,
+    Eye,
+    CheckCircle,
+    XCircle,
+  } from "lucide-svelte";
 
   const dispatch = createEventDispatcher();
 
@@ -14,7 +36,7 @@
     id: string;
     name: string;
     currency: string;
-    impact: 'high' | 'medium' | 'low';
+    impact: "high" | "medium" | "low";
     date_time: string;
     actual?: string;
     forecast?: string;
@@ -31,15 +53,15 @@
   }
 
   // View state
-  let activeTab: 'calendar' | 'timeline' | 'settings' = 'calendar';
+  let activeTab: "calendar" | "timeline" | "settings" = "calendar";
   let selectedEvent: NewsEvent | null = null;
   let detailPanelOpen = false;
-  let calendarView: 'list' | 'weekly' | 'monthly' = 'list';
+  let calendarView: "list" | "weekly" | "monthly" = "list";
   let autoRefresh = true;
   let refreshInterval: number | null = null;
 
   // Trading state
-  let tradingStatus = 'active' as 'active' | 'paused' | 'kill-zone';
+  let tradingStatus = "active" as "active" | "paused" | "kill-zone";
   let nextHighImpactEvent: NewsEvent | null = null;
 
   // Kill zone settings
@@ -47,13 +69,13 @@
     enabled: true,
     duration: 30, // minutes before news
     autoPause: true,
-    resumeDelay: 15 // minutes after news
+    resumeDelay: 15, // minutes after news
   };
 
   // Filter settings
   let filters = {
-    impactThreshold: 'high' as 'high' | 'medium' | 'low', // 'high' = only high, 'medium' = high+medium, 'low' = all
-    currencies: ['USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'CHF'] as string[]
+    impactThreshold: "high" as "high" | "medium" | "low", // 'high' = only high, 'medium' = high+medium, 'low' = all
+    currencies: ["USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF"] as string[],
   };
 
   // Mock economic calendar data
@@ -66,7 +88,7 @@
     hours: 0,
     minutes: 0,
     seconds: 0,
-    targetEvent: null as NewsEvent | null
+    targetEvent: null as NewsEvent | null,
   };
 
   // Current kill zone status
@@ -102,119 +124,129 @@
 
       // Mock data for development
       const now = new Date();
-      const today = now.toISOString().split('T')[0];
+      const today = now.toISOString().split("T")[0];
 
       newsEvents = [
         {
-          id: 'nfp-001',
-          name: 'Non-Farm Payrolls',
-          currency: 'USD',
-          impact: 'high',
+          id: "nfp-001",
+          name: "Non-Farm Payrolls",
+          currency: "USD",
+          impact: "high",
           date_time: new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours from now
           actual: undefined,
-          forecast: '200K',
-          previous: '175K',
-          affected_pairs: ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF'],
-          description: 'The change in the number of employed people during the previous month, excluding the farming industry. Job creation is an important leading indicator of consumer spending, which accounts for a majority of overall economic activity.'
+          forecast: "200K",
+          previous: "175K",
+          affected_pairs: ["EURUSD", "GBPUSD", "USDJPY", "USDCHF"],
+          description:
+            "The change in the number of employed people during the previous month, excluding the farming industry. Job creation is an important leading indicator of consumer spending, which accounts for a majority of overall economic activity.",
         },
         {
-          id: 'cpi-001',
-          name: 'CPI m/m',
-          currency: 'EUR',
-          impact: 'high',
+          id: "cpi-001",
+          name: "CPI m/m",
+          currency: "EUR",
+          impact: "high",
           date_time: new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString(),
           actual: undefined,
-          forecast: '0.3%',
-          previous: '0.2%',
-          affected_pairs: ['EURUSD', 'EURGBP', 'EURJPY'],
-          description: 'Consumer Price Index is a measure of the average price level of a fixed basket of goods and services purchased by consumers. Monthly changes in CPI represent the rate of inflation.'
+          forecast: "0.3%",
+          previous: "0.2%",
+          affected_pairs: ["EURUSD", "EURGBP", "EURJPY"],
+          description:
+            "Consumer Price Index is a measure of the average price level of a fixed basket of goods and services purchased by consumers. Monthly changes in CPI represent the rate of inflation.",
         },
         {
-          id: 'ir-001',
-          name: 'Interest Rate Decision',
-          currency: 'GBP',
-          impact: 'high',
+          id: "ir-001",
+          name: "Interest Rate Decision",
+          currency: "GBP",
+          impact: "high",
           date_time: new Date(now.getTime() + 6 * 60 * 60 * 1000).toISOString(),
           actual: undefined,
-          forecast: '5.25%',
-          previous: '5.25%',
-          affected_pairs: ['GBPUSD', 'EURGBP', 'GBPJPY'],
-          description: 'The Bank of England\'s MPC announces its interest rate decision. Short-term interest rates are the primary factor in currency valuation.'
+          forecast: "5.25%",
+          previous: "5.25%",
+          affected_pairs: ["GBPUSD", "EURGBP", "GBPJPY"],
+          description:
+            "The Bank of England's MPC announces its interest rate decision. Short-term interest rates are the primary factor in currency valuation.",
         },
         {
-          id: 'adp-001',
-          name: 'ADP Non-Farm Employment Change',
-          currency: 'USD',
-          impact: 'medium',
+          id: "adp-001",
+          name: "ADP Non-Farm Employment Change",
+          currency: "USD",
+          impact: "medium",
           date_time: new Date(now.getTime() + 1 * 60 * 60 * 1000).toISOString(),
           actual: undefined,
-          forecast: '150K',
-          previous: '130K',
-          affected_pairs: ['EURUSD', 'GBPUSD', 'USDJPY'],
-          description: 'The estimated change in the number of employed people during the previous month, excluding the farming industry and government. ADP provides a sneak peek into the official NFP report.'
+          forecast: "150K",
+          previous: "130K",
+          affected_pairs: ["EURUSD", "GBPUSD", "USDJPY"],
+          description:
+            "The estimated change in the number of employed people during the previous month, excluding the farming industry and government. ADP provides a sneak peek into the official NFP report.",
         },
         {
-          id: 'pmi-001',
-          name: 'Manufacturing PMI',
-          currency: 'USD',
-          impact: 'low',
+          id: "pmi-001",
+          name: "Manufacturing PMI",
+          currency: "USD",
+          impact: "low",
           date_time: new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString(),
           actual: undefined,
-          forecast: '50.5',
-          previous: '50.2',
-          affected_pairs: ['EURUSD', 'USDJPY'],
-          description: 'The Purchasing Managers\' Index measures the activity level of purchasing managers in the manufacturing sector. A reading above 50 indicates expansion.'
+          forecast: "50.5",
+          previous: "50.2",
+          affected_pairs: ["EURUSD", "USDJPY"],
+          description:
+            "The Purchasing Managers' Index measures the activity level of purchasing managers in the manufacturing sector. A reading above 50 indicates expansion.",
         },
         {
-          id: 'retail-001',
-          name: 'Retail Sales m/m',
-          currency: 'AUD',
-          impact: 'medium',
+          id: "retail-001",
+          name: "Retail Sales m/m",
+          currency: "AUD",
+          impact: "medium",
           date_time: new Date(now.getTime() + 5 * 60 * 60 * 1000).toISOString(),
           actual: undefined,
-          forecast: '0.4%',
-          previous: '0.2%',
-          affected_pairs: ['AUDUSD', 'EURAUD', 'AUDJPY'],
-          description: 'The change in the total value of sales at the retail level. It is the foremost indicator of consumer spending, which accounts for the majority of overall economic activity.'
+          forecast: "0.4%",
+          previous: "0.2%",
+          affected_pairs: ["AUDUSD", "EURAUD", "AUDJPY"],
+          description:
+            "The change in the total value of sales at the retail level. It is the foremost indicator of consumer spending, which accounts for the majority of overall economic activity.",
         },
         {
-          id: 'gdp-001',
-          name: 'GDP q/q',
-          currency: 'CAD',
-          impact: 'medium',
+          id: "gdp-001",
+          name: "GDP q/q",
+          currency: "CAD",
+          impact: "medium",
           date_time: new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString(),
           actual: undefined,
-          forecast: '0.4%',
-          previous: '0.3%',
-          affected_pairs: ['USDCAD', 'CADJPY'],
-          description: 'Gross Domestic Product is the broadest measure of economic activity and is a key indicator of economic health. The quarterly percent changes measure the growth rate.'
+          forecast: "0.4%",
+          previous: "0.3%",
+          affected_pairs: ["USDCAD", "CADJPY"],
+          description:
+            "Gross Domestic Product is the broadest measure of economic activity and is a key indicator of economic health. The quarterly percent changes measure the growth rate.",
         },
         {
-          id: 'fomc-001',
-          name: 'FOMC Meeting Minutes',
-          currency: 'USD',
-          impact: 'high',
-          date_time: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(), // Tomorrow
+          id: "fomc-001",
+          name: "FOMC Meeting Minutes",
+          currency: "USD",
+          impact: "high",
+          date_time: new Date(
+            now.getTime() + 24 * 60 * 60 * 1000,
+          ).toISOString(), // Tomorrow
           actual: undefined,
-          forecast: '',
-          previous: '',
-          affected_pairs: ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD'],
-          description: 'The Federal Open Market Committee publishes the minutes of its meetings. Detailed records of the FOMC\'s policy discussions provide insights into future policy decisions.'
-        }
+          forecast: "",
+          previous: "",
+          affected_pairs: ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD"],
+          description:
+            "The Federal Open Market Committee publishes the minutes of its meetings. Detailed records of the FOMC's policy discussions provide insights into future policy decisions.",
+        },
       ];
 
       applyFilters();
       findNextHighImpactEvent();
     } catch (e) {
-      console.error('Failed to load news events:', e);
+      console.error("Failed to load news events:", e);
     }
   }
 
   // Apply filters to news events
   function applyFilters() {
-    filteredEvents = newsEvents.filter(event => {
+    filteredEvents = newsEvents.filter((event) => {
       // Filter by impact threshold
-      const impactLevels = ['high', 'medium', 'low'];
+      const impactLevels = ["high", "medium", "low"];
       const thresholdIndex = impactLevels.indexOf(filters.impactThreshold);
       const eventIndex = impactLevels.indexOf(event.impact);
       if (eventIndex > thresholdIndex) return false;
@@ -226,8 +258,9 @@
     });
 
     // Sort by date/time
-    filteredEvents.sort((a, b) =>
-      new Date(a.date_time).getTime() - new Date(b.date_time).getTime()
+    filteredEvents.sort(
+      (a, b) =>
+        new Date(a.date_time).getTime() - new Date(b.date_time).getTime(),
     );
   }
 
@@ -236,11 +269,15 @@
     const now = new Date();
     killZones = [];
 
-    newsEvents.forEach(event => {
-      if (event.impact === 'high') {
+    newsEvents.forEach((event) => {
+      if (event.impact === "high") {
         const eventTime = new Date(event.date_time);
-        const killZoneStart = new Date(eventTime.getTime() - killZoneSettings.duration * 60 * 1000);
-        const killZoneEnd = new Date(eventTime.getTime() + killZoneSettings.resumeDelay * 60 * 1000);
+        const killZoneStart = new Date(
+          eventTime.getTime() - killZoneSettings.duration * 60 * 1000,
+        );
+        const killZoneEnd = new Date(
+          eventTime.getTime() + killZoneSettings.resumeDelay * 60 * 1000,
+        );
 
         // Check if kill zone is upcoming or active
         if (killZoneEnd > now) {
@@ -248,20 +285,20 @@
             event_id: event.id,
             start_time: killZoneStart.toISOString(),
             end_time: killZoneEnd.toISOString(),
-            is_active: now >= killZoneStart && now < killZoneEnd
+            is_active: now >= killZoneStart && now < killZoneEnd,
           });
         }
       }
     });
 
     // Check if currently in kill zone
-    currentKillZone = killZones.find(kz => kz.is_active) || null;
+    currentKillZone = killZones.find((kz) => kz.is_active) || null;
 
     // Update trading status based on kill zone
     if (currentKillZone && killZoneSettings.autoPause) {
-      tradingStatus = 'kill-zone';
-    } else if (tradingStatus === 'kill-zone' && !currentKillZone) {
-      tradingStatus = 'active';
+      tradingStatus = "kill-zone";
+    } else if (tradingStatus === "kill-zone" && !currentKillZone) {
+      tradingStatus = "active";
     }
   }
 
@@ -269,8 +306,11 @@
   function findNextHighImpactEvent() {
     const now = new Date();
     const upcomingHighImpact = newsEvents
-      .filter(e => e.impact === 'high' && new Date(e.date_time) > now)
-      .sort((a, b) => new Date(a.date_time).getTime() - new Date(b.date_time).getTime());
+      .filter((e) => e.impact === "high" && new Date(e.date_time) > now)
+      .sort(
+        (a, b) =>
+          new Date(a.date_time).getTime() - new Date(b.date_time).getTime(),
+      );
 
     nextHighImpactEvent = upcomingHighImpact[0] || null;
     countdown.targetEvent = nextHighImpactEvent;
@@ -310,10 +350,10 @@
 
   // Toggle trading status
   async function toggleTrading() {
-    if (tradingStatus === 'active') {
-      tradingStatus = 'paused';
+    if (tradingStatus === "active") {
+      tradingStatus = "paused";
     } else {
-      tradingStatus = 'active';
+      tradingStatus = "active";
     }
 
     // TODO: Send to API
@@ -324,7 +364,7 @@
       //   body: JSON.stringify({ status: tradingStatus })
       // });
     } catch (e) {
-      console.error('Failed to update trading status:', e);
+      console.error("Failed to update trading status:", e);
     }
   }
 
@@ -343,10 +383,14 @@
   // Helper functions
   function getImpactColor(impact: string) {
     switch (impact) {
-      case 'high': return '#ef4444';
-      case 'medium': return '#f59e0b';
-      case 'low': return '#10b981';
-      default: return '#6b7280';
+      case "high":
+        return "#ef4444";
+      case "medium":
+        return "#f59e0b";
+      case "low":
+        return "#10b981";
+      default:
+        return "#6b7280";
     }
   }
 
@@ -356,16 +400,16 @@
 
   function getCurrencyFlag(currency: string) {
     const flags: Record<string, string> = {
-      USD: '🇺🇸',
-      EUR: '🇪🇺',
-      GBP: '🇬🇧',
-      JPY: '🇯🇵',
-      AUD: '🇦🇺',
-      CAD: '🇨🇦',
-      CHF: '🇨🇭',
-      NZD: '🇳🇿'
+      USD: "🇺🇸",
+      EUR: "🇪🇺",
+      GBP: "🇬🇧",
+      JPY: "🇯🇵",
+      AUD: "🇦🇺",
+      CAD: "🇨🇦",
+      CHF: "🇨🇭",
+      NZD: "🇳🇿",
     };
-    return flags[currency] || '🌐';
+    return flags[currency] || "🌐";
   }
 
   function formatDateTime(dateStr: string) {
@@ -377,7 +421,10 @@
     const isToday = date.toDateString() === today.toDateString();
     const isTomorrow = date.toDateString() === tomorrow.toDateString();
 
-    const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const time = date.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
 
     if (isToday) return `Today ${time}`;
     if (isTomorrow) return `Tomorrow ${time}`;
@@ -389,12 +436,12 @@
     if (countdown.hours > 0) parts.push(`${countdown.hours}h`);
     if (countdown.minutes > 0) parts.push(`${countdown.minutes}m`);
     parts.push(`${countdown.seconds}s`);
-    return parts.join(' ');
+    return parts.join(" ");
   }
 
   function isEventInKillZone(event: NewsEvent) {
     if (!killZoneSettings.enabled) return false;
-    const killZone = killZones.find(kz => kz.event_id === event.id);
+    const killZone = killZones.find((kz) => kz.event_id === event.id);
     return killZone?.is_active || false;
   }
 
@@ -402,9 +449,9 @@
     const now = new Date();
     const eventTime = new Date(event.date_time);
 
-    if (eventTime < now) return 'passed';
-    if (isEventInKillZone(event)) return 'kill-zone';
-    return 'upcoming';
+    if (eventTime < now) return "passed";
+    if (isEventInKillZone(event)) return "kill-zone";
+    return "upcoming";
   }
 </script>
 
@@ -421,11 +468,14 @@
           </div>
         </div>
         <div class="banner-right">
-          <button class="btn" on:click={() => killZoneSettings.autoPause = false}>
+          <button
+            class="btn"
+            on:click={() => (killZoneSettings.autoPause = false)}
+          >
             <Play size={14} />
             <span>Resume Anyway</span>
           </button>
-          <button class="btn close" on:click={() => currentKillZone = null}>
+          <button class="btn close" on:click={() => (currentKillZone = null)}>
             <X size={14} />
           </button>
         </div>
@@ -444,12 +494,17 @@
     </div>
     <div class="header-actions">
       <!-- Trading Status -->
-      <div class="trading-status" class:active={tradingStatus === 'active'} class:paused={tradingStatus === 'paused'} class:kill-zone={tradingStatus === 'kill-zone'}>
+      <div
+        class="trading-status"
+        class:active={tradingStatus === "active"}
+        class:paused={tradingStatus === "paused"}
+        class:kill-zone={tradingStatus === "kill-zone"}
+      >
         <div class="status-indicator"></div>
         <span>
-          {#if tradingStatus === 'active'}
+          {#if tradingStatus === "active"}
             Active
-          {:else if tradingStatus === 'paused'}
+          {:else if tradingStatus === "paused"}
             Paused
           {:else}
             Kill Zone
@@ -467,7 +522,11 @@
       {/if}
 
       <!-- Auto Refresh -->
-      <button class="btn" on:click={() => autoRefresh = !autoRefresh} class:active={autoRefresh}>
+      <button
+        class="btn"
+        on:click={() => (autoRefresh = !autoRefresh)}
+        class:active={autoRefresh}
+      >
         <RefreshCw size={14} />
         <span>Auto</span>
       </button>
@@ -482,15 +541,27 @@
 
   <!-- Tabs -->
   <div class="news-tabs">
-    <button class="tab" class:active={activeTab === 'calendar'} on:click={() => activeTab = 'calendar'}>
+    <button
+      class="tab"
+      class:active={activeTab === "calendar"}
+      on:click={() => (activeTab = "calendar")}
+    >
       <Calendar size={14} />
       <span>Calendar</span>
     </button>
-    <button class="tab" class:active={activeTab === 'timeline'} on:click={() => activeTab = 'timeline'}>
+    <button
+      class="tab"
+      class:active={activeTab === "timeline"}
+      on:click={() => (activeTab = "timeline")}
+    >
       <Clock size={14} />
       <span>Timeline</span>
     </button>
-    <button class="tab" class:active={activeTab === 'settings'} on:click={() => activeTab = 'settings'}>
+    <button
+      class="tab"
+      class:active={activeTab === "settings"}
+      on:click={() => (activeTab = "settings")}
+    >
       <SettingsIcon size={14} />
       <span>Settings</span>
     </button>
@@ -498,30 +569,51 @@
 
   <!-- Tab Content -->
   <div class="news-content">
-    {#if activeTab === 'calendar'}
+    {#if activeTab === "calendar"}
       <!-- Calendar View -->
       <div class="calendar-section">
         <!-- View Toggle -->
         <div class="view-toggle">
-          <button class="view-btn" class:active={calendarView === 'list'} on:click={() => calendarView = 'list'}>
+          <button
+            class="view-btn"
+            class:active={calendarView === "list"}
+            on:click={() => (calendarView = "list")}
+          >
             List
           </button>
-          <button class="view-btn" class:active={calendarView === 'weekly'} on:click={() => calendarView = 'weekly'}>
+          <button
+            class="view-btn"
+            class:active={calendarView === "weekly"}
+            on:click={() => (calendarView = "weekly")}
+          >
             Weekly
           </button>
-          <button class="view-btn" class:active={calendarView === 'monthly'} on:click={() => calendarView = 'monthly'}>
+          <button
+            class="view-btn"
+            class:active={calendarView === "monthly"}
+            on:click={() => (calendarView = "monthly")}
+          >
             Monthly
           </button>
         </div>
 
-        {#if calendarView === 'list'}
+        {#if calendarView === "list"}
           <!-- List View -->
           <div class="events-list">
             {#each filteredEvents as event}
-              <div class="event-card" class:in-kill-zone={isEventInKillZone(event)} on:click={() => selectEvent(event)}>
+              <div
+                class="event-card"
+                class:in-kill-zone={isEventInKillZone(event)}
+                on:click={() => selectEvent(event)}
+                on:keydown={(e) => e.key === "Enter" && selectEvent(event)}
+                role="button"
+                tabindex="0"
+              >
                 <div class="event-left">
                   <div class="event-impact">
-                    <span class={getImpactBadgeClass(event.impact)}>{event.impact.toUpperCase()}</span>
+                    <span class={getImpactBadgeClass(event.impact)}
+                      >{event.impact.toUpperCase()}</span
+                    >
                   </div>
                   <div class="event-time">
                     <Clock size={12} />
@@ -531,13 +623,15 @@
 
                 <div class="event-main">
                   <div class="event-header">
-                    <span class="currency-flag">{getCurrencyFlag(event.currency)}</span>
+                    <span class="currency-flag"
+                      >{getCurrencyFlag(event.currency)}</span
+                    >
                     <h4 class="event-name">{event.name}</h4>
                     <span class="event-status status-{getEventStatus(event)}">
-                      {#if getEventStatus(event) === 'passed'}
+                      {#if getEventStatus(event) === "passed"}
                         <CheckCircle size={12} />
                         Passed
-                      {:else if getEventStatus(event) === 'kill-zone'}
+                      {:else if getEventStatus(event) === "kill-zone"}
                         <AlertTriangle size={12} />
                         Kill Zone
                       {:else}
@@ -550,7 +644,7 @@
                   <div class="event-details">
                     <span class="affected-pairs">
                       <Globe size={10} />
-                      {event.affected_pairs.join(', ')}
+                      {event.affected_pairs.join(", ")}
                     </span>
                   </div>
 
@@ -591,8 +685,7 @@
               </div>
             {/if}
           </div>
-
-        {:else if calendarView === 'weekly'}
+        {:else if calendarView === "weekly"}
           <!-- Weekly View Placeholder -->
           <div class="calendar-grid-view">
             <div class="empty-state">
@@ -601,7 +694,6 @@
               <small>Switch to list view for full event details</small>
             </div>
           </div>
-
         {:else}
           <!-- Monthly View Placeholder -->
           <div class="calendar-grid-view">
@@ -613,8 +705,7 @@
           </div>
         {/if}
       </div>
-
-    {:else if activeTab === 'timeline'}
+    {:else if activeTab === "timeline"}
       <!-- Timeline View -->
       <div class="timeline-section">
         <div class="timeline-header">
@@ -626,18 +717,24 @@
           {#if killZones.length > 0}
             <div class="timeline-track">
               {#each killZones as zone}
-                {@const event = newsEvents.find(e => e.id === zone.event_id)}
+                {@const event = newsEvents.find((e) => e.id === zone.event_id)}
                 {#if event}
                   <div class="timeline-zone" class:active={zone.is_active}>
                     <div class="zone-marker"></div>
                     <div class="zone-content">
                       <span class="zone-time">
-                        {formatDateTime(zone.start_time)} - {formatDateTime(zone.end_time)}
+                        {formatDateTime(zone.start_time)} - {formatDateTime(
+                          zone.end_time,
+                        )}
                       </span>
                       <div class="zone-event">
-                        <span class="currency-flag">{getCurrencyFlag(event.currency)}</span>
+                        <span class="currency-flag"
+                          >{getCurrencyFlag(event.currency)}</span
+                        >
                         <span class="event-name">{event.name}</span>
-                        <span class={getImpactBadgeClass(event.impact)}>{event.impact.toUpperCase()}</span>
+                        <span class={getImpactBadgeClass(event.impact)}
+                          >{event.impact.toUpperCase()}</span
+                        >
                       </div>
                       {#if zone.is_active}
                         <div class="zone-indicator">
@@ -658,8 +755,7 @@
           {/if}
         </div>
       </div>
-
-    {:else if activeTab === 'settings'}
+    {:else if activeTab === "settings"}
       <!-- Settings View -->
       <div class="settings-section">
         <div class="settings-group">
@@ -674,15 +770,29 @@
           </div>
 
           <div class="setting-row">
-            <label class="setting-label">Duration Before News</label>
-            <div class="setting-options">
-              <button class="option-btn" class:active={killZoneSettings.duration === 15} on:click={() => killZoneSettings.duration = 15}>
+            <label for="before-news" class="setting-label"
+              >Duration Before News</label
+            >
+            <div id="before-news" class="setting-options">
+              <button
+                class="option-btn"
+                class:active={killZoneSettings.duration === 15}
+                on:click={() => (killZoneSettings.duration = 15)}
+              >
                 15 min
               </button>
-              <button class="option-btn" class:active={killZoneSettings.duration === 30} on:click={() => killZoneSettings.duration = 30}>
+              <button
+                class="option-btn"
+                class:active={killZoneSettings.duration === 30}
+                on:click={() => (killZoneSettings.duration = 30)}
+              >
                 30 min
               </button>
-              <button class="option-btn" class:active={killZoneSettings.duration === 60} on:click={() => killZoneSettings.duration = 60}>
+              <button
+                class="option-btn"
+                class:active={killZoneSettings.duration === 60}
+                on:click={() => (killZoneSettings.duration = 60)}
+              >
                 60 min
               </button>
             </div>
@@ -690,15 +800,21 @@
 
           <div class="setting-row">
             <label class="setting-label">
-              <input type="checkbox" bind:checked={killZoneSettings.autoPause} />
+              <input
+                type="checkbox"
+                bind:checked={killZoneSettings.autoPause}
+              />
               <span>Auto-Pause Trading</span>
             </label>
             <small>Automatically pause when entering kill zone</small>
           </div>
 
           <div class="setting-row">
-            <label class="setting-label">Resume Delay After News</label>
+            <label for="after-news" class="setting-label"
+              >Resume Delay After News</label
+            >
             <input
+              id="after-news"
               type="number"
               bind:value={killZoneSettings.resumeDelay}
               min="0"
@@ -713,8 +829,14 @@
           <h3><Filter size={16} /> News Filters</h3>
 
           <div class="setting-row">
-            <label class="setting-label">Impact Threshold</label>
-            <select bind:value={filters.impactThreshold} on:change={applyFilters}>
+            <label for="impact-threshold" class="setting-label"
+              >Impact Threshold</label
+            >
+            <select
+              id="impact-threshold"
+              bind:value={filters.impactThreshold}
+              on:change={applyFilters}
+            >
               <option value="high">High Impact Only</option>
               <option value="medium">High + Medium</option>
               <option value="low">All Events</option>
@@ -722,11 +844,16 @@
           </div>
 
           <div class="setting-row">
-            <label class="setting-label">Currencies</label>
+            <span class="setting-label">Currencies</span>
             <div class="currency-grid">
-              {#each ['USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'CHF', 'NZD'] as currency}
+              {#each ["USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD"] as currency}
                 <label class="currency-checkbox">
-                  <input type="checkbox" bind:group={filters.currencies} value={currency} on:change={applyFilters} />
+                  <input
+                    type="checkbox"
+                    bind:group={filters.currencies}
+                    value={currency}
+                    on:change={applyFilters}
+                  />
                   <span>{getCurrencyFlag(currency)} {currency}</span>
                 </label>
               {/each}
@@ -740,11 +867,11 @@
           <div class="setting-row full-width">
             <button
               class="trading-toggle-btn"
-              class:active={tradingStatus === 'active'}
-              class:paused={tradingStatus === 'paused'}
+              class:active={tradingStatus === "active"}
+              class:paused={tradingStatus === "paused"}
               on:click={toggleTrading}
             >
-              {#if tradingStatus === 'active'}
+              {#if tradingStatus === "active"}
                 <Pause size={16} />
                 <span>Pause Trading</span>
               {:else}
@@ -760,15 +887,25 @@
 
   <!-- Event Detail Panel -->
   {#if detailPanelOpen && selectedEvent}
-    <div class="detail-panel-overlay" on:click={closeDetailPanel}>
-      <div class="detail-panel" on:click|stopPropagation>
+    <div
+      class="detail-panel-overlay"
+      on:click={closeDetailPanel}
+      role="button"
+      tabindex="0"
+      on:keydown={(e) => e.key === "Escape" && closeDetailPanel()}
+    >
+      <div class="detail-panel" on:click|stopPropagation role="presentation">
         <div class="detail-header">
           <div class="header-left">
-            <span class="currency-flag large">{getCurrencyFlag(selectedEvent.currency)}</span>
+            <span class="currency-flag large"
+              >{getCurrencyFlag(selectedEvent.currency)}</span
+            >
             <div>
               <h3>{selectedEvent.name}</h3>
               <p class="event-meta">
-                <span class={getImpactBadgeClass(selectedEvent.impact)}>{selectedEvent.impact.toUpperCase()}</span>
+                <span class={getImpactBadgeClass(selectedEvent.impact)}
+                  >{selectedEvent.impact.toUpperCase()}</span
+                >
                 <span class="currency">{selectedEvent.currency}</span>
               </p>
             </div>
@@ -783,7 +920,9 @@
           <div class="detail-section">
             <h4><Clock size={14} /> Schedule</h4>
             <div class="time-display">
-              <span class="time-value">{formatDateTime(selectedEvent.date_time)}</span>
+              <span class="time-value"
+                >{formatDateTime(selectedEvent.date_time)}</span
+              >
               {#if isEventInKillZone(selectedEvent)}
                 <span class="kill-zone-badge">
                   <AlertTriangle size={12} />
@@ -806,13 +945,17 @@
               {#if selectedEvent.forecast}
                 <div class="value-card">
                   <span class="value-label">Forecast</span>
-                  <span class="value-data forecast">{selectedEvent.forecast}</span>
+                  <span class="value-data forecast"
+                    >{selectedEvent.forecast}</span
+                  >
                 </div>
               {/if}
               {#if selectedEvent.previous}
                 <div class="value-card">
                   <span class="value-label">Previous</span>
-                  <span class="value-data previous">{selectedEvent.previous}</span>
+                  <span class="value-data previous"
+                    >{selectedEvent.previous}</span
+                  >
                 </div>
               {/if}
             </div>
@@ -842,7 +985,9 @@
             <div class="historical-impact-placeholder">
               <BarChart3 size={32} />
               <p>Historical volatility chart coming soon</p>
-              <small>This will show price movement patterns for previous occurrences</small>
+              <small
+                >This will show price movement patterns for previous occurrences</small
+              >
             </div>
           </div>
         </div>
@@ -862,7 +1007,11 @@
 
   /* Kill Zone Banner */
   .kill-zone-banner {
-    background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(245, 158, 11, 0.2));
+    background: linear-gradient(
+      135deg,
+      rgba(239, 68, 68, 0.2),
+      rgba(245, 158, 11, 0.2)
+    );
     border-bottom: 1px solid rgba(239, 68, 68, 0.3);
     animation: slideDown 0.3s ease-out;
   }
@@ -897,8 +1046,13 @@
   }
 
   @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
   }
 
   .banner-text h3 {
@@ -1008,7 +1162,7 @@
   }
 
   .countdown-time {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: "JetBrains Mono", monospace;
     font-weight: 600;
     color: #ef4444;
   }
@@ -1260,7 +1414,7 @@
   }
 
   .value .data {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: "JetBrains Mono", monospace;
     color: var(--text-primary);
   }
 
@@ -1365,7 +1519,7 @@
   }
 
   .zone-marker::after {
-    content: '';
+    content: "";
     position: absolute;
     top: 12px;
     left: 50%;
@@ -1677,7 +1831,7 @@
   }
 
   .value-data {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: "JetBrains Mono", monospace;
     font-size: 14px;
     font-weight: 600;
     color: var(--text-primary);
@@ -1699,7 +1853,7 @@
     border-radius: 6px;
     font-size: 12px;
     color: var(--text-primary);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: "JetBrains Mono", monospace;
   }
 
   .event-description {

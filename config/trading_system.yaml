@@ -252,6 +252,47 @@ kill_switch:
     breakeven_timeout_minutes: 60
     trailing_stop_distance_pips: 5
 
+  # Progressive Kill Switch System
+  # Multi-tier protection with progressive alert levels
+  # Alert Levels: GREEN → YELLOW → ORANGE → RED → BLACK
+  progressive:
+    enabled: true
+
+    # Tier 2: Strategy-Level Protection
+    # Monitors strategy family performance
+    tier2:
+      max_failed_bots_per_family: 3      # Quarantine family after 3 bot failures
+      max_family_loss_pct: 0.20          # Quarantine at 20% family loss
+
+    # Tier 3: Account-Level Protection
+    # Monitors daily and weekly account losses
+    tier3:
+      max_daily_loss_pct: 0.03           # Daily stop at 3% loss
+      max_weekly_loss_pct: 0.10          # Weekly stop at 10% loss
+      email_alerts: true                 # Send email on stop trigger
+      sms_alerts: false                  # SMS alerts (future feature)
+
+    # Tier 4: Session-Level Protection
+    # Monitors trading sessions and rate limits
+    tier4:
+      end_of_day_utc: "21:00"            # Close positions at 21:00 UTC
+      trading_window_start: "00:00"      # Trading allowed from
+      trading_window_end: "23:59"        # Trading allowed until
+      max_trades_per_minute: 10          # Rate limit
+
+    # Tier 5: System-Level Protection
+    # Monitors system health and connectivity
+    tier5:
+      max_chaos_score: 0.75              # Nuclear shutdown above 75% chaos
+      broker_timeout_seconds: 30         # Shutdown if broker unresponsive
+
+    # Alert Thresholds (percentage of limit)
+    alert_thresholds:
+      yellow: 50                         # Warning at 50%
+      orange: 70                         # Elevated at 70%
+      red: 85                            # Critical at 85%
+      black: 95                          # Emergency at 95%
+
 
 # =============================================================================
 # Broker Registry Configuration

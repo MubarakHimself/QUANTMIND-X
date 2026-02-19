@@ -5,11 +5,10 @@ Provides access to complete trade history with full context including
 regime, chaos, Kelly sizing, house money adjustments, and trade reasoning.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
-import random
 
 router = APIRouter(prefix="/api/journal", tags=["journal"])
 
@@ -47,6 +46,7 @@ class Trade(BaseModel):
     status: str  # 'open', 'closed', 'pending'
     reason: str
     context: TradeContext
+    mode: str  # 'demo' or 'live'
 
 class TradeFilters(BaseModel):
     symbol: Optional[str] = None
@@ -55,6 +55,7 @@ class TradeFilters(BaseModel):
     dateTo: Optional[str] = None
     minProfit: Optional[float] = None
     maxProfit: Optional[float] = None
+    mode: Optional[str] = None
 
 class TradeStatistics(BaseModel):
     total: int
@@ -66,112 +67,130 @@ class TradeStatistics(BaseModel):
     largestWin: float
     largestLoss: float
 
-# Mock data for development
-def get_mock_trades() -> List[Dict[str, Any]]:
-    """Get mock trade journal data."""
-    base_time = datetime.utcnow()
 
-    return [
-        {
-            "id": "trade-1",
-            "timestamp": (base_time - timedelta(hours=1)).isoformat(),
-            "symbol": "EURUSD",
-            "type": "BUY",
-            "lots": 0.05,
-            "openPrice": 1.0876,
-            "closePrice": 1.0912,
-            "profit": 18.00,
-            "strategy": "ICT Scalper",
-            "status": "closed",
-            "reason": "FVG setup confirmed with ATR filter",
-            "context": {
-                "regime": {"quality": 0.82, "trend": "bullish", "chaos": 18.5},
-                "kelly": {"fraction": 0.025, "edge": 0.52, "odds": 2.0},
-                "houseMoney": {"enabled": True, "amount": 87.15},
-                "sentiment": "London session, low spread, FVG at key level"
-            }
-        },
-        {
-            "id": "trade-2",
-            "timestamp": (base_time - timedelta(hours=2)).isoformat(),
-            "symbol": "GBPUSD",
-            "type": "SELL",
-            "lots": 0.04,
-            "openPrice": 1.2654,
-            "closePrice": 1.2678,
-            "profit": -9.60,
-            "strategy": "SMC Reversal",
-            "status": "closed",
-            "reason": "Order block fail, volatility spike",
-            "context": {
-                "regime": {"quality": 0.65, "trend": "ranging", "chaos": 35.2},
-                "kelly": {"fraction": 0.02, "edge": 0.45, "odds": 1.8},
-                "houseMoney": {"enabled": True, "amount": 77.55},
-                "sentiment": "Late session, widening spreads"
-            }
-        },
-        {
-            "id": "trade-3",
-            "timestamp": (base_time - timedelta(hours=3)).isoformat(),
-            "symbol": "USDJPY",
-            "type": "BUY",
-            "lots": 0.03,
-            "openPrice": 149.85,
-            "closePrice": 150.12,
-            "profit": 8.10,
-            "strategy": "ICT Scalper",
-            "status": "closed",
-            "reason": "Premium discount zone with RSI divergence",
-            "context": {
-                "regime": {"quality": 0.78, "trend": "bullish", "chaos": 22.1},
-                "kelly": {"fraction": 0.022, "edge": 0.50, "odds": 1.9},
-                "houseMoney": {"enabled": True, "amount": 87.15},
-                "sentiment": "Asian session, clean move"
-            }
-        },
-        {
-            "id": "trade-4",
-            "timestamp": (base_time - timedelta(hours=5)).isoformat(),
-            "symbol": "EURUSD",
-            "type": "BUY",
-            "lots": 0.06,
-            "openPrice": 1.0845,
-            "closePrice": 1.0898,
-            "profit": 31.80,
-            "strategy": "ICT Scalper",
-            "status": "closed",
-            "reason": "London session breakout with volume confirmation",
-            "context": {
-                "regime": {"quality": 0.88, "trend": "bullish", "chaos": 15.2},
-                "kelly": {"fraction": 0.028, "edge": 0.55, "odds": 2.1},
-                "houseMoney": {"enabled": True, "amount": 117.95},
-                "sentiment": "Strong momentum, low news risk"
-            }
-        },
-        {
-            "id": "trade-5",
-            "timestamp": (base_time - timedelta(hours=6)).isoformat(),
-            "symbol": "GBPUSD",
-            "type": "SELL",
-            "lots": 0.05,
-            "openPrice": 1.2680,
-            "closePrice": 1.2625,
-            "profit": 27.50,
-            "strategy": "SMC Reversal",
-            "status": "closed",
-            "reason": "CHoCH confirmation at key resistance",
-            "context": {
-                "regime": {"quality": 0.75, "trend": "bearish", "chaos": 28.5},
-                "kelly": {"fraction": 0.024, "edge": 0.48, "odds": 1.9},
-                "houseMoney": {"enabled": True, "amount": 145.45},
-                "sentiment": "Clean rejection, good risk/reward"
-            }
-        }
-    ]
+def get_db_session():
+    """Get or create database session for DB access."""
+    try:
+        from src.database.engine import get_session
+        return get_session()
+    except Exception as e:
+        print(f"Error getting database session: {e}")
+        return None
 
-def calculate_stats(trades: List[Dict[str, Any]]) -> TradeStatistics:
+
+def query_trade_journal(
+    symbol: Optional[str] = None,
+    status: Optional[str] = None,
+    dateFrom: Optional[datetime] = None,
+    dateTo: Optional[datetime] = None,
+    minProfit: Optional[float] = None,
+    maxProfit: Optional[float] = None,
+    mode: Optional[str] = None,
+    limit: int = 100
+) -> List[Dict[str, Any]]:
+    """Query trade journal from database with filters."""
+    session = get_db_session()
+    if session is None:
+        return []
+    
+    try:
+        from src.database.models import TradeJournal, TradingMode
+        from sqlalchemy import desc
+        
+        query = session.query(TradeJournal)
+        
+        # Apply filters
+        if symbol:
+            query = query.filter(TradeJournal.symbol == symbol)
+        
+        if status:
+            if status == 'closed':
+                query = query.filter(TradeJournal.pnl.isnot(None))
+            elif status == 'open':
+                query = query.filter(TradeJournal.pnl.is_(None))
+        
+        if dateFrom:
+            query = query.filter(TradeJournal.timestamp >= dateFrom)
+        
+        if dateTo:
+            query = query.filter(TradeJournal.timestamp <= dateTo)
+        
+        if minProfit is not None:
+            query = query.filter(TradeJournal.pnl >= minProfit)
+        
+        if maxProfit is not None:
+            query = query.filter(TradeJournal.pnl <= maxProfit)
+        
+        if mode and mode != 'all':
+            trading_mode = TradingMode.DEMO if mode == 'demo' else TradingMode.LIVE
+            query = query.filter(TradeJournal.mode == trading_mode)
+        
+        # Order by timestamp descending and limit
+        query = query.order_by(desc(TradeJournal.timestamp)).limit(limit)
+        
+        trades = query.all()
+        
+        # Convert to list of dicts
+        result = []
+        for trade in trades:
+            # Determine status based on pnl
+            trade_status = 'closed' if trade.pnl is not None else 'open'
+            
+            # Determine direction from trade.direction
+            direction = trade.direction if trade.direction else 'BUY'
+            
+            # Convert mode to string
+            trade_mode = 'demo' if trade.mode == TradingMode.DEMO else 'live'
+            
+            result.append({
+                "id": str(trade.id),
+                "timestamp": trade.timestamp.isoformat() if trade.timestamp else datetime.now().isoformat(),
+                "symbol": trade.symbol,
+                "type": direction,
+                "lots": trade.lot_size,
+                "openPrice": trade.entry_price,
+                "closePrice": trade.exit_price,
+                "profit": trade.pnl if trade.pnl is not None else 0.0,
+                "strategy": trade.bot_id,
+                "status": trade_status,
+                "reason": trade.exit_reason or "",
+                "context": {
+                    "regime": {
+                        "quality": 0.5,  # Default values if not stored
+                        "trend": trade.regime or "unknown",
+                        "chaos": trade.chaos_score or 0.0
+                    },
+                    "kelly": {
+                        "fraction": trade.kelly_recommendation or 0.0,
+                        "edge": 0.5,
+                        "odds": 2.0
+                    },
+                    "houseMoney": {
+                        "enabled": trade.house_money_adjustment,
+                        "amount": 0.0
+                    },
+                    "sentiment": trade.regime or "No sentiment data"
+                },
+                "mode": trade_mode
+            })
+        
+        session.close()
+        return result
+        
+    except Exception as e:
+        print(f"Error querying trade journal: {e}")
+        if session:
+            session.close()
+        return []
+
+
+def calculate_stats(trades: List[Dict[str, Any]], mode_filter: Optional[str] = None) -> TradeStatistics:
     """Calculate trade statistics."""
-    closed_trades = [t for t in trades if t["status"] == "closed"]
+    # Filter by mode if specified
+    if mode_filter and mode_filter != 'all':
+        trades = [t for t in trades if t.get('mode') == mode_filter]
+    
+    closed_trades = [t for t in trades if t.get("status") == "closed"]
 
     if not closed_trades:
         return TradeStatistics(
@@ -179,10 +198,10 @@ def calculate_stats(trades: List[Dict[str, Any]]) -> TradeStatistics:
             totalProfit=0.0, avgProfit=0.0, largestWin=0.0, largestLoss=0.0
         )
 
-    wins = [t for t in closed_trades if t["profit"] > 0]
-    losses = [t for t in closed_trades if t["profit"] < 0]
+    wins = [t for t in closed_trades if t.get("profit", 0) > 0]
+    losses = [t for t in closed_trades if t.get("profit", 0) < 0]
 
-    profits = [t["profit"] for t in closed_trades]
+    profits = [t.get("profit", 0) for t in closed_trades]
 
     return TradeStatistics(
         total=len(closed_trades),
@@ -190,10 +209,11 @@ def calculate_stats(trades: List[Dict[str, Any]]) -> TradeStatistics:
         losses=len(losses),
         winRate=(len(wins) / len(closed_trades)) * 100 if closed_trades else 0,
         totalProfit=sum(profits),
-        avgProfit=sum(profits) / len(profits),
+        avgProfit=sum(profits) / len(profits) if profits else 0,
         largestWin=max(profits) if profits else 0,
         largestLoss=min(profits) if profits else 0
     )
+
 
 def filter_trades(trades: List[Dict[str, Any]], filters: TradeFilters) -> List[Dict[str, Any]]:
     """Apply filters to trade list."""
@@ -214,12 +234,16 @@ def filter_trades(trades: List[Dict[str, Any]], filters: TradeFilters) -> List[D
         filtered = [t for t in filtered if datetime.fromisoformat(t["timestamp"]) <= date_to]
 
     if filters.minProfit is not None:
-        filtered = [t for t in filtered if t["profit"] >= filters.minProfit]
+        filtered = [t for t in filtered if t.get("profit", 0) >= filters.minProfit]
 
     if filters.maxProfit is not None:
-        filtered = [t for t in filtered if t["profit"] <= filters.maxProfit]
+        filtered = [t for t in filtered if t.get("profit", 0) <= filters.maxProfit]
+    
+    if filters.mode and filters.mode != 'all':
+        filtered = [t for t in filtered if t.get("mode") == filters.mode]
 
     return filtered
+
 
 # Endpoints
 
@@ -231,58 +255,147 @@ async def get_trades(
     dateTo: Optional[str] = None,
     minProfit: Optional[float] = None,
     maxProfit: Optional[float] = None,
+    mode: Optional[str] = Query(None, description="Filter by mode: 'demo', 'live', or 'all'"),
     limit: int = 100
 ) -> List[Dict[str, Any]]:
     """Get trade journal with optional filters."""
-    trades = get_mock_trades()
-
-    filters = TradeFilters(
+    # Parse dates if provided
+    parsed_dateFrom = None
+    parsed_dateTo = None
+    
+    if dateFrom:
+        try:
+            parsed_dateFrom = datetime.fromisoformat(dateFrom)
+        except ValueError:
+            pass
+    
+    if dateTo:
+        try:
+            parsed_dateTo = datetime.fromisoformat(dateTo)
+        except ValueError:
+            pass
+    
+    # Query database
+    trades = query_trade_journal(
         symbol=symbol,
         status=status,
-        dateFrom=dateFrom,
-        dateTo=dateTo,
+        dateFrom=parsed_dateFrom,
+        dateTo=parsed_dateTo,
         minProfit=minProfit,
-        maxProfit=maxProfit
+        maxProfit=maxProfit,
+        mode=mode,
+        limit=limit
     )
+    
+    # If no trades found in database, return empty list
+    # (removed fallback to mock data)
+    return trades
 
-    filtered = filter_trades(trades, filters)
-    return filtered[:limit]
 
 @router.get("/trades/{trade_id}")
 async def get_trade(trade_id: str) -> Dict[str, Any]:
     """Get a specific trade by ID."""
-    trades = get_mock_trades()
-    trade = next((t for t in trades if t["id"] == trade_id), None)
+    session = get_db_session()
+    if session is None:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+    
+    try:
+        from src.database.models import TradeJournal, TradingMode
+        
+        trade = session.query(TradeJournal).filter(TradeJournal.id == int(trade_id)).first()
+        
+        if not trade:
+            raise HTTPException(status_code=404, detail="Trade not found")
+        
+        direction = trade.direction if trade.direction else 'BUY'
+        trade_status = 'closed' if trade.pnl is not None else 'open'
+        trade_mode = 'demo' if trade.mode == TradingMode.DEMO else 'live'
+        
+        result = {
+            "id": str(trade.id),
+            "timestamp": trade.timestamp.isoformat() if trade.timestamp else datetime.now().isoformat(),
+            "symbol": trade.symbol,
+            "type": direction,
+            "lots": trade.lot_size,
+            "openPrice": trade.entry_price,
+            "closePrice": trade.exit_price,
+            "profit": trade.pnl if trade.pnl is not None else 0.0,
+            "strategy": trade.bot_id,
+            "status": trade_status,
+            "reason": trade.exit_reason or "",
+            "context": {
+                "regime": {
+                    "quality": 0.5,
+                    "trend": trade.regime or "unknown",
+                    "chaos": trade.chaos_score or 0.0
+                },
+                "kelly": {
+                    "fraction": trade.kelly_recommendation or 0.0,
+                    "edge": 0.5,
+                    "odds": 2.0
+                },
+                "houseMoney": {
+                    "enabled": trade.house_money_adjustment,
+                    "amount": 0.0
+                },
+                "sentiment": trade.regime or "No sentiment data"
+            },
+            "mode": trade_mode
+        }
+        
+        session.close()
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting trade: {e}")
+        if session:
+            session.close()
+        raise HTTPException(status_code=500, detail=str(e))
 
-    if not trade:
-        raise HTTPException(status_code=404, detail="Trade not found")
-
-    return trade
 
 @router.get("/statistics")
 async def get_trade_statistics(
     symbol: Optional[str] = None,
     dateFrom: Optional[str] = None,
-    dateTo: Optional[str] = None
+    dateTo: Optional[str] = None,
+    mode: Optional[str] = Query(None, description="Filter by mode: 'demo', 'live', or 'all'")
 ) -> TradeStatistics:
     """Get trade statistics with optional filters."""
-    trades = get_mock_trades()
-
-    filters = TradeFilters(
+    # Parse dates if provided
+    parsed_dateFrom = None
+    parsed_dateTo = None
+    
+    if dateFrom:
+        try:
+            parsed_dateFrom = datetime.fromisoformat(dateFrom)
+        except ValueError:
+            pass
+    
+    if dateTo:
+        try:
+            parsed_dateTo = datetime.fromisoformat(dateTo)
+        except ValueError:
+            pass
+    
+    # Query database
+    trades = query_trade_journal(
         symbol=symbol,
-        dateFrom=dateFrom,
-        dateTo=dateTo
+        dateFrom=parsed_dateFrom,
+        dateTo=parsed_dateTo,
+        mode=mode,
+        limit=1000  # Get more trades for stats
     )
+    
+    return calculate_stats(trades, mode_filter=mode)
 
-    filtered = filter_trades(trades, filters)
-    return calculate_stats(filtered)
 
 @router.get("/export/{trade_id}")
 async def export_trade(trade_id: str) -> Dict[str, Any]:
     """Export a trade with full context as JSON."""
-    trades = get_mock_trades()
-    trade = next((t for t in trades if t["id"] == trade_id), None)
-
+    trade = await get_trade(trade_id)
+    
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
 
@@ -292,26 +405,44 @@ async def export_trade(trade_id: str) -> Dict[str, Any]:
         "format": "json"
     }
 
+
 @router.post("/export")
 async def export_journal(
     symbol: Optional[str] = None,
     dateFrom: Optional[str] = None,
-    dateTo: Optional[str] = None
+    dateTo: Optional[str] = None,
+    mode: Optional[str] = None
 ) -> Dict[str, Any]:
     """Export entire trade journal as JSON."""
-    trades = get_mock_trades()
-
-    filters = TradeFilters(
+    # Parse dates if provided
+    parsed_dateFrom = None
+    parsed_dateTo = None
+    
+    if dateFrom:
+        try:
+            parsed_dateFrom = datetime.fromisoformat(dateFrom)
+        except ValueError:
+            pass
+    
+    if dateTo:
+        try:
+            parsed_dateTo = datetime.fromisoformat(dateTo)
+        except ValueError:
+            pass
+    
+    # Query database
+    trades = query_trade_journal(
         symbol=symbol,
-        dateFrom=dateFrom,
-        dateTo=dateTo
+        dateFrom=parsed_dateFrom,
+        dateTo=parsed_dateTo,
+        mode=mode,
+        limit=10000  # Get all trades for export
     )
-
-    filtered = filter_trades(trades, filters)
-    stats = calculate_stats(filtered)
+    
+    stats = calculate_stats(trades, mode_filter=mode)
 
     return {
-        "trades": filtered,
+        "trades": trades,
         "statistics": stats.dict(),
         "exported_at": datetime.utcnow().isoformat(),
         "format": "json"

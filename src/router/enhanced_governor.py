@@ -137,6 +137,8 @@ class EnhancedGovernor(Governor):
         trade_proposal: Dict,
         account_balance: Optional[float] = None,
         broker_id: Optional[str] = None,
+        account_id: Optional[str] = None,
+        mode: str = "live",
         **kwargs: Any
     ) -> RiskMandate:
         """
@@ -147,6 +149,7 @@ class EnhancedGovernor(Governor):
             trade_proposal: Trade proposal dict with symbol, balance, etc.
             account_balance: Current account balance (optional, extracts from trade_proposal if not provided)
             broker_id: Broker identifier for fee-aware Kelly (optional, extracts from trade_proposal if not provided)
+            account_id: Account identifier for account-specific limits (optional, extracts from trade_proposal if not provided)
 
         Fee Precedence:
             commission_per_lot and spread_pips are resolved as follows:
@@ -161,9 +164,34 @@ class EnhancedGovernor(Governor):
         symbol = trade_proposal.get('symbol', 'EURUSD')
         current_balance = trade_proposal.get('current_balance', self._daily_start_balance)
 
-        # Extract account_balance and broker_id from parameters or trade_proposal
+        # Extract account_balance, broker_id, and account_id from parameters or trade_proposal
         account_balance = account_balance or trade_proposal.get('account_balance', current_balance)
         broker_id = broker_id or trade_proposal.get('broker_id', self._broker_id)
+        account_id = account_id or trade_proposal.get('account_id', self.account_id)
+
+        # Log mode for audit trail
+        mode_tag = "[DEMO]" if mode == "demo" else "[LIVE]"
+        logger.debug(f"EnhancedGovernor: Processing trade for account_id={account_id}, mode={mode}")
+
+        # For demo mode, use virtual balance from VirtualBalanceManager if available
+        if mode == "demo":
+            try:
+                from src.router.virtual_balance import get_virtual_balance_manager
+                from src.router.ea_registry import get_ea_registry
+                
+                ea_registry = get_ea_registry()
+                ea_config = ea_registry.get(trade_proposal.get('bot_id', ''))
+                
+                if ea_config:
+                    vb_manager = get_virtual_balance_manager()
+                    virtual_account = vb_manager.get_account(ea_config.ea_id)
+                    
+                    if virtual_account:
+                        # Use virtual balance for demo mode calculations
+                        account_balance = virtual_account.current_balance
+                        logger.info(f"{mode_tag} Using virtual balance: {account_balance:.2f} for EA {ea_config.ea_id}")
+            except Exception as e:
+                logger.warning(f"Could not get virtual balance for demo mode: {e}")
 
         # Update house money effect based on current account balance to ensure risk multiplier
         # reflects daily P&L before applying Kelly sizing
@@ -184,11 +212,12 @@ class EnhancedGovernor(Governor):
         # Kelly Calculator can still override via broker lookup even if we provide a default
         pip_value = trade_proposal.get('pip_value', self._get_pip_value(symbol, broker_id))
 
-        # Extract fee parameters from trade_proposal with sensible defaults
-        # Precedence: explicit from trade_proposal > broker registry auto-lookup > default
-        # Kelly Calculator handles the registry auto-lookup when values are 0.0
-        commission_per_lot = trade_proposal.get('commission_per_lot', 5.0)  # Default $5/lot (IC Markets typical)
-        spread_pips = trade_proposal.get('spread_pips', 1.0)  # Default 1 pip spread
+        # Extract fee parameters from trade_proposal
+        # Precedence: explicit from trade_proposal > broker registry auto-lookup
+        # Initialize to 0.0 to allow EnhancedKellyCalculator to auto-fetch from broker registry
+        # when broker_id is supplied. Only override with non-zero values if explicitly provided.
+        commission_per_lot = trade_proposal.get('commission_per_lot', 0.0)
+        spread_pips = trade_proposal.get('spread_pips', 0.0)
 
         # Calculate Kelly position size with fee-aware parameters
         # Kelly Calculator will auto-fetch pip_value, commission, and spread from broker registry
@@ -228,7 +257,12 @@ class EnhancedGovernor(Governor):
         scaled_risk_amount = kelly_result.risk_amount * self.house_money_multiplier
 
         # Apply base Governor physics-based throttling
-        base_mandate = super().calculate_risk(regime_report, trade_proposal)
+        # Comment 2: Pass mode to base Governor for demo-specific risk scaling
+        base_mandate = super().calculate_risk(
+            regime_report, 
+            trade_proposal, 
+            mode=mode  # Comment 2: Pass mode through for demo risk adjustments
+        )
 
         # Keep allocation_scalar as the physics-based clamp (do not re-apply kelly_f here)
         # This avoids double-scaling: kelly_f has already been applied to position_size/risk_amount
@@ -243,6 +277,7 @@ class EnhancedGovernor(Governor):
         # Build mandate with extended fields
         # Note: allocation_scalar is the physics clamp; kelly_fraction is the final Kelly after physics throttling
         # position_size and risk_amount incorporate both house_money_multiplier and physics_scalar
+        # Comment 2: Set mandate.mode to preserve mode tag in risk notes
         mandate = RiskMandate(
             allocation_scalar=physics_scalar,
             risk_mode=base_mandate.risk_mode,
@@ -250,8 +285,9 @@ class EnhancedGovernor(Governor):
             kelly_fraction=final_kelly_fraction,
             risk_amount=final_risk_amount,
             kelly_adjustments=kelly_result.adjustments_applied,
+            mode=mode,  # Comment 2: Preserve mode in mandate for audit trail
             notes=(
-                f"Kelly: {kelly_result.kelly_f:.4f} × "
+                f"{mode_tag} Kelly: {kelly_result.kelly_f:.4f} × "
                 f"House Money: {self.house_money_multiplier:.2f} × "
                 f"Physics: {physics_scalar:.4f} = {final_kelly_fraction:.4f}. "
                 f"Final position: {final_position_size:.4f} lots, risk: ${final_risk_amount:.2f}. "

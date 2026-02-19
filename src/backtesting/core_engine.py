@@ -3,17 +3,120 @@ import pandas as pd
 import io
 import sys
 import contextlib
-from typing import Dict, Any, Optional
+import logging
+from typing import Dict, Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.backtesting.lean_slippage import SlippageModel
+    from src.backtesting.lean_commission import CommissionModel
+
+logger = logging.getLogger(__name__)
+
 
 class BacktestResult(dict):
     """Structured result from a backtest run."""
-    def __init__(self, sharpe: float, return_pct: float, drawdown: float, trades: int, log: str):
-        super().__init__(sharpe=sharpe, return_pct=return_pct, drawdown=drawdown, trades=trades, log=log)
+    def __init__(
+        self, 
+        sharpe: float, 
+        return_pct: float, 
+        drawdown: float, 
+        trades: int, 
+        log: str,
+        total_slippage: float = 0.0,
+        total_commission: float = 0.0
+    ):
+        super().__init__(
+            sharpe=sharpe, 
+            return_pct=return_pct, 
+            drawdown=drawdown, 
+            trades=trades, 
+            log=log,
+            total_slippage=total_slippage,
+            total_commission=total_commission
+        )
+
+
+class LeanSlippageCommission(bt.CommInfoBase):
+    """
+    Custom Backtrader commission class that uses LEAN-style slippage 
+    and commission models.
+    """
+    
+    params = (
+        ('commission', 0.0),
+        ('slippage_model', None),
+        ('commission_model', None),
+        ('stocklike', False),  # False for forex
+        ('commtype', bt.CommInfoBase.COMM_FIXED),  # Use COMM_FIXED for per-lot
+    )
+    
+    def _getcommission(self, size, price, pseudoexec):
+        """Calculate commission and slippage."""
+        commission = 0.0
+        if self.p.commission_model:
+            commission = self.p.commission_model.calculate_commission(
+                lots=abs(size),
+                symbol='',
+                price=price,
+                side='buy' if size > 0 else 'sell'
+            )
+        elif self.p.commission > 0:
+            # Use base commission rate when no commission model is provided
+            # Apply as per-lot cost consistent with COMM_FIXED default
+            commission = abs(size) * self.p.commission
+        
+        # Add slippage cost
+        if self.p.slippage_model:
+            slippage = self.p.slippage_model.calculate_slippage(
+                order_volume=abs(size),
+                price=price
+            )
+            # Slippage affects effective price, convert to cost
+            commission += abs(size) * slippage
+        
+        return commission
+    
+    def get_slippage(self, size, price, pseudoexec):
+        """Calculate slippage using the slippage model."""
+        if self.p.slippage_model:
+            return self.p.slippage_model.calculate_slippage(
+                order_volume=abs(size),
+                price=price
+            )
+        return 0.0
+
 
 class QuantMindBacktester:
-    def __init__(self, initial_cash=10000.0, commission=0.001):
+    """
+    Enhanced backtester with LEAN-style slippage and commission support.
+    
+    Features:
+    - Dynamic strategy loading from code strings
+    - Configurable slippage models (constant, volume-based, volatility-based)
+    - Configurable commission models (per-lot, per-share, tiered)
+    - Comprehensive result tracking
+    """
+    
+    def __init__(
+        self, 
+        initial_cash: float = 10000.0, 
+        commission: float = 0.001,
+        slippage_model: Optional['SlippageModel'] = None,
+        commission_model: Optional['CommissionModel'] = None
+    ):
+        """
+        Initialize the backtester.
+        
+        Args:
+            initial_cash: Starting capital
+            commission: Default commission rate (used if no commission model)
+            slippage_model: LEAN slippage model instance
+            commission_model: LEAN commission model instance
+        """
         self.initial_cash = initial_cash
         self.commission = commission
+        self.slippage_model = slippage_model
+        self.commission_model = commission_model
 
     def run(self, strategy_code: str, data: pd.DataFrame, strategy_name: str = "MyStrategy") -> BacktestResult:
         """
@@ -23,6 +126,17 @@ class QuantMindBacktester:
         cerebro = bt.Cerebro()
         cerebro.broker.setcash(self.initial_cash)
         cerebro.broker.setcommission(commission=self.commission)
+
+        # Register LEAN-style slippage and commission models if provided
+        if self.slippage_model or self.commission_model:
+            lean_comm_info = LeanSlippageCommission(
+                commission=self.commission,
+                slippage_model=self.slippage_model,
+                commission_model=self.commission_model
+            )
+            cerebro.broker.addcommissioninfo(lean_comm_info)
+            logger.info(f"Registered LEAN models: slippage={type(self.slippage_model).__name__ if self.slippage_model else 'None'}, "
+                        f"commission={type(self.commission_model).__name__ if self.commission_model else 'None'}")
 
         # Feed Data
         # Assuming Data is OHLCV with Datetime index

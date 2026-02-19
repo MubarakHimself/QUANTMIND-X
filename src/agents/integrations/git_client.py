@@ -347,3 +347,222 @@ class GitClient:
         except Exception as e:
             logger.error(f"Error listing skills: {e}")
             return []
+
+    # =========================================================================
+    # Remote Repository Operations (GitHub EA Sync)
+    # =========================================================================
+
+    def clone_remote_repo(self, repo_url: str, branch: str = "main") -> bool:
+        """
+        Clone a remote GitHub repository to the local path.
+
+        Args:
+            repo_url: GitHub repository URL (e.g., "https://github.com/user/repo.git")
+            branch: Branch to clone (default: "main")
+
+        Returns:
+            True if clone succeeded or repo already exists, False otherwise
+
+        Example:
+            client = GitClient("/data/ea-library")
+            success = client.clone_remote_repo("https://github.com/MubarakHimself/quantmind-eas")
+        """
+        try:
+            # Check if repo already exists
+            if self.repo_path.exists() and (self.repo_path / ".git").exists():
+                logger.info(f"Repository already exists at {self.repo_path}, use pull_updates() to update")
+                return True
+
+            # Create parent directory
+            self.repo_path.mkdir(parents=True, exist_ok=True)
+
+            # Clone the repository
+            result = subprocess.run(
+                ["git", "clone", "-b", branch, repo_url, str(self.repo_path)],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            logger.info(f"Cloned repository: {repo_url} to {self.repo_path}")
+            return True
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to clone repository: {e.stderr}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error cloning repository: {e}")
+            return False
+
+    def pull_updates(self, branch: str = "main") -> bool:
+        """
+        Pull latest changes from remote repository.
+
+        Args:
+            branch: Branch to pull from (default: "main")
+
+        Returns:
+            True if pull succeeded, False otherwise
+        """
+        try:
+            # Fetch latest changes
+            self._run_git_command(["fetch", "origin"])
+
+            # Pull changes
+            result = self._run_git_command(["pull", "origin", branch], check=False)
+
+            if result.returncode == 0:
+                logger.info(f"Pulled latest changes from origin/{branch}")
+                return True
+            else:
+                logger.warning(f"Pull returned non-zero: {result.stderr}")
+                return "Already up to date" in result.stdout or "Already up-to-date" in result.stdout
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to pull updates: {e.stderr}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error pulling updates: {e}")
+            return False
+
+    def get_commit_hash(self, short: bool = False) -> Optional[str]:
+        """
+        Get current commit hash of the repository.
+
+        Args:
+            short: If True, return short hash (7 characters)
+
+        Returns:
+            Commit hash string, or None on error
+        """
+        try:
+            args = ["rev-parse", "--short"] if short else ["rev-parse", "HEAD"]
+            result = self._run_git_command(args)
+            return result.stdout.strip()
+        except Exception as e:
+            logger.error(f"Failed to get commit hash: {e}")
+            return None
+
+    def get_remote_url(self) -> Optional[str]:
+        """
+        Get the remote origin URL.
+
+        Returns:
+            Remote URL string, or None on error
+        """
+        try:
+            result = self._run_git_command(["remote", "get-url", "origin"], check=False)
+            if result.returncode == 0:
+                return result.stdout.strip()
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get remote URL: {e}")
+            return None
+
+    def list_changed_files(self, since_commit: Optional[str] = None) -> List[str]:
+        """
+        List files changed since a specific commit.
+
+        Args:
+            since_commit: Commit hash to compare against. If None, compares against HEAD~1
+
+        Returns:
+            List of changed file paths (relative to repo root)
+        """
+        try:
+            if since_commit:
+                args = ["diff", "--name-only", since_commit]
+            else:
+                args = ["diff", "--name-only", "HEAD~1", "HEAD"]
+
+            result = self._run_git_command(args, check=False)
+
+            if result.returncode == 0:
+                files = [f for f in result.stdout.strip().split('\n') if f]
+                return files
+            return []
+
+        except Exception as e:
+            logger.error(f"Failed to list changed files: {e}")
+            return []
+
+    def get_file_content_at_commit(self, file_path: str, commit_hash: str) -> Optional[str]:
+        """
+        Get file content at a specific commit.
+
+        Args:
+            file_path: Path to file (relative to repo root)
+            commit_hash: Commit hash to retrieve file from
+
+        Returns:
+            File content as string, or None on error
+        """
+        try:
+            result = self._run_git_command(["show", f"{commit_hash}:{file_path}"], check=False)
+            if result.returncode == 0:
+                return result.stdout
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get file content: {e}")
+            return None
+
+    def get_commit_info(self, commit_hash: Optional[str] = None) -> Optional[dict]:
+        """
+        Get commit information.
+
+        Args:
+            commit_hash: Commit hash to get info for. If None, uses HEAD
+
+        Returns:
+            Dictionary with commit info (hash, author, date, message), or None on error
+        """
+        try:
+            target = commit_hash or "HEAD"
+            result = self._run_git_command([
+                "log", "-1", "--format=%H|%an|%ae|%ai|%s", target
+            ], check=False)
+
+            if result.returncode == 0:
+                parts = result.stdout.strip().split('|')
+                if len(parts) >= 5:
+                    return {
+                        'hash': parts[0],
+                        'author_name': parts[1],
+                        'author_email': parts[2],
+                        'date': parts[3],
+                        'message': '|'.join(parts[4:])
+                    }
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get commit info: {e}")
+            return None
+
+    def list_files_by_extension(self, extension: str, path_prefix: Optional[str] = None) -> List[str]:
+        """
+        List all files with a specific extension in the repository.
+
+        Args:
+            extension: File extension to filter (e.g., ".mq5")
+            path_prefix: Optional path prefix to search within
+
+        Returns:
+            List of file paths (relative to repo root)
+        """
+        try:
+            search_path = self.repo_path
+            if path_prefix:
+                search_path = self.repo_path / path_prefix
+
+            if not search_path.exists():
+                return []
+
+            files = []
+            for file_path in search_path.rglob(f"*{extension}"):
+                if file_path.is_file():
+                    relative_path = file_path.relative_to(self.repo_path)
+                    files.append(str(relative_path))
+
+            return sorted(files)
+
+        except Exception as e:
+            logger.error(f"Error listing files by extension: {e}")
+            return []

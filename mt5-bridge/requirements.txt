@@ -2,3 +2,6 @@ fastapi
 uvicorn
 MetaTrader5
 pydantic
+prometheus-client
+python-snappy
+prometheus-remote-write

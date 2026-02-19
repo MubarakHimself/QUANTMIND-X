@@ -1,0 +1,65 @@
+# QuantMindX Prometheus Agent Configuration
+# Runs in agent mode to scrape local services and remote_write to Grafana Cloud
+# This provides an alternative to the direct pusher for metrics delivery
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'quantmindx-production'
+    environment: 'production'
+
+# Scrape configurations for local services
+scrape_configs:
+  # QuantMind API Server metrics
+  - job_name: 'quantmind-api'
+    static_configs:
+      - targets: ['quantmind-api:9090']
+        labels:
+          service: 'quantmind-api'
+          component: 'api'
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # MT5 Bridge metrics
+  - job_name: 'mt5-bridge'
+    static_configs:
+      - targets: ['mt5-bridge:9091']
+        labels:
+          service: 'mt5-bridge'
+          component: 'trading'
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # Router metrics (if running as separate service)
+  - job_name: 'quantmind-router'
+    static_configs:
+      - targets: ['quantmind-router:9092']
+        labels:
+          service: 'quantmind-router'
+          component: 'router'
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+# Remote write to Grafana Cloud
+# Environment variables are expanded by Prometheus
+remote_write:
+  - url: "${GRAFANA_PROMETHEUS_URL}/api/prom/push"
+    basic_auth:
+      username: "${GRAFANA_INSTANCE_ID}"
+      password: "${GRAFANA_API_KEY}"
+    headers:
+      X-Scope-OrgID: "${GRAFANA_INSTANCE_ID}"
+    queue_config:
+      max_samples_per_send: 1000
+      max_shards: 200
+      capacity: 2500
+    metadata_config:
+      send: true
+      send_interval: 1m
+      max_samples_per_send: 500
+    # Enable native histograms
+    send_native_histograms: true

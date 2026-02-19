@@ -1,0 +1,65 @@
+# Analyst Agent Configuration
+# Configuration for factory-based analyst agent creation
+
+agent_id: "analyst_001"
+agent_type: "analyst"
+name: "Analyst Agent"
+
+# LLM Configuration
+llm_provider: "openrouter"
+llm_model: "anthropic/claude-sonnet-4"
+temperature: 0.0
+max_tokens: 4096
+
+# Tool Configuration
+tools:
+  - research_market_data
+  - extract_insights
+  - parse_nprd
+  - validate_nprd
+  - generate_trd
+  - analyze_backtest
+  - compare_strategies
+  - generate_optimization_report
+
+tool_config:
+  enable_parallel_calls: true
+  max_concurrent_tools: 3
+
+# State and Checkpointing
+state_class: "MessagesState"
+checkpointer_type: "memory"
+checkpointer_config:
+  memory_type: "buffered"
+  
+# Observability Settings
+enable_tracing: true
+enable_metrics: true
+enable_logging: true
+log_level: "INFO"
+
+# Streaming and Performance
+enable_streaming: false
+timeout_seconds: 300
+max_retries: 3
+
+# Memory and Workspace
+memory_namespace:
+  - memories
+  - analyst
+  - default
+workspace_path: "workspaces/analyst"
+
+# Custom Configuration
+custom:
+  max_research_results: 100
+  enable_nprd_parsing: true
+  enable_backtest_analysis: true
+  market_data_sources:
+    - market_data
+    - news_feeds
+    - technical_indicators
+  default_timeframe: "H1"
+  default_symbols:
+    - EURUSD
+    - GBPUSD

@@ -1,0 +1,76 @@
+# Router Agent Configuration
+# Configuration for factory-based router agent creation
+
+agent_id: "router_001"
+agent_type: "router"
+name: "Router Agent"
+
+# LLM Configuration
+llm_provider: "openrouter"
+llm_model: "anthropic/claude-sonnet-4"
+temperature: 0.0
+max_tokens: 4096
+
+# Tool Configuration
+# Router uses classification logic rather than direct tools
+tools: []
+
+tool_config:
+  classification_keywords:
+    research:
+      - research
+      - analysis
+      - market
+    strategy_development:
+      - strategy
+      - backtest
+      - code
+    deployment:
+      - deploy
+      - execute
+      - monitor
+
+# State and Checkpointing
+state_class: "RouterState"
+checkpointer_type: "memory"
+checkpointer_config:
+  memory_type: "buffered"
+
+# Observability Settings
+enable_tracing: true
+enable_metrics: true
+enable_logging: true
+log_level: "INFO"
+
+# Streaming and Performance
+enable_streaming: false
+timeout_seconds: 60
+max_retries: 2
+
+# Memory and Workspace
+memory_namespace:
+  - memories
+  - router
+  - default
+workspace_path: "workspaces/router"
+
+# Custom Configuration
+custom:
+  default_agent: "analyst"
+  enable_broker_detection: true
+  broker_keywords:
+    crypto:
+      - crypto
+      - binance
+      - bitcoin
+      - btc
+      - eth
+      - ethereum
+    mt5:
+      - forex
+      - mt5
+      - metatrader
+  agent_mapping:
+    research: "analyst"
+    strategy_development: "quantcode"
+    deployment: "copilot"

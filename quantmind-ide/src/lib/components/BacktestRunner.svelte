@@ -349,7 +349,7 @@
   {#if isRunning || progress > 0}
     <div class="progress-section">
       <div class="progress-bar-container">
-        <div class="progress-bar" style="width: {progress}%"></div>
+        <div class="progress-bar" data-testid="progress-bar" style="width: {progress}%"></div>
       </div>
       <div class="progress-text">
         {progress.toFixed(1)}% - {status}
@@ -380,7 +380,7 @@
         </button>
       </div>
     </div>
-    <div class="logs-container" bind:this={logContainer} on:scroll={handleLogScroll}>
+    <div class="logs-container" data-testid="logs-container" bind:this={logContainer} on:scroll={handleLogScroll}>
       {#if filteredLogs.length === 0}
         <div class="empty-logs">{logs.length === 0 ? 'No logs yet' : 'No logs match filter'}</div>
       {:else}
@@ -396,7 +396,7 @@
   </div>
   
   {#if results}
-    <div class="results-section">
+    <div class="results-section" data-testid="results-section">
       <h3>Results</h3>
       <div class="results-grid">
         <div class="result-card">

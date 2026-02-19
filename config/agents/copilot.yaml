@@ -1,0 +1,63 @@
+# Copilot Agent Configuration
+# Configuration for factory-based copilot agent creation
+
+agent_id: "copilot_001"
+agent_type: "copilot"
+name: "Copilot Agent"
+
+# LLM Configuration
+llm_provider: "openrouter"
+llm_model: "anthropic/claude-sonnet-4"
+temperature: 0.0
+max_tokens: 4096
+
+# Tool Configuration
+tools:
+  - deploy_expert_advisor
+  - monitor_deployment
+  - manage_risk_parameters
+  - validate_deployment
+  - get_account_info
+  - execute_trade
+  - close_position
+
+tool_config:
+  enable_parallel_calls: false
+  deployment_validation_strict: true
+
+# State and Checkpointing
+state_class: "MessagesState"
+checkpointer_type: "memory"
+checkpointer_config:
+  memory_type: "buffered"
+
+# Observability Settings
+enable_tracing: true
+enable_metrics: true
+enable_logging: true
+log_level: "INFO"
+
+# Streaming and Performance
+enable_streaming: false
+timeout_seconds: 300
+max_retries: 3
+
+# Memory and Workspace
+memory_namespace:
+  - memories
+  - copilot
+  - default
+workspace_path: "workspaces/copilot"
+
+# Custom Configuration
+custom:
+  default_broker: "exness_demo_mock"
+  enable_auto_deployment: false
+  risk_limits:
+    max_daily_loss: 100
+    max_position_size: 1.0
+    max_drawdown: 20.0
+  monitoring_interval: 60
+  alert_channels:
+    - email
+    - webhook

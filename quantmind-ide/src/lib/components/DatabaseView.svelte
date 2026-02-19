@@ -1,11 +1,32 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount } from "svelte";
   import {
-    Database, Table, Search, Filter, Plus, Edit, Trash2, Eye,
-    RefreshCw, Download, Upload, Play, FileText, Code, Hash,
-    Clock, HardDrive, ChevronRight, ChevronDown, X, Check,
-    AlertCircle, FileCode, Terminal, Settings as SettingsIcon
-  } from 'lucide-svelte';
+    Database,
+    Table,
+    Search,
+    Filter,
+    Plus,
+    Edit,
+    Trash2,
+    Eye,
+    RefreshCw,
+    Download,
+    Upload,
+    Play,
+    FileText,
+    Code,
+    Hash,
+    Clock,
+    HardDrive,
+    ChevronRight,
+    ChevronDown,
+    X,
+    Check,
+    AlertCircle,
+    FileCode,
+    Terminal,
+    Settings as SettingsIcon,
+  } from "lucide-svelte";
 
   // ============================================================================
   // TYPE DEFINITIONS
@@ -58,10 +79,10 @@
   let currentPage = 1;
   let rowsPerPage = 25;
   let sortColumn: string | null = null;
-  let sortDirection: 'asc' | 'desc' = 'asc';
+  let sortDirection: "asc" | "desc" = "asc";
 
   // Query editor
-  let queryInput = '';
+  let queryInput = "";
   let queryHistory: string[] = [];
   let queryResults: QueryResult | null = null;
   let queryHistoryIndex = -1;
@@ -88,8 +109,8 @@
   let isQueryRunning = false;
 
   // Search/filter
-  let searchQuery = '';
-  let tableTypeFilter: 'all' | 'existing' | 'new' = 'all';
+  let searchQuery = "";
+  let tableTypeFilter: "all" | "existing" | "new" = "all";
 
   // ============================================================================
   // LIFECYCLE
@@ -107,7 +128,7 @@
   async function loadTables() {
     isLoading = true;
     try {
-      const res = await fetch('http://localhost:8000/api/database/tables');
+      const res = await fetch("http://localhost:8000/api/database/tables");
       if (res.ok) {
         const data = await res.json();
         tables = data.tables || [];
@@ -116,7 +137,7 @@
         loadMockTables();
       }
     } catch (e) {
-      console.error('Failed to load tables:', e);
+      console.error("Failed to load tables:", e);
       loadMockTables();
     } finally {
       isLoading = false;
@@ -127,254 +148,559 @@
     tables = [
       // Existing tables
       {
-        name: 'prop_firm_accounts',
+        name: "prop_firm_accounts",
         row_count: 12,
         is_new: false,
         size_bytes: 8192,
-        last_updated: '2024-01-20T10:30:00Z',
+        last_updated: "2024-01-20T10:30:00Z",
         columns: [
-          { name: 'id', type: 'INTEGER', nullable: false, primary_key: true },
-          { name: 'firm_name', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'account_id', type: 'INTEGER', nullable: false, primary_key: false },
-          { name: 'balance', type: 'REAL', nullable: false, primary_key: false },
-          { name: 'equity', type: 'REAL', nullable: false, primary_key: false },
-          { name: 'max_drawdown', type: 'REAL', nullable: true, primary_key: false },
-          { name: 'created_at', type: 'TEXT', nullable: false, primary_key: false }
-        ]
+          { name: "id", type: "INTEGER", nullable: false, primary_key: true },
+          {
+            name: "firm_name",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "account_id",
+            type: "INTEGER",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "balance",
+            type: "REAL",
+            nullable: false,
+            primary_key: false,
+          },
+          { name: "equity", type: "REAL", nullable: false, primary_key: false },
+          {
+            name: "max_drawdown",
+            type: "REAL",
+            nullable: true,
+            primary_key: false,
+          },
+          {
+            name: "created_at",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+        ],
       },
       {
-        name: 'daily_snapshots',
+        name: "daily_snapshots",
         row_count: 342,
         is_new: false,
         size_bytes: 131072,
-        last_updated: '2024-01-20T23:59:00Z',
+        last_updated: "2024-01-20T23:59:00Z",
         columns: [
-          { name: 'id', type: 'INTEGER', nullable: false, primary_key: true },
-          { name: 'account_id', type: 'INTEGER', nullable: false, primary_key: false },
-          { name: 'date', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'balance', type: 'REAL', nullable: false, primary_key: false },
-          { name: 'equity', type: 'REAL', nullable: false, primary_key: false },
-          { name: 'floating_pnl', type: 'REAL', nullable: true, primary_key: false },
-          { name: 'margin_used', type: 'REAL', nullable: false, primary_key: false }
-        ]
+          { name: "id", type: "INTEGER", nullable: false, primary_key: true },
+          {
+            name: "account_id",
+            type: "INTEGER",
+            nullable: false,
+            primary_key: false,
+          },
+          { name: "date", type: "TEXT", nullable: false, primary_key: false },
+          {
+            name: "balance",
+            type: "REAL",
+            nullable: false,
+            primary_key: false,
+          },
+          { name: "equity", type: "REAL", nullable: false, primary_key: false },
+          {
+            name: "floating_pnl",
+            type: "REAL",
+            nullable: true,
+            primary_key: false,
+          },
+          {
+            name: "margin_used",
+            type: "REAL",
+            nullable: false,
+            primary_key: false,
+          },
+        ],
       },
       {
-        name: 'trade_proposals',
+        name: "trade_proposals",
         row_count: 89,
         is_new: false,
         size_bytes: 65536,
-        last_updated: '2024-01-20T15:22:00Z',
+        last_updated: "2024-01-20T15:22:00Z",
         columns: [
-          { name: 'id', type: 'INTEGER', nullable: false, primary_key: true },
-          { name: 'strategy_name', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'symbol', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'action', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'entry_price', type: 'REAL', nullable: true, primary_key: false },
-          { name: 'confidence', type: 'REAL', nullable: false, primary_key: false },
-          { name: 'status', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'created_at', type: 'TEXT', nullable: false, primary_key: false }
-        ]
+          { name: "id", type: "INTEGER", nullable: false, primary_key: true },
+          {
+            name: "strategy_name",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+          { name: "symbol", type: "TEXT", nullable: false, primary_key: false },
+          { name: "action", type: "TEXT", nullable: false, primary_key: false },
+          {
+            name: "entry_price",
+            type: "REAL",
+            nullable: true,
+            primary_key: false,
+          },
+          {
+            name: "confidence",
+            type: "REAL",
+            nullable: false,
+            primary_key: false,
+          },
+          { name: "status", type: "TEXT", nullable: false, primary_key: false },
+          {
+            name: "created_at",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+        ],
       },
       {
-        name: 'agent_tasks',
+        name: "agent_tasks",
         row_count: 256,
         is_new: false,
         size_bytes: 98304,
-        last_updated: '2024-01-20T16:45:00Z',
+        last_updated: "2024-01-20T16:45:00Z",
         columns: [
-          { name: 'id', type: 'TEXT', nullable: false, primary_key: true },
-          { name: 'agent_type', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'task_type', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'status', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'input_data', type: 'TEXT', nullable: true, primary_key: false },
-          { name: 'result', type: 'TEXT', nullable: true, primary_key: false },
-          { name: 'created_at', type: 'TEXT', nullable: false, primary_key: false }
-        ]
+          { name: "id", type: "TEXT", nullable: false, primary_key: true },
+          {
+            name: "agent_type",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "task_type",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+          { name: "status", type: "TEXT", nullable: false, primary_key: false },
+          {
+            name: "input_data",
+            type: "TEXT",
+            nullable: true,
+            primary_key: false,
+          },
+          { name: "result", type: "TEXT", nullable: true, primary_key: false },
+          {
+            name: "created_at",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+        ],
       },
       {
-        name: 'strategy_performance',
+        name: "strategy_performance",
         row_count: 45,
         is_new: false,
         size_bytes: 49152,
-        last_updated: '2024-01-20T14:30:00Z',
+        last_updated: "2024-01-20T14:30:00Z",
         columns: [
-          { name: 'id', type: 'INTEGER', nullable: false, primary_key: true },
-          { name: 'strategy_name', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'total_trades', type: 'INTEGER', nullable: false, primary_key: false },
-          { name: 'win_rate', type: 'REAL', nullable: false, primary_key: false },
-          { name: 'total_profit', type: 'REAL', nullable: false, primary_key: false },
-          { name: 'max_drawdown', type: 'REAL', nullable: true, primary_key: false },
-          { name: 'sharpe_ratio', type: 'REAL', nullable: true, primary_key: false }
-        ]
+          { name: "id", type: "INTEGER", nullable: false, primary_key: true },
+          {
+            name: "strategy_name",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "total_trades",
+            type: "INTEGER",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "win_rate",
+            type: "REAL",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "total_profit",
+            type: "REAL",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "max_drawdown",
+            type: "REAL",
+            nullable: true,
+            primary_key: false,
+          },
+          {
+            name: "sharpe_ratio",
+            type: "REAL",
+            nullable: true,
+            primary_key: false,
+          },
+        ],
       },
       {
-        name: 'risk_tier_transitions',
+        name: "risk_tier_transitions",
         row_count: 128,
         is_new: false,
         size_bytes: 57344,
-        last_updated: '2024-01-20T17:15:00Z',
+        last_updated: "2024-01-20T17:15:00Z",
         columns: [
-          { name: 'id', type: 'INTEGER', nullable: false, primary_key: true },
-          { name: 'account_id', type: 'INTEGER', nullable: false, primary_key: false },
-          { name: 'from_tier', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'to_tier', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'reason', type: 'TEXT', nullable: true, primary_key: false },
-          { name: 'timestamp', type: 'TEXT', nullable: false, primary_key: false }
-        ]
+          { name: "id", type: "INTEGER", nullable: false, primary_key: true },
+          {
+            name: "account_id",
+            type: "INTEGER",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "from_tier",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "to_tier",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+          { name: "reason", type: "TEXT", nullable: true, primary_key: false },
+          {
+            name: "timestamp",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+        ],
       },
       {
-        name: 'crypto_trades',
+        name: "crypto_trades",
         row_count: 67,
         is_new: false,
         size_bytes: 40960,
-        last_updated: '2024-01-20T18:00:00Z',
+        last_updated: "2024-01-20T18:00:00Z",
         columns: [
-          { name: 'id', type: 'INTEGER', nullable: false, primary_key: true },
-          { name: 'symbol', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'side', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'quantity', type: 'REAL', nullable: false, primary_key: false },
-          { name: 'price', type: 'REAL', nullable: false, primary_key: false },
-          { name: 'timestamp', type: 'TEXT', nullable: false, primary_key: false }
-        ]
+          { name: "id", type: "INTEGER", nullable: false, primary_key: true },
+          { name: "symbol", type: "TEXT", nullable: false, primary_key: false },
+          { name: "side", type: "TEXT", nullable: false, primary_key: false },
+          {
+            name: "quantity",
+            type: "REAL",
+            nullable: false,
+            primary_key: false,
+          },
+          { name: "price", type: "REAL", nullable: false, primary_key: false },
+          {
+            name: "timestamp",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+        ],
       },
       // New tables
       {
-        name: 'strategy_folders',
+        name: "strategy_folders",
         row_count: 8,
         is_new: true,
         size_bytes: 4096,
-        last_updated: '2024-01-19T10:00:00Z',
+        last_updated: "2024-01-19T10:00:00Z",
         columns: [
-          { name: 'id', type: 'INTEGER', nullable: false, primary_key: true },
-          { name: 'name', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'type', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'path', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'created_at', type: 'TEXT', nullable: false, primary_key: false }
-        ]
+          { name: "id", type: "INTEGER", nullable: false, primary_key: true },
+          { name: "name", type: "TEXT", nullable: false, primary_key: false },
+          { name: "type", type: "TEXT", nullable: false, primary_key: false },
+          { name: "path", type: "TEXT", nullable: false, primary_key: false },
+          {
+            name: "created_at",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+        ],
       },
       {
-        name: 'backtest_results',
+        name: "backtest_results",
         row_count: 23,
         is_new: true,
         size_bytes: 81920,
-        last_updated: '2024-01-19T14:30:00Z',
+        last_updated: "2024-01-19T14:30:00Z",
         columns: [
-          { name: 'id', type: 'TEXT', nullable: false, primary_key: true },
-          { name: 'strategy_name', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'backtest_type', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'start_date', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'end_date', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'total_trades', type: 'INTEGER', nullable: false, primary_key: false },
-          { name: 'profit_factor', type: 'REAL', nullable: true, primary_key: false },
-          { name: 'results_json', type: 'TEXT', nullable: true, primary_key: false }
-        ]
+          { name: "id", type: "TEXT", nullable: false, primary_key: true },
+          {
+            name: "strategy_name",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "backtest_type",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "start_date",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "end_date",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "total_trades",
+            type: "INTEGER",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "profit_factor",
+            type: "REAL",
+            nullable: true,
+            primary_key: false,
+          },
+          {
+            name: "results_json",
+            type: "TEXT",
+            nullable: true,
+            primary_key: false,
+          },
+        ],
       },
       {
-        name: 'shared_assets',
+        name: "shared_assets",
         row_count: 15,
         is_new: true,
         size_bytes: 24576,
-        last_updated: '2024-01-18T09:15:00Z',
+        last_updated: "2024-01-18T09:15:00Z",
         columns: [
-          { name: 'id', type: 'TEXT', nullable: false, primary_key: true },
-          { name: 'name', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'category', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'version', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'filesystem_path', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'checksum', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'created_by', type: 'TEXT', nullable: false, primary_key: false }
-        ]
+          { name: "id", type: "TEXT", nullable: false, primary_key: true },
+          { name: "name", type: "TEXT", nullable: false, primary_key: false },
+          {
+            name: "category",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "version",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "filesystem_path",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "checksum",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "created_by",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+        ],
       },
       {
-        name: 'bot_registry',
+        name: "bot_registry",
         row_count: 5,
         is_new: true,
         size_bytes: 8192,
-        last_updated: '2024-01-20T11:00:00Z',
+        last_updated: "2024-01-20T11:00:00Z",
         columns: [
-          { name: 'bot_id', type: 'TEXT', nullable: false, primary_key: true },
-          { name: 'name', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'strategy_type', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'status', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'deployed_at', type: 'TEXT', nullable: true, primary_key: false },
-          { name: 'config_json', type: 'TEXT', nullable: true, primary_key: false }
-        ]
+          { name: "bot_id", type: "TEXT", nullable: false, primary_key: true },
+          { name: "name", type: "TEXT", nullable: false, primary_key: false },
+          {
+            name: "strategy_type",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+          { name: "status", type: "TEXT", nullable: false, primary_key: false },
+          {
+            name: "deployed_at",
+            type: "TEXT",
+            nullable: true,
+            primary_key: false,
+          },
+          {
+            name: "config_json",
+            type: "TEXT",
+            nullable: true,
+            primary_key: false,
+          },
+        ],
       },
       {
-        name: 'bot_circuit_breaker',
+        name: "bot_circuit_breaker",
         row_count: 3,
         is_new: true,
         size_bytes: 4096,
-        last_updated: '2024-01-20T12:30:00Z',
+        last_updated: "2024-01-20T12:30:00Z",
         columns: [
-          { name: 'bot_id', type: 'TEXT', nullable: false, primary_key: true },
-          { name: 'daily_loss', type: 'REAL', nullable: false, primary_key: false },
-          { name: 'threshold', type: 'REAL', nullable: false, primary_key: false },
-          { name: 'is_tripped', type: 'INTEGER', nullable: false, primary_key: false },
-          { name: 'trip_count', type: 'INTEGER', nullable: false, primary_key: false },
-          { name: 'last_trip_time', type: 'TEXT', nullable: true, primary_key: false }
-        ]
+          { name: "bot_id", type: "TEXT", nullable: false, primary_key: true },
+          {
+            name: "daily_loss",
+            type: "REAL",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "threshold",
+            type: "REAL",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "is_tripped",
+            type: "INTEGER",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "trip_count",
+            type: "INTEGER",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "last_trip_time",
+            type: "TEXT",
+            nullable: true,
+            primary_key: false,
+          },
+        ],
       },
       {
-        name: 'trade_journal',
+        name: "trade_journal",
         row_count: 54,
         is_new: true,
         size_bytes: 36864,
-        last_updated: '2024-01-20T16:20:00Z',
+        last_updated: "2024-01-20T16:20:00Z",
         columns: [
-          { name: 'id', type: 'INTEGER', nullable: false, primary_key: true },
-          { name: 'trade_id', type: 'INTEGER', nullable: false, primary_key: false },
-          { name: 'entry_reason', type: 'TEXT', nullable: true, primary_key: false },
-          { name: 'exit_reason', type: 'TEXT', nullable: true, primary_key: false },
-          { name: 'lessons_learned', type: 'TEXT', nullable: true, primary_key: false },
-          { name: 'emotion_score', type: 'INTEGER', nullable: true, primary_key: false },
-          { name: 'created_at', type: 'TEXT', nullable: false, primary_key: false }
-        ]
+          { name: "id", type: "INTEGER", nullable: false, primary_key: true },
+          {
+            name: "trade_id",
+            type: "INTEGER",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "entry_reason",
+            type: "TEXT",
+            nullable: true,
+            primary_key: false,
+          },
+          {
+            name: "exit_reason",
+            type: "TEXT",
+            nullable: true,
+            primary_key: false,
+          },
+          {
+            name: "lessons_learned",
+            type: "TEXT",
+            nullable: true,
+            primary_key: false,
+          },
+          {
+            name: "emotion_score",
+            type: "INTEGER",
+            nullable: true,
+            primary_key: false,
+          },
+          {
+            name: "created_at",
+            type: "TEXT",
+            nullable: false,
+            primary_key: false,
+          },
+        ],
       },
       {
-        name: 'broker_registry',
+        name: "broker_registry",
         row_count: 4,
         is_new: true,
         size_bytes: 4096,
-        last_updated: '2024-01-15T08:00:00Z',
+        last_updated: "2024-01-15T08:00:00Z",
         columns: [
-          { name: 'id', type: 'INTEGER', nullable: false, primary_key: true },
-          { name: 'name', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'type', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'server', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'timezone', type: 'TEXT', nullable: true, primary_key: false },
-          { name: 'spreads_json', type: 'TEXT', nullable: true, primary_key: false }
-        ]
+          { name: "id", type: "INTEGER", nullable: false, primary_key: true },
+          { name: "name", type: "TEXT", nullable: false, primary_key: false },
+          { name: "type", type: "TEXT", nullable: false, primary_key: false },
+          { name: "server", type: "TEXT", nullable: false, primary_key: false },
+          {
+            name: "timezone",
+            type: "TEXT",
+            nullable: true,
+            primary_key: false,
+          },
+          {
+            name: "spreads_json",
+            type: "TEXT",
+            nullable: true,
+            primary_key: false,
+          },
+        ],
       },
       {
-        name: 'house_money_state',
+        name: "house_money_state",
         row_count: 20,
         is_new: true,
         size_bytes: 8192,
-        last_updated: '2024-01-20T23:50:00Z',
+        last_updated: "2024-01-20T23:50:00Z",
         columns: [
-          { name: 'id', type: 'INTEGER', nullable: false, primary_key: true },
-          { name: 'date', type: 'TEXT', nullable: false, primary_key: false },
-          { name: 'daily_profit', type: 'REAL', nullable: false, primary_key: false },
-          { name: 'house_money_amount', type: 'REAL', nullable: false, primary_key: false },
-          { name: 'threshold_percent', type: 'REAL', nullable: false, primary_key: false },
-          { name: 'mode', type: 'TEXT', nullable: false, primary_key: false }
-        ]
-      }
+          { name: "id", type: "INTEGER", nullable: false, primary_key: true },
+          { name: "date", type: "TEXT", nullable: false, primary_key: false },
+          {
+            name: "daily_profit",
+            type: "REAL",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "house_money_amount",
+            type: "REAL",
+            nullable: false,
+            primary_key: false,
+          },
+          {
+            name: "threshold_percent",
+            type: "REAL",
+            nullable: false,
+            primary_key: false,
+          },
+          { name: "mode", type: "TEXT", nullable: false, primary_key: false },
+        ],
+      },
     ];
     applyFilters();
   }
 
   async function loadDatabaseStats() {
     try {
-      const res = await fetch('http://localhost:8000/api/database/stats');
+      const res = await fetch("http://localhost:8000/api/database/stats");
       if (res.ok) {
         dbStats = await res.json();
       } else {
         loadMockStats();
       }
     } catch (e) {
-      console.error('Failed to load database stats:', e);
+      console.error("Failed to load database stats:", e);
       loadMockStats();
     }
   }
@@ -383,9 +709,9 @@
     const totalSize = tables.reduce((sum, t) => sum + t.size_bytes, 0);
     dbStats = {
       total_size_bytes: totalSize,
-      sqlite_path: '/data/quantmind.db',
-      duckdb_path: '/data/analytics.duckdb',
-      table_count: tables.length
+      sqlite_path: "/data/quantmind.db",
+      duckdb_path: "/data/analytics.duckdb",
+      table_count: tables.length,
     };
   }
 
@@ -401,12 +727,16 @@
     await loadTableData(table.name);
   }
 
-  async function loadTableData(tableName: string, page = 1, limit = rowsPerPage) {
+  async function loadTableData(
+    tableName: string,
+    page = 1,
+    limit = rowsPerPage,
+  ) {
     isLoading = true;
     try {
       const offset = (page - 1) * limit;
       const res = await fetch(
-        `http://localhost:8000/api/database/table/${tableName}?limit=${limit}&offset=${offset}`
+        `http://localhost:8000/api/database/table/${tableName}?limit=${limit}&offset=${offset}`,
       );
       if (res.ok) {
         tableData = await res.json();
@@ -414,7 +744,7 @@
         loadMockTableData(tableName);
       }
     } catch (e) {
-      console.error('Failed to load table data:', e);
+      console.error("Failed to load table data:", e);
       loadMockTableData(tableName);
     } finally {
       isLoading = false;
@@ -423,28 +753,34 @@
 
   function loadMockTableData(tableName: string) {
     // Generate mock data based on table
-    const table = tables.find(t => t.name === tableName);
+    const table = tables.find((t) => t.name === tableName);
     if (!table) return;
 
-    const columns = table.columns.map(c => c.name);
+    const columns = table.columns.map((c) => c.name);
     const mockRows: Array<Record<string, any>> = [];
 
     for (let i = 0; i < Math.min(rowsPerPage, table.row_count); i++) {
       const row: Record<string, any> = {};
-      table.columns.forEach(col => {
+      table.columns.forEach((col) => {
         if (col.primary_key) {
           row[col.name] = i + 1;
-        } else if (col.type === 'INTEGER') {
+        } else if (col.type === "INTEGER") {
           row[col.name] = Math.floor(Math.random() * 1000);
-        } else if (col.type === 'REAL') {
+        } else if (col.type === "REAL") {
           row[col.name] = Math.random() * 100;
-        } else if (col.name.includes('_at') || col.name.includes('date') || col.name.includes('time')) {
-          row[col.name] = new Date(Date.now() - Math.random() * 86400000).toISOString().slice(0, 19);
-        } else if (col.name.includes('status')) {
-          const statuses = ['active', 'pending', 'completed', 'failed'];
+        } else if (
+          col.name.includes("_at") ||
+          col.name.includes("date") ||
+          col.name.includes("time")
+        ) {
+          row[col.name] = new Date(Date.now() - Math.random() * 86400000)
+            .toISOString()
+            .slice(0, 19);
+        } else if (col.name.includes("status")) {
+          const statuses = ["active", "pending", "completed", "failed"];
           row[col.name] = statuses[Math.floor(Math.random() * statuses.length)];
-        } else if (col.name.includes('type')) {
-          const types = ['NPRD', 'TRD', 'EA'];
+        } else if (col.name.includes("type")) {
+          const types = ["NPRD", "TRD", "EA"];
           row[col.name] = types[Math.floor(Math.random() * types.length)];
         } else {
           row[col.name] = `Sample ${col.name} ${i + 1}`;
@@ -457,22 +793,24 @@
       columns,
       rows: mockRows,
       row_count: table.row_count,
-      execution_time_ms: Math.random() * 50
+      execution_time_ms: Math.random() * 50,
     };
   }
 
   async function loadTableSchema(tableName: string) {
     try {
-      const res = await fetch(`http://localhost:8000/api/database/schema/${tableName}`);
+      const res = await fetch(
+        `http://localhost:8000/api/database/schema/${tableName}`,
+      );
       if (res.ok) {
         const data = await res.json();
         tableSchema = data.columns || [];
       } else {
-        const table = tables.find(t => t.name === tableName);
+        const table = tables.find((t) => t.name === tableName);
         tableSchema = table?.columns || [];
       }
     } catch (e) {
-      const table = tables.find(t => t.name === tableName);
+      const table = tables.find((t) => t.name === tableName);
       tableSchema = table?.columns || [];
     }
   }
@@ -488,10 +826,10 @@
     const startTime = Date.now();
 
     try {
-      const res = await fetch('http://localhost:8000/api/database/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: queryInput })
+      const res = await fetch("http://localhost:8000/api/database/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: queryInput }),
       });
 
       const executionTime = Date.now() - startTime;
@@ -507,7 +845,7 @@
           rows: [],
           row_count: 0,
           execution_time_ms: executionTime,
-          error: error.detail || 'Query failed'
+          error: error.detail || "Query failed",
         };
         addToHistory(queryInput);
       }
@@ -517,7 +855,7 @@
         rows: [],
         row_count: 0,
         execution_time_ms: Date.now() - startTime,
-        error: 'Failed to connect to database'
+        error: "Failed to connect to database",
       };
       addToHistory(queryInput);
     } finally {
@@ -526,15 +864,21 @@
   }
 
   function addToHistory(query: string) {
-    queryHistory = [query, ...queryHistory.filter(q => q !== query)].slice(0, 10);
+    queryHistory = [query, ...queryHistory.filter((q) => q !== query)].slice(
+      0,
+      10,
+    );
     queryHistoryIndex = -1;
   }
 
-  function navigateHistory(direction: 'up' | 'down') {
+  function navigateHistory(direction: "up" | "down") {
     if (queryHistory.length === 0) return;
 
-    if (direction === 'up') {
-      queryHistoryIndex = Math.min(queryHistoryIndex + 1, queryHistory.length - 1);
+    if (direction === "up") {
+      queryHistoryIndex = Math.min(
+        queryHistoryIndex + 1,
+        queryHistory.length - 1,
+      );
     } else {
       queryHistoryIndex = Math.max(queryHistoryIndex - 1, -1);
     }
@@ -551,9 +895,9 @@
   function openInsertModal() {
     if (!selectedTable) return;
     newRowData = {};
-    selectedTable.columns.forEach(col => {
+    selectedTable.columns.forEach((col) => {
       if (!col.primary_key) {
-        newRowData[col.name] = col.default_value ?? '';
+        newRowData[col.name] = col.default_value ?? "";
       }
     });
     insertModalOpen = true;
@@ -563,20 +907,23 @@
     if (!selectedTable) return;
 
     try {
-      const res = await fetch(`http://localhost:8000/api/database/table/${selectedTable.name}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newRowData)
-      });
+      const res = await fetch(
+        `http://localhost:8000/api/database/table/${selectedTable.name}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newRowData),
+        },
+      );
 
       if (res.ok) {
         await loadTableData(selectedTable.name, currentPage);
         insertModalOpen = false;
       } else {
-        alert('Failed to insert row');
+        alert("Failed to insert row");
       }
     } catch (e) {
-      console.error('Failed to insert row:', e);
+      console.error("Failed to insert row:", e);
       // For development, add locally
       if (tableData) {
         const newRow = { id: tableData.rows.length + 1, ...newRowData };
@@ -596,23 +943,26 @@
     if (!selectedTable || !editingRow) return;
 
     try {
-      const res = await fetch(`http://localhost:8000/api/database/table/${selectedTable.name}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingRow)
-      });
+      const res = await fetch(
+        `http://localhost:8000/api/database/table/${selectedTable.name}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(editingRow),
+        },
+      );
 
       if (res.ok) {
         await loadTableData(selectedTable.name, currentPage);
         editModalOpen = false;
       } else {
-        alert('Failed to update row');
+        alert("Failed to update row");
       }
     } catch (e) {
-      console.error('Failed to update row:', e);
+      console.error("Failed to update row:", e);
       // For development, update locally
       if (tableData) {
-        const index = tableData.rows.findIndex(r => r.id === editingRow?.id);
+        const index = tableData.rows.findIndex((r) => r.id === editingRow?.id);
         if (index >= 0) {
           tableData.rows[index] = editingRow;
         }
@@ -627,46 +977,53 @@
     if (!confirm(`Delete ${selectedRows.size} row(s)?`)) return;
 
     try {
-      const res = await fetch(`http://localhost:8000/api/database/table/${selectedTable.name}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: Array.from(selectedRows) })
-      });
+      const res = await fetch(
+        `http://localhost:8000/api/database/table/${selectedTable.name}`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: Array.from(selectedRows) }),
+        },
+      );
 
       if (res.ok) {
         await loadTableData(selectedTable.name, currentPage);
         selectedRows.clear();
       } else {
-        alert('Failed to delete rows');
+        alert("Failed to delete rows");
       }
     } catch (e) {
-      console.error('Failed to delete rows:', e);
+      console.error("Failed to delete rows:", e);
       // For development, remove locally
       if (tableData) {
-        tableData.rows = tableData.rows.filter(r => !selectedRows.has(String(r.id)));
+        tableData.rows = tableData.rows.filter(
+          (r) => !selectedRows.has(String(r.id)),
+        );
         tableData.row_count -= selectedRows.size;
       }
       selectedRows.clear();
     }
   }
 
-  async function exportTable(format: 'csv' | 'json') {
+  async function exportTable(format: "csv" | "json") {
     if (!selectedTable) return;
 
     try {
-      const res = await fetch(`http://localhost:8000/api/database/export/${selectedTable.name}?format=${format}`);
+      const res = await fetch(
+        `http://localhost:8000/api/database/export/${selectedTable.name}?format=${format}`,
+      );
       if (res.ok) {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
+        const a = document.createElement("a");
         a.href = url;
-        a.download = `${selectedTable.name}.${format === 'csv' ? 'csv' : 'json'}`;
+        a.download = `${selectedTable.name}.${format === "csv" ? "csv" : "json"}`;
         a.click();
         URL.revokeObjectURL(url);
       }
     } catch (e) {
-      console.error('Failed to export table:', e);
-      alert('Export failed');
+      console.error("Failed to export table:", e);
+      alert("Export failed");
     }
   }
 
@@ -674,23 +1031,26 @@
     if (!selectedTable) return;
 
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append("file", file);
 
     try {
-      const res = await fetch(`http://localhost:8000/api/database/import/${selectedTable.name}`, {
-        method: 'POST',
-        body: formData
-      });
+      const res = await fetch(
+        `http://localhost:8000/api/database/import/${selectedTable.name}`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
 
       if (res.ok) {
         await loadTableData(selectedTable.name, currentPage);
         await loadTables(); // Update row counts
       } else {
-        alert('Import failed');
+        alert("Import failed");
       }
     } catch (e) {
-      console.error('Failed to import table:', e);
-      alert('Import failed');
+      console.error("Failed to import table:", e);
+      alert("Import failed");
     }
   }
 
@@ -699,9 +1059,9 @@
   // ============================================================================
 
   function applyFilters() {
-    filteredTables = tables.filter(table => {
-      if (tableTypeFilter === 'existing' && table.is_new) return false;
-      if (tableTypeFilter === 'new' && !table.is_new) return false;
+    filteredTables = tables.filter((table) => {
+      if (tableTypeFilter === "existing" && table.is_new) return false;
+      if (tableTypeFilter === "new" && !table.is_new) return false;
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         return table.name.toLowerCase().includes(query);
@@ -725,17 +1085,19 @@
     if (selectedRows.size === tableData.rows.length) {
       selectedRows.clear();
     } else {
-      selectedRows = new Set(tableData.rows.map(r => String(r.id || Object.values(r)[0])));
+      selectedRows = new Set(
+        tableData.rows.map((r) => String(r.id || Object.values(r)[0])),
+      );
     }
     selectedRows = new Set(selectedRows); // Trigger reactivity
   }
 
   function sortTable(column: string) {
     if (sortColumn === column) {
-      sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+      sortDirection = sortDirection === "asc" ? "desc" : "asc";
     } else {
       sortColumn = column;
-      sortDirection = 'asc';
+      sortDirection = "asc";
     }
 
     if (!tableData) return;
@@ -747,7 +1109,7 @@
       if (aVal === bVal) return 0;
 
       const comparison = aVal < bVal ? -1 : 1;
-      return sortDirection === 'asc' ? comparison : -comparison;
+      return sortDirection === "asc" ? comparison : -comparison;
     });
   }
 
@@ -763,24 +1125,28 @@
   }
 
   function formatBytes(bytes: number) {
-    if (bytes === 0) return '0 B';
+    if (bytes === 0) return "0 B";
     const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const sizes = ["B", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   }
 
   function formatTimestamp(dateStr: string) {
     const date = new Date(dateStr);
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return (
+      date.toLocaleDateString() +
+      " " +
+      date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    );
   }
 
   function getColumnTypeColor(type: string) {
-    if (type.includes('INT')) return '#3b82f6';
-    if (type.includes('REAL') || type.includes('FLOAT')) return '#10b981';
-    if (type.includes('TEXT')) return '#f59e0b';
-    if (type.includes('BLOB')) return '#8b5cf6';
-    return '#6b7280';
+    if (type.includes("INT")) return "#3b82f6";
+    if (type.includes("REAL") || type.includes("FLOAT")) return "#10b981";
+    if (type.includes("TEXT")) return "#f59e0b";
+    if (type.includes("BLOB")) return "#8b5cf6";
+    return "#6b7280";
   }
 
   function previewJson(data: any) {
@@ -789,7 +1155,7 @@
   }
 
   function isJsonColumn(value: any) {
-    if (typeof value === 'string') {
+    if (typeof value === "string") {
       try {
         JSON.parse(value);
         return true;
@@ -797,7 +1163,7 @@
         return false;
       }
     }
-    return typeof value === 'object' && value !== null;
+    return typeof value === "object" && value !== null;
   }
 </script>
 
@@ -893,7 +1259,7 @@
               class:selected={selectedTable?.name === table.name}
               class:new-table={table.is_new}
               on:click={() => selectTable(table)}
-              on:keydown={(e) => e.key === 'Enter' && selectTable(table)}
+              on:keydown={(e) => e.key === "Enter" && selectTable(table)}
               role="button"
               tabindex="0"
               aria-label="Select table {table.name}"
@@ -904,11 +1270,18 @@
                   <span>{table.name}</span>
                 </div>
                 <div class="table-meta">
-                  <span class="row-count">{table.row_count.toLocaleString()} rows</span>
-                  <span class="table-size">{formatBytes(table.size_bytes)}</span>
+                  <span class="row-count"
+                    >{table.row_count.toLocaleString()} rows</span
+                  >
+                  <span class="table-size">{formatBytes(table.size_bytes)}</span
+                  >
                 </div>
               </div>
-              <div class="table-indicator" class:new-table={table.is_new} title={table.is_new ? 'New table' : 'Existing table'}></div>
+              <div
+                class="table-indicator"
+                class:new-table={table.is_new}
+                title={table.is_new ? "New table" : "Existing table"}
+              ></div>
             </div>
           {/each}
 
@@ -932,31 +1305,40 @@
             <div>
               <h3>{selectedTable.name}</h3>
               <span class="table-badge" class:new-table={selectedTable.is_new}>
-                {selectedTable.is_new ? 'NEW' : 'EXISTING'}
+                {selectedTable.is_new ? "NEW" : "EXISTING"}
               </span>
             </div>
           </div>
           <div class="header-actions">
-            <button class="btn" on:click={() => showTableInfo = !showTableInfo} class:active={showTableInfo}>
+            <button
+              class="btn"
+              on:click={() => (showTableInfo = !showTableInfo)}
+              class:active={showTableInfo}
+            >
               <FileText size={14} />
               <span>Schema</span>
             </button>
-            <button class="btn" on:click={() => exportTable('csv')}>
+            <button class="btn" on:click={() => exportTable("csv")}>
               <FileText size={14} />
               <span>Export CSV</span>
             </button>
-            <button class="btn" on:click={() => exportTable('json')}>
+            <button class="btn" on:click={() => exportTable("json")}>
               <FileCode size={14} />
               <span>Export JSON</span>
             </button>
             <label class="btn">
               <Upload size={14} />
               <span>Import</span>
-              <input type="file" accept=".csv,.json" on:change={(e) => {
-                const input = e.currentTarget;
-                const file = input.files?.[0];
-                if (file) importTable(file);
-              }} hidden />
+              <input
+                type="file"
+                accept=".csv,.json"
+                on:change={(e) => {
+                  const input = e.currentTarget;
+                  const file = input.files?.[0];
+                  if (file) importTable(file);
+                }}
+                hidden
+              />
             </label>
             <button class="btn" on:click={openInsertModal}>
               <Plus size={14} />
@@ -989,7 +1371,10 @@
                     {/if}
                   </div>
                   <div class="column-info">
-                    <span class="column-type" style="color: {getColumnTypeColor(column.type)}">
+                    <span
+                      class="column-type"
+                      style="color: {getColumnTypeColor(column.type)}"
+                    >
                       {column.type}
                     </span>
                     {#if column.nullable}
@@ -1008,8 +1393,14 @@
               {/each}
             </div>
             <div class="schema-meta">
-              <span class="meta-item">Last updated: {formatTimestamp(selectedTable.last_updated)}</span>
-              <span class="meta-item">Size: {formatBytes(selectedTable.size_bytes)}</span>
+              <span class="meta-item"
+                >Last updated: {formatTimestamp(
+                  selectedTable.last_updated,
+                )}</span
+              >
+              <span class="meta-item"
+                >Size: {formatBytes(selectedTable.size_bytes)}</span
+              >
             </div>
           </div>
         {/if}
@@ -1027,22 +1418,25 @@
               <div class="grid-cell checkbox-cell">
                 <input
                   type="checkbox"
-                  checked={selectedRows.size === tableData.rows.length && tableData.rows.length > 0}
+                  checked={selectedRows.size === tableData.rows.length &&
+                    tableData.rows.length > 0}
                   on:change={toggleAllRows}
                 />
               </div>
               {#each tableData.columns as column}
                 <div
-                  class="grid-cell header-cell {sortColumn === column ? 'sorted' : ''}"
+                  class="grid-cell header-cell {sortColumn === column
+                    ? 'sorted'
+                    : ''}"
                   on:click={() => sortTable(column)}
-                  on:keydown={(e) => e.key === 'Enter' && sortTable(column)}
+                  on:keydown={(e) => e.key === "Enter" && sortTable(column)}
                   role="button"
                   tabindex="0"
                   aria-label="Sort by {column}"
                 >
                   <span>{column}</span>
                   {#if sortColumn === column}
-                    <span class:rotate={sortDirection === 'desc'}>
+                    <span class:rotate={sortDirection === "desc"}>
                       <ChevronDown size={12} />
                     </span>
                   {/if}
@@ -1054,37 +1448,63 @@
             <!-- Grid Rows -->
             <div class="grid-rows">
               {#each getPaginatedRows() as row}
-                <div class="grid-row" class:selected={selectedRows.has(String(row.id || Object.values(row)[0]))}>
+                <div
+                  class="grid-row"
+                  class:selected={selectedRows.has(
+                    String(row.id || Object.values(row)[0]),
+                  )}
+                >
                   <div class="grid-cell checkbox-cell">
                     <input
                       type="checkbox"
-                      checked={selectedRows.has(String(row.id || Object.values(row)[0]))}
-                      on:change={() => toggleRowSelection(String(row.id || Object.values(row)[0]))}
+                      checked={selectedRows.has(
+                        String(row.id || Object.values(row)[0]),
+                      )}
+                      on:change={() =>
+                        toggleRowSelection(
+                          String(row.id || Object.values(row)[0]),
+                        )}
                     />
                   </div>
                   {#each tableData.columns as column}
                     <div class="grid-cell data-cell">
                       {#if isJsonColumn(row[column])}
-                        <span class="json-link" on:click={() => previewJson(row[column])} on:keydown={(e) => e.key === 'Enter' && previewJson(row[column])} role="button" tabindex="0" aria-label="View JSON data">
+                        <span
+                          class="json-link"
+                          on:click={() => previewJson(row[column])}
+                          on:keydown={(e) =>
+                            e.key === "Enter" && previewJson(row[column])}
+                          role="button"
+                          tabindex="0"
+                          aria-label="View JSON data"
+                        >
                           <Code size={10} />
                           <span>View JSON</span>
                         </span>
                       {:else}
                         <span class="cell-value" title={row[column]}>
-                          {row[column] !== null && row[column] !== undefined ? String(row[column]).slice(0, 50) : '<NULL>'}
+                          {row[column] !== null && row[column] !== undefined
+                            ? String(row[column]).slice(0, 50)
+                            : "<NULL>"}
                         </span>
                       {/if}
                     </div>
                   {/each}
                   <div class="grid-cell actions-cell">
-                    <button class="icon-btn" on:click={() => openEditModal(row)} title="Edit row">
+                    <button
+                      class="icon-btn"
+                      on:click={() => openEditModal(row)}
+                      title="Edit row"
+                    >
                       <Edit size={12} />
                     </button>
                     <button
                       class="icon-btn danger"
                       on:click={() => {
-                        if (confirm('Delete this row?')) {
-                          selectedRows = new Set([String(row.id || Object.values(row)[0])]);
+                        if (confirm("Delete this row?")) {
+                          selectedRows = new Set([
+                            String(row.id || Object.values(row)[0]),
+                          ]);
                           deleteSelectedRows();
                         }
                       }}
@@ -1100,29 +1520,50 @@
             <!-- Pagination -->
             <div class="pagination">
               <div class="pagination-info">
-                <span>Showing {(currentPage - 1) * rowsPerPage + 1} to {Math.min(currentPage * rowsPerPage, tableData.row_count)} of {tableData.row_count} rows</span>
+                <span
+                  >Showing {(currentPage - 1) * rowsPerPage + 1} to {Math.min(
+                    currentPage * rowsPerPage,
+                    tableData.row_count,
+                  )} of {tableData.row_count} rows</span
+                >
               </div>
               <div class="pagination-controls">
-                <select bind:value={rowsPerPage} on:change={() => selectedTable && loadTableData(selectedTable.name, 1)}>
+                <select
+                  bind:value={rowsPerPage}
+                  on:change={() =>
+                    selectedTable && loadTableData(selectedTable.name, 1)}
+                >
                   <option value="25">25 per page</option>
                   <option value="50">50 per page</option>
                   <option value="100">100 per page</option>
                 </select>
-                <button class="page-btn" on:click={() => {
-                  if (currentPage > 1) {
-                    currentPage--;
-                    selectedTable && loadTableData(selectedTable.name, currentPage);
-                  }
-                }} disabled={currentPage === 1}>
+                <button
+                  class="page-btn"
+                  on:click={() => {
+                    if (currentPage > 1) {
+                      currentPage--;
+                      selectedTable &&
+                        loadTableData(selectedTable.name, currentPage);
+                    }
+                  }}
+                  disabled={currentPage === 1}
+                >
                   Previous
                 </button>
-                <span class="page-info">Page {currentPage} of {getTotalPages()}</span>
-                <button class="page-btn" on:click={() => {
-                  if (currentPage < getTotalPages()) {
-                    currentPage++;
-                    selectedTable && loadTableData(selectedTable.name, currentPage);
-                  }
-                }} disabled={currentPage >= getTotalPages()}>
+                <span class="page-info"
+                  >Page {currentPage} of {getTotalPages()}</span
+                >
+                <button
+                  class="page-btn"
+                  on:click={() => {
+                    if (currentPage < getTotalPages()) {
+                      currentPage++;
+                      selectedTable &&
+                        loadTableData(selectedTable.name, currentPage);
+                    }
+                  }}
+                  disabled={currentPage >= getTotalPages()}
+                >
                   Next
                 </button>
               </div>
@@ -1163,17 +1604,17 @@ Examples:
   SELECT strategy_name, AVG(profit) FROM crypto_trades GROUP BY strategy_name"
           bind:value={queryInput}
           on:keydown={(e) => {
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
               e.preventDefault();
               executeQuery();
             }
-            if (e.key === 'ArrowUp') {
+            if (e.key === "ArrowUp") {
               e.preventDefault();
-              navigateHistory('up');
+              navigateHistory("up");
             }
-            if (e.key === 'ArrowDown') {
+            if (e.key === "ArrowDown") {
               e.preventDefault();
-              navigateHistory('down');
+              navigateHistory("down");
             }
           }}
         ></textarea>
@@ -1184,7 +1625,11 @@ Examples:
           <span>Ctrl+Enter to run</span>
           <span>Use ↑/↓ for history</span>
         </div>
-        <button class="btn primary" on:click={executeQuery} disabled={isQueryRunning || !queryInput.trim()}>
+        <button
+          class="btn primary"
+          on:click={executeQuery}
+          disabled={isQueryRunning || !queryInput.trim()}
+        >
           {#if isQueryRunning}
             <RefreshCw size={14} class="spin" />
             <span>Running...</span>
@@ -1201,7 +1646,14 @@ Examples:
           <h4>Recent Queries</h4>
           <div class="history-list">
             {#each queryHistory.slice(0, 5) as query}
-              <div class="history-item" on:click={() => queryInput = query} on:keydown={(e) => e.key === 'Enter' && (queryInput = query)} role="button" tabindex="0" aria-label="Use query: {query.slice(0, 30)}...">
+              <div
+                class="history-item"
+                on:click={() => (queryInput = query)}
+                on:keydown={(e) => e.key === "Enter" && (queryInput = query)}
+                role="button"
+                tabindex="0"
+                aria-label="Use query: {query.slice(0, 30)}..."
+              >
                 <Code size={10} />
                 <span class="query-text">{query.slice(0, 60)}...</span>
               </div>
@@ -1222,7 +1674,9 @@ Examples:
               </div>
             {:else}
               <span class="results-stats">
-                {queryResults.row_count} rows in {queryResults.execution_time_ms.toFixed(2)}ms
+                {queryResults.row_count} rows in {queryResults.execution_time_ms.toFixed(
+                  2,
+                )}ms
               </span>
             {/if}
           </div>
@@ -1239,12 +1693,24 @@ Examples:
                   {#each queryResults.columns as column}
                     <div class="results-cell">
                       {#if isJsonColumn(row[column])}
-                        <span class="json-link" on:click={() => previewJson(row[column])} on:keydown={(e) => e.key === 'Enter' && previewJson(row[column])} role="button" tabindex="0" aria-label="View JSON data">
+                        <span
+                          class="json-link"
+                          on:click={() => previewJson(row[column])}
+                          on:keydown={(e) =>
+                            e.key === "Enter" && previewJson(row[column])}
+                          role="button"
+                          tabindex="0"
+                          aria-label="View JSON data"
+                        >
                           <Code size={8} />
                           <span>JSON</span>
                         </span>
                       {:else}
-                        <span>{row[column] !== null ? String(row[column]) : '<NULL>'}</span>
+                        <span
+                          >{row[column] !== null
+                            ? String(row[column])
+                            : "<NULL>"}</span
+                        >
                       {/if}
                     </div>
                   {/each}
@@ -1265,14 +1731,20 @@ Examples:
 
 <!-- Insert Modal -->
 {#if insertModalOpen && selectedTable}
-  <div class="modal-overlay" on:click|self={() => insertModalOpen = false}>
+  <div
+    class="modal-overlay"
+    on:click|self={() => (insertModalOpen = false)}
+    role="button"
+    tabindex="0"
+    on:keydown={(e) => e.key === "Escape" && (insertModalOpen = false)}
+  >
     <div class="modal">
       <div class="modal-header">
         <div>
           <h3>Insert Row</h3>
           <p class="modal-subtitle">{selectedTable.name}</p>
         </div>
-        <button class="icon-btn" on:click={() => insertModalOpen = false}>
+        <button class="icon-btn" on:click={() => (insertModalOpen = false)}>
           <X size={18} />
         </button>
       </div>
@@ -1283,21 +1755,42 @@ Examples:
             <div class="form-group">
               <label for="insert-{column.name}">
                 {column.name}
-                <span class="type-badge" style="color: {getColumnTypeColor(column.type)}">{column.type}</span>
+                <span
+                  class="type-badge"
+                  style="color: {getColumnTypeColor(column.type)}"
+                  >{column.type}</span
+                >
               </label>
-              {#if column.type.includes('INT') || column.type.includes('REAL')}
-                <input type="number" id="insert-{column.name}" bind:value={newRowData[column.name]} placeholder={column.name} />
-              {:else if column.type.includes('TEXT')}
-                <textarea id="insert-{column.name}" bind:value={newRowData[column.name]} placeholder={column.name} rows="2"></textarea>
+              {#if column.type.includes("INT") || column.type.includes("REAL")}
+                <input
+                  type="number"
+                  id="insert-{column.name}"
+                  bind:value={newRowData[column.name]}
+                  placeholder={column.name}
+                />
+              {:else if column.type.includes("TEXT")}
+                <textarea
+                  id="insert-{column.name}"
+                  bind:value={newRowData[column.name]}
+                  placeholder={column.name}
+                  rows="2"
+                ></textarea>
               {:else}
-                <input type="text" id="insert-{column.name}" bind:value={newRowData[column.name]} placeholder={column.name} />
+                <input
+                  type="text"
+                  id="insert-{column.name}"
+                  bind:value={newRowData[column.name]}
+                  placeholder={column.name}
+                />
               {/if}
             </div>
           {/if}
         {/each}
 
         <div class="modal-actions">
-          <button class="btn" on:click={() => insertModalOpen = false}>Cancel</button>
+          <button class="btn" on:click={() => (insertModalOpen = false)}
+            >Cancel</button
+          >
           <button class="btn primary" on:click={insertRow}>
             <Plus size={14} />
             <span>Insert Row</span>
@@ -1310,14 +1803,22 @@ Examples:
 
 <!-- Edit Modal -->
 {#if editModalOpen && editingRow}
-  <div class="modal-overlay" on:click|self={() => editModalOpen = false}>
+  <div
+    class="modal-overlay"
+    on:click|self={() => (editModalOpen = false)}
+    role="button"
+    tabindex="0"
+    on:keydown={(e) => e.key === "Escape" && (editModalOpen = false)}
+  >
     <div class="modal">
       <div class="modal-header">
         <div>
           <h3>Edit Row</h3>
-          <p class="modal-subtitle">ID: {editingRow.id || editingRow[Object.keys(editingRow)[0]]}</p>
+          <p class="modal-subtitle">
+            ID: {editingRow.id || editingRow[Object.keys(editingRow)[0]]}
+          </p>
         </div>
-        <button class="icon-btn" on:click={() => editModalOpen = false}>
+        <button class="icon-btn" on:click={() => (editModalOpen = false)}>
           <X size={18} />
         </button>
       </div>
@@ -1328,21 +1829,39 @@ Examples:
             <div class="form-group">
               <label for="edit-{column.name}">
                 {column.name}
-                <span class="type-badge" style="color: {getColumnTypeColor(column.type)}">{column.type}</span>
+                <span
+                  class="type-badge"
+                  style="color: {getColumnTypeColor(column.type)}"
+                  >{column.type}</span
+                >
               </label>
-              {#if column.type.includes('INT') || column.type.includes('REAL')}
-                <input type="number" id="edit-{column.name}" bind:value={editingRow[column.name]} />
-              {:else if column.type.includes('TEXT')}
-                <textarea id="edit-{column.name}" bind:value={editingRow[column.name]} rows="2"></textarea>
+              {#if column.type.includes("INT") || column.type.includes("REAL")}
+                <input
+                  type="number"
+                  id="edit-{column.name}"
+                  bind:value={editingRow[column.name]}
+                />
+              {:else if column.type.includes("TEXT")}
+                <textarea
+                  id="edit-{column.name}"
+                  bind:value={editingRow[column.name]}
+                  rows="2"
+                ></textarea>
               {:else}
-                <input type="text" id="edit-{column.name}" bind:value={editingRow[column.name]} />
+                <input
+                  type="text"
+                  id="edit-{column.name}"
+                  bind:value={editingRow[column.name]}
+                />
               {/if}
             </div>
           {/each}
         {/if}
 
         <div class="modal-actions">
-          <button class="btn" on:click={() => editModalOpen = false}>Cancel</button>
+          <button class="btn" on:click={() => (editModalOpen = false)}
+            >Cancel</button
+          >
           <button class="btn primary" on:click={updateRow}>
             <Check size={14} />
             <span>Save Changes</span>
@@ -1355,20 +1874,33 @@ Examples:
 
 <!-- JSON Preview Modal -->
 {#if jsonPreviewModalOpen}
-  <div class="modal-overlay" on:click|self={() => jsonPreviewModalOpen = false}>
+  <div
+    class="modal-overlay"
+    on:click|self={() => (jsonPreviewModalOpen = false)}
+    role="button"
+    tabindex="0"
+    on:keydown={(e) => e.key === "Escape" && (jsonPreviewModalOpen = false)}
+  >
     <div class="modal large">
       <div class="modal-header">
         <div>
           <h3>JSON Preview</h3>
           <p class="modal-subtitle">View complex data structure</p>
         </div>
-        <button class="icon-btn" on:click={() => jsonPreviewModalOpen = false}>
+        <button
+          class="icon-btn"
+          on:click={() => (jsonPreviewModalOpen = false)}
+        >
           <X size={18} />
         </button>
       </div>
 
       <div class="modal-content">
-        <pre class="json-preview">{JSON.stringify(jsonPreviewData, null, 2)}</pre>
+        <pre class="json-preview">{JSON.stringify(
+            jsonPreviewData,
+            null,
+            2,
+          )}</pre>
       </div>
     </div>
   </div>
@@ -1397,10 +1929,6 @@ Examples:
     display: flex;
     align-items: center;
     gap: 12px;
-  }
-
-  .db-icon {
-    color: var(--accent-primary);
   }
 
   .header-left h2 {
@@ -1493,7 +2021,7 @@ Examples:
   }
 
   .stat-item .value.path {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: "JetBrains Mono", monospace;
     font-size: 10px;
   }
 
@@ -1706,7 +2234,7 @@ Examples:
     font-weight: 500;
     font-size: 12px;
     color: var(--text-primary);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: "JetBrains Mono", monospace;
   }
 
   .pk-badge {
@@ -1760,7 +2288,7 @@ Examples:
 
   .column-default .value {
     color: var(--text-secondary);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: "JetBrains Mono", monospace;
   }
 
   .schema-meta {
@@ -1831,7 +2359,7 @@ Examples:
 
   .data-cell {
     color: var(--text-primary);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: "JetBrains Mono", monospace;
     font-size: 11px;
     overflow: hidden;
   }
@@ -1991,7 +2519,7 @@ Examples:
     background: var(--bg-tertiary);
     border: none;
     color: var(--text-primary);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: "JetBrains Mono", monospace;
     font-size: 12px;
     line-height: 1.6;
     resize: none;
@@ -2050,7 +2578,7 @@ Examples:
   }
 
   .history-item .query-text {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: "JetBrains Mono", monospace;
     font-size: 10px;
     color: var(--text-secondary);
   }
@@ -2164,13 +2692,13 @@ Examples:
     gap: 16px;
   }
 
-  .spin {
-    animation: spin 1s linear infinite;
-  }
-
   @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   /* Modal */
@@ -2241,7 +2769,7 @@ Examples:
 
   .type-badge {
     font-size: 10px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: "JetBrains Mono", monospace;
     font-weight: 400;
   }
 
@@ -2254,7 +2782,7 @@ Examples:
     border-radius: 6px;
     color: var(--text-primary);
     font-size: 13px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: "JetBrains Mono", monospace;
     outline: none;
     transition: border-color 0.15s;
   }
@@ -2276,7 +2804,7 @@ Examples:
     background: var(--bg-tertiary);
     padding: 16px;
     border-radius: 8px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: "JetBrains Mono", monospace;
     font-size: 11px;
     line-height: 1.6;
     color: var(--text-primary);

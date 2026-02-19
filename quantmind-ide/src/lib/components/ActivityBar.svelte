@@ -1,10 +1,21 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher } from "svelte";
   import {
-    BookOpen, Boxes, Bot, TestTube, PlayCircle, Settings,
-    Database, Server, FileText, Edit3
-  } from 'lucide-svelte';
-  import { navigationStore } from '../stores/navigationStore';
+    BookOpen,
+    Boxes,
+    Bot,
+    TestTube,
+    PlayCircle,
+    Settings,
+    Database,
+    Server,
+    FileText,
+    Edit3,
+    Activity,
+    MonitorPlay,
+    Github,
+  } from "lucide-svelte";
+  import { navigationStore } from "../stores/navigationStore";
 
   const dispatch = createEventDispatcher();
   let unsubscribe: (() => void) | null = null;
@@ -13,26 +24,29 @@
   // Removed duplicates: backtest-results, shared-assets, kill-switch, database-view, news
   // These are now accessible as sub-tabs within their parent sections
   const activities = [
-    { id: 'knowledge', icon: BookOpen, label: 'Knowledge Hub' },
-    { id: 'assets', icon: Boxes, label: 'Shared Assets & Database' },
-    { id: 'ea', icon: Bot, label: 'EA Management' },
-    { id: 'backtest', icon: TestTube, label: 'Backtests' },
-    { id: 'live', icon: PlayCircle, label: 'Live Trading' },
-    { id: 'router', icon: Server, label: 'Strategy Router' },
-    { id: 'journal', icon: FileText, label: 'Trade Journal' },
-    { id: 'editor', icon: Edit3, label: 'Editor Workspace' },
+    { id: "knowledge", icon: BookOpen, label: "Knowledge Hub" },
+    { id: "assets", icon: Boxes, label: "Shared Assets & Database" },
+    { id: "ea", icon: Bot, label: "EA Management" },
+    { id: "backtest", icon: TestTube, label: "Backtests" },
+    { id: "paper-trading", icon: MonitorPlay, label: "Paper Trading" },
+    { id: "live", icon: PlayCircle, label: "Live Trading" },
+    { id: "router", icon: Server, label: "Strategy Router" },
+    { id: "hmm", icon: Activity, label: "HMM Dashboard" },
+    { id: "journal", icon: FileText, label: "Trade Journal" },
+    { id: "github-ea", icon: Github, label: "GitHub EA Library" },
+    { id: "editor", icon: Edit3, label: "Editor Workspace" },
   ];
 
-  export let activeView = 'live';
+  export let activeView = "live";
 
   // Subscribe to navigation store for view changes
   $: activeView = $navigationStore.currentView;
 
   function selectView(viewId: string) {
-    const activity = activities.find(a => a.id === viewId);
+    const activity = activities.find((a) => a.id === viewId);
     if (activity) {
       navigationStore.navigateToView(viewId, activity.label);
-      dispatch('viewChange', { view: viewId });
+      dispatch("viewChange", { view: viewId });
     }
   }
 </script>
@@ -50,12 +64,14 @@
       </button>
     {/each}
   </div>
-  
+
+  <div class="spacer"></div>
+
   <div class="bottom-icons">
     <button
       class="activity-icon"
-      class:active={activeView === 'settings'}
-      on:click={() => selectView('settings')}
+      class:active={activeView === "settings"}
+      on:click={() => selectView("settings")}
       title="Settings"
     >
       <Settings size={22} />
@@ -65,57 +81,57 @@
 
 <style>
   .activity-bar {
-    grid-area: activity;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    width: 48px;
-    background: var(--bg-secondary);
-    border-right: 1px solid var(--border-subtle);
-    padding: 8px 0;
-  }
-  
-  .top-icons, .bottom-icons {
+    grid-column: 1;
+    grid-row: 1;
+    width: var(--sidebar-width);
+    background: var(--bg-input); /* Darker than sidebar */
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
+    padding: 12px 0;
+    border-right: 1px solid var(--border-subtle);
+    z-index: 10;
   }
-  
+
   .activity-icon {
+    width: 48px;
+    height: 48px;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
     background: transparent;
     border: none;
-    border-radius: 8px;
     color: var(--text-muted);
     cursor: pointer;
-    transition: all 0.15s ease;
     position: relative;
+    transition: color 0.1s ease;
   }
-  
+
   .activity-icon:hover {
     color: var(--text-primary);
-    background: var(--bg-tertiary);
   }
-  
+
   .activity-icon.active {
-    color: var(--accent-primary);
-    background: var(--bg-tertiary);
+    color: var(--text-primary);
   }
-  
+
   .activity-icon.active::before {
-    content: '';
+    content: "";
     position: absolute;
     left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 24px;
+    top: 12px;
+    bottom: 12px;
+    width: 2px;
     background: var(--accent-primary);
-    border-radius: 0 2px 2px 0;
+  }
+
+  .spacer {
+    flex: 1;
+  }
+
+  .bottom-icons {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
 </style>

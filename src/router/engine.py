@@ -7,11 +7,20 @@ V2: Integrated with Phase 2 components:
 - SmartKillSwitch for regime-aware exits
 - TradeLogger for enhanced trade context logging
 - RoutingMatrix for automatic bot-to-account assignment
+
+V3: Integrated with Prometheus monitoring for:
+- Chaos score tracking
+- Regime change events
+- Active EA counts
+- Trade execution metrics
 """
 
 import logging
 import asyncio
+import os
 from typing import Dict, List, Optional, TYPE_CHECKING
+from datetime import datetime, timezone
+import httpx
 
 if TYPE_CHECKING:
     from src.router.bot_manifest import BotRegistry, BotManifest
@@ -24,8 +33,143 @@ from src.router.governor import Governor, RiskMandate
 from src.router.enhanced_governor import EnhancedGovernor
 from src.router.commander import Commander
 from src.router.multi_timeframe_sentinel import MultiTimeframeSentinel, Timeframe
+from src.router.progressive_kill_switch import ProgressiveKillSwitch, get_progressive_kill_switch
+from src.router.bot_manifest import BotManifest, StrategyType
+from src.api.websocket_endpoints import broadcast_regime_update
 
 logger = logging.getLogger(__name__)
+
+
+# ============= Regime Fetcher for Contabo API =============
+
+
+class RegimeFetcher:
+    """
+    Regime Fetcher for polling regime data from Contabo HMM Inference API.
+    
+    Provides:
+    - Background polling of Contabo API every 5 minutes
+    - Fallback to local cached model when Contabo unreachable > 15 minutes
+    - Integration with StrategyRouter for regime-aware trading
+    """
+    
+    def __init__(self):
+        """Initialize RegimeFetcher with configuration."""
+        # API configuration
+        self._api_url = os.environ.get("CONTABO_HMM_API_URL", "http://localhost:8001")
+        self._api_key = os.environ.get("CONTABO_HMM_API_KEY", "")
+        self._poll_interval = 300  # 5 minutes
+        self._fallback_timeout = 900  # 15 minutes
+        
+        # Cache
+        self._regime_cache: Dict[str, Dict] = {}
+        self._last_success: Optional[datetime] = None
+        self._unreachable_since: Optional[datetime] = None
+        self._is_running = False
+        
+        logger.info("RegimeFetcher initialized")
+    
+    async def _poll_contabo_regime(self) -> None:
+        """
+        Background task: Poll Contabo API for regime data.
+        
+        Runs every 5 minutes and handles fallback logic:
+        - On success: Update cache, clear unreachable timer
+        - On failure: Set unreachable timer if not set
+        - If unreachable > 15 min: Fall back to local model
+        """
+        self._is_running = True
+        
+        while self._is_running:
+            try:
+                # Make request to Contabo API
+                headers = {"X-API-Key": self._api_key} if self._api_key else {}
+                
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.get(
+                        f"{self._api_url}/api/hmm/regime",
+                        headers=headers
+                    )
+                    
+                    if response.status_code == 200:
+                        regimes = response.json()
+                        self._regime_cache = regimes
+                        self._last_success = datetime.now(timezone.utc)
+                        
+                        # Clear unreachable timer on success
+                        if self._unreachable_since:
+                            logger.info("Contabo API reachable again, cleared fallback mode")
+                        self._unreachable_since = None
+                        
+                        logger.info(f"Updated regime cache for {len(regimes)} symbols")
+                    else:
+                        raise Exception(f"API returned status {response.status_code}")
+                        
+            except Exception as e:
+                logger.warning(f"Failed to fetch regime from Contabo: {e}")
+                
+                # Set unreachable timer if not already set
+                if not self._unreachable_since:
+                    self._unreachable_since = datetime.now(timezone.utc)
+                    logger.warning("Contabo API unreachable, will fall back to local model after 15 minutes")
+            
+            # Wait before next poll
+            await asyncio.sleep(self._poll_interval)
+    
+    def get_regime_for_symbol(self, symbol: str) -> Dict:
+        """
+        Get regime for a symbol with fallback chain.
+        
+        Fallback chain:
+        1. Contabo API cache (if reachable)
+        2. Local cached model via HMMVersionControl
+        3. DeploymentMode.ISING_ONLY as last resort
+        
+        Args:
+            symbol: Trading symbol
+            
+        Returns:
+            Dictionary with regime, confidence, model_version
+        """
+        # Check if we should use fallback
+        use_fallback = (
+            self._unreachable_since and
+            (datetime.now(timezone.utc) - self._unreachable_since).total_seconds() > self._fallback_timeout
+        )
+        
+        # Try Contabo cache first
+        if not use_fallback and symbol in self._regime_cache:
+            return self._regime_cache[symbol]
+        
+        # Fallback: Try local model
+        try:
+            from src.router.hmm_version_control import HMMVersionControl
+            vc = HMMVersionControl()
+            local_version = vc.get_cloudzy_version()
+            
+            if local_version:
+                logger.info(f"Using local cached model version {local_version.get('version')}")
+                return {
+                    "regime": "LOCAL_CACHE",
+                    "confidence": 0.5,
+                    "model_version": local_version.get("version", "unknown"),
+                    "fallback": "local_model"
+                }
+        except Exception as e:
+            logger.warning(f"Failed to get local model: {e}")
+        
+        # Last resort: ISING_ONLY mode
+        return {
+            "regime": "ISING_ONLY",
+            "confidence": 0.0,
+            "model_version": "N/A",
+            "fallback": "ising_only"
+        }
+    
+    def stop(self) -> None:
+        """Stop the background polling."""
+        self._is_running = False
+        logger.info("RegimeFetcher stopped")
 
 
 class StrategyRouter:
@@ -41,7 +185,8 @@ class StrategyRouter:
     """
     
     def __init__(self, use_smart_kill: bool = True, use_kelly_governor: bool = True, 
-                 use_multi_timeframe: bool = True, multi_timeframes: Optional[List[Timeframe]] = None):
+                 use_multi_timeframe: bool = True, multi_timeframes: Optional[List[Timeframe]] = None,
+                 account_config: Optional[Dict] = None):
         """
         Initialize Strategy Router with all components.
 
@@ -50,6 +195,10 @@ class StrategyRouter:
             use_kelly_governor: If True, use EnhancedGovernor with Kelly (default)
             use_multi_timeframe: If True, use MultiTimeframeSentinel for multi-timeframe regime detection
             multi_timeframes: List of timeframes for multi-timeframe sentinel (default: M5, H1, H4)
+            account_config: Optional account configuration dict. Keys:
+                - 'type': 'prop_firm' | 'normal' (default: 'normal')
+                - 'account_id': str — required when type='prop_firm'
+                Example: {'type': 'prop_firm', 'account_id': 'FTMO_12345'}
         """
         # Core Sentient Loop components
         self.sentinel = Sentinel()
@@ -64,11 +213,26 @@ class StrategyRouter:
         else:
             self.multi_timeframe_sentinel = None
 
-        # V3: Use Enhanced Governor with Kelly Calculator
-        if use_kelly_governor:
-            self.governor = EnhancedGovernor()
+        # FIX-01: Account-type-based Governor selection.
+        # PropGovernor activates for prop_firm accounts (quadratic throttle + tiered risk).
+        # EnhancedGovernor used for all normal accounts (Kelly + House Money).
+        account_type = (account_config or {}).get('type', 'normal')
+        account_id = (account_config or {}).get('account_id', None)
+
+        if account_type == 'prop_firm' and account_id:
+            try:
+                from src.router.prop.governor import PropGovernor
+                self.governor = PropGovernor(account_id)
+                logger.info(f"StrategyRouter: PropGovernor activated for prop_firm account '{account_id}'")
+            except Exception as e:
+                logger.error(f"StrategyRouter: Failed to load PropGovernor for account '{account_id}': {e}. Falling back to EnhancedGovernor.")
+                self.governor = EnhancedGovernor(account_id=account_id) if use_kelly_governor else Governor()
+        elif use_kelly_governor:
+            self.governor = EnhancedGovernor(account_id=account_id)
+            logger.info(f"StrategyRouter: EnhancedGovernor (Kelly) activated for account '{account_id}'")
         else:
             self.governor = Governor()
+            logger.info("StrategyRouter: Base Governor activated")
 
         self.commander = Commander(governor=self.governor)
         
@@ -80,6 +244,12 @@ class StrategyRouter:
         self._kill_switch: Optional["SmartKillSwitch"] = None
         self._trade_logger: Optional["TradeLogger"] = None
         self._routing_matrix: Optional["RoutingMatrix"] = None
+        
+        # Progressive Kill Switch (Comment 1: Initialize with shared Sentinel and Governor)
+        self._progressive_kill_switch: Optional["ProgressiveKillSwitch"] = None
+        
+        # Contabo Regime Fetcher
+        self._regime_fetcher: Optional[RegimeFetcher] = None
         
         # Configuration
         self._use_smart_kill = use_smart_kill
@@ -153,6 +323,61 @@ class StrategyRouter:
                 logger.warning(f"StrategyRouter: Could not load RoutingMatrix: {e}")
         return self._routing_matrix
     
+    @property
+    def progressive_kill_switch(self) -> Optional["ProgressiveKillSwitch"]:
+        """
+        Lazy load ProgressiveKillSwitch.
+        
+        Comment 1: Initialize with shared Sentinel and Governor.
+        """
+        if self._progressive_kill_switch is None:
+            try:
+                # Get or create the progressive kill switch singleton
+                # This will automatically share Sentinel and Governor references
+                self._progressive_kill_switch = get_progressive_kill_switch()
+                
+                # Ensure the progressive kill switch has references to our Sentinel and Governor
+                self._progressive_kill_switch.session_monitor.set_sentinel(self.sentinel)
+                self._progressive_kill_switch.system_monitor.set_sentinel(self.sentinel)
+                
+                logger.info("StrategyRouter: Loaded ProgressiveKillSwitch")
+            except Exception as e:
+                logger.warning(f"StrategyRouter: Could not load ProgressiveKillSwitch: {e}")
+        return self._progressive_kill_switch
+    
+    @property
+    def regime_fetcher(self) -> Optional[RegimeFetcher]:
+        """
+        Lazy load RegimeFetcher for Contabo API polling.
+        """
+        if self._regime_fetcher is None:
+            try:
+                self._regime_fetcher = RegimeFetcher()
+                logger.info("StrategyRouter: Loaded RegimeFetcher for Contabo API")
+            except Exception as e:
+                logger.warning(f"StrategyRouter: Could not load RegimeFetcher: {e}")
+        return self._regime_fetcher
+    
+    def get_regime_for_symbol(self, symbol: str) -> Dict:
+        """
+        Get regime for a symbol using Contabo API with fallback.
+        
+        Args:
+            symbol: Trading symbol
+            
+        Returns:
+            Dictionary with regime, confidence, model_version
+        """
+        if self.regime_fetcher:
+            return self.regime_fetcher.get_regime_for_symbol(symbol)
+        
+        # Fallback if RegimeFetcher not available
+        return {
+            "regime": "UNKNOWN",
+            "confidence": 0.0,
+            "model_version": "N/A"
+        }
+    
     # ========== Core Sentient Loop ==========
     
     def process_tick(self, symbol: str, price: float, account_data: Optional[Dict] = None) -> Dict:
@@ -160,8 +385,14 @@ class StrategyRouter:
         The Full Sentient Loop execution.
         
         V2: Includes kill switch check, trade logging, and routing matrix.
+        V3: Wires multi-timeframe path by default when enabled.
         """
         self._tick_count += 1
+        
+        # Wire multi-timeframe processing - use multi-timeframe variant when enabled
+        # This ensures broadcast_regime_update fires and regime messages are emitted
+        if self._use_multi_timeframe and self.multi_timeframe_sentinel is not None:
+            return self.process_tick_multi_timeframe(symbol, price, account_data)
         
         # 0. Kill Switch Check - if active, block all processing
         if self.kill_switch and self.kill_switch.is_active:
@@ -178,10 +409,32 @@ class StrategyRouter:
         report = self.sentinel.on_tick(symbol, price)
         logger.debug(f"Sentinel Report: {report.regime} (Quality: {report.regime_quality:.2f})")
 
-        # Track regime changes
+        # Track regime changes with Prometheus metrics
         if self._last_regime != report.regime:
             logger.info(f"Regime changed: {self._last_regime} → {report.regime}")
+            # Track regime change in Prometheus
+            try:
+                from src.monitoring import track_regime_change
+                if self._last_regime:
+                    track_regime_change(self._last_regime, report.regime)
+            except Exception as e:
+                logger.debug(f"Failed to track regime change metric: {e}")
             self._last_regime = report.regime
+
+        # Update chaos score gauge
+        try:
+            from src.monitoring import update_chaos_score
+            update_chaos_score(report.chaos_score)
+        except Exception as e:
+            logger.debug(f"Failed to update chaos score metric: {e}")
+
+        # Update Kelly fraction gauge
+        try:
+            from src.monitoring import update_kelly_fraction
+            if hasattr(self.governor, 'current_kelly_fraction'):
+                update_kelly_fraction(self.governor.current_kelly_fraction)
+        except Exception as e:
+            logger.debug(f"Failed to update Kelly fraction metric: {e}")
 
         # Extract account_balance and broker_id from account_data
         account_balance = account_data.get('account_balance', 10000.0) if account_data else 10000.0
@@ -205,7 +458,50 @@ class StrategyRouter:
         # V2: Only @primal tagged bots participate
         # V3: Pass current_utc for session-aware filtering
         # Pass account_balance and broker_id for fee-aware position sizing
+        
+        # Comment 1: Check progressive kill switch BEFORE dispatching trades
+        if self.progressive_kill_switch:
+            # Build context for progressive kill switch check
+            context = {
+                'bot_id': None,  # Will be checked per-bot
+                'account_id': broker_id,
+                'strategy_family': None,  # Will be checked per-bot
+                'current_pnl_pct': 0.0,
+                'account_balance': account_balance
+            }
+            allowed, reason = self.progressive_kill_switch.check_all_tiers(context)
+            if not allowed:
+                logger.warning(f"ProgressiveKillSwitch blocked all trades: {reason}")
+                return {
+                    "regime": report.regime,
+                    "quality": report.regime_quality,
+                    "chaos_score": report.chaos_score,
+                    "mandate": mandate,
+                    "dispatches": [],
+                    "tick_count": self._tick_count,
+                    "kill_switch_blocked": True,
+                    "block_reason": reason
+                }
+        
         dispatches = self.commander.run_auction(report, account_balance, broker_id, current_utc)
+        
+        # Comment 1: Filter dispatches through progressive kill switch per-bot
+        if self.progressive_kill_switch and dispatches:
+            allowed_dispatches = []
+            for bot in dispatches:
+                context = {
+                    'bot_id': bot.get('bot_id'),
+                    'account_id': broker_id,
+                    'strategy_family': bot.get('strategy_family'),
+                    'current_pnl_pct': 0.0,
+                    'account_balance': account_balance
+                }
+                allowed, reason = self.progressive_kill_switch.check_all_tiers(context)
+                if allowed:
+                    allowed_dispatches.append(bot)
+                else:
+                    logger.warning(f"ProgressiveKillSwitch blocked bot {bot.get('bot_id')}: {reason}")
+            dispatches = allowed_dispatches
         
         # Apply Governor's Mandate to dispatches
         for bot in dispatches:
@@ -227,6 +523,28 @@ class StrategyRouter:
                 symbol=symbol
             )
         
+        # Track dispatched trades in Prometheus metrics
+        if dispatches:
+            try:
+                from src.monitoring import track_trade
+                for dispatch in dispatches:
+                    # Track each dispatched bot as a trade signal
+                    track_trade(
+                        symbol=symbol,
+                        action=dispatch.get('action', 'HOLD'),
+                        mode='live' if account_data and account_data.get('is_live') else 'demo'
+                    )
+            except Exception as e:
+                logger.debug(f"Failed to track dispatch metrics: {e}")
+        
+        # 5. Broadcast status update to WebSocket clients
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(self.broadcast_status_update())
+        except RuntimeError:
+            pass  # No event loop running
+        
         return {
             "regime": report.regime,
             "quality": report.regime_quality,
@@ -235,6 +553,90 @@ class StrategyRouter:
             "dispatches": dispatches,
             "tick_count": self._tick_count
         }
+    
+    async def broadcast_status_update(self):
+        """Broadcast current system status to WebSocket clients."""
+        try:
+            from src.api.websocket_endpoints import broadcast_system_status, broadcast_bot_update
+
+            # Get current status
+            status = self.get_status()
+
+            # Get real P&L from AccountMonitor via ProgressiveKillSwitch
+            pnl_today = 0.0
+            if self.progressive_kill_switch:
+                pks = self.progressive_kill_switch
+                if hasattr(pks, 'account_monitor') and pks.account_monitor:
+                    # Aggregate daily P&L across all tracked accounts
+                    account_states = pks.account_monitor.get_all_states()
+                    pnl_today = sum(
+                        state.get("daily_pnl", 0.0)
+                        for state in account_states.values()
+                    )
+
+            # Broadcast system status
+            await broadcast_system_status({
+                "active_bots": status.get("commander", {}).get("active_bots", 0),
+                "pnl_today": pnl_today,
+                "regime": status.get("sentinel", {}).get("current_regime", "UNKNOWN"),
+                "kelly": getattr(self.governor, 'current_kelly_fraction', 0.0)
+            })
+
+            # Broadcast bot updates
+            bots = []
+            bot_registry = self.commander.bot_registry
+
+            primal_count = 0
+            pending_count = 0
+            quarantine_count = 0
+
+            if bot_registry:
+                # Primary: Use BotRegistry to get @primal tagged bots
+                primal_bots = bot_registry.list_by_tag("@primal")
+                pending_bots = bot_registry.list_by_tag("@pending")
+                quarantine_bots = bot_registry.list_by_tag("@quarantine")
+                
+                primal_count = len(primal_bots)
+                pending_count = len(pending_bots)
+                quarantine_count = len(quarantine_bots)
+                
+                for manifest in primal_bots:
+                    bots.append({
+                        "id": manifest.bot_id,
+                        "name": manifest.name,
+                        "state": "primal",
+                        "symbol": manifest.symbols[0] if manifest.symbols else "UNKNOWN"
+                    })
+            else:
+                # Fallback: Loop over commander.active_bots when BotRegistry is not available
+                # Derive state from tags (e.g., @primal -> primal, else pending)
+                # Derive symbol from symbols list (default UNKNOWN)
+                for bot_id, bot_data in self.commander.active_bots.items():
+                    tags = bot_data.get('tags', [])
+                    state = "primal" if "@primal" in tags else "pending"
+                    symbols = bot_data.get('symbols', [])
+                    bots.append({
+                        "id": bot_id,
+                        "name": bot_data.get('name', bot_id),
+                        "state": state,
+                        "symbol": symbols[0] if symbols else "UNKNOWN"
+                    })
+                    if state == "primal":
+                        primal_count += 1
+                    else:
+                        pending_count += 1
+
+            await broadcast_bot_update({"bots": bots})
+
+            # Update active EAs gauge in Prometheus
+            try:
+                from src.monitoring import update_active_eas
+                update_active_eas(primal=primal_count, pending=pending_count, quarantine=quarantine_count)
+            except Exception as e:
+                logger.debug(f"Failed to update active EAs metric: {e}")
+
+        except Exception as e:
+            logger.error(f"Failed to broadcast status update: {e}")
     
     # ========== Multi-Timeframe Processing (Comment 1) ==========
     
@@ -280,6 +682,35 @@ class StrategyRouter:
         all_regimes = self.multi_timeframe_sentinel.get_all_regimes()
         dominant_regime = self.multi_timeframe_sentinel.get_dominant_regime()
         
+        # Broadcast regime update to WebSocket clients
+        if all_regimes:
+            try:
+                # Calculate consensus strength (percentage of timeframes agreeing with dominant regime)
+                matching_count = sum(1 for tf, report in all_regimes.items() if report.regime == dominant_regime)
+                consensus_strength = (matching_count / len(all_regimes)) * 100 if all_regimes else 0
+                
+                # Build timeframe regimes dict for broadcast
+                timeframe_regimes = {}
+                for tf, report in all_regimes.items():
+                    timeframe_regimes[tf.name] = {
+                        "regime": report.regime,
+                        "quality": report.regime_quality
+                    }
+                
+                regime_data = {
+                    "dominant_regime": dominant_regime,
+                    "timeframe_regimes": timeframe_regimes,
+                    "consensus_strength": consensus_strength
+                }
+                
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(broadcast_regime_update(regime_data))
+            except RuntimeError:
+                pass  # No event loop running
+            except Exception as e:
+                logger.warning(f"Failed to broadcast regime update: {e}")
+        
         logger.debug(f"Multi-timeframe regimes: {[(tf.name, r.regime) for tf, r in all_regimes.items()]}")
         
         # Comment 2 fix: Derive primary_regime_report from fastest entry in all_regimes if available
@@ -297,6 +728,29 @@ class StrategyRouter:
         account_balance = account_data.get('account_balance', 10000.0) if account_data else 10000.0
         broker_id = account_data.get('broker_id', 'mt5_default') if account_data else 'mt5_default'
         
+        # Comment 1: Check progressive kill switch BEFORE dispatching trades (multi-timeframe)
+        if self.progressive_kill_switch:
+            context = {
+                'bot_id': None,
+                'account_id': broker_id,
+                'strategy_family': None,
+                'current_pnl_pct': 0.0,
+                'account_balance': account_balance
+            }
+            allowed, reason = self.progressive_kill_switch.check_all_tiers(context)
+            if not allowed:
+                logger.warning(f"ProgressiveKillSwitch blocked all trades (multi-timeframe): {reason}")
+                return {
+                    "regime": dominant_regime,
+                    "quality": self.sentinel.current_report.regime_quality if self.sentinel.current_report else 1.0,
+                    "chaos_score": self.sentinel.current_report.chaos_score if self.sentinel.current_report else 0.0,
+                    "all_timeframe_regimes": {tf.name: r.regime for tf, r in all_regimes.items()},
+                    "dispatches": [],
+                    "tick_count": self._tick_count,
+                    "kill_switch_blocked": True,
+                    "block_reason": reason
+                }
+        
         # Run auction with multi-timeframe context
         # Pass timeframe-specific regime reports and all_regimes dict
         dispatches = self.commander.run_auction_with_timeframes(
@@ -307,12 +761,70 @@ class StrategyRouter:
             current_utc=current_utc
         )
         
+        # Comment 1: Filter dispatches through progressive kill switch per-bot
+        if self.progressive_kill_switch and dispatches:
+            allowed_dispatches = []
+            for bot in dispatches:
+                context = {
+                    'bot_id': bot.get('bot_id'),
+                    'account_id': broker_id,
+                    'strategy_family': bot.get('strategy_family'),
+                    'current_pnl_pct': 0.0,
+                    'account_balance': account_balance
+                }
+                allowed, reason = self.progressive_kill_switch.check_all_tiers(context)
+                if allowed:
+                    allowed_dispatches.append(bot)
+                else:
+                    logger.warning(f"ProgressiveKillSwitch blocked bot {bot.get('bot_id')}: {reason}")
+            dispatches = allowed_dispatches
+        
         # Apply timeframe context to dispatches
         for dispatch in dispatches:
             dispatch['timeframe_context'] = {
                 'dominant_regime': dominant_regime,
                 'all_regimes': {tf.name: r.regime for tf, r in all_regimes.items()}
             }
+        
+        # Track regime changes in multi-timeframe mode
+        if self._last_regime != dominant_regime:
+            logger.info(f"Multi-timeframe regime changed: {self._last_regime} → {dominant_regime}")
+            try:
+                from src.monitoring import track_regime_change
+                if self._last_regime:
+                    track_regime_change(self._last_regime, dominant_regime)
+            except Exception as e:
+                logger.debug(f"Failed to track regime change metric: {e}")
+            self._last_regime = dominant_regime
+        
+        # Update chaos score gauge (use primary timeframe chaos)
+        try:
+            from src.monitoring import update_chaos_score
+            if primary_regime_report:
+                update_chaos_score(primary_regime_report.chaos_score)
+        except Exception as e:
+            logger.debug(f"Failed to update chaos score metric: {e}")
+        
+        # Update Kelly fraction gauge
+        try:
+            from src.monitoring import update_kelly_fraction
+            if hasattr(self.governor, 'current_kelly_fraction'):
+                update_kelly_fraction(self.governor.current_kelly_fraction)
+        except Exception as e:
+            logger.debug(f"Failed to update Kelly fraction metric: {e}")
+        
+        # Track dispatched trades in Prometheus metrics
+        if dispatches:
+            try:
+                from src.monitoring import track_trade
+                for dispatch in dispatches:
+                    track_trade(
+                        symbol=symbol,
+                        action=dispatch.get('action', 'HOLD'),
+                        mode='live' if account_data and account_data.get('is_live') else 'demo'
+                    )
+            except Exception as e:
+                logger.debug(f"Failed to track dispatch metrics: {e}")
         
         return {
             "regime": dominant_regime,
@@ -359,6 +871,12 @@ class StrategyRouter:
         # Register with KillSwitch for emergency stop
         if self.kill_switch:
             self.kill_switch.register_ea(bot_id)
+        
+        # Comment 1: Register with ProgressiveKillSwitch for tier-based monitoring
+        if self.progressive_kill_switch:
+            # The progressive kill switch tracks bot failures through the circuit breaker
+            # This is handled via record_bot_failure() when bots fail
+            pass
         
         magic_number = getattr(bot_instance, 'magic_number', 'N/A')
         logger.info(f"Bot {bot_id} (@{magic_number}) registered with tag {initial_tag}")
@@ -447,7 +965,8 @@ class StrategyRouter:
             },
             "commander": self.commander.get_auction_status(),
             "tick_count": self._tick_count,
-            "kill_switch_active": self.kill_switch.is_active if self.kill_switch else False
+            "kill_switch_active": self.kill_switch.is_active if self.kill_switch else False,
+            "progressive_kill_switch": self.progressive_kill_switch.get_status() if self.progressive_kill_switch else None
         }
         
         if self.bot_registry:
@@ -480,6 +999,58 @@ class StrategyRouter:
                 triggered_by="strategy_router",
                 message=reason
             )
+
+    # ========== Progressive Kill Switch Integration (Comment 1) ==========
+    
+    def record_trade_pnl(self, account_id: str, pnl: float, account_balance: Optional[float] = None) -> bool:
+        """
+        Record trade P&L for progressive kill switch monitoring.
+        
+        Comment 1: Feed trade P&L into record_trade_pnl() so tiers get state.
+        
+        Args:
+            account_id: Account identifier
+            pnl: Profit/loss amount
+            account_balance: Current account balance
+            
+        Returns:
+            True if a stop was triggered
+        """
+        # Track P&L in Prometheus metrics
+        try:
+            from src.monitoring import trade_profit_loss
+            mode = 'live'  # Assume live trading when recording actual P&L
+            trade_profit_loss.labels(symbol='all', mode=mode).observe(pnl)
+        except Exception as e:
+            logger.debug(f"Failed to track P&L metric: {e}")
+        
+        if self.progressive_kill_switch:
+            return self.progressive_kill_switch.record_trade_pnl(
+                account_id=account_id,
+                pnl=pnl,
+                account_balance=account_balance
+            )
+        return False
+    
+    def record_bot_failure(self, bot_manifest: "BotManifest", reason: str = "") -> bool:
+        """
+        Record a bot failure for progressive kill switch monitoring.
+        
+        Comment 1: Feed bot failures into record_bot_failure() so tiers get state.
+        
+        Args:
+            bot_manifest: The failed bot's manifest
+            reason: Reason for the failure
+            
+        Returns:
+            True if family was quarantined
+        """
+        if self.progressive_kill_switch:
+            return self.progressive_kill_switch.record_bot_failure(
+                bot_manifest=bot_manifest,
+                reason=reason
+            )
+        return False
 
     # ========== Multi-Symbol Router Simulation (Task Group 5) ==========
 

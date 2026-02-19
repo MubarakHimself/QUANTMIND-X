@@ -173,6 +173,28 @@ export async function triggerKillSwitch(): Promise<{ success: boolean; message: 
 }
 
 // =============================================================================
+// Fee Monitoring Endpoints
+// =============================================================================
+
+export interface FeeBreakdownItem {
+    bot_id: string;
+    trades: number;
+    fees_paid: number;
+    fee_pct: number;
+}
+
+export interface FeeMonitorData {
+    daily_fees: number;
+    daily_fee_burn_pct: number;
+    kill_switch_active: boolean;
+    fee_breakdown: FeeBreakdownItem[];
+}
+
+export async function getFeeMonitorData(): Promise<FeeMonitorData> {
+    return apiFetch<FeeMonitorData>('/router/fee-monitor');
+}
+
+// =============================================================================
 // Agent Chat Endpoint
 // =============================================================================
 

@@ -1,0 +1,89 @@
+{
+  "model": {
+    "n_states": 4,
+    "covariance_type": "full",
+    "n_iter": 100,
+    "tol": 0.01,
+    "random_state": 42,
+    "init_params": "stmc",
+    "params": "stmc"
+  },
+  "training": {
+    "min_samples_per_symbol": 2000,
+    "min_samples_universal": 50000,
+    "validation_split": 0.2,
+    "test_split": 0.1,
+    "max_training_hours": 3,
+    "checkpoint_interval": 10
+  },
+  "features": {
+    "ising_outputs": {
+      "magnetization": true,
+      "susceptibility": true,
+      "energy": true,
+      "temperature": true
+    },
+    "price_features": {
+      "log_returns": true,
+      "rolling_volatility_20": true,
+      "rolling_volatility_50": true,
+      "price_momentum_10": true
+    },
+    "technical_indicators": {
+      "rsi_period": 14,
+      "atr_period": 14,
+      "macd_fast": 12,
+      "macd_slow": 26,
+      "macd_signal": 9
+    },
+    "scaling": {
+      "method": "standard",
+      "clip_outliers": true,
+      "clip_threshold": 3.0
+    }
+  },
+  "regime_mapping": {
+    "0": "TRENDING_LOW_VOL",
+    "1": "TRENDING_HIGH_VOL",
+    "2": "RANGING_LOW_VOL",
+    "3": "RANGING_HIGH_VOL"
+  },
+  "validation": {
+    "min_log_likelihood": -2000,
+    "max_state_imbalance": 0.6,
+    "min_diagonal_persistence": 0.7,
+    "min_ising_agreement": 0.8
+  },
+  "deployment": {
+    "default_mode": "ising_only",
+    "shadow_mode_min_days": 14,
+    "hybrid_weights": [0.2, 0.5, 0.8],
+    "approval_required_modes": ["hmm_hybrid_50", "hmm_hybrid_80", "hmm_only"]
+  },
+  "sync": {
+    "contabo_host": "${CONTABO_HOST}",
+    "contabo_port": 22,
+    "contabo_user": "${CONTABO_USER}",
+    "contabo_model_path": "/data/hmm/models",
+    "contabo_metadata_path": "/data/hmm/metadata",
+    "cloudzy_model_path": "/data/hmm/models",
+    "sync_timeout_seconds": 300
+  },
+  "schedule": {
+    "training_day": "saturday",
+    "training_hour": 2,
+    "training_minute": 0,
+    "timezone": "UTC"
+  },
+  "symbols": {
+    "primary": ["EURUSD", "GBPUSD", "XAUUSD"],
+    "secondary": ["USDJPY", "AUDUSD", "NZDUSD"],
+    "timeframes": ["M5", "H1", "H4"]
+  },
+  "logging": {
+    "level": "INFO",
+    "log_dir": "/data/hmm/logs",
+    "max_log_size_mb": 100,
+    "backup_count": 5
+  }
+}

@@ -3,15 +3,28 @@ Router State API Endpoints
 
 Provides real-time information about the Strategy Router including
 auction queue, bot rankings, market regime, and correlations.
+
+Also includes endpoints for:
+- Bot lifecycle management (tag progression)
+- Bot limit status checking
+- Market scanner alerts
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import random
 
 router = APIRouter(prefix="/api/router", tags=["router"])
+
+# Global router instance (set by server.py on startup)
+_strategy_router: Optional[Any] = None
+
+def set_strategy_router(router_instance):
+    """Set the global StrategyRouter instance."""
+    global _strategy_router
+    _strategy_router = router_instance
 
 # Data models
 class MarketRegime(BaseModel):
@@ -234,3 +247,421 @@ async def update_router_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     """Update router settings."""
     # In production, this would save to database
     return {"success": True, "settings": settings}
+
+
+@router.get("/system-status")
+async def get_system_status() -> Dict[str, Any]:
+    """
+    Get current system status from StrategyRouter.
+
+    Returns real metrics from:
+    - Sentinel for market regime
+    - Governor for Kelly fraction
+    - AccountMonitor for daily P&L
+    - Commander for active bot count
+    """
+    if _strategy_router is None:
+        # Fallback to mock data if router not initialized
+        return {
+            "active_bots": 0,
+            "pnl_today": 0.0,
+            "regime": "UNKNOWN",
+            "kelly": 0.0
+        }
+
+    status = _strategy_router.get_status()
+
+    # Get current regime from sentinel (real value)
+    current_regime = status.get("sentinel", {}).get("current_regime", "UNKNOWN")
+
+    # Get Kelly fraction from governor (real value)
+    kelly_fraction = 0.0
+    if hasattr(_strategy_router.governor, 'current_kelly_fraction'):
+        kelly_fraction = _strategy_router.governor.current_kelly_fraction
+
+    # Get active bot count (real value)
+    active_bots = status.get("commander", {}).get("active_bots", 0)
+
+    # Get real P&L from AccountMonitor via ProgressiveKillSwitch
+    pnl_today = 0.0
+    pks = _strategy_router.progressive_kill_switch
+    if pks and hasattr(pks, 'account_monitor') and pks.account_monitor:
+        # Aggregate daily P&L across all tracked accounts
+        account_states = pks.account_monitor.get_all_states()
+        pnl_today = sum(
+            state.get("daily_pnl", 0.0)
+            for state in account_states.values()
+        )
+
+    return {
+        "active_bots": active_bots,
+        "pnl_today": pnl_today,
+        "regime": current_regime,
+        "kelly": kelly_fraction
+    }
+
+
+@router.get("/active-bots")
+async def get_active_bots() -> List[Dict[str, Any]]:
+    """Get list of active bots from Commander."""
+    if _strategy_router is None:
+        return []
+
+    bots = []
+    commander = _strategy_router.commander
+
+    # Get bots from BotRegistry if available
+    if commander.bot_registry:
+        primal_bots = commander.bot_registry.list_by_tag("@primal")
+        for manifest in primal_bots:
+            bots.append({
+                "id": manifest.bot_id,
+                "name": manifest.name,
+                "state": "primal",  # Tag as state
+                "symbol": manifest.symbols[0] if manifest.symbols else "UNKNOWN"
+            })
+    else:
+        # Fallback to active_bots dict
+        for bot_id, bot_data in commander.active_bots.items():
+            tags = bot_data.get('tags', [])
+            state = "primal" if "@primal" in tags else "pending"
+            bots.append({
+                "id": bot_id,
+                "name": bot_data.get('name', bot_id),
+                "state": state,
+                "symbol": bot_data.get('symbols', ['UNKNOWN'])[0]
+            })
+
+    return bots
+
+
+@router.get("/fee-monitor")
+async def get_fee_monitor_data() -> Dict[str, Any]:
+    """
+    Get current fee monitoring data including:
+    - daily_fees: Total fees paid today
+    - daily_fee_burn_pct: Fee burn percentage
+    - kill_switch_active: Whether fee kill switch is active
+    - fee_breakdown: Per-bot fee breakdown
+    """
+    from datetime import date
+    from src.router.fee_monitor import FeeMonitor
+
+    # Default values if router not initialized
+    account_id = "default"
+    account_balance = 10000.0
+
+    if _strategy_router is not None:
+        # Try to get account info from AccountMonitor
+        pks = _strategy_router.progressive_kill_switch
+        if pks and hasattr(pks, 'account_monitor') and pks.account_monitor:
+            account_states = pks.account_monitor.get_all_states()
+            if account_states:
+                # Get first account's info
+                first_account_id = list(account_states.keys())[0]
+                account_id = first_account_id
+                # Get balance from state if available
+                state = account_states[first_account_id]
+                if 'balance' in state:
+                    account_balance = state['balance']
+
+    # Get fee monitoring data
+    fee_monitor = FeeMonitor(account_id, account_balance=account_balance)
+    today_str = date.today().strftime('%Y-%m-%d')
+
+    # Get daily report
+    report = fee_monitor.get_daily_report(today_str)
+
+    if report:
+        return {
+            "daily_fees": report.total_fees,
+            "daily_fee_burn_pct": report.fee_burn_pct,
+            "kill_switch_active": report.status == "KILL_SWITCH_ACTIVE",
+            "fee_breakdown": fee_monitor.get_fee_breakdown_by_bot(today_str)
+        }
+    else:
+        # No data for today, return defaults
+        return {
+            "daily_fees": 0.0,
+            "daily_fee_burn_pct": 0.0,
+            "kill_switch_active": False,
+            "fee_breakdown": fee_monitor.get_fee_breakdown_by_bot(today_str)
+        }
+
+
+# ========== Lifecycle Management Endpoints ==========
+
+@router.get("/lifecycle/status")
+async def get_lifecycle_status() -> List[Dict[str, Any]]:
+    """
+    Get lifecycle status for all bots.
+    
+    Returns tag progression status, promotion criteria, and stats.
+    """
+    try:
+        from src.router.lifecycle_manager import LifecycleManager
+        manager = LifecycleManager()
+        return manager.get_all_lifecycle_statuses()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get lifecycle status: {e}")
+
+
+@router.get("/lifecycle/status/{bot_id}")
+async def get_bot_lifecycle_status(bot_id: str) -> Dict[str, Any]:
+    """
+    Get lifecycle status for a specific bot.
+    
+    Args:
+        bot_id: Bot identifier
+        
+    Returns:
+        Lifecycle status with promotion criteria and stats
+    """
+    try:
+        from src.router.lifecycle_manager import LifecycleManager
+        manager = LifecycleManager()
+        status = manager.get_bot_lifecycle_status(bot_id)
+        
+        if "error" in status:
+            raise HTTPException(status_code=404, detail=status["error"])
+        
+        return status
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get lifecycle status: {e}")
+
+
+@router.post("/lifecycle/check")
+async def trigger_lifecycle_check() -> Dict[str, Any]:
+    """
+    Manually trigger a lifecycle check.
+    
+    Runs the daily evaluation for all bots and returns the report.
+    """
+    try:
+        from src.router.lifecycle_manager import LifecycleManager
+        manager = LifecycleManager()
+        report = manager.run_daily_check()
+        return report.to_dict()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lifecycle check failed: {e}")
+
+
+@router.post("/lifecycle/promote/{bot_id}")
+async def manually_promote_bot(bot_id: str, force: bool = Query(False, description="Bypass criteria check")) -> Dict[str, Any]:
+    """
+    Manually promote a bot to the next tag level.
+    
+    Args:
+        bot_id: Bot identifier
+        force: If True, bypass promotion criteria check
+        
+    Returns:
+        Promotion result
+    """
+    try:
+        from src.router.lifecycle_manager import LifecycleManager
+        manager = LifecycleManager()
+        result = manager.manually_promote_bot(bot_id, force=force)
+        
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error", "Promotion failed"))
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Promotion failed: {e}")
+
+
+@router.post("/lifecycle/quarantine/{bot_id}")
+async def manually_quarantine_bot(bot_id: str, reason: str = Query("", description="Reason for quarantine")) -> Dict[str, Any]:
+    """
+    Manually quarantine a bot.
+    
+    Args:
+        bot_id: Bot identifier
+        reason: Reason for quarantine
+        
+    Returns:
+        Quarantine result
+    """
+    try:
+        from src.router.lifecycle_manager import LifecycleManager
+        manager = LifecycleManager()
+        result = manager.manually_quarantine_bot(bot_id, reason=reason)
+        
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error", "Quarantine failed"))
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Quarantine failed: {e}")
+
+
+# ========== Bot Limits Endpoints ==========
+
+@router.get("/bot-limits/status")
+async def get_bot_limits_status(account_balance: Optional[float] = Query(None, description="Account balance")) -> Dict[str, Any]:
+    """
+    Get current bot limit status for UI display.
+    
+    Args:
+        account_balance: Account balance (optional, uses default if not provided)
+        
+    Returns:
+        Current tier, max bots, active bots, and warnings
+    """
+    try:
+        from src.router.dynamic_bot_limits import DynamicBotLimiter
+        from src.router.bot_manifest import BotRegistry
+        
+        # Get account balance from router if not provided
+        if account_balance is None and _strategy_router is not None:
+            pks = _strategy_router.progressive_kill_switch
+            if pks and hasattr(pks, 'account_monitor') and pks.account_monitor:
+                account_states = pks.account_monitor.get_all_states()
+                if account_states:
+                    first_state = list(account_states.values())[0]
+                    account_balance = first_state.get('balance', 10000.0)
+        
+        if account_balance is None:
+            account_balance = 10000.0  # Default
+        
+        limiter = DynamicBotLimiter()
+        max_bots = limiter.get_max_bots(account_balance)
+        tier_info = limiter.get_tier_info(account_balance)
+        
+        # Get active bot count
+        active_bots = 0
+        try:
+            registry = BotRegistry()
+            # Count all non-dead bots
+            for bot in registry.list_all():
+                if "@dead" not in bot.tags:
+                    active_bots += 1
+        except Exception:
+            # Fallback
+            if _strategy_router and hasattr(_strategy_router, 'commander'):
+                active_bots = len(_strategy_router.commander.active_bots)
+        
+        # Calculate warnings
+        warnings = []
+        if active_bots >= max_bots:
+            warnings.append(f"Bot limit reached ({active_bots}/{max_bots})")
+        elif active_bots >= max_bots * 0.8:
+            warnings.append(f"Approaching bot limit ({active_bots}/{max_bots})")
+        
+        # Check safety buffer
+        safety_buffer = limiter.calculate_safety_buffer(account_balance, active_bots)
+        
+        return {
+            "account_balance": account_balance,
+            "tier": tier_info.get("tier", "unknown"),
+            "tier_range": tier_info.get("range", "unknown"),
+            "max_bots": max_bots,
+            "active_bots": active_bots,
+            "available_slots": max(0, max_bots - active_bots),
+            "safety_buffer_required": safety_buffer,
+            "can_add_bot": active_bots < max_bots,
+            "warnings": warnings,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get bot limits: {e}")
+
+
+# ========== Market Scanner Endpoints ==========
+
+# In-memory storage for recent alerts (in production, use database)
+_recent_scanner_alerts: List[Dict[str, Any]] = []
+
+@router.get("/scanner/alerts")
+async def get_scanner_alerts(limit: int = Query(50, description="Maximum alerts to return")) -> List[Dict[str, Any]]:
+    """
+    Get recent market scanner alerts.
+    
+    Args:
+        limit: Maximum number of alerts to return
+        
+    Returns:
+        List of recent alerts
+    """
+    # Return recent alerts (limited)
+    return _recent_scanner_alerts[-limit:]
+
+
+@router.get("/scanner/status")
+async def get_scanner_status() -> Dict[str, Any]:
+    """
+    Get market scanner status.
+    
+    Returns current session, active scanners, and statistics.
+    """
+    try:
+        from src.router.sessions import SessionDetector, get_current_session
+        
+        current_session = get_current_session()
+        session_info = SessionDetector.get_session_info(datetime.utcnow())
+        
+        return {
+            "active": True,
+            "current_session": current_session.value,
+            "session_info": {
+                "is_active": session_info.is_active,
+                "time_until_close": session_info.time_until_close_str,
+                "next_session": session_info.next_session.value if session_info.next_session else None,
+            },
+            "scanners": {
+                "session_breakout": True,
+                "volatility": True,
+                "news_events": True,
+                "ict_setups": True,
+            },
+            "alerts_count": len(_recent_scanner_alerts),
+            "last_scan": datetime.utcnow().isoformat(),
+        }
+    except Exception as e:
+        return {
+            "active": False,
+            "error": str(e),
+        }
+
+
+@router.post("/scanner/scan")
+async def trigger_market_scan() -> Dict[str, Any]:
+    """
+    Manually trigger a market scan.
+    
+    Runs all scanners and returns any new alerts.
+    """
+    try:
+        from src.router.market_scanner import MarketScanner
+        
+        scanner = MarketScanner()
+        alerts = scanner.run_full_scan()
+        
+        # Store alerts
+        _recent_scanner_alerts.extend(alerts)
+        
+        # Keep only last 1000 alerts
+        if len(_recent_scanner_alerts) > 1000:
+            _recent_scanner_alerts[:] = _recent_scanner_alerts[-1000:]
+        
+        return {
+            "success": True,
+            "alerts_found": len(alerts),
+            "alerts": alerts,
+        }
+    except ImportError:
+        # MarketScanner not yet implemented
+        return {
+            "success": False,
+            "error": "MarketScanner not available",
+            "alerts_found": 0,
+            "alerts": [],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Market scan failed: {e}")

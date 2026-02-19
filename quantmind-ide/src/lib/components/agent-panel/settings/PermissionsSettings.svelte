@@ -79,6 +79,21 @@
   function isPermissionActive(key: string, value: string): boolean {
     return permissions[key as keyof AgentPermissions] === value;
   }
+
+  // Wrapper for template to avoid type assertion in template
+  function checkPermissionActive(key: string, value: string): boolean {
+    return isPermissionActive(key, value);
+  }
+
+  // Wrapper for template to avoid type assertion in template
+  function checkUpdatePermission(key: string, value: string) {
+    updatePermission(key as keyof AgentPermissions, value);
+  }
+
+  // Wrapper for toggling boolean permissions in template
+  function toggleBooleanPermission(key: string) {
+    updatePermission(key as keyof AgentPermissions, !getBooleanPermission(key));
+  }
 </script>
 
 <div class="permissions-settings">
@@ -108,7 +123,7 @@
         class:active={matchesPreset('restricted')}
         on:click={() => applyPreset('restricted')}
       >
-        <Shield size={20} />
+        <span class="preset-icon"><Shield size={20} /></span>
         <span class="preset-name">Restricted</span>
         <span class="preset-desc">Minimal access, safe for testing</span>
       </button>
@@ -118,7 +133,7 @@
         class:active={matchesPreset('standard')}
         on:click={() => applyPreset('standard')}
       >
-        <Info size={20} />
+        <span class="preset-icon"><Info size={20} /></span>
         <span class="preset-name">Standard</span>
         <span class="preset-desc">Balanced access for normal use</span>
       </button>
@@ -128,7 +143,7 @@
         class:active={matchesPreset('fullAccess')}
         on:click={() => applyPreset('fullAccess')}
       >
-        <AlertTriangle size={20} />
+        <span class="preset-icon"><AlertTriangle size={20} /></span>
         <span class="preset-name">Full Access</span>
         <span class="preset-desc">Unrestricted, use with caution</span>
       </button>
@@ -149,9 +164,9 @@
             {#each accessLevels as level}
               <button 
                 class="level-btn"
-                class:active={isPermissionActive(perm.key, level.value)}
+                class:active={checkPermissionActive(perm.key, level.value)}
                 style="--level-color: {getAccessColor(level.value)}"
-                on:click={() => updatePermission(perm.key, level.value)}
+                on:click={() => checkUpdatePermission(perm.key, level.value)}
               >
                 {level.label}
               </button>
@@ -173,7 +188,7 @@
             <input 
               type="checkbox" 
               checked={getBooleanPermission(perm.key)}
-              on:change={() => updatePermission(perm.key, !getBooleanPermission(perm.key))}
+              on:change={() => toggleBooleanPermission(perm.key)}
             />
             <span class="toggle-slider"></span>
           </label>
@@ -328,11 +343,11 @@
     background: rgba(107, 200, 230, 0.1);
   }
   
-  .preset-card svg {
+  .preset-card .preset-icon {
     color: var(--text-muted);
   }
   
-  .preset-card.active svg {
+  .preset-card.active .preset-icon {
     color: var(--accent-primary);
   }
   

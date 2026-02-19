@@ -458,4 +458,7 @@ def set_test_environment(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-mock-key-for-testing")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-mock-key-for-testing")
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
-    monkeypatch.setenv("QDRANT_URL", "http://localhost:6333")
+    # PageIndex Configuration
+    monkeypatch.setenv("PAGEINDEX_ARTICLES_URL", "http://localhost:3000")
+    monkeypatch.setenv("PAGEINDEX_BOOKS_URL", "http://localhost:3001")
+    monkeypatch.setenv("PAGEINDEX_LOGS_URL", "http://localhost:3002")

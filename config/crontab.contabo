@@ -1,0 +1,15 @@
+# QuantMindX Contabo VPS Crontab
+# ================================
+# Install with: crontab config/crontab.contabo
+
+# HOT → WARM migration (every hour)
+0 * * * * /usr/bin/python3 /opt/quantmindx/scripts/migrate_hot_to_warm.py >> /var/log/quantmindx/migration_hot_warm.log 2>&1
+
+# WARM → COLD archival (daily at 03:00 UTC)
+0 3 * * * /usr/bin/python3 /opt/quantmindx/scripts/archive_warm_to_cold.py >> /var/log/quantmindx/archive_warm_cold.log 2>&1
+
+# HMM Training (Saturday at 02:00 UTC)
+0 2 * * 6 /usr/bin/python3 /opt/quantmindx/scripts/schedule_hmm_training.py --run-now >> /var/log/quantmindx/hmm_training.log 2>&1
+
+# Config sync (every 15 minutes)
+*/15 * * * * /opt/quantmindx/scripts/sync_config.sh >> /var/log/quantmindx/sync_config.log 2>&1

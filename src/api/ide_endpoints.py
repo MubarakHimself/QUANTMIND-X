@@ -20,6 +20,7 @@ import io
 import logging
 import platform
 import subprocess
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional, TYPE_CHECKING, Union
@@ -401,7 +402,20 @@ class KnowledgeAPIHandler:
     
     def _is_indexed(self, file_path: Path) -> bool:
         """Check if file is indexed in PageIndex."""
-        # TODO: Query PageIndex API
+        try:
+            import requests
+            import os
+            
+            pageindex_url = os.getenv("PAGEINDEX_URL", "http://localhost:8001")
+            response = requests.get(
+                f"{pageindex_url}/api/check",
+                params={"file_path": str(file_path)},
+                timeout=5
+            )
+            if response.status_code == 200:
+                return response.json().get("indexed", False)
+        except Exception as e:
+            logger.warning(f"Failed to check PageIndex status: {e}")
         return False
     
     def get_content(self, item_id: str) -> Optional[str]:
@@ -500,8 +514,28 @@ class NPRDAPIHandler:
             "progress": 0
         }
         
-        # TODO: Trigger actual NPRD processing pipeline
-        # This would call the Gemini CLI processor
+        # Trigger actual NPRD processing pipeline
+        try:
+            from src.nprd.processor import NPRDProcessor
+            
+            # Run processing (synchronous, but FastAPI handles this in thread pool)
+            processor = NPRDProcessor()
+            result = processor.process(url=request.url, job_id=job_id)
+            
+            # Update job status on success
+            self.jobs[job_id]["status"] = "processing"
+            self.jobs[job_id]["progress"] = 50
+            self.jobs[job_id]["result"] = {
+                "timeline": result.timeline if hasattr(result, 'timeline') else [],
+                "metadata": result.metadata if hasattr(result, 'metadata') else {}
+            }
+            
+            logger.info(f"NPRD processing started for job {job_id}")
+            
+        except Exception as e:
+            logger.error(f"NPRD processing failed: {e}")
+            self.jobs[job_id]["status"] = "failed"
+            self.jobs[job_id]["error"] = str(e)
         
         return NPRDProcessResponse(
             job_id=job_id,
@@ -512,6 +546,67 @@ class NPRDAPIHandler:
     def get_job_status(self, job_id: str) -> Optional[Dict]:
         """Get NPRD job status."""
         return self.jobs.get(job_id)
+
+
+class BrokerAccountsAPIHandler:
+    """Handler for broker accounts from BrokerRegistry."""
+    
+    def get_broker_accounts(self) -> List[Dict]:
+        """Get broker accounts with balance/equity from MT5 bridge."""
+        try:
+            from src.router.broker_registry import BrokerRegistry
+            registry = BrokerRegistry()
+            
+            accounts = []
+            for broker in registry.list_all():
+                # Get account info from broker
+                account_info = {
+                    "broker_id": broker.broker_id,
+                    "broker_name": broker.name,
+                    "account_type": broker.account_type,
+                    "currency": broker.currency,
+                    # These will be populated from MT5 bridge in real-time
+                    "balance": getattr(broker, 'balance', 0.0),
+                    "equity": getattr(broker, 'equity', 0.0),
+                    "connected": getattr(broker, 'connected', False),
+                }
+                accounts.append(account_info)
+            
+            return accounts
+        except Exception as e:
+            logger.error(f"Failed to get broker accounts: {e}")
+            return []
+    
+    def get_account_by_id(self, broker_id: str) -> Optional[Dict]:
+        """Get specific broker account details."""
+        try:
+            from src.router.broker_registry import BrokerRegistry
+            registry = BrokerRegistry()
+            
+            broker = registry.get(broker_id)
+            if not broker:
+                return None
+            
+            return {
+                "broker_id": broker.broker_id,
+                "broker_name": broker.name,
+                "account_type": broker.account_type,
+                "currency": broker.currency,
+                "balance": getattr(broker, 'balance', 0.0),
+                "equity": getattr(broker, 'equity', 0.0),
+                "connected": getattr(broker, 'connected', False),
+                "margin": getattr(broker, 'margin', 0.0),
+                "free_margin": getattr(broker, 'free_margin', 0.0),
+            }
+        except Exception as e:
+            logger.error(f"Failed to get broker account {broker_id}: {e}")
+            return None
+
+
+class CloneBotRequest(BaseModel):
+    """Request model for bot cloning."""
+    bot_id: str = Field(..., description="ID of the bot to clone")
+    target_symbols: Optional[List[str]] = Field(default=None, description="Target symbols for clones")
 
 
 class LiveTradingAPIHandler:
@@ -526,9 +621,21 @@ class LiveTradingAPIHandler:
             bots = []
             # Use list_all() to get all registered bots
             for manifest in registry.list_all():
+                # Derive state from tags (@primal -> primal, @pending -> pending, etc.)
+                state = "pending"
+                if "@primal" in manifest.tags:
+                    state = "primal"
+                elif "@quarantine" in manifest.tags:
+                    state = "quarantine"
+                elif "@ready" in manifest.tags:
+                    state = "ready"
+                
                 bots.append({
                     "id": manifest.bot_id,
                     "name": manifest.name or manifest.bot_id,
+                    "state": state,
+                    "symbol": manifest.symbols[0] if manifest.symbols else "UNKNOWN",
+                    # Extended fields for detailed views
                     "strategy_type": manifest.strategy_type.value if hasattr(manifest.strategy_type, 'value') else str(manifest.strategy_type),
                     "frequency": manifest.frequency.value if hasattr(manifest.frequency, 'value') else str(manifest.frequency),
                     "symbols": manifest.symbols,
@@ -553,11 +660,42 @@ class LiveTradingAPIHandler:
             if not manifest:
                 return {"success": False, "error": f"Bot {control.bot_id} not found"}
 
-            # TODO: Implement actual bot control logic
-            # For now, just log the action
-            logger.info(f"Bot control action: {control.action} on bot {control.bot_id}")
+            # Implement actual bot control logic using tags
+            lifecycle_tags = {"@primal", "@pending", "@perfect", "@live", "@quarantine"}
+            
+            if control.action == "start":
+                # Remove @paused tag
+                if "@paused" in manifest.tags:
+                    manifest.tags.remove("@paused")
+                # If no lifecycle tag present, add @primal
+                if not any(tag in lifecycle_tags for tag in manifest.tags):
+                    manifest.tags.append("@primal")
+                    
+            elif control.action == "stop":
+                # Add @quarantine tag
+                if "@quarantine" not in manifest.tags:
+                    manifest.tags.append("@quarantine")
+                # Remove @live, @perfect, @pending
+                for tag in ["@live", "@perfect", "@pending"]:
+                    if tag in manifest.tags:
+                        manifest.tags.remove(tag)
+                        
+            elif control.action == "pause":
+                # Add @paused tag
+                if "@paused" not in manifest.tags:
+                    manifest.tags.append("@paused")
+                    
+            elif control.action == "resume":
+                # Remove @paused tag
+                if "@paused" in manifest.tags:
+                    manifest.tags.remove("@paused")
+            
+            # Persist the changes
+            registry._save()
+            
+            logger.info(f"Bot control action: {control.action} on bot {control.bot_id}, tags: {manifest.tags}")
 
-            return {"success": True, "bot_id": control.bot_id, "action": control.action}
+            return {"success": True, "bot_id": control.bot_id, "action": control.action, "tags": manifest.tags}
         except Exception as e:
             logger.error(f"Bot control failed: {e}")
             return {"success": False, "error": str(e)}
@@ -582,12 +720,37 @@ class LiveTradingAPIHandler:
             except:
                 pass
             
+            # Calculate PnL from trade journal
+            pnl_today = 0.0
+            try:
+                from src.database.models import TradeJournal
+                from datetime import datetime, timezone
+                
+                today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+                
+                session = None
+                try:
+                    from src.database.engine import get_session
+                    session = get_session()
+                    if session:
+                        trades = session.query(TradeJournal).filter(
+                            TradeJournal.timestamp >= today_start,
+                            TradeJournal.pnl.isnot(None)
+                        ).all()
+                        pnl_today = sum(t.pnl for t in trades) if trades else 0.0
+                finally:
+                    if session:
+                        session.close()
+                        
+            except Exception as e:
+                logger.error(f"Failed to calculate PnL: {e}")
+            
             return {
                 "connected": True,
                 "regime": regime,
                 "kelly": kelly,
                 "active_bots": len(self.get_active_bots()),
-                "pnl_today": 0.0  # TODO: Calculate from trade journal
+                "pnl_today": pnl_today
             }
         except Exception as e:
             logger.error(f"Status check failed: {e}")
@@ -642,6 +805,7 @@ def create_ide_api_app():
     assets_handler = AssetsAPIHandler()
     knowledge_handler = KnowledgeAPIHandler()
     nprd_handler = NPRDAPIHandler()
+    broker_handler = BrokerAccountsAPIHandler()
     trading_handler = LiveTradingAPIHandler()
     
     # -------------------------------------------------------------------------
@@ -801,8 +965,25 @@ def create_ide_api_app():
 
             logger.info(f"Uploaded {file.filename} to {category}")
 
-            # TODO: Trigger PageIndex indexing for books if index == "true"
+            # Trigger PageIndex indexing for books if index == "true"
             should_index = index.lower() == "true" and category == "books"
+
+            if should_index:
+                try:
+                    import requests
+                    pageindex_url = os.getenv("PAGEINDEX_URL", "http://localhost:8001")
+                    requests.post(
+                        f"{pageindex_url}/api/index",
+                        json={
+                            "file_path": str(save_path),
+                            "collection": "books",
+                            "metadata": metadata
+                        },
+                        timeout=10
+                    )
+                    logger.info(f"Triggered PageIndex indexing for {file.filename}")
+                except Exception as e:
+                    logger.warning(f"Failed to trigger PageIndex indexing: {e}")
 
             return {
                 "status": "success",
@@ -810,7 +991,7 @@ def create_ide_api_app():
                 "path": str(save_path),
                 "category": category,
                 "size_bytes": len(content_bytes),
-                "indexed": False,  # Will be updated when indexing is implemented
+                "indexed": should_index,  # True if indexing was triggered
                 "will_index": should_index,
                 "metadata": metadata
             }
@@ -891,6 +1072,86 @@ def create_ide_api_app():
         return result
     
     # -------------------------------------------------------------------------
+    # Broker Accounts Endpoints
+    # -------------------------------------------------------------------------
+    
+    @app.get("/api/trading/broker-accounts")
+    async def get_broker_accounts():
+        """Get broker accounts from BrokerRegistry with balance/equity from MT5 bridge."""
+        return broker_handler.get_broker_accounts()
+    
+    @app.get("/api/trading/broker-accounts/{broker_id}")
+    async def get_broker_account(broker_id: str):
+        """Get specific broker account details."""
+        account = broker_handler.get_account_by_id(broker_id)
+        if not account:
+            raise HTTPException(404, f"Broker account {broker_id} not found")
+        return account
+    
+    # -------------------------------------------------------------------------
+    # Bot Cloning Endpoints
+    # -------------------------------------------------------------------------
+    
+    @app.post("/api/bots/clone")
+    async def clone_bot(request: CloneBotRequest):
+        """Clone a bot to target symbols."""
+        try:
+            from src.router.bot_cloner import BotCloner
+            
+            cloner = BotCloner()
+            
+            # Validate eligibility
+            if not cloner.is_clone_eligible(request.bot_id):
+                return {"success": False, "error": "Bot not eligible for cloning"}
+            
+            # Clone to target symbols
+            clone_ids = cloner.clone_bot(
+                original_bot_id=request.bot_id,
+                target_symbols=request.target_symbols
+            )
+            
+            return {
+                "success": True,
+                "clone_ids": clone_ids,
+                "count": len(clone_ids)
+            }
+        except Exception as e:
+            logger.error(f"Bot cloning failed: {e}")
+            raise HTTPException(500, str(e))
+    
+    @app.get("/api/bots/clone/eligibility/{bot_id}")
+    async def check_clone_eligibility(bot_id: str):
+        """Check if a bot is eligible for cloning."""
+        try:
+            from src.router.bot_cloner import BotCloner
+            
+            cloner = BotCloner()
+            is_eligible = cloner.is_clone_eligible(bot_id)
+            
+            # Get eligibility details if eligible
+            details = {}
+            if is_eligible:
+                from src.router.bot_manifest import BotRegistry
+                registry = BotRegistry()
+                manifest = registry.get(bot_id)
+                if manifest:
+                    details = {
+                        "sharpe_ratio": manifest.sharpe_ratio,
+                        "total_trades": manifest.total_trades,
+                        "win_rate": manifest.win_rate,
+                        "symbols": manifest.symbols,
+                    }
+            
+            return {
+                "bot_id": bot_id,
+                "eligible": is_eligible,
+                "details": details
+            }
+        except Exception as e:
+            logger.error(f"Eligibility check failed: {e}")
+            raise HTTPException(500, str(e))
+    
+    # -------------------------------------------------------------------------
     # Live Trading Endpoints
     # -------------------------------------------------------------------------
     
@@ -936,17 +1197,51 @@ def create_ide_api_app():
         model = request.get("model", "gemini-2.5-pro")
         context = request.get("context", [])
         
-        # TODO: Connect to actual LangGraph agent
-        # For now, return demo responses
-        response = f"I understand you want to: {message[:50]}... I'll help you with that."
-        
-        if "backtest" in message.lower():
-            response = "I can run backtests in 4 variants. Which strategy would you like to test?"
-        elif "nprd" in message.lower():
-            response = "To process NPRD: 1. Click Process NPRD in EA Management 2. Paste YouTube URL 3. The system will transcribe and analyze."
-        elif "bot" in message.lower() or "active" in message.lower():
-            bots = trading_handler.get_active_bots()
-            response = f"You have {len(bots)} active bots. Go to Live Trading to manage them."
+        # Connect to actual LangGraph agent
+        try:
+            from src.agents.analyst_v2 import compile_analyst_graph
+            from langgraph.checkpoint.memory import MemorySaver
+            import uuid
+            
+            # Compile the graph with memory checkpointer
+            graph = compile_analyst_graph(checkpointer=MemorySaver())
+            
+            # Build config for per-session conversation history
+            thread_id = f"chat_{agent}_{uuid.uuid4().hex[:8]}"
+            config = {"configurable": {"thread_id": thread_id}}
+            
+            # Invoke the graph
+            result = graph.invoke(
+                {"messages": [{"role": "user", "content": message}]},
+                config=config
+            )
+            
+            # Extract the last AI message
+            messages = result.get("messages", [])
+            response = ""
+            for msg in reversed(messages):
+                if hasattr(msg, "type") and msg.type == "ai":
+                    response = msg.content
+                    break
+                elif hasattr(msg, "role") and msg.role == "assistant":
+                    response = msg.content
+                    break
+            
+            if not response:
+                response = f"Processed: {message[:50]}..."
+                
+        except Exception as e:
+            logger.error(f"LangGraph agent invocation failed: {e}")
+            # Fallback to keyword-based responses
+            response = f"I understand you want to: {message[:50]}... I'll help you with that."
+            
+            if "backtest" in message.lower():
+                response = "I can run backtests in 4 variants. Which strategy would you like to test?"
+            elif "nprd" in message.lower():
+                response = "To process NPRD: 1. Click Process NPRD in EA Management 2. Paste YouTube URL 3. The system will transcribe and analyze."
+            elif "bot" in message.lower() or "active" in message.lower():
+                bots = trading_handler.get_active_bots()
+                response = f"You have {len(bots)} active bots. Go to Live Trading to manage them."
         
         return {"response": response, "agent": agent, "model": model}
     

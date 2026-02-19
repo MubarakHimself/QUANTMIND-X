@@ -1,0 +1,23 @@
+[Unit]
+Description=QuantMindX API Server
+After=network.target postgresql.service redis.service
+
+[Service]
+Type=simple
+User=quantmind
+WorkingDirectory=/home/mubarkahimself/Desktop/QUANTMINDX
+ExecStartPre=/bin/bash /home/mubarkahimself/Desktop/QUANTMINDX/scripts/validate_env.sh
+ExecStart=/usr/bin/python3 src/api/server.py
+Restart=always
+RestartSec=5
+
+# Environment
+Environment=PYTHONPATH=/home/mubarkahimself/Desktop/QUANTMINDX
+Environment=QUANTMIND_ENV=production
+
+# Logging
+StandardOutput=append:/data/logs/api.stdout.log
+StandardError=append:/data/logs/api.stderr.log
+
+[Install]
+WantedBy=multi-user.target

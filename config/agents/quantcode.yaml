@@ -1,0 +1,69 @@
+# QuantCode Agent Configuration
+# Configuration for factory-based quantcode agent creation
+
+agent_id: "quantcode_001"
+agent_type: "quantcode"
+name: "QuantCode Agent"
+
+# LLM Configuration
+llm_provider: "openrouter"
+llm_model: "deepseek/deepseek-coder"
+temperature: 0.0
+max_tokens: 4096
+
+# Tool Configuration
+tools:
+  - create_strategy_plan
+  - generate_mql5_code
+  - validate_code
+  - compile_code
+  - run_backtest
+  - analyze_strategy_performance
+  - optimize_parameters
+  - create_documentation
+
+tool_config:
+  enable_parallel_calls: true
+  max_concurrent_tools: 3
+  code_validation_strict: true
+
+# State and Checkpointing
+state_class: "MessagesState"
+checkpointer_type: "memory"
+checkpointer_config:
+  memory_type: "buffered"
+
+# Observability Settings
+enable_tracing: true
+enable_metrics: true
+enable_logging: true
+log_level: "INFO"
+
+# Streaming and Performance
+enable_streaming: false
+timeout_seconds: 300
+max_retries: 3
+
+# Memory and Workspace
+memory_namespace:
+  - memories
+  - quantcode
+  - default
+workspace_path: "workspaces/quantcode"
+
+# Custom Configuration
+custom:
+  default_framework: "mql5"
+  enable_paper_trading: true
+  enable_code_validation: true
+  enable_backtesting: true
+  max_optimization_iterations: 100
+  strategy_templates:
+    - trend_following
+    - mean_reversion
+    - breakout
+    - grid
+  risk_profiles:
+    - conservative
+    - moderate
+    - aggressive

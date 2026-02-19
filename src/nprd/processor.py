@@ -23,7 +23,13 @@ from .models import (
 )
 from .downloader import VideoDownloader
 from .extractors import FrameExtractor, AudioExtractor
-from .providers import ModelProvider, GeminiCLIProvider, QwenVLProvider
+from .providers import (
+    ModelProvider,
+    GeminiCLIProvider,
+    QwenVLProvider,
+    OpenRouterProvider,
+    QwenCodeCLIProvider,
+)
 from .cache import ArtifactCache
 from .retry import RetryHandler
 from .rate_limiter import RateLimiter
@@ -196,31 +202,45 @@ class NPRDProcessor:
         """
         Initialize default model providers based on configuration.
         
+        Provider priority order:
+        1. OpenRouter (primary) - Multi-model access with subscription-based limits
+        2. Qwen Code CLI (fallback) - Headless mode with 2000 requests/day free tier
+        3. Gemini CLI (tertiary) - YOLO mode if configured
+        
         Returns:
-            List of ModelProvider instances
+            List of ModelProvider instances in priority order
         """
         providers = []
         
-        # Add Gemini provider if API key available
+        # Primary: OpenRouter provider if API key available
+        if self.config.openrouter_api_key:
+            providers.append(OpenRouterProvider(
+                api_key=self.config.openrouter_api_key,
+                model=self.config.openrouter_model
+            ))
+            logger.info("OpenRouter provider initialized (primary)")
+        
+        # Fallback: Qwen Code CLI provider if API key available
+        if self.config.qwen_api_key:
+            providers.append(QwenCodeCLIProvider(
+                api_key=self.config.qwen_api_key,
+                headless=self.config.qwen_headless,
+                model=self.config.qwen_model
+            ))
+            logger.info("Qwen Code CLI provider initialized (fallback)")
+        
+        # Tertiary: Gemini CLI provider if configured (kept for backward compatibility)
         if self.config.gemini_api_key:
             providers.append(GeminiCLIProvider(
                 yolo_mode=self.config.gemini_yolo_mode,
                 api_key=self.config.gemini_api_key
             ))
-            logger.info("Gemini CLI provider initialized")
+            logger.info("Gemini CLI provider initialized (tertiary fallback)")
         
-        # Add Qwen provider if API key available
-        if self.config.qwen_api_key:
-            providers.append(QwenVLProvider(
-                api_key=self.config.qwen_api_key,
-                headless=self.config.qwen_headless
-            ))
-            logger.info("Qwen-VL provider initialized")
-        
-        # Fallback: Initialize Gemini without explicit key (uses env var)
+        # Ultimate fallback: Initialize OpenRouter without explicit key (uses env var)
         if not providers:
-            providers.append(GeminiCLIProvider(yolo_mode=True))
-            logger.warning("No API keys configured, using Gemini CLI with env var")
+            providers.append(OpenRouterProvider())
+            logger.warning("No API keys configured, using OpenRouter with env var")
         
         return providers
     

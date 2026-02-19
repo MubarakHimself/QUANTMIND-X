@@ -1,0 +1,22 @@
+[Unit]
+Description=HMM Training Scheduler
+After=network.target
+
+[Service]
+Type=simple
+User=quantmind
+WorkingDirectory=/home/mubarkahimself/Desktop/QUANTMINDX
+ExecStart=/usr/bin/python3 scripts/schedule_hmm_training.py --start
+Restart=always
+RestartSec=10
+
+# Environment
+Environment=PYTHONPATH=/home/mubarkahimself/Desktop/QUANTMINDX
+Environment=QUANTMIND_ENV=production
+
+# Logging
+StandardOutput=append:/data/hmm/logs/scheduler.stdout.log
+StandardError=append:/data/hmm/logs/scheduler.stderr.log
+
+[Install]
+WantedBy=multi-user.target

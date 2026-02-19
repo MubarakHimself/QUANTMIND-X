@@ -3,6 +3,7 @@ The Prop Governor (Extension)
 Inherits from Base Governor and adds Prop Firm "Survival Logic".
 """
 
+from typing import Optional, Dict, Any
 from src.router.governor import Governor, RiskMandate
 from src.router.prop.state import PropState
 from src.database.engine import get_session
@@ -34,22 +35,52 @@ class PropGovernor(Governor):
         self._current_tier = None
         self._load_current_tier()
 
-    def calculate_risk(self, regime_report: 'RegimeReport', trade_proposal: dict) -> RiskMandate:
+    def calculate_risk(
+        self,
+        regime_report: 'RegimeReport',
+        trade_proposal: dict,
+        account_balance: Optional[float] = None,
+        broker_id: Optional[str] = None,
+        account_id: Optional[str] = None,
+        mode: str = "live",
+        **kwargs: Any
+    ) -> RiskMandate:
         """
         Overrides Base Governor to apply Tier 3 (Prop) Throttle.
         V8: Also checks for tier transitions and applies tier-aware throttling.
+
+        Signature matches EnhancedGovernor.calculate_risk() for full compatibility
+        with Commander.run_auction().
+
+        Args:
+            regime_report: Current market regime from Sentinel
+            trade_proposal: Trade proposal dict with symbol, balance, etc.
+            account_balance: Current account balance for position sizing
+            broker_id: Broker identifier (unused by PropGovernor, forwarded to base)
+            account_id: Account identifier override (uses self.account_id if not set)
+            mode: Trading mode ('live' or 'demo') — demo uses reduced risk
         """
+        # Resolve current balance from args or trade_proposal
+        current_balance = (
+            account_balance
+            or trade_proposal.get('account_balance')
+            or trade_proposal.get('current_balance', 100000)
+        )
+        # Patch trade_proposal so base Governor also sees current_balance
+        if current_balance and 'current_balance' not in trade_proposal:
+            trade_proposal = dict(trade_proposal)  # copy, don't mutate caller's dict
+            trade_proposal['current_balance'] = current_balance
+
         # 1. INHERIT: Get Base Risk (Tier 1 & 2)
         mandate = super().calculate_risk(regime_report, trade_proposal)
         
         # 2. V8: Check for tier transitions
-        current_balance = trade_proposal.get('current_balance', 100000)
         self._check_and_log_tier_transition(current_balance)
         
         # 3. V8: Apply tier-aware throttling
         throttle = self._get_tier_aware_throttle(current_balance)
         
-        # 4. EXTEND: News Guard Check (Physics-Aware Kelly already handles this partly, 
+        # 4. EXTEND: News Guard Check (Physics-Aware Kelly already handles this partly,
         # but Prop requires Hard Stop)
         if regime_report.news_state == "KILL_ZONE":
              mandate.allocation_scalar = 0.0
@@ -57,7 +88,11 @@ class PropGovernor(Governor):
              mandate.notes = "Hard Stop: News Event (Prop Rules)"
              return mandate
 
-        # 5. COMBINE
+        # 5. Demo mode: apply conservative multiplier (50% of normal risk)
+        if mode == "demo":
+            throttle *= 0.5
+
+        # 6. COMBINE
         mandate.allocation_scalar *= throttle
         
         if throttle < 1.0:
