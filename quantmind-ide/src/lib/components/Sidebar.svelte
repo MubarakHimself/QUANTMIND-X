@@ -63,15 +63,15 @@
   async function loadData(view: string) {
     const config = viewConfig[view];
     if (!config) {
-      // Use fallback for unknown views
-      treeData[view] = getFallbackData(view);
+      // Unknown views get empty state
+      treeData[view] = [];
       treeData = treeData; // Trigger reactivity
       return;
     }
 
-    // If no endpoint configured (like settings), use fallback directly
+    // If no endpoint configured (like settings), use empty state
     if (!config.endpoint) {
-      treeData[view] = getFallbackData(view);
+      treeData[view] = [];
       treeData = treeData;
       return;
     }
@@ -113,8 +113,8 @@
       treeData = treeData; // Trigger reactivity
     } catch (e: any) {
       error = e.message || "Failed to load data";
-      // Use fallback data for demo
-      treeData[view] = getFallbackData(view);
+      // On error, show empty state
+      treeData[view] = [];
       treeData = treeData; // Trigger reactivity
     } finally {
       loading = false;
@@ -185,262 +185,6 @@
           : []),
       ],
     }));
-  }
-
-  function getFallbackData(view: string) {
-    const fallbacks: Record<string, any[]> = {
-      knowledge: [
-        {
-          id: "articles",
-          name: "Articles",
-          type: "folder",
-          children: [
-            {
-              id: "articles/ict-concepts",
-              name: "ICT Concepts.pdf",
-              type: "file",
-            },
-            { id: "articles/smc-basics", name: "SMC Basics.md", type: "file" },
-          ],
-        },
-        {
-          id: "books",
-          name: "Books",
-          type: "folder",
-          children: [
-            {
-              id: "books/trading-zone",
-              name: "Trading in the Zone.pdf",
-              type: "file",
-            },
-          ],
-        },
-        { id: "logs", name: "Strategy Notes", type: "folder", children: [] },
-      ],
-      assets: [
-        {
-          id: "indicators",
-          name: "Indicators",
-          type: "folder",
-          children: [
-            {
-              id: "indicators/atr-filter",
-              name: "ATR_Filter.mqh",
-              type: "file",
-            },
-            {
-              id: "indicators/session-filter",
-              name: "SessionFilter.mqh",
-              type: "file",
-            },
-          ],
-        },
-        {
-          id: "libraries",
-          name: "Libraries",
-          type: "folder",
-          children: [
-            {
-              id: "libraries/risk-manager",
-              name: "RiskManager.mqh",
-              type: "file",
-            },
-            {
-              id: "libraries/order-manager",
-              name: "OrderManager.mqh",
-              type: "file",
-            },
-          ],
-        },
-      ],
-      ea: [
-        {
-          id: "ict-scalper",
-          name: "ICT Scalper v2",
-          type: "folder",
-          status: "primal",
-          children: [
-            {
-              id: "ict-scalper/nprd",
-              name: "NPRD Output",
-              type: "folder",
-              children: [
-                {
-                  id: "ict-scalper/nprd/transcript",
-                  name: "transcript.md",
-                  type: "file",
-                },
-              ],
-            },
-            {
-              id: "ict-scalper/trd",
-              name: "TRD",
-              type: "folder",
-              children: [
-                {
-                  id: "ict-scalper/trd/spec",
-                  name: "strategy_spec.md",
-                  type: "file",
-                },
-              ],
-            },
-            {
-              id: "ict-scalper/ea",
-              name: "EA Code",
-              type: "folder",
-              children: [
-                {
-                  id: "ict-scalper/ea/main",
-                  name: "ICT_Scalper_v2.mq5",
-                  type: "file",
-                },
-              ],
-            },
-            {
-              id: "ict-scalper/backtest",
-              name: "Backtest Reports",
-              type: "folder",
-              children: [
-                {
-                  id: "ict-scalper/backtest/a",
-                  name: "mode_a_report.html",
-                  type: "file",
-                },
-                {
-                  id: "ict-scalper/backtest/b",
-                  name: "mode_b_report.html",
-                  type: "file",
-                },
-                {
-                  id: "ict-scalper/backtest/c",
-                  name: "mode_c_report.html",
-                  type: "file",
-                },
-              ],
-            },
-          ],
-        },
-        {
-          id: "smc-reversal",
-          name: "SMC Reversal",
-          type: "folder",
-          status: "pending",
-          children: [
-            {
-              id: "smc-reversal/nprd",
-              name: "NPRD Output",
-              type: "folder",
-              children: [],
-            },
-          ],
-        },
-        {
-          id: "new-strategy",
-          name: "+ New Strategy (NPRD)",
-          type: "action",
-          action: "new-nprd",
-        },
-      ],
-      backtest: [
-        {
-          id: "recent",
-          name: "Recent",
-          type: "folder",
-          children: [
-            {
-              id: "recent/ict-2025",
-              name: "ICT_Scalper_2025-02.html",
-              type: "file",
-            },
-            { id: "recent/smc-eurusd", name: "SMC_EURUSD.html", type: "file" },
-          ],
-        },
-        { id: "scheduled", name: "Scheduled", type: "folder", children: [] },
-      ],
-      live: [
-        {
-          id: "active-bots",
-          name: "Active Bots (3)",
-          type: "folder",
-          children: [
-            {
-              id: "bot/ict-eurusd",
-              name: "ICT_Scalper @EURUSD",
-              type: "bot",
-              status: "primal",
-            },
-            {
-              id: "bot/ict-gbpusd",
-              name: "ICT_Scalper @GBPUSD",
-              type: "bot",
-              status: "primal",
-            },
-            {
-              id: "bot/smc-usdjpy",
-              name: "SMC_Rev @USDJPY",
-              type: "bot",
-              status: "ready",
-            },
-          ],
-        },
-        { id: "paused-bots", name: "Paused", type: "folder", children: [] },
-        {
-          id: "quarantined",
-          name: "Quarantined",
-          type: "folder",
-          children: [],
-        },
-      ],
-      settings: [
-        {
-          id: "ai-settings",
-          name: "AI & Agents",
-          type: "folder",
-          children: [
-            { id: "settings/models", name: "Model Selection", type: "setting" },
-            { id: "settings/yolo", name: "YOLO Mode", type: "setting" },
-            { id: "settings/agents", name: "Agent Prompts", type: "setting" },
-          ],
-        },
-        {
-          id: "risk-settings",
-          name: "Risk & Governor",
-          type: "folder",
-          children: [
-            { id: "settings/tiers", name: "Balance Tiers", type: "setting" },
-            { id: "settings/kelly", name: "Kelly Parameters", type: "setting" },
-            { id: "settings/squad", name: "Squad Limit", type: "setting" },
-          ],
-        },
-        {
-          id: "broker-settings",
-          name: "Brokers",
-          type: "folder",
-          children: [
-            {
-              id: "settings/roboforex",
-              name: "RoboForex Prime",
-              type: "setting",
-            },
-            { id: "settings/exness", name: "Exness Raw", type: "setting" },
-          ],
-        },
-        {
-          id: "data-settings",
-          name: "Data & Storage",
-          type: "folder",
-          children: [
-            { id: "settings/paths", name: "Directory Paths", type: "setting" },
-            {
-              id: "settings/pageindex",
-              name: "PageIndex Config",
-              type: "setting",
-            },
-          ],
-        },
-      ],
-    };
-    return fallbacks[view] || [];
   }
 
   function toggleFolder(folderId: string) {
@@ -544,6 +288,16 @@
   {/if}
 
   <div class="tree-view">
+    {#if !loading && (!treeData[activeView] || treeData[activeView].length === 0)}
+      <div class="empty-state">
+        <span class="empty-text">No items to display</span>
+        {#if error}
+          <button class="retry-btn" on:click={() => loadData(activeView)}>
+            Retry
+          </button>
+        {/if}
+      </div>
+    {:else}
     {#each treeData[activeView] || [] as folder}
       <div
         class="tree-item folder"
@@ -610,6 +364,7 @@
         {/each}
       {/if}
     {/each}
+    {/if}
   </div>
 </aside>
 
@@ -687,6 +442,37 @@
     color: var(--accent-danger);
     background: var(--bg-primary);
     border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+    gap: 12px;
+  }
+
+  .empty-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+  }
+
+  .retry-btn {
+    padding: 6px 12px;
+    font-size: 11px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .retry-btn:hover {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
   }
 
   .tree-view {
