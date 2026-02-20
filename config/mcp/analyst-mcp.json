@@ -48,10 +48,22 @@
         "max_results": 10,
         "timeout": 30
       }
+    },
+    "backtest-server": {
+      "name": "Backtest Server",
+      "url": "http://backtest-server:8081",
+      "type": "backtest",
+      "enabled": true,
+      "description": "Strategy backtesting execution and results",
+      "tools": ["run_backtest", "get_backtest_status", "get_backtest_results", "compare_backtests"],
+      "config": {
+        "timeout": 120,
+        "max_concurrent": 3
+      }
     }
   },
   "defaultServer": "pageindex-books",
-  "fallbackOrder": ["pageindex-books", "pageindex-articles", "context7", "sequential-thinking"],
+  "fallbackOrder": ["pageindex-books", "pageindex-articles", "context7", "sequential-thinking", "backtest-server"],
   "healthCheck": {
     "interval": 60,
     "timeout": 10,
