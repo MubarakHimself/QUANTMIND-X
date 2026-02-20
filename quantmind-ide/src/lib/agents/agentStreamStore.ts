@@ -172,6 +172,38 @@ function createAgentStreamStore() {
     getTask(taskId: string): TaskStreamState | undefined {
       return get({ subscribe }).get(taskId);
     },
+
+    /**
+     * Get the number of tasks in the store
+     * Use this instead of direct store.size access
+     */
+    getSize(): number {
+      return get({ subscribe }).size;
+    },
+
+    /**
+     * Clean up old completed tasks (older than specified milliseconds)
+     */
+    cleanupOldTasks(maxAgeMs: number = 3600000): void {
+      update((state) => {
+        const newState = new Map(state);
+        const now = Date.now();
+
+        for (const [taskId, taskState] of newState.entries()) {
+          if (
+            (taskState.status === 'completed' || taskState.status === 'error') &&
+            taskState.completed_at
+          ) {
+            const completedTime = new Date(taskState.completed_at).getTime();
+            if (now - completedTime > maxAgeMs) {
+              newState.delete(taskId);
+            }
+          }
+        }
+
+        return newState;
+      });
+    },
   };
 }
 
@@ -217,9 +249,13 @@ export const latestTask: Readable<TaskStreamState | null> = derived(
 /**
  * Helper function to connect streaming to the store
  * Use this to automatically pipe events from streamAgent to the store
+ *
+ * Cleans up completed tasks after a delay to prevent memory bloat.
  */
 import { streamAgent } from './claudeCodeAgent';
 import type { AgentMessage, AgentContext } from './claudeCodeAgent';
+
+const CLEANUP_DELAY_MS = 60000; // Clean up completed tasks after 1 minute
 
 export async function streamToStore(
   agentId: string,
@@ -238,7 +274,16 @@ export async function streamToStore(
       agentStreamStore.handleEvent(event);
 
       if (event.type === 'completed' || event.type === 'error') {
-        return agentStreamStore.getTask(taskId) || null;
+        const result = agentStreamStore.getTask(taskId) || null;
+
+        // Schedule cleanup after delay
+        if (taskId) {
+          setTimeout(() => {
+            agentStreamStore.clearTask(taskId);
+          }, CLEANUP_DELAY_MS);
+        }
+
+        return result;
       }
     }
   } catch (error) {
@@ -248,8 +293,22 @@ export async function streamToStore(
         undefined,
         error instanceof Error ? error.message : 'Stream error'
       );
+
+      // Still schedule cleanup on error
+      setTimeout(() => {
+        agentStreamStore.clearTask(taskId);
+      }, CLEANUP_DELAY_MS);
     }
   }
 
-  return taskId ? agentStreamStore.getTask(taskId) || null : null;
+  const result = taskId ? agentStreamStore.getTask(taskId) || null : null;
+
+  // Schedule cleanup for incomplete streams that exit abnormally
+  if (taskId) {
+    setTimeout(() => {
+      agentStreamStore.clearTask(taskId);
+    }, CLEANUP_DELAY_MS);
+  }
+
+  return result;
 }
