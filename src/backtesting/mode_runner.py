@@ -48,6 +48,8 @@ class BacktestMode(Enum):
     SPICED = "spiced"            # Vanilla + regime filtering
     VANILLA_FULL = "vanilla_full"  # Vanilla + Walk-Forward optimization
     SPICED_FULL = "spiced_full"    # Spiced + Walk-Forward optimization
+    MODE_B = "mode_b"              # EA + Kelly position sizing (no filters)
+    MODE_C = "mode_c"              # Full System (Regime Filter + Kelly + Router)
 
 
 # =============================================================================
@@ -138,11 +140,12 @@ class SentinelEnhancedTester(PythonStrategyTester):
 
         self.mode = mode
         self._sentinel = Sentinel()
-        self._is_spiced_mode = mode in [BacktestMode.SPICED, BacktestMode.SPICED_FULL]
+        self._is_spiced_mode = mode in [BacktestMode.SPICED, BacktestMode.SPICED_FULL, BacktestMode.MODE_C]
+        self._is_mode_b = mode == BacktestMode.MODE_B
         self.broker_id = broker_id  # Store broker_id for Kelly calculation
         
         # Multi-timeframe sentinel (Comment 1: add for historical bars)
-        self._use_multi_timeframe = mode in [BacktestMode.SPICED, BacktestMode.SPICED_FULL]
+        self._use_multi_timeframe = mode in [BacktestMode.SPICED, BacktestMode.SPICED_FULL, BacktestMode.MODE_C]
         if self._use_multi_timeframe:
             # Default timeframes: M5, H1, H4
             self._multi_timeframe_sentinel = MultiTimeframeSentinel(
@@ -162,7 +165,8 @@ class SentinelEnhancedTester(PythonStrategyTester):
 
         # Initialize Commander for session-aware bot filtering (Comment 1)
         # Commander.run_auction() will be called with bar_utc_time during backtests
-        self._commander = Commander(governor=self._governor)
+        # Mode C and Spiced modes use Commander
+        self._commander = Commander(governor=self._governor) if mode in [BacktestMode.MODE_C, BacktestMode.SPICED, BacktestMode.SPICED_FULL] else None
         self._auction_results: List[Dict[str, Any]] = []  # Track auction results per bar
 
         # Regime tracking
@@ -337,7 +341,8 @@ class SentinelEnhancedTester(PythonStrategyTester):
             self._log_regime_transition(self._last_regime or "", report.regime, regime_data)
             self._last_regime = report.regime
 
-        # Apply regime filtering for Spiced modes
+        # Apply regime filtering for Spiced modes and Mode C
+        # Note: Mode B uses Kelly but SKIPS regime filtering for trade inhibition
         if self._is_spiced_mode:
             # Filter 1: High chaos score (> 0.6)
             if report.chaos_score > 0.6:
@@ -715,32 +720,40 @@ class SentinelEnhancedTester(PythonStrategyTester):
             return None
 
         # Calculate Kelly-based position size with regime quality adjustment
-        # Per Comment 1 fix: pass scalar balance values instead of entire equity series
-        regime_quality = report.regime_quality if report else 1.0
-        # Use scalar balance: last equity value if equity exists, otherwise default to initial_cash
-        if hasattr(self, 'equity') and self.equity and len(self.equity) > 0:
-            scalar_balance = float(self.equity[-1])
+        # Note: In Mode B/C/Spiced, we use Kelly sizing. 
+        # In Vanilla, we use requested volume.
+        use_kelly = self.mode in [BacktestMode.MODE_B, BacktestMode.MODE_C, BacktestMode.SPICED, BacktestMode.SPICED_FULL]
+        
+        if use_kelly:
+            # Per Comment 1 fix: pass scalar balance values instead of entire equity series
+            regime_quality = report.regime_quality if report else 1.0
+            # Use scalar balance: last equity value if equity exists, otherwise default to initial_cash
+            if hasattr(self, 'equity') and self.equity and len(self.equity) > 0:
+                scalar_balance = float(self.equity[-1])
+            else:
+                scalar_balance = float(self.initial_cash)
+            
+            final_volume = self._calculate_kelly_position_size(
+                symbol=symbol,
+                trade_proposal={
+                    'symbol': symbol,
+                    'account_balance': scalar_balance,
+                    'current_balance': scalar_balance,
+                    'broker_id': self.broker_id,
+                    'win_rate': 0.55,  # Conservative default
+                    'avg_win': volume * 100.0,  # Rough estimate
+                    'avg_loss': volume * 100.0,
+                    'stop_loss_pips': 20.0,
+                    'current_atr': 0.001,
+                    'average_atr': 0.001
+                },
+                regime_quality=regime_quality
+            )
+            # If Kelly returned 0 (kill switch), block the trade
+            if final_volume <= 0:
+                return None
         else:
-            scalar_balance = float(self.initial_cash)
-        kelly_volume = self._calculate_kelly_position_size(
-            symbol=symbol,
-            trade_proposal={
-                'symbol': symbol,
-                'account_balance': scalar_balance,
-                'current_balance': scalar_balance,
-                'broker_id': self.broker_id,
-                'win_rate': 0.55,  # Conservative default
-                'avg_win': volume * 100.0,  # Rough estimate
-                'avg_loss': volume * 100.0,
-                'stop_loss_pips': 20.0,
-                'current_atr': 0.001,
-                'average_atr': 0.001
-            },
-            regime_quality=regime_quality
-        )
-
-        # Use Kelly-sized volume if available, otherwise fall back to requested volume
-        final_volume = kelly_volume if kelly_volume > 0 else volume
+            final_volume = volume
 
         # Allow trade through to parent with final volume
         return super().buy(symbol, final_volume, price)
@@ -1256,7 +1269,8 @@ def run_spiced_backtest(
     backtest_id: Optional[str] = None,
     progress_streamer: Optional["BacktestProgressStreamer"] = None,
     ws_logger: Optional[logging.Logger] = None,  # Comment 2: Accept ws_logger
-    loop: Optional[asyncio.AbstractEventLoop] = None
+    loop: Optional[asyncio.AbstractEventLoop] = None,
+    mode: BacktestMode = BacktestMode.SPICED
 ) -> SpicedBacktestResult:
     """Run Spiced backtest (Vanilla + regime filtering + fee-aware Kelly position sizing).
 
@@ -1300,7 +1314,7 @@ def run_spiced_backtest(
         4. Uses broker-specific pip values and costs
     """
     tester = SentinelEnhancedTester(
-        mode=BacktestMode.SPICED,
+        mode=mode,
         initial_cash=initial_cash,
         commission=commission,
         slippage=slippage,
@@ -1435,14 +1449,15 @@ def run_full_system_backtest(
             ws_logger=ws_logger,  # Comment 2: Pass ws_logger
             loop=loop  # Propagate FastAPI event loop (Comment 1)
         )
-    elif backtest_mode == BacktestMode.SPICED:
+    elif backtest_mode == BacktestMode.SPICED or backtest_mode == BacktestMode.MODE_B or backtest_mode == BacktestMode.MODE_C:
         return run_spiced_backtest(
             strategy_code, data, symbol, timeframe,
             initial_cash, commission, slippage, broker_id,
             backtest_id=backtest_id,
             progress_streamer=progress_streamer,
             ws_logger=ws_logger,  # Comment 2: Pass ws_logger
-            loop=loop  # Propagate FastAPI event loop (Comment 1)
+            loop=loop,
+            mode=backtest_mode
         )
     elif backtest_mode in [BacktestMode.VANILLA_FULL, BacktestMode.SPICED_FULL]:
         # Import WalkForwardOptimizer

@@ -1,9 +1,13 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
+import monacoEditorPlugin from 'vite-plugin-monaco-editor';
 
 export default defineConfig({
     plugins: [
-        sveltekit()
+        sveltekit(),
+        monacoEditorPlugin.default({
+            languageWorkers: ['editorWorkerService', 'typescript', 'json', 'css', 'html']
+        })
     ],
     server: {
         host: true,

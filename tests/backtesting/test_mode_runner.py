@@ -281,7 +281,7 @@ class TestSessionAwareAuctionFiltering:
         from router.sentinel import RegimeReport
         
         tester = SentinelEnhancedTester(
-            mode=BacktestMode.VANILLA,
+            mode=BacktestMode.MODE_C,
             initial_cash=10000.0,
             broker_id="test_broker"
         )
@@ -331,7 +331,7 @@ def on_bar(tester):
         )
         
         tester = SentinelEnhancedTester(
-            mode=BacktestMode.VANILLA,
+            mode=BacktestMode.MODE_C,
             initial_cash=10000.0
         )
         
@@ -367,7 +367,7 @@ def on_bar(tester):
         mock_commander_class.return_value = mock_commander
         
         tester = SentinelEnhancedTester(
-            mode=BacktestMode.VANILLA,
+            mode=BacktestMode.MODE_C,
             initial_cash=10000.0
         )
         tester._commander = mock_commander  # Replace with mock
@@ -415,3 +415,62 @@ def on_bar(tester):
         assert 'utc_timestamp' in first_regime, "Should have utc_timestamp in regime history"
         assert first_regime['utc_timestamp'] is not None or tester._multi_timeframe_sentinel is None, \
             "utc_timestamp should be available if sentinel is initialized"
+
+@pytest.mark.unit
+class TestModeBModeCBacktest:
+    """Test new Mode B and Mode C variants."""
+
+    @patch('backtesting.mode_runner.Sentinel')
+    def test_mode_b_skips_regime_filtering_but_uses_kelly(self, mock_sentinel_class, sample_backtest_data):
+        """Test Mode B uses Kelly sizing but ignores regime filtering results."""
+        mock_sentinel = Mock()
+        mock_report = Mock()
+        mock_report.regime = 'HIGH_CHAOS'
+        mock_report.chaos_score = 0.9  # Should filter in Spiced/C
+        mock_report.regime_quality = 0.1
+        mock_sentinel.on_tick.return_value = mock_report
+        mock_sentinel_class.return_value = mock_sentinel
+
+        # Mock _calculate_kelly_position_size to avoid fee kill switch blocking the test trade
+        with patch('backtesting.mode_runner.SentinelEnhancedTester._calculate_kelly_position_size', return_value=0.1):
+            # In Mode B, high chaos should NOT block the trade
+            result = run_full_system_backtest(
+                mode='mode_b',
+            data=sample_backtest_data,
+            symbol='EURUSD',
+            strategy_code='''
+def on_bar(tester):
+    if tester.current_bar == 0:
+        tester.buy(tester.symbol, 0.01)
+'''
+        )
+        
+        # Should have 1 trade despite high chaos
+        assert result.trades == 1, "Mode B should ignore regime filters"
+
+    @patch('backtesting.mode_runner.Sentinel')
+    def test_mode_c_uses_both_filtering_and_kelly(self, mock_sentinel_class, sample_backtest_data):
+        """Test Mode C uses both regime filtering and Kelly sizing."""
+        mock_sentinel = Mock()
+        mock_report = Mock()
+        mock_report.regime = 'HIGH_CHAOS'
+        mock_report.chaos_score = 0.9  # Should filter
+        mock_report.regime_quality = 0.1
+        mock_sentinel.on_tick.return_value = mock_report
+        mock_sentinel_class.return_value = mock_sentinel
+
+        # In Mode C, high chaos SHOULD block the trade
+        result = run_full_system_backtest(
+            mode='mode_c',
+            data=sample_backtest_data,
+            symbol='EURUSD',
+            strategy_code='''
+def on_bar(tester):
+    if tester.current_bar == 0:
+        tester.buy(tester.symbol, 0.01)
+'''
+        )
+        
+        # Should have 0 trades due to high chaos filter
+        assert result.trades == 0, "Mode C should apply regime filters"
+        assert result.filtered_trades > 0, "Mode C should track filtered trades"

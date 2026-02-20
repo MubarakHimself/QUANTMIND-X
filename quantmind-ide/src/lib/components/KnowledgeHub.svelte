@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { fade, slide, fly } from 'svelte/transition';
+  import { onMount } from "svelte";
+  import { fade, slide, fly } from "svelte/transition";
+  import { navigationStore } from "../stores/navigationStore";
 
   // Types
   interface PDFDocument {
@@ -15,7 +16,7 @@
 
   interface IndexingStatus {
     job_id: string;
-    status: 'pending' | 'processing' | 'completed' | 'failed';
+    status: "pending" | "processing" | "completed" | "failed";
     progress: number;
     pages_processed: number;
     pages_total: number;
@@ -35,51 +36,59 @@
   let loading = true;
   let uploading = false;
   let error: string | null = null;
-  
+
   // Upload state
   let dragOver = false;
   let uploadProgress = 0;
   let currentUpload: string | null = null;
   let indexingStatus: IndexingStatus | null = null;
-  
+
   // Selected namespace
-  let selectedNamespace = 'knowledge';
-  
+  let selectedNamespace = "knowledge";
+
   // Search state
-  let searchQuery = '';
+  let searchQuery = "";
   let searchResults: any[] = [];
+
+  // Update breadcrumbs when namespace changes
+  $: if (selectedNamespace) {
+    navigationStore.navigateToFolder(
+      selectedNamespace,
+      selectedNamespace.charAt(0).toUpperCase() + selectedNamespace.slice(1),
+    );
+  }
 
   // Fetch documents
   async function fetchDocuments() {
     try {
-      const response = await fetch('/api/pdf/documents');
-      if (!response.ok) throw new Error('Failed to fetch documents');
+      const response = await fetch("/api/pdf/documents");
+      if (!response.ok) throw new Error("Failed to fetch documents");
       const data = await response.json();
       documents = data.documents;
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to fetch documents';
+      error = e instanceof Error ? e.message : "Failed to fetch documents";
     }
   }
 
   // Fetch namespaces
   async function fetchNamespaces() {
     try {
-      const response = await fetch('/api/pdf/namespaces');
-      if (!response.ok) throw new Error('Failed to fetch namespaces');
+      const response = await fetch("/api/pdf/namespaces");
+      if (!response.ok) throw new Error("Failed to fetch namespaces");
       const data = await response.json();
       namespaces = data.namespaces;
     } catch (e) {
-      console.error('Failed to fetch namespaces:', e);
+      console.error("Failed to fetch namespaces:", e);
     }
   }
 
   // Handle file upload
   async function handleFileUpload(files: FileList) {
     if (files.length === 0) return;
-    
+
     const file = files[0];
-    if (!file.name.endsWith('.pdf')) {
-      error = 'Only PDF files are allowed';
+    if (!file.name.endsWith(".pdf")) {
+      error = "Only PDF files are allowed";
       return;
     }
 
@@ -90,17 +99,20 @@
 
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append("file", file);
 
-      const response = await fetch(`/api/pdf/upload?namespace=${selectedNamespace}&auto_index=true`, {
-        method: 'POST',
-        body: formData
-      });
+      const response = await fetch(
+        `/api/pdf/upload?namespace=${selectedNamespace}&auto_index=true`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
 
-      if (!response.ok) throw new Error('Upload failed');
+      if (!response.ok) throw new Error("Upload failed");
 
       const data = await response.json();
-      
+
       // Start polling for indexing status
       if (data.indexing_job_id) {
         await pollIndexingStatus(data.indexing_job_id);
@@ -108,9 +120,8 @@
 
       // Refresh documents
       await fetchDocuments();
-      
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Upload failed';
+      error = e instanceof Error ? e.message : "Upload failed";
     } finally {
       uploading = false;
       currentUpload = null;
@@ -124,15 +135,18 @@
       try {
         const response = await fetch(`/api/pdf/status/${jobId}`);
         if (!response.ok) break;
-        
+
         indexingStatus = await response.json();
         uploadProgress = indexingStatus.progress;
 
-        if (indexingStatus.status === 'completed' || indexingStatus.status === 'failed') {
+        if (
+          indexingStatus.status === "completed" ||
+          indexingStatus.status === "failed"
+        ) {
           break;
         }
 
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       } catch (e) {
         break;
       }
@@ -153,7 +167,7 @@
   function handleDrop(e: DragEvent) {
     e.preventDefault();
     dragOver = false;
-    
+
     if (e.dataTransfer?.files) {
       handleFileUpload(e.dataTransfer.files);
     }
@@ -169,18 +183,18 @@
 
   // Delete document
   async function deleteDocument(docId: string) {
-    if (!confirm('Are you sure you want to delete this document?')) return;
+    if (!confirm("Are you sure you want to delete this document?")) return;
 
     try {
       const response = await fetch(`/api/pdf/documents/${docId}`, {
-        method: 'DELETE'
+        method: "DELETE",
       });
 
-      if (!response.ok) throw new Error('Delete failed');
-      
+      if (!response.ok) throw new Error("Delete failed");
+
       await fetchDocuments();
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Delete failed';
+      error = e instanceof Error ? e.message : "Delete failed";
     }
   }
 
@@ -189,22 +203,22 @@
     if (!searchQuery.trim()) return;
 
     try {
-      const response = await fetch('/api/pdf/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/pdf/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query: searchQuery,
           namespaces: [selectedNamespace],
-          max_results: 10
-        })
+          max_results: 10,
+        }),
       });
 
-      if (!response.ok) throw new Error('Search failed');
-      
+      if (!response.ok) throw new Error("Search failed");
+
       const data = await response.json();
       searchResults = data.results;
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Search failed';
+      error = e instanceof Error ? e.message : "Search failed";
     }
   }
 
@@ -239,7 +253,7 @@
     <div class="error-banner" in:fly={{ y: -20 }}>
       <span class="error-icon">⚠️</span>
       <span>{error}</span>
-      <button class="dismiss-btn" on:click={() => error = null}>×</button>
+      <button class="dismiss-btn" on:click={() => (error = null)}>×</button>
     </div>
   {/if}
 
@@ -256,12 +270,14 @@
   </div>
 
   <!-- Upload Area -->
-  <div 
+  <div
     class="upload-area"
-    class:drag-over
+    class:drag-over={dragOver}
     on:dragover={handleDragOver}
     on:dragleave={handleDragLeave}
     on:drop={handleDrop}
+    role="region"
+    aria-label="File upload area"
   >
     {#if uploading}
       <div class="upload-progress" in:fade>
@@ -274,11 +290,12 @@
         </div>
         {#if indexingStatus}
           <p class="status-text">
-            {#if indexingStatus.status === 'processing'}
-              Indexing... {indexingStatus.pages_processed}/{indexingStatus.pages_total} pages
-            {:else if indexingStatus.status === 'completed'}
+            {#if indexingStatus.status === "processing"}
+              Indexing... {indexingStatus.pages_processed}/{indexingStatus.pages_total}
+              pages
+            {:else if indexingStatus.status === "completed"}
               ✓ Indexing complete
-            {:else if indexingStatus.status === 'failed'}
+            {:else if indexingStatus.status === "failed"}
               ✗ Indexing failed: {indexingStatus.error}
             {:else}
               Queued for indexing...
@@ -292,9 +309,9 @@
         <p>Drag and drop a PDF here, or</p>
         <label class="upload-btn">
           Browse Files
-          <input 
-            type="file" 
-            accept=".pdf" 
+          <input
+            type="file"
+            accept=".pdf"
             on:change={handleFileInput}
             style="display: none"
           />
@@ -306,15 +323,13 @@
   <!-- Search Section -->
   <div class="search-section">
     <div class="search-input-wrapper">
-      <input 
-        type="text" 
+      <input
+        type="text"
         placeholder="Search indexed documents..."
         bind:value={searchQuery}
-        on:keydown={(e) => e.key === 'Enter' && searchDocuments()}
+        on:keydown={(e) => e.key === "Enter" && searchDocuments()}
       />
-      <button class="search-btn" on:click={searchDocuments}>
-        🔍
-      </button>
+      <button class="search-btn" on:click={searchDocuments}> 🔍 </button>
     </div>
 
     {#if searchResults.length > 0}
@@ -325,7 +340,9 @@
             <li>
               <span class="result-filename">{result.filename}</span>
               <span class="result-page">Page {result.page}</span>
-              <span class="result-relevance">{(result.relevance * 100).toFixed(0)}% match</span>
+              <span class="result-relevance"
+                >{(result.relevance * 100).toFixed(0)}% match</span
+              >
             </li>
           {/each}
         </ul>
@@ -366,8 +383,8 @@
               </div>
             </div>
             <div class="doc-actions">
-              <button 
-                class="delete-btn" 
+              <button
+                class="delete-btn"
                 on:click={() => deleteDocument(doc.id)}
                 title="Delete document"
               >
@@ -588,7 +605,8 @@
     color: var(--text-primary, #cdd6f4);
   }
 
-  .result-page, .result-relevance {
+  .result-page,
+  .result-relevance {
     color: var(--text-secondary, #a6adc8);
   }
 
@@ -616,7 +634,9 @@
   }
 
   @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .empty-icon {

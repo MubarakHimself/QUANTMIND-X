@@ -1,13 +1,17 @@
 <script lang="ts">
-  import { ChevronRight, Home } from 'lucide-svelte';
-  
+  import { ChevronRight, Home } from "lucide-svelte";
+
   export let items: Array<{ label: string; path?: string }> = [];
   export let onNavigate: ((path: string) => void) | undefined = undefined;
   export let showHome = true;
-  
-  function handleClick(item: { label: string; path?: string }, index: number) {
-    if (item.path && onNavigate && index < items.length - 1) {
-      onNavigate(item.path);
+
+  function handleClick(
+    item: { label: string; path?: string; fullPath?: string; id?: string },
+    index: number,
+  ) {
+    const targetPath = item.path || item.fullPath || item.id;
+    if (targetPath && onNavigate && index < items.length - 1) {
+      onNavigate(targetPath);
     }
   }
 </script>
@@ -16,9 +20,9 @@
   <ol class="breadcrumb-list">
     {#if showHome}
       <li class="breadcrumb-item">
-        <button 
-          class="breadcrumb-link home" 
-          on:click={() => onNavigate?.('/')}
+        <button
+          class="breadcrumb-link home"
+          on:click={() => onNavigate?.("/")}
           aria-label="Go to home"
         >
           <Home size={14} />
@@ -28,7 +32,7 @@
         </span>
       </li>
     {/if}
-    
+
     {#each items as item, index}
       <li class="breadcrumb-item">
         {#if index === items.length - 1}
@@ -36,8 +40,8 @@
             {item.label}
           </span>
         {:else}
-          <button 
-            class="breadcrumb-link" 
+          <button
+            class="breadcrumb-link"
             on:click={() => handleClick(item, index)}
           >
             {item.label}
@@ -60,7 +64,7 @@
     border-bottom: 1px solid var(--border-subtle);
     font-size: 12px;
   }
-  
+
   .breadcrumb-list {
     display: flex;
     align-items: center;
@@ -69,13 +73,13 @@
     padding: 0;
     list-style: none;
   }
-  
+
   .breadcrumb-item {
     display: flex;
     align-items: center;
     gap: 4px;
   }
-  
+
   .breadcrumb-link {
     background: transparent;
     border: none;
@@ -86,25 +90,25 @@
     font-size: 12px;
     transition: all 0.15s ease;
   }
-  
+
   .breadcrumb-link:hover {
     background: var(--bg-secondary);
     color: var(--text-primary);
   }
-  
+
   .breadcrumb-link.home {
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 4px;
   }
-  
+
   .breadcrumb-current {
     color: var(--text-primary);
     font-weight: 500;
     padding: 2px 6px;
   }
-  
+
   .separator-icon {
     color: var(--text-muted);
     flex-shrink: 0;
