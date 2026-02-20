@@ -19,7 +19,7 @@
   
   // Import services
   import { contextManager } from '../../services/contextManager';
-  import { agentManager } from '../../agents/agentManager';
+  import { agentManager, activeStreams } from '../../agents';
   
   // Props
   export let isOpen = true;
@@ -184,12 +184,13 @@
   $: currentChat = $activeChat;
   $: messages = $activeMessages;
   $: context = $activeContext;
+  $: isStreaming = $activeStreams.length > 0;
 </script>
 
 {#if isOpen}
   <aside class="agent-panel" style="width: {chatListWidth}px;">
     <!-- Agent Header with tabs -->
-    <AgentHeader 
+    <AgentHeader
       {agents}
       activeAgent={currentAgent}
       on:agentSwitch={(e) => handleAgentSwitch(e.detail)}
@@ -198,7 +199,15 @@
       on:toggleChatList={toggleChatList}
       showChatList={showChatList}
     />
-    
+
+    <!-- Streaming indicator -->
+    {#if isStreaming}
+      <div class="streaming-indicator" transition:fade>
+        <div class="streaming-pulse"></div>
+        <span class="streaming-text">Agent is thinking...</span>
+      </div>
+    {/if}
+
     <!-- Main content area with CSS Grid -->
     <div class="panel-body">
       <!-- Chat List Sidebar (collapsible) -->
@@ -361,20 +370,44 @@
     color: var(--text-primary);
   }
   
-  /* Responsive adjustments */
-  @media (max-width: 768px) {
-    .agent-panel {
-      width: 100% !important;
-      max-width: 100%;
+  .toggle-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  /* Streaming indicator */
+  .streaming-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .streaming-pulse {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
     }
-    
-    .chat-list-container {
-      position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      z-index: 10;
-      box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
+    50% {
+      opacity: 0.5;
+      transform: scale(1.2);
     }
   }
+
+  .streaming-text {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  /* Responsive adjustments */
 </style>
