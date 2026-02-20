@@ -113,128 +113,15 @@
     }
   });
 
-  // Load news events (mock data for now, will connect to API)
+  // Load news events from API
   async function loadNewsEvents() {
     try {
-      // TODO: Replace with actual API call
-      // const res = await fetch('http://localhost:8000/api/news/calendar');
-      // if (res.ok) {
-      //   newsEvents = await res.json();
-      // }
-
-      // Mock data for development
-      const now = new Date();
-      const today = now.toISOString().split("T")[0];
-
-      newsEvents = [
-        {
-          id: "nfp-001",
-          name: "Non-Farm Payrolls",
-          currency: "USD",
-          impact: "high",
-          date_time: new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours from now
-          actual: undefined,
-          forecast: "200K",
-          previous: "175K",
-          affected_pairs: ["EURUSD", "GBPUSD", "USDJPY", "USDCHF"],
-          description:
-            "The change in the number of employed people during the previous month, excluding the farming industry. Job creation is an important leading indicator of consumer spending, which accounts for a majority of overall economic activity.",
-        },
-        {
-          id: "cpi-001",
-          name: "CPI m/m",
-          currency: "EUR",
-          impact: "high",
-          date_time: new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString(),
-          actual: undefined,
-          forecast: "0.3%",
-          previous: "0.2%",
-          affected_pairs: ["EURUSD", "EURGBP", "EURJPY"],
-          description:
-            "Consumer Price Index is a measure of the average price level of a fixed basket of goods and services purchased by consumers. Monthly changes in CPI represent the rate of inflation.",
-        },
-        {
-          id: "ir-001",
-          name: "Interest Rate Decision",
-          currency: "GBP",
-          impact: "high",
-          date_time: new Date(now.getTime() + 6 * 60 * 60 * 1000).toISOString(),
-          actual: undefined,
-          forecast: "5.25%",
-          previous: "5.25%",
-          affected_pairs: ["GBPUSD", "EURGBP", "GBPJPY"],
-          description:
-            "The Bank of England's MPC announces its interest rate decision. Short-term interest rates are the primary factor in currency valuation.",
-        },
-        {
-          id: "adp-001",
-          name: "ADP Non-Farm Employment Change",
-          currency: "USD",
-          impact: "medium",
-          date_time: new Date(now.getTime() + 1 * 60 * 60 * 1000).toISOString(),
-          actual: undefined,
-          forecast: "150K",
-          previous: "130K",
-          affected_pairs: ["EURUSD", "GBPUSD", "USDJPY"],
-          description:
-            "The estimated change in the number of employed people during the previous month, excluding the farming industry and government. ADP provides a sneak peek into the official NFP report.",
-        },
-        {
-          id: "pmi-001",
-          name: "Manufacturing PMI",
-          currency: "USD",
-          impact: "low",
-          date_time: new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString(),
-          actual: undefined,
-          forecast: "50.5",
-          previous: "50.2",
-          affected_pairs: ["EURUSD", "USDJPY"],
-          description:
-            "The Purchasing Managers' Index measures the activity level of purchasing managers in the manufacturing sector. A reading above 50 indicates expansion.",
-        },
-        {
-          id: "retail-001",
-          name: "Retail Sales m/m",
-          currency: "AUD",
-          impact: "medium",
-          date_time: new Date(now.getTime() + 5 * 60 * 60 * 1000).toISOString(),
-          actual: undefined,
-          forecast: "0.4%",
-          previous: "0.2%",
-          affected_pairs: ["AUDUSD", "EURAUD", "AUDJPY"],
-          description:
-            "The change in the total value of sales at the retail level. It is the foremost indicator of consumer spending, which accounts for the majority of overall economic activity.",
-        },
-        {
-          id: "gdp-001",
-          name: "GDP q/q",
-          currency: "CAD",
-          impact: "medium",
-          date_time: new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString(),
-          actual: undefined,
-          forecast: "0.4%",
-          previous: "0.3%",
-          affected_pairs: ["USDCAD", "CADJPY"],
-          description:
-            "Gross Domestic Product is the broadest measure of economic activity and is a key indicator of economic health. The quarterly percent changes measure the growth rate.",
-        },
-        {
-          id: "fomc-001",
-          name: "FOMC Meeting Minutes",
-          currency: "USD",
-          impact: "high",
-          date_time: new Date(
-            now.getTime() + 24 * 60 * 60 * 1000,
-          ).toISOString(), // Tomorrow
-          actual: undefined,
-          forecast: "",
-          previous: "",
-          affected_pairs: ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD"],
-          description:
-            "The Federal Open Market Committee publishes the minutes of its meetings. Detailed records of the FOMC's policy discussions provide insights into future policy decisions.",
-        },
-      ];
-
+      const res = await fetch('http://localhost:8000/api/news/calendar');
+      if (res.ok) {
+        newsEvents = await res.json();
+      } else {
+        console.error('Failed to load news events:', res.statusText);
+      }
       applyFilters();
       findNextHighImpactEvent();
     } catch (e) {
