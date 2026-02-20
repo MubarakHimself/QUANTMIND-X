@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import { writable, derived } from 'svelte/store';
+import type { Writable } from 'svelte/store';
+import { streamToStore, agentStreamStore, type TaskStreamState } from './agentStreamStore';
+import { streamAgent, type AgentMessage, type AgentContext, type AgentResult } from './claudeCodeAgent';
 
 // Agent state schema
 export const AgentStateSchema = z.object({
@@ -8,6 +12,110 @@ export const AgentStateSchema = z.object({
 });
 
 export type AgentState = z.infer<typeof AgentStateSchema>;
+
+// Streaming agent store state
+export interface StreamingAgentState {
+  activeTask: TaskStreamState | null;
+  isStreaming: boolean;
+  error: string | null;
+}
+
+// Create the streaming agent store
+function createStreamingAgentStore(): Writable<StreamingAgentState> {
+  const { subscribe, set, update } = writable<StreamingAgentState>({
+    activeTask: null,
+    isStreaming: false,
+    error: null,
+  });
+
+  return {
+    subscribe,
+
+    /**
+     * Start streaming an agent invocation
+     */
+    async streamInvoke(
+      agentType: string,
+      message: string,
+      context?: AgentContext
+    ): Promise<TaskStreamState | null> {
+      update((state) => ({
+        ...state,
+        isStreaming: true,
+        error: null,
+      }));
+
+      // Convert message to AgentMessage format
+      const messages: AgentMessage[] = [
+        { role: 'user', content: message }
+      ];
+
+      try {
+        const result = await streamToStore(agentType, messages, context);
+
+        update((state) => ({
+          ...state,
+          activeTask: result,
+          isStreaming: false,
+        }));
+
+        return result;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        update((state) => ({
+          ...state,
+          isStreaming: false,
+          error: errorMessage,
+        }));
+        return null;
+      }
+    },
+
+    /**
+     * Clear the current streaming state
+     */
+    clear() {
+      set({
+        activeTask: null,
+        isStreaming: false,
+        error: null,
+      });
+    },
+
+    /**
+     * Set error state
+     */
+    setError(error: string) {
+      update((state) => ({
+        ...state,
+        error,
+        isStreaming: false,
+      }));
+    },
+
+    set,
+    update,
+  };
+}
+
+// Export the streaming agent store
+export const streamingAgentStore = createStreamingAgentStore();
+
+// Derived store for convenience
+export const activeStreamingTask = derived(
+  streamingAgentStore,
+  ($state) => $state.activeTask
+);
+
+export const isAgentStreaming = derived(
+  streamingAgentStore,
+  ($state) => $state.isStreaming
+);
+
+export const streamingError = derived(
+  streamingAgentStore,
+  ($state) => $state.error
+);
 
 // AI Provider configuration
 export type AIProvider = 'openrouter' | 'zhipu' | 'anthropic';
@@ -189,6 +297,44 @@ When analyzing:
       return await res.json();
     } catch (e) {
       console.error('Agent invocation failed:', e);
+      throw e;
+    }
+  }
+
+  /**
+   * Stream agent invocation using Claude Code client
+   * Uses streamToStore() for automatic store updates
+   *
+   * @param agentType - The agent type (copilot, quantcode, analyst)
+   * @param message - The user message
+   * @param context - Optional context for the agent
+   * @returns Promise resolving to the task stream state
+   */
+  async streamInvoke(
+    agentType: string,
+    message: string,
+    context?: AgentContext
+  ): Promise<TaskStreamState | null> {
+    const config = this.getAgentConfig(agentType);
+    if (!config) {
+      throw new Error(`Agent ${agentType} not found`);
+    }
+
+    // Convert message to AgentMessage format
+    const messages: AgentMessage[] = [
+      { role: 'user', content: message }
+    ];
+
+    // Merge system prompt into context if provided
+    const enhancedContext: AgentContext = {
+      ...context,
+      systemPrompt: config.systemPrompt,
+    };
+
+    try {
+      return await streamToStore(agentType, messages, enhancedContext);
+    } catch (e) {
+      console.error('Agent stream invocation failed:', e);
       throw e;
     }
   }
