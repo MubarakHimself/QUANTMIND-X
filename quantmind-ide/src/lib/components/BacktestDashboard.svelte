@@ -74,70 +74,6 @@
   let status = '';
   let liveLogs: Array<{ timestamp: string; level: string; message: string }> = [];
 
-  // Mock data for demonstration
-  const mockResult: BacktestResult = {
-    backtest_id: 'bt_20260214_001',
-    status: 'completed',
-    metrics: {
-      total_trades: 150,
-      win_count: 87,
-      loss_count: 63,
-      win_rate: 0.58,
-      profit_factor: 1.65,
-      sharpe_ratio: 1.45,
-      max_drawdown: 0.15,
-      net_profit: 12500.00,
-      gross_profit: 28500.00,
-      gross_loss: 16000.00,
-      recovery_factor: 5.21,
-      average_risk_reward: 1.8,
-      consecutive_losses: 5,
-      expectancy: 83.33,
-      avg_win: 327.59,
-      avg_loss: 253.97
-    },
-    trades: [],
-    equity_curve: [],
-    started_at: '2026-02-14T05:00:00Z',
-    completed_at: '2026-02-14T05:05:00Z',
-    config: {
-      symbol: 'EURUSD',
-      timeframe: 'H1',
-      initial_deposit: 10000,
-      start_date: '2024-01-01',
-      end_date: '2024-12-31'
-    }
-  };
-
-  // Generate mock equity curve
-  function generateEquityCurve(): number[] {
-    const curve = [10000];
-    for (let i = 1; i < 250; i++) {
-      const change = (Math.random() - 0.4) * 200;
-      curve.push(curve[i - 1] + change);
-    }
-    return curve;
-  }
-
-  // Generate mock trades
-  function generateTrades(): Trade[] {
-    const trades: Trade[] = [];
-    for (let i = 0; i < 20; i++) {
-      const profit = Math.random() > 0.42 ? Math.random() * 500 : -Math.random() * 300;
-      trades.push({
-        id: `trade_${i + 1}`,
-        symbol: 'EURUSD',
-        type: Math.random() > 0.5 ? 'buy' : 'sell',
-        entry_price: 1.0850 + Math.random() * 0.01,
-        exit_price: 1.0850 + Math.random() * 0.01,
-        entry_time: `2024-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')}T10:00:00Z`,
-        exit_time: `2024-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')}T14:00:00Z`,
-        profit: profit,
-        profit_pips: profit / 10
-      });
-    }
-    return trades;
-  }
 
   // Fetch backtest result
   async function fetchResult(backtestId: string) {
@@ -146,12 +82,8 @@
       if (!response.ok) throw new Error('Failed to fetch backtest result');
       result = await response.json();
     } catch (e) {
-      // Use mock data for demonstration
-      result = {
-        ...mockResult,
-        equity_curve: generateEquityCurve(),
-        trades: generateTrades()
-      };
+      error = 'Failed to load backtest result';
+      console.error('Fetch error:', e);
     } finally {
       loading = false;
     }
@@ -342,13 +274,6 @@
   onMount(async () => {
     // Connect WebSocket for real-time streaming
     await connectWebSocket();
-
-    // For demo, use mock data
-    result = {
-      ...mockResult,
-      equity_curve: generateEquityCurve(),
-      trades: generateTrades()
-    };
     loading = false;
   });
 
