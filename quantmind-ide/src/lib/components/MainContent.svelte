@@ -145,96 +145,6 @@
   let backtestHistory: Array<any> = [];
   let selectedBacktestRun: any = null;
 
-  // Mock EA files for Windows Explorer navigation
-  let mockNprdFiles = [
-    {
-      id: "nprd1",
-      name: "ICT_Scalper_NPRD.txt",
-      size: "2.4 KB",
-      path: "/ea/ict-scaler/nprd",
-    },
-    {
-      id: "nprd2",
-      name: "SMC_Reversal_NPRD.txt",
-      size: "1.8 KB",
-      path: "/ea/smc-reversal/nprd",
-    },
-    {
-      id: "nprd3",
-      name: "Order_Block_Hunter_NPRD.txt",
-      size: "3.1 KB",
-      path: "/ea/order-block/nprd",
-    },
-  ];
-
-  let mockTrdFiles = [
-    {
-      id: "trd1",
-      name: "ICT_Scalper_TRD.txt",
-      size: "4.2 KB",
-      path: "/ea/ict-scaler/trd",
-    },
-    {
-      id: "trd2",
-      name: "SMC_Reversal_TRD.txt",
-      size: "3.7 KB",
-      path: "/ea/smc-reversal/trd",
-    },
-    {
-      id: "trd3",
-      name: "Order_Block_Hunter_TRD.txt",
-      size: "5.1 KB",
-      path: "/ea/order-block/trd",
-    },
-  ];
-
-  let mockEaFiles = [
-    {
-      id: "ea1",
-      name: "ICT_Scalper.mq5",
-      size: "12.8 KB",
-      path: "/ea/ict-scaler/ICT_Scalper.mq5",
-    },
-    {
-      id: "ea2",
-      name: "SMC_Reversal.mq5",
-      size: "15.3 KB",
-      path: "/ea/smc-reversal/SMC_Reversal.mq5",
-    },
-    {
-      id: "ea3",
-      name: "Order_Block_Hunter.mq5",
-      size: "18.7 KB",
-      path: "/ea/order-block/Order_Block_Hunter.mq5",
-    },
-    {
-      id: "ea4",
-      name: "ICT_Scalper.mqh",
-      size: "8.2 KB",
-      path: "/ea/ict-scaler/ICT_Scalper.mqh",
-    },
-  ];
-
-  let mockBacktestFiles = [
-    {
-      id: "bt1",
-      name: "ICT_Scalper_Backtest_2024.txt",
-      size: "6.4 KB",
-      path: "/ea/ict-scaler/backtest",
-    },
-    {
-      id: "bt2",
-      name: "SMC_Reversal_Backtest_2024.txt",
-      size: "7.1 KB",
-      path: "/ea/smc-reversal/backtest",
-    },
-    {
-      id: "bt3",
-      name: "Order_Block_Hunter_Backtest_2024.txt",
-      size: "8.9 KB",
-      path: "/ea/order-block/backtest",
-    },
-  ];
 
   // Load backtests when view activates
   $: if (
@@ -713,54 +623,6 @@
     viewConfig.assets.tabs.find((t: any) => t.id === currentFolder)?.name ||
     currentFolder;
 
-  // Mock strategy data for EA cards
-  const strategyCards = [
-    {
-      id: "ict-v2",
-      name: "ICT Scalper v2",
-      status: "primal",
-      lastUpdated: "2 hours ago",
-      backtests: 4,
-      tag: "Primal",
-    },
-    {
-      id: "smc-rev",
-      name: "SMC Reversal",
-      status: "ready",
-      lastUpdated: "1 day ago",
-      backtests: 2,
-      tag: "Ready",
-    },
-    {
-      id: "order-block",
-      name: "Order Block Hunter",
-      status: "pending",
-      lastUpdated: "3 days ago",
-      backtests: 0,
-      tag: "Pending",
-    },
-  ];
-
-  // Mock Assets Data
-  const mockAssets: Record<
-    string,
-    Array<{ name: string; type: "file" | "folder"; size?: string }>
-  > = {
-    indicators: [
-      { name: "ATR_Filter.mqh", type: "file", size: "4KB" },
-      { name: "RSI_Divergence.mqh", type: "file", size: "12KB" },
-      { name: "Volume_Profile.mqh", type: "file", size: "24KB" },
-    ],
-    libraries: [
-      { name: "RiskManager.mqh", type: "file", size: "15KB" },
-      { name: "OrderManager.mqh", type: "file", size: "18KB" },
-      { name: "TimeFilters.mqh", type: "file", size: "6KB" },
-    ],
-    templates: [
-      { name: "Scalping_M5.tpl", type: "file", size: "2KB" },
-      { name: "Swing_H4.tpl", type: "file", size: "2KB" },
-    ],
-  };
 
   function getStatusColor(status: string): string {
     const colors: Record<string, string> = {
@@ -1532,9 +1394,7 @@
                 <div class="form-group">
                   <label for="bt-strategy">Strategy</label>
                   <select id="bt-strategy" bind:value={backtestConfig.strategy}>
-                    {#each strategyCards as strategy}
-                      <option value={strategy.id}>{strategy.name}</option>
-                    {/each}
+                    <option value="" disabled selected>No strategies available</option>
                   </select>
                 </div>
                 <div class="form-group">
@@ -2126,16 +1986,7 @@
                 </div>
 
                 <div class="folder-grid">
-                  {#each mockAssets[currentFolder] || [] as file}
-                    <div class="asset-item file">
-                      <FileText size={32} />
-                      <span>{file.name}</span>
-                      <span class="file-size">{file.size}</span>
-                    </div>
-                  {/each}
-                  {#if !(mockAssets[currentFolder] || []).length}
-                    <p class="empty-msg">No files found in {currentFolder}</p>
-                  {/if}
+                  <p class="empty-msg">No files found in {currentFolder}</p>
                 </div>
               </div>
             {/if}
@@ -2150,45 +2001,7 @@
           {/if}
 
           <div class="ea-cards" class:list-view={viewMode === "list"}>
-            {#each strategyCards as strategy}
-              <div
-                class="ea-card"
-                role="button"
-                tabindex="0"
-                on:click={() => navigateTo(strategy.id, strategy.name)}
-                on:keydown={(e) =>
-                  e.key === "Enter" && navigateTo(strategy.id, strategy.name)}
-              >
-                <div
-                  class="card-status"
-                  style="background: {getStatusColor(strategy.status)}"
-                ></div>
-                <div class="card-icon"><Bot size={32} /></div>
-                <div class="card-info">
-                  <h4>{strategy.name}</h4>
-                  <p>Updated {strategy.lastUpdated}</p>
-                  <div class="card-meta">
-                    <span
-                      ><TestTube size={12} />
-                      {strategy.backtests} backtests</span
-                    >
-                    <select class="card-tag" on:click|stopPropagation>
-                      <option selected={strategy.tag === "Primal"}
-                        >Primal</option
-                      >
-                      <option selected={strategy.tag === "Ready"}>Ready</option>
-                      <option selected={strategy.tag === "Paused"}
-                        >Paused</option
-                      >
-                      <option selected={strategy.tag === "Quarantine"}
-                        >Quarantine</option
-                      >
-                    </select>
-                  </div>
-                </div>
-                <ChevronRight size={16} class="card-arrow" />
-              </div>
-            {/each}
+            <p class="empty-msg">No strategies available</p>
             <div
               class="ea-card add-new"
               role="button"
@@ -2220,68 +2033,16 @@
               <div class="folder-grid">
                 {#if currentFolder === "nprd"}
                   <!-- NPRD Output files -->
-                  {#each mockNprdFiles as file}
-                    <div
-                      class="file-item"
-                      role="button"
-                      tabindex="0"
-                      on:click={() => openInEditor(file)}
-                      on:keydown={(e) =>
-                        e.key === "Enter" && openInEditor(file)}
-                    >
-                      <FileText size={32} color="#f59e0b" />
-                      <span>{file.name}</span>
-                      <span class="file-size">{file.size}</span>
-                    </div>
-                  {/each}
+                  <p class="empty-msg">No NPRD files found</p>
                 {:else if currentFolder === "trd"}
                   <!-- TRD files -->
-                  {#each mockTrdFiles as file}
-                    <div
-                      class="file-item"
-                      role="button"
-                      tabindex="0"
-                      on:click={() => openInEditor(file)}
-                      on:keydown={(e) =>
-                        e.key === "Enter" && openInEditor(file)}
-                    >
-                      <FileText size={32} color="#3b82f6" />
-                      <span>{file.name}</span>
-                      <span class="file-size">{file.size}</span>
-                    </div>
-                  {/each}
+                  <p class="empty-msg">No TRD files found</p>
                 {:else if currentFolder === "ea"}
                   <!-- EA Code files -->
-                  {#each mockEaFiles as file}
-                    <div
-                      class="file-item"
-                      role="button"
-                      tabindex="0"
-                      on:click={() => openInEditor(file)}
-                      on:keydown={(e) =>
-                        e.key === "Enter" && openInEditor(file)}
-                    >
-                      <FileText size={32} color="#10b981" />
-                      <span>{file.name}</span>
-                      <span class="file-size">{file.size}</span>
-                    </div>
-                  {/each}
+                  <p class="empty-msg">No EA files found</p>
                 {:else if currentFolder === "backtest"}
                   <!-- Backtest Report files -->
-                  {#each mockBacktestFiles as file}
-                    <div
-                      class="file-item"
-                      role="button"
-                      tabindex="0"
-                      on:click={() => openInEditor(file)}
-                      on:keydown={(e) =>
-                        e.key === "Enter" && openInEditor(file)}
-                    >
-                      <FileText size={32} color="#8b5cf6" />
-                      <span>{file.name}</span>
-                      <span class="file-size">{file.size}</span>
-                    </div>
-                  {/each}
+                  <p class="empty-msg">No backtest files found</p>
                 {:else}
                   <!-- Default subfolders -->
                   <div
@@ -2385,9 +2146,7 @@
                         id="backtest-strategy"
                         bind:value={backtestConfig.strategy}
                       >
-                        {#each strategyCards as strategy}
-                          <option value={strategy.id}>{strategy.name}</option>
-                        {/each}
+                        <option value="" disabled selected>No strategies available</option>
                       </select>
                     </div>
                     <div class="form-group">
