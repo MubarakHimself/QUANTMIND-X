@@ -17,16 +17,9 @@
   
   // Calculate total
   $: memoryStats.total = memoryStats.semantic + memoryStats.episodic + memoryStats.procedural;
-  
-  // Mock memory entries for display
-  const mockMemories = [
-    { id: '1', type: 'semantic', content: 'User prefers dark theme for trading interfaces', timestamp: new Date() },
-    { id: '2', type: 'episodic', content: 'User ran backtest on EURUSD strategy yesterday', timestamp: new Date(Date.now() - 86400000) },
-    { id: '3', type: 'procedural', content: 'Standard workflow: analyze → backtest → optimize → deploy', timestamp: new Date(Date.now() - 172800000) }
-  ];
-  
-  // Filter memories
-  $: filteredMemories = mockMemories.filter(m => {
+
+  // Filter memories - empty array until backend provides real data
+  $: filteredMemories = memories.entries || [];
     const matchesType = selectedType === 'all' || m.type === selectedType;
     const matchesSearch = !searchQuery || m.content.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesType && matchesSearch;
@@ -270,7 +263,8 @@
       {#if filteredMemories.length === 0}
         <div class="empty-state">
           <Database size={24} />
-          <p>No memories found</p>
+          <p>No memories yet</p>
+          <p class="empty-hint">Memories will be stored as you interact with the agent</p>
         </div>
       {:else}
         {#each filteredMemories as memory (memory.id)}

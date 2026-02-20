@@ -54,10 +54,10 @@
           content = data.content || '';
         }
       } catch (e) {
-        content = `// Failed to load file: ${file.name}\n// This is demo content`;
+        content = `// Failed to load file: ${file.name}\n// Please check your connection`;
       }
     } else {
-      content = getDemoContent(file.name);
+      content = '';
     }
 
     openFiles = [...openFiles, {
@@ -77,46 +77,6 @@
     if (ext === 'md') return 'markdown';
     if (ext === 'json') return 'json';
     return 'text';
-  }
-
-  function getDemoContent(name: string): string {
-    if (name.includes('.mqh') || name.includes('.mq5')) {
-      return `//+------------------------------------------------------------------+
-//| ${name}
-//| QuantMindX Shared Asset
-//+------------------------------------------------------------------+
-
-#property copyright "QuantMindX"
-#property version   "1.00"
-
-// This is a demo file. Connect the backend API for real content.
-
-input double RiskPercent = 2.0;
-input int    MaxTrades   = 3;
-
-bool Init() {
-    Print("${name} initialized");
-    return true;
-}
-`;
-    }
-    if (name.includes('.md')) {
-      return `# ${name.replace('.md', '')}
-
-This is a demo markdown file.
-
-## Contents
-- Connect the backend API for real content
-- This file would contain strategy notes or documentation
-
-## Example
-\`\`\`mql5
-// Sample code reference
-input double Lots = 0.01;
-\`\`\`
-`;
-    }
-    return `// ${name}\n// Demo content - connect backend for real data`;
   }
 
   function handleEditorChange(event: CustomEvent) {

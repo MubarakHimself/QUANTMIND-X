@@ -84,85 +84,9 @@
       }
     } catch (e) {
       console.error('Failed to load assets:', e);
-      // Use mock data for development
-      loadMockAssets();
+      assets = [];
+      applyFilters();
     }
-  }
-
-  function loadMockAssets() {
-    assets = [
-      {
-        id: 'asset-1',
-        name: 'AdaptiveRSI',
-        category: 'Indicator',
-        version: '1.2.0',
-        filesystem_path: '/mql5/Include/QuantMind/Indicators/AdaptiveRSI.mqh',
-        dependencies: ['MovingAverage', 'ATR'],
-        checksum: 'a1b2c3d4e5f6',
-        created_by: 'QuantCode',
-        used_by_count: 5,
-        created_at: '2024-01-15T10:30:00Z',
-        updated_at: '2024-01-20T14:22:00Z',
-        description: 'Adaptive RSI indicator with dynamic period adjustment'
-      },
-      {
-        id: 'asset-2',
-        name: 'KellyCalculator',
-        category: 'Risk',
-        version: '2.0.1',
-        filesystem_path: '/mql5/Include/QuantMind/Risk/KellyCalculator.mqh',
-        dependencies: ['Statistics', 'Portfolio'],
-        checksum: 'f6e5d4c3b2a1',
-        created_by: 'QuantCode',
-        used_by_count: 8,
-        created_at: '2024-01-10T09:00:00Z',
-        updated_at: '2024-01-25T16:45:00Z',
-        description: 'Kelly criterion calculator for optimal position sizing'
-      },
-      {
-        id: 'asset-3',
-        name: 'SocketClient',
-        category: 'Utils',
-        version: '1.0.5',
-        filesystem_path: '/mql5/Include/QuantMind/Utils/SocketClient.mqh',
-        dependencies: [],
-        checksum: '9z8y7x6w5v4',
-        created_by: 'user',
-        used_by_count: 3,
-        created_at: '2024-01-05T11:20:00Z',
-        updated_at: '2024-01-18T13:10:00Z',
-        description: 'WebSocket client for real-time communication'
-      },
-      {
-        id: 'asset-4',
-        name: 'RegimeDetector',
-        category: 'Indicator',
-        version: '1.1.0',
-        filesystem_path: '/mql5/Include/QuantMind/Indicators/RegimeDetector.mqh',
-        dependencies: ['AdaptiveRSI', 'Volatility'],
-        checksum: 'm1n2b3v4c5x',
-        created_by: 'QuantCode',
-        used_by_count: 6,
-        created_at: '2024-01-12T15:40:00Z',
-        updated_at: '2024-01-22T10:15:00Z',
-        description: 'Market regime detection with quality scoring'
-      },
-      {
-        id: 'asset-5',
-        name: 'TieredRisk',
-        category: 'Risk',
-        version: '1.5.0',
-        filesystem_path: '/mql5/Include/QuantMind/Risk/TieredRisk.mqh',
-        dependencies: ['KellyCalculator', 'Governor'],
-        checksum: 'q1w2e3r4t5y',
-        created_by: 'user',
-        used_by_count: 4,
-        created_at: '2024-01-08T14:00:00Z',
-        updated_at: '2024-01-19T09:30:00Z',
-        description: 'Tiered risk management with prop firm constraints'
-      }
-    ];
-    applyFilters();
   }
 
   function applyFilters() {
@@ -239,25 +163,7 @@
       }
     } catch (e) {
       console.error('Failed to create asset:', e);
-      // For development, add locally
-      const mockAsset: SharedAsset = {
-        id: `asset-${Date.now()}`,
-        name: newAsset.name,
-        category: newAsset.category,
-        version: '1.0.0',
-        filesystem_path: `/mql5/Include/QuantMind/${newAsset.category}/${newAsset.name}.mqh`,
-        dependencies: newAsset.dependencies,
-        checksum: 'mock-checksum',
-        created_by: 'user',
-        used_by_count: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        description: newAsset.description
-      };
-      assets = [mockAsset, ...assets];
-      applyFilters();
-      addAssetModalOpen = false;
-      resetNewAssetForm();
+      alert('Failed to create asset. Please check the backend connection.');
     }
   }
 
