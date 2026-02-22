@@ -1,7 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import { Power, Settings, Minus, Square, X } from 'lucide-svelte';
-  
+  import AuthStatus from './AuthStatus.svelte';
+
   const dispatch = createEventDispatcher();
   
   let killSwitchArmed = false;
@@ -44,16 +45,18 @@
   </div>
   
   <div class="right-section">
-    <button 
-      class="settings-btn" 
+    <button
+      class="settings-btn"
       on:click={openSettings}
       title="System Settings"
     >
       <Settings size={16} />
     </button>
-    
-    <button 
-      class="kill-switch" 
+
+    <AuthStatus />
+
+    <button
+      class="kill-switch"
       class:armed={killSwitchArmed}
       on:click={toggleKillSwitch}
       title={killSwitchArmed ? 'Click again to KILL ALL' : 'Emergency Kill Switch'}
