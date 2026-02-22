@@ -7,7 +7,6 @@ Provides commands for status, bot management, sync, trades, and health checks.
 
 import asyncio
 import os
-from typing import Optional
 
 import click
 from rich.console import Console
