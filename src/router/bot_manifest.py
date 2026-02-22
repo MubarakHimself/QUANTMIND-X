@@ -54,18 +54,18 @@ class BrokerType(Enum):
 class TradingMode(Enum):
     """
     Trading mode for bot lifecycle tracking.
-    
-    Paper->Demo->Live Promotion Workflow:
-    - PAPER: Initial paper trading validation (simulated execution)
-    - DEMO: Demo account trading (real prices, fake money)
+
+    Paper->Live Promotion Workflow:
+    - PAPER: Paper trading validation (simulated execution, includes demo)
     - LIVE: Live trading with real capital
-    
+
+    Note: PAPER mode encompasses what was previously separate DEMO mode.
+    Demo trading is now considered part of paper trading validation.
+
     Promotion Criteria (per spec):
-    - PAPER->DEMO: 30+ days, Sharpe > 1.5, Win Rate > 55%
-    - DEMO->LIVE: 30+ days, Sharpe > 1.5, Win Rate > 55%, Max DD < 10%
+    - PAPER->LIVE: 30+ days, Sharpe > 1.5, Win Rate > 55%, Max DD < 10%
     """
     PAPER = "paper"
-    DEMO = "demo"
     LIVE = "live"
 
 
@@ -356,7 +356,7 @@ class BotManifest:
     capital_allocated: float = 0.0
     promotion_eligible: bool = False
     paper_stats: Optional[ModePerformanceStats] = None
-    demo_stats: Optional[ModePerformanceStats] = None
+    demo_stats: Optional[ModePerformanceStats] = None  # Deprecated: use paper_stats instead
     live_stats: Optional[ModePerformanceStats] = None
     mode_start_date: Optional[datetime] = None  # When current mode started
     
@@ -497,13 +497,12 @@ class BotManifest:
     def get_current_stats(self) -> Optional[ModePerformanceStats]:
         """
         Get performance stats for the current trading mode.
-        
+
         Returns:
             ModePerformanceStats for current mode, or None if not available
         """
         stats_map = {
             TradingMode.PAPER: self.paper_stats,
-            TradingMode.DEMO: self.demo_stats,
             TradingMode.LIVE: self.live_stats,
         }
         return stats_map.get(self.trading_mode)
@@ -511,28 +510,25 @@ class BotManifest:
     def update_stats(self, stats: ModePerformanceStats, mode: Optional[TradingMode] = None) -> None:
         """
         Update performance stats for a specific mode.
-        
+
         Args:
             stats: Performance stats to save
             mode: Target mode (defaults to current trading_mode)
         """
         target_mode = mode or self.trading_mode
-        
+
         if target_mode == TradingMode.PAPER:
             self.paper_stats = stats
-        elif target_mode == TradingMode.DEMO:
-            self.demo_stats = stats
         elif target_mode == TradingMode.LIVE:
             self.live_stats = stats
     
     def check_promotion_eligibility(self) -> Dict[str, Any]:
         """
         Check if bot is eligible for promotion to the next trading mode.
-        
+
         Promotion Criteria (per spec):
-        - PAPER->DEMO: 30+ days, Sharpe > 1.5, Win Rate > 55%
-        - DEMO->LIVE: 30+ days, Sharpe > 1.5, Win Rate > 55%, Max DD < 10%
-        
+        - PAPER->LIVE: 30+ days, Sharpe > 1.5, Win Rate > 55%, Max DD < 10%
+
         Returns:
             Dict with eligibility status and missing criteria
         """
@@ -553,9 +549,8 @@ class BotManifest:
             "min_win_rate": 0.55,
         }
         
-        # Add max drawdown requirement for DEMO->LIVE
-        if self.trading_mode == TradingMode.DEMO:
-            criteria["max_drawdown"] = 10.0  # Max 10% drawdown
+        # Add max drawdown requirement for PAPER->LIVE
+        criteria["max_drawdown"] = 10.0  # Max 10% drawdown
         
         # Check each criterion
         missing = []
@@ -590,8 +585,7 @@ class BotManifest:
     def _get_next_mode(self) -> Optional[TradingMode]:
         """Get the next trading mode in the promotion chain."""
         mode_progression = {
-            TradingMode.PAPER: TradingMode.DEMO,
-            TradingMode.DEMO: TradingMode.LIVE,
+            TradingMode.PAPER: TradingMode.LIVE,
             TradingMode.LIVE: None,  # Already at highest level
         }
         return mode_progression.get(self.trading_mode)
@@ -645,8 +639,7 @@ class BotManifest:
             Dict with downgrade result
         """
         mode_regression = {
-            TradingMode.LIVE: TradingMode.DEMO,
-            TradingMode.DEMO: TradingMode.PAPER,
+            TradingMode.LIVE: TradingMode.PAPER,
             TradingMode.PAPER: TradingMode.PAPER,  # Can't go lower than PAPER
         }
         
@@ -762,8 +755,9 @@ class BotRegistry:
         return self.list_by_trading_mode(TradingMode.PAPER)
     
     def list_demo_trading(self) -> List[BotManifest]:
-        """List bots in DEMO trading mode."""
-        return self.list_by_trading_mode(TradingMode.DEMO)
+        """List bots in DEMO trading mode (deprecated: DEMO merged into PAPER)."""
+        # DEMO mode has been merged into PAPER
+        return self.list_by_trading_mode(TradingMode.PAPER)
     
     def list_live_trading(self) -> List[BotManifest]:
         """List bots in LIVE trading mode."""

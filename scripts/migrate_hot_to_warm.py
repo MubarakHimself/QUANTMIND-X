@@ -61,11 +61,12 @@ if PROMETHEUS_AVAILABLE:
 def get_hot_connection():
     """Create connection to HOT tier PostgreSQL."""
     from sqlalchemy import create_engine
-    
-    hot_db_url = os.environ.get("HOT_DB_URL") or os.environ.get("CLOUDZY_HOT_DB_URL")
+
+    # Prefer CLOUDZY_HOT_DB_URL for Cloudzy deployments, fall back to HOT_DB_URL
+    hot_db_url = os.environ.get("CLOUDZY_HOT_DB_URL") or os.environ.get("HOT_DB_URL")
     if not hot_db_url:
-        raise ValueError("HOT_DB_URL or CLOUDZY_HOT_DB_URL not set")
-    
+        raise ValueError("CLOUDZY_HOT_DB_URL or HOT_DB_URL not set")
+
     return create_engine(hot_db_url)
 
 

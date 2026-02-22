@@ -21,6 +21,7 @@ import json
 import logging
 import argparse
 import time
+import subprocess
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -67,7 +68,7 @@ def get_warm_connection():
     return DuckDBConnection(db_path=warm_db_path)
 
 
-def fetch_old_data(days: int = 30) -> pd.DataFrame:
+def fetch_old_data(days: int = 7) -> pd.DataFrame:
     """
     Fetch market data older than specified days from WARM tier.
     
@@ -188,7 +189,58 @@ def update_manifest(symbol: str, year: int, month: int, day: int, row_count: int
     logger.info(f"Updated manifest for {partition_key}: {row_count} rows")
 
 
-def archive_data(dry_run: bool = False, days: int = 30) -> Dict[str, Any]:
+def sync_to_contabo(dry_run: bool = False) -> Dict[str, Any]:
+    """
+    Sync cold storage to Contabo VPS using rsync.
+
+    Args:
+        dry_run: If True, don't actually sync
+
+    Returns:
+        Sync statistics
+    """
+    sync_stats = {
+        'synced': False,
+        'error': None
+    }
+
+    contabo_cold_storage = os.environ.get("CONTABO_COLD_STORAGE")
+    cold_storage_path = os.environ.get("COLD_STORAGE_PATH", "/data/cold_storage")
+
+    if not contabo_cold_storage:
+        logger.info("CONTABO_COLD_STORAGE not set, skipping remote sync")
+        return sync_stats
+
+    try:
+        rsync_cmd = [
+            "rsync", "-avz", "--delete",
+            cold_storage_path + "/",
+            contabo_cold_storage + "/"
+        ]
+
+        if dry_run:
+            rsync_cmd.append("--dry-run")
+
+        logger.info(f"Syncing to Contabo: {' '.join(rsync_cmd)}")
+        result = subprocess.run(rsync_cmd, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            sync_stats['synced'] = True
+            logger.info("Successfully synced to Contabo")
+            if result.stdout:
+                logger.debug(f"rsync output: {result.stdout}")
+        else:
+            sync_stats['error'] = result.stderr
+            logger.error(f"rsync failed: {result.stderr}")
+
+    except Exception as e:
+        sync_stats['error'] = str(e)
+        logger.error(f"Failed to sync to Contabo: {e}")
+
+    return sync_stats
+
+
+def archive_data(dry_run: bool = False, days: int = 7) -> Dict[str, Any]:
     """
     Archive data from WARM to COLD tier.
     
@@ -273,7 +325,7 @@ def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Archive WARM to COLD tier")
     parser.add_argument("--dry-run", action="store_true", help="Don't actually archive")
-    parser.add_argument("--days", type=int, default=30, help="Days to retain in WARM tier")
+    parser.add_argument("--days", type=int, default=7, help="Days to retain in WARM tier")
     parser.add_argument("--metrics-port", type=int, default=9093, help="Prometheus metrics port")
     args = parser.parse_args()
     

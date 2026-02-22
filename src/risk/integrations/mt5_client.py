@@ -13,15 +13,27 @@ Features:
 - Connection state management
 - 10-second TTL cache for account and symbol data
 - Enhanced pip value calculations for various symbol types
+- Separate demo and live connection support for tick data
 """
 
+import os
 import logging
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, Literal
 from dataclasses import dataclass, field
 from datetime import datetime
 import time
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Environment Configuration
+# ============================================================================
+
+USE_DEMO_TICKS = os.environ.get('USE_DEMO_TICKS', 'false').lower() == 'true'
+MT5_DEMO_LOGIN = os.environ.get('MT5_DEMO_LOGIN', '')
+MT5_DEMO_PASSWORD = os.environ.get('MT5_DEMO_PASSWORD', '')
+MT5_DEMO_SERVER = os.environ.get('MT5_DEMO_SERVER', '')
 
 
 # ============================================================================
@@ -127,6 +139,30 @@ class MarginInfo:
             "margin_used": self.margin_used,
             "equity": self.equity,
             "balance": self.balance
+        }
+
+
+@dataclass
+class TickData:
+    """Tick data model."""
+    symbol: str
+    bid: float
+    ask: float
+    spread: float
+    timestamp: datetime
+    volume: int = 0
+    source: str = "live"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "symbol": self.symbol,
+            "bid": self.bid,
+            "ask": self.ask,
+            "spread": self.spread,
+            "timestamp": self.timestamp.isoformat(),
+            "volume": self.volume,
+            "source": self.source
         }
 
 
@@ -269,7 +305,8 @@ class MT5AccountClient:
         self,
         config_path: Optional[str] = None,
         fallback_to_simulated: bool = True,
-        cache_ttl: float = 10.0
+        cache_ttl: float = 10.0,
+        use_demo_ticks: Optional[bool] = None
     ):
         """
         Initialize MT5 Account Client.
@@ -278,6 +315,8 @@ class MT5AccountClient:
             config_path: Path to MT5 configuration file
             fallback_to_simulated: Whether to use simulated data when MT5 is unavailable
             cache_ttl: Cache time-to-live in seconds (default: 10.0)
+            use_demo_ticks: Override for USE_DEMO_TICKS env var. If True, uses demo
+                           connection for tick data. If None, uses env var.
         """
         self.config_path = config_path
         self.fallback_to_simulated = fallback_to_simulated
@@ -285,6 +324,11 @@ class MT5AccountClient:
         self.account_manager = None
         self.is_connected = False
         self.last_error = None
+
+        # Demo connection for tick data (prevents broker manipulation)
+        self._use_demo_ticks = use_demo_ticks if use_demo_ticks is not None else USE_DEMO_TICKS
+        self._demo_account_manager = None
+        self._demo_connected = False
 
         # Initialize cache
         self._cache: Dict[str, CachedValue] = {}
@@ -301,6 +345,10 @@ class MT5AccountClient:
                 logger.error("MT5 integration not available and fallback disabled")
             else:
                 logger.info("Using simulated data for testing")
+
+        # Log demo tick configuration
+        if self._use_demo_ticks:
+            logger.info("Demo tick source enabled - tick data will use separate demo connection")
 
     # ============================================================================
     # Cache Management

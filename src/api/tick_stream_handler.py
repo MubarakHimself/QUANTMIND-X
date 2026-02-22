@@ -6,10 +6,11 @@ Supports both ZMQ-based real-time streaming (<5ms latency) and polling fallback.
 """
 
 import asyncio
+import os
 import time
 import logging
 import yaml
-from typing import Dict, Set, Optional
+from typing import Dict, Set, Optional, Literal
 from datetime import datetime, timezone, timedelta
 import json
 
@@ -42,6 +43,22 @@ logger = logging.getLogger(__name__)
 
 # HOT tier retention: 1 hour
 TICK_RETENTION_HOURS = 1
+
+# Demo tick configuration from environment
+USE_DEMO_TICKS = os.environ.get('USE_DEMO_TICKS', 'false').lower() == 'true'
+
+
+def get_tick_source() -> Literal['demo', 'live']:
+    """
+    Determine the tick data source based on configuration.
+
+    When USE_DEMO_TICKS=true, tick data is sourced from a separate demo connection
+    to prevent broker manipulation of live data.
+
+    Returns:
+        'demo' if demo ticks are enabled, 'live' otherwise
+    """
+    return 'demo' if USE_DEMO_TICKS else 'live'
 
 
 def load_streaming_config() -> Dict:

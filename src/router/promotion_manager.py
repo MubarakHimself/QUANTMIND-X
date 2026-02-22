@@ -1,7 +1,7 @@
 """
 PromotionManager and PerformanceTracker
 
-Implements the Paper->Demo->Live promotion workflow per spec.
+Implements the Paper->Live promotion workflow per spec.
 
 PromotionManager:
 - Evaluates promotion criteria for bots
@@ -15,12 +15,10 @@ PerformanceTracker:
 - Updates bot manifests with stats
 
 Promotion Criteria (per spec):
-- PAPER->DEMO: 30+ days, Sharpe > 1.5, Win Rate > 55%
-- DEMO->LIVE: 30+ days, Sharpe > 1.5, Win Rate > 55%, Max DD < 10%
+- PAPER->LIVE: 30+ days, Sharpe > 1.5, Win Rate > 55%, Max DD < 10%
 
 Capital Scaling (per spec):
 - PAPER: Virtual capital (no real money)
-- DEMO: $1,000 starting capital (demo account)
 - LIVE: Scaled based on performance (starting at $1,000, max $10,000)
 """
 
@@ -39,27 +37,20 @@ logger = logging.getLogger(__name__)
 
 # Promotion thresholds per spec
 PROMOTION_THRESHOLDS = {
-    "paper_to_demo": {
-        "min_trading_days": 30,
-        "min_sharpe_ratio": 1.5,
-        "min_win_rate": 0.55,
-        "min_total_trades": 50,  # Minimum sample size
-    },
-    "demo_to_live": {
+    "paper_to_live": {
         "min_trading_days": 30,
         "min_sharpe_ratio": 1.5,
         "min_win_rate": 0.55,
         "max_drawdown": 0.10,  # 10% max drawdown
-        "min_total_trades": 50,
+        "min_total_trades": 50,  # Minimum sample size
     },
 }
 
 # Capital scaling rules per spec
-# NOTE: Using $1,000 for demo/live (more realistic than $50 spec requirement)
+# NOTE: Using $1,000 for live (more realistic than $50 spec requirement)
 # This provides adequate capital for proper risk management and position sizing
 CAPITAL_SCALING = {
     "paper": 0.0,  # Virtual capital
-    "demo": 1000.0,  # $1,000 demo starting capital
     "live_base": 1000.0,  # $1,000 live starting capital
     "live_max": 10000.0,  # $10,000 max capital per bot
     "live_scaling_factor": 0.5,  # Scale by 50% of profits
@@ -225,8 +216,8 @@ class PerformanceTracker:
 
 class PromotionManager:
     """
-    Manages the Paper->Demo->Live promotion workflow.
-    
+    Manages the Paper->Live promotion workflow.
+
     Responsibilities:
     - Evaluate promotion eligibility
     - Execute promotions/demotions
@@ -303,11 +294,9 @@ class PromotionManager:
     def _get_thresholds_for_mode(self, mode: "TradingMode") -> Dict[str, Any]:
         """Get promotion thresholds for the given mode."""
         from src.router.bot_manifest import TradingMode
-        
+
         if mode == TradingMode.PAPER:
-            return PROMOTION_THRESHOLDS["paper_to_demo"]
-        elif mode == TradingMode.DEMO:
-            return PROMOTION_THRESHOLDS["demo_to_live"]
+            return PROMOTION_THRESHOLDS["paper_to_live"]
         else:
             return {}  # No thresholds for LIVE (already at max)
     
@@ -418,32 +407,29 @@ class PromotionManager:
     def _calculate_capital_for_mode(self, bot: "BotManifest", mode: "TradingMode") -> float:
         """
         Calculate capital allocation for a bot in a specific mode.
-        
+
         Capital Scaling Rules:
         - PAPER: $0 (virtual)
-        - DEMO: $1,000 (demo account)
         - LIVE: Base $1,000, scaled by performance up to $10,000
         """
         from src.router.bot_manifest import TradingMode
-        
+
         if mode == TradingMode.PAPER:
             return CAPITAL_SCALING["paper"]
-        elif mode == TradingMode.DEMO:
-            return CAPITAL_SCALING["demo"]
         elif mode == TradingMode.LIVE:
             # Base capital
             base = CAPITAL_SCALING["live_base"]
             max_cap = CAPITAL_SCALING["live_max"]
             scaling = CAPITAL_SCALING["live_scaling_factor"]
-            
-            # Scale based on demo performance
-            if bot.demo_stats and bot.demo_stats.total_pnl > 0:
-                # Add 50% of demo profits to base capital
-                scaled = base + (bot.demo_stats.total_pnl * scaling)
+
+            # Scale based on paper performance
+            if bot.paper_stats and bot.paper_stats.total_pnl > 0:
+                # Add 50% of paper profits to base capital
+                scaled = base + (bot.paper_stats.total_pnl * scaling)
                 return min(scaled, max_cap)
-            
+
             return base
-        
+
         return 0.0
     
     def run_daily_promotion_check(self) -> List[PromotionResult]:

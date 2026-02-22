@@ -7,6 +7,8 @@
  * **Phase 7.1 - Claude Code Agent Client**
  */
 
+import { AGENT_CONFIG } from '../config/api';
+
 // TypeScript interfaces for agent communication
 
 export interface AgentMessage {
