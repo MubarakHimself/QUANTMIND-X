@@ -92,6 +92,7 @@ artifacts/
 agent-os/
 .overstory/
 .mulch/
+agent-workshop/
 
 # Development Summary Files
 *_SUMMARY.md
@@ -117,12 +118,32 @@ data/
 *.sqlite3
 *.duckdb
 *.db-journal
+*.rvf
+
+# Workspaces (agent tasks/results)
+workspaces/
+
+# Test files
+*-test.txt
+test.txt
+copilot-test.txt
+ui-test.txt
+
+# Reference repositories
+hummingbot-repo/
+feature-server/
+
+# Beads (issue tracking)
+.beads/
+
+# Scripts generated content
+scripts/articles/
 
 # ============================================================
 # BINARY & LARGE FILES
 # ============================================================
-# PDFs - allowing specific PDFs for documentation
-# *.pdf
+# PDFs
+*.pdf
 
 # Images
 *.png
@@ -206,26 +227,23 @@ screenshots/
 *_FIX.md
 *_ANALYSIS.md
 *_PROPOSAL.md
-*_PLAN*.md
 *IMPLEMENTATION*.md
-*SUMMARY.md
-*CHANGES.md
 SETUP.md
 SYNTAX_*.md
 VERIFICATION_*.md
 
 # Task/Plan directories
 plans/
-**/tasks.md
 TASK_GROUP*.md
-
-# Component-level dev notes (not main READMEs)
-**/components/*.README.md
-**/lib/agents/*.md
-**/AGENTS.md
 
 # Docker dev summaries
 docker/**/DOCKER_SETUP_*.md
+
+# Keep documentation files
+!docs/
+!**/README.md
+!**/CLAUDE.md
+!**/ARCHITECTURE.md
 
 # ============================================================
 # COVERAGE & TEST REPORTS

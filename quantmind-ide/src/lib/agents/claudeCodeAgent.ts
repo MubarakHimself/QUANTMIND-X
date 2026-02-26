@@ -75,6 +75,22 @@ export interface WebSocketEvent {
   data?: any;
 }
 
+// SSE event types for SDK streaming
+export type SDKEventType = 'started' | 'text' | 'tool_use' | 'tool_result' | 'completed' | 'error';
+
+export interface SDKStreamEvent {
+  type: SDKEventType;
+  agent_id: string;
+  session_id?: string;
+  timestamp?: string;
+  delta?: string;
+  tool_name?: string;
+  arguments?: Record<string, any>;
+  result?: any;
+  output?: string;
+  error?: string;
+}
+
 // Progress data for streaming
 export interface ProgressData {
   output_delta: string;
@@ -88,11 +104,22 @@ export class AgentClient {
   private baseUrl: string;
   private wsBaseUrl: string;
 
-  constructor(baseUrl: string = '/api/v2/agents') {
-    this.baseUrl = baseUrl;
-    // Determine WebSocket URL based on current location
-    const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    this.wsBaseUrl = `${protocol}//${typeof window !== 'undefined' ? window.location.host : 'localhost:8000'}${baseUrl}`;
+  constructor(baseUrl?: string) {
+    // Use provided URL, or fallback to AGENT_CONFIG, then to default
+    this.baseUrl = baseUrl || AGENT_CONFIG.AGENT_URL;
+
+    // Determine WebSocket URL based on the HTTP base URL
+    // If baseUrl is relative (starts with /), use current host
+    // If baseUrl is absolute, derive WebSocket URL from it
+    if (this.baseUrl.startsWith('http://') || this.baseUrl.startsWith('https://')) {
+      // Absolute URL - convert to WebSocket
+      const wsProtocol = this.baseUrl.startsWith('https://') ? 'wss://' : 'ws://';
+      this.wsBaseUrl = this.baseUrl.replace(/^https?:\/\//, wsProtocol);
+    } else {
+      // Relative URL - use current host
+      const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      this.wsBaseUrl = `${protocol}//${typeof window !== 'undefined' ? window.location.host : 'localhost:8000'}${this.baseUrl}`;
+    }
   }
 
   /**
@@ -272,6 +299,63 @@ export class AgentClient {
       }
     } finally {
       ws.close();
+    }
+  }
+
+  /**
+   * Stream result via Server-Sent Events (SSE)
+   * Yields SDK events as they occur
+   */
+  async *streamSSE(
+    agentId: string,
+    messages: AgentMessage[],
+    context?: AgentContext
+  ): AsyncGenerator<SDKStreamEvent> {
+    const request: RunAgentRequest = {
+      messages,
+      context: context || {},
+      session_id: this.getSessionId(),
+    };
+
+    const response = await fetch(`${this.baseUrl}/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agent_id: agentId,
+        message: messages[messages.length - 1]?.content,
+        history: messages.slice(0, -1),
+        session_id: this.getSessionId(),
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Stream failed: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const text = decoder.decode(value);
+      const lines = text.split('\n');
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const event = JSON.parse(line.slice(6)) as SDKStreamEvent;
+            yield event;
+          } catch (e) {
+            console.warn('Failed to parse SSE event:', line);
+          }
+        }
+      }
     }
   }
 

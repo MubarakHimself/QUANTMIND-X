@@ -1,11 +1,32 @@
 {
   "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/mubarkahimself/Desktop/QUANTMINDX"],
+      "description": "File system access for EA code, strategies, and workspaces"
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      },
+      "description": "GitHub integration for EA sync and version control"
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
+      },
+      "description": "MQL5 documentation lookup"
+    },
     "mt5-compiler": {
       "name": "MT5 Compiler",
       "url": "local://mt5-compiler",
       "type": "mt5_compiler",
       "enabled": true,
-      "description": "MQL5 code compilation",
+      "description": "MQL5 code compilation (requires MT5 installation)",
       "tools": ["compile_mql5_code", "validate_mql5_syntax", "get_compilation_errors"],
       "config": {
         "mt5_path": "/MT5",
@@ -15,49 +36,19 @@
     },
     "backtest-server": {
       "name": "Backtest MCP",
-      "url": "http://backtest-server:8081",
+      "url": "http://localhost:8081",
       "type": "backtest",
       "enabled": true,
       "description": "Strategy backtesting engine",
-      "tools": ["run_backtest", "get_backtest_status", "get_backtest_results", "compare_backtests"],
+      "tools": ["run_backtest", "get_backtest_status", "get_backtest_results"],
       "config": {
         "max_concurrent": 3,
-        "default_config": {
-          "symbol": "EURUSD",
-          "timeframe": "H1",
-          "initial_deposit": 10000
-        },
         "timeout": 300
-      }
-    },
-    "context7": {
-      "name": "Context7",
-      "url": "https://context7.com/websites/mql5_en",
-      "type": "context7",
-      "enabled": true,
-      "description": "MQL5 documentation retrieval",
-      "tools": ["get_mql5_documentation", "get_mql5_examples"],
-      "config": {
-        "cache_ttl": 3600,
-        "max_results": 10,
-        "timeout": 30
-      }
-    },
-    "pageindex-books": {
-      "name": "PageIndex Books",
-      "url": "http://pageindex-books:3001",
-      "type": "pageindex",
-      "enabled": true,
-      "description": "MQL5 books and documentation search",
-      "tools": ["search_books", "get_book_section"],
-      "config": {
-        "namespace": "books",
-        "timeout": 30
       }
     }
   },
-  "defaultServer": "mt5-compiler",
-  "fallbackOrder": ["mt5-compiler", "context7", "pageindex-books"],
+  "defaultServer": "filesystem",
+  "fallbackOrder": ["filesystem", "github", "context7"],
   "healthCheck": {
     "interval": 60,
     "timeout": 10,

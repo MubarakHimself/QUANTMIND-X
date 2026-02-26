@@ -12,9 +12,9 @@ from dataclasses import dataclass, field
 from typing import Dict, Any, Callable, Optional, List
 from pathlib import Path
 
-# Base paths
-WORKSPACES_DIR = Path(os.getenv("WORKSPACES_DIR", "/app/workspaces"))
-CONFIG_DIR = Path(os.getenv("CONFIG_DIR", "/app/config"))
+# Base paths - default to local development path
+WORKSPACES_DIR = Path(os.getenv("WORKSPACES_DIR", str(Path(__file__).parent.parent.parent / "workspaces")))
+CONFIG_DIR = Path(os.getenv("CONFIG_DIR", str(Path(__file__).parent.parent.parent / "config")))
 MCP_CONFIG_DIR = CONFIG_DIR / "mcp"
 
 

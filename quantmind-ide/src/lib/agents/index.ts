@@ -1,24 +1,4 @@
-// Legacy exports (deprecated - will be removed in future version)
-// These use LangChain/LangGraph and are maintained for backward compatibility
-export {
-  agentManager,
-  AgentManager,
-  type AgentState,
-  type AgentConfig,
-  type AIProvider,
-  PROVIDER_CONFIGS,
-  getProviderForAgent,
-  // Streaming support (new)
-  streamingAgentStore,
-  activeStreamingTask,
-  isAgentStreaming,
-  streamingError,
-  type StreamingAgentState
-} from './agentManager';
-export { memoryManager, HybridMemoryManager } from './memoryManager';
-export { createModel, createQuantMindXAgent, createAgentManager, createQuantMindXTools, MultiProviderAgentManager, type ProviderConfig } from './langchainAgent';
-
-// V2 Claude Agent Client (new)
+// Claude Code Native Agent Client
 export {
   AgentClient,
   getAgentClient,
@@ -36,7 +16,7 @@ export {
   type ProgressData,
 } from './claudeCodeAgent';
 
-// Agent Stream Store (new)
+// Agent Stream Store
 export {
   agentStreamStore,
   activeStreams,
@@ -59,6 +39,6 @@ export {
   type SkillSchema,
   type SkillResult,
   type SkillExample,
-  type SkillContext
+  type SkillContext,
+  type AgentType
 } from './skills';
-

@@ -15,6 +15,10 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.websockets import WebSocket
 
+# Load environment variables from .env file FIRST
+from dotenv import load_dotenv
+load_dotenv()  # Load .env before any other imports that read env vars
+
 # Configure logging with JSON file handler for Promtail/Loki
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("quantmind.server")
@@ -48,7 +52,6 @@ try:
     from src.api.router_endpoints import router as router_router
     from src.api.journal_endpoints import router as journal_router
     from src.api.session_endpoints import router as session_router
-    from src.api.paper_trading_endpoints import router as paper_trading_router
     from src.api.mcp_endpoints import router as mcp_router
     from src.api.agent_queue_endpoints import router as agent_queue_router
     from src.api.workflow_endpoints import router as workflow_router
@@ -65,12 +68,22 @@ try:
     from src.api.version_endpoints import router as version_router
     from src.api.demo_mode_endpoints import router as demo_mode_router
     from src.api.claude_agent_endpoints import router as claude_agent_router
+    from src.api.agent_tools import router as agent_tools_router
+    from src.api.memory_endpoints import router as memory_router
 except ImportError as e:
     logger.error(f"Import Error: {e}")
     # Fallback/Debug info
     import traceback
     traceback.print_exc()
     sys.exit(1)
+
+# Optional MT5-dependent imports (Linux compatibility)
+paper_trading_router = None
+try:
+    from src.api.paper_trading_endpoints import router as paper_trading_router
+    logger.info("Paper trading endpoints loaded")
+except ImportError as e:
+    logger.warning(f"Paper trading endpoints not available (MT5 required): {e}")
 
 # Create main app
 app = create_ide_api_app()
@@ -141,7 +154,8 @@ app.include_router(trd_router)
 app.include_router(router_router)
 app.include_router(journal_router)
 app.include_router(session_router)
-app.include_router(paper_trading_router)
+if paper_trading_router:
+    app.include_router(paper_trading_router)
 app.include_router(mcp_router)
 app.include_router(agent_queue_router)
 app.include_router(workflow_router)
@@ -157,6 +171,8 @@ app.include_router(agent_management_router)
 app.include_router(version_router)
 app.include_router(demo_mode_router)
 app.include_router(claude_agent_router)
+app.include_router(agent_tools_router)
+app.include_router(memory_router)
 
 # Mount Monte Carlo WebSocket endpoint
 @app.websocket("/api/monte-carlo/ws")
@@ -256,7 +272,7 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"Could not start market scanner scheduler: {e}")
     
-    logger.info("Endpoints mounted: /api/ide, /api/chat, /api/analytics, /api/settings, /api/trd, /api/router, /api/journal, /api/sessions, /api/v1/backtest, /api/paper-trading, /api/mcp, /api/agents, /api/workflows, /api/kill-switch, /api/hmm, /api/metrics, /api/brokers, /api/eas, /api/virtual-accounts, /health")
+    logger.info("Endpoints mounted: /api/ide, /api/chat, /api/analytics, /api/settings, /api/trd, /api/router, /api/journal, /api/sessions, /api/v1/backtest, /api/paper-trading, /api/mcp, /api/agents, /api/workflows, /api/kill-switch, /api/hmm, /api/metrics, /api/brokers, /api/eas, /api/virtual-accounts, /api/agent-tools, /health")
 
     # Start metrics WebSocket broadcast task
     try:

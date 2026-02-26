@@ -507,16 +507,23 @@ async def _register_default_handlers(manager: AgentQueueManager):
         """Handle copilot tasks by invoking the agent."""
         try:
             from src.agents.copilot_v2 import compile_copilot_graph
-            from langchain_core.messages import HumanMessage
 
             graph = compile_copilot_graph(use_tool_node=True)
             message = task.input_data.get("message", task.name)
 
+            # Use dict format instead of LangChain HumanMessage for Claude native mode
             result = graph.invoke({
-                "messages": [HumanMessage(content=message)]
+                "messages": [{"role": "user", "content": message}]
             })
 
-            return {"result": str(result.get("messages", [])[-1])}
+            # Extract result from new format
+            messages = result.get("messages", [])
+            if messages:
+                last_msg = messages[-1]
+                if isinstance(last_msg, dict):
+                    return {"result": last_msg.get("content", str(last_msg))}
+                return {"result": str(last_msg)}
+            return {"result": result.get("output", "No response")}
         except ImportError:
             return {"result": f"Copilot handler: {task.name}"}
 

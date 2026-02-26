@@ -1,32 +1,47 @@
 {
   "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/mubarkahimself/Desktop/QUANTMINDX"],
+      "description": "File system access for project management"
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      },
+      "description": "GitHub integration"
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp",
+      "description": "Documentation lookup"
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "description": "Task decomposition and step-by-step reasoning"
+    },
     "pageindex-articles": {
       "name": "PageIndex Articles",
-      "url": "http://pageindex-articles:3000",
+      "url": "http://localhost:3000",
       "type": "pageindex",
       "enabled": true,
       "description": "Search indexed trading articles",
-      "tools": ["search_articles", "get_article"],
-      "config": {
-        "namespace": "articles",
-        "timeout": 30
-      }
+      "tools": ["search_articles", "get_article"]
     },
-    "sequential-thinking": {
-      "name": "Sequential Thinking",
-      "url": "local://sequential-thinking",
-      "type": "sequential_thinking",
-      "enabled": true,
-      "description": "Task decomposition and step-by-step reasoning",
-      "tools": ["sequential_thinking", "analyze_errors", "decompose_task"],
-      "config": {
-        "max_steps": 15,
-        "timeout": 60
-      }
+    "obsidian": {
+      "command": "npx",
+      "args": ["-y", "@smithery/mcp-obsidian"],
+      "env": {
+        "OBSIDIAN_VAULT_PATH": "/home/mubarkahimself/vault"
+      },
+      "description": "Obsidian vault integration for notes and knowledge management"
     }
   },
-  "defaultServer": "sequential-thinking",
-  "fallbackOrder": ["sequential-thinking", "pageindex-articles"],
+  "defaultServer": "filesystem",
+  "fallbackOrder": ["filesystem", "github", "sequential-thinking", "context7", "obsidian"],
   "healthCheck": {
     "interval": 60,
     "timeout": 10,

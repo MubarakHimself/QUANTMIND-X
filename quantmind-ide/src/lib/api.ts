@@ -3,7 +3,9 @@
  * Centralized API calls for all UI components
  */
 
-const API_BASE = 'http://localhost:8000/api';
+import { API_CONFIG } from './config/api';
+
+const API_BASE = `${API_CONFIG.API_URL}/api`;
 
 /**
  * Generic fetch wrapper with error handling
@@ -18,7 +20,14 @@ async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> 
     });
 
     if (!response.ok) {
-        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        let errorMessage = `API Error: ${response.status} ${response.statusText}`;
+        try {
+            const errorData = await response.json();
+            errorMessage = errorData.detail || errorData.message || errorMessage;
+        } catch {
+            // If JSON parsing fails, use the default error message
+        }
+        throw new Error(errorMessage);
     }
 
     return response.json();
@@ -48,6 +57,47 @@ export interface StrategyDetail {
     trd?: { files: string[] };
     ea?: { files: string[] };
     backtests: Array<{ name: string; path: string; mode: string }>;
+}
+
+// =============================================================================
+// Article Endpoints
+// =============================================================================
+
+export interface Article {
+    id: string;
+    name: string;
+    path: string;
+    size_bytes: number;
+    created_at: string;
+    modified_at: string;
+}
+
+export interface ArticleResponse {
+    articles: Article[];
+}
+
+export interface ArticleContentResponse {
+    content: string;
+}
+
+export interface ArticlePreviewResponse {
+    preview: string;
+}
+
+// =============================================================================
+// Articles API Functions
+// =============================================================================
+
+export async function getArticles(): Promise<ArticleResponse> {
+    return apiFetch<ArticleResponse>('/articles');
+}
+
+export async function getArticleContent(articleId: string): Promise<ArticleContentResponse> {
+    return apiFetch<ArticleContentResponse>(`/articles/${articleId}`);
+}
+
+export async function getArticlePreview(articleId: string): Promise<ArticlePreviewResponse> {
+    return apiFetch<ArticlePreviewResponse>(`/articles/${articleId}/preview`);
 }
 
 export async function getStrategies(): Promise<StrategyFolder[]> {
@@ -277,3 +327,10 @@ export {
     createTradingClient,
     createWebSocketClient
 } from './ws-client';
+
+// =============================================================================
+// Memory API Endpoints
+// =============================================================================
+
+// Re-export all memory-related functions
+export * from './api/memory';

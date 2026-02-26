@@ -5,6 +5,8 @@ Provides centralized dependency management for factory-created agents,
 including LLM providers, tool registries, checkpointers, and metrics.
 
 **Validates: Phase 1.3 - Dependency Injection Container**
+
+DEPRECATED: LangGraph imports removed. Use ClaudeOrchestrator instead.
 """
 
 import logging
@@ -22,6 +24,23 @@ from src.agents.tool_registry import ToolRegistry, global_tool_registry
 logger = logging.getLogger(__name__)
 
 
+# Simple in-memory checkpointer replacement for LangGraph MemorySaver
+class MemorySaver:
+    """Simple in-memory state persistence."""
+    def __init__(self):
+        self._states: Dict[str, Dict[str, Any]] = {}
+
+    def save(self, thread_id: str, state: Dict[str, Any]) -> None:
+        self._states[thread_id] = state
+
+    def load(self, thread_id: str) -> Optional[Dict[str, Any]]:
+        return self._states.get(thread_id)
+
+    def close(self) -> None:
+        """Close the checkpointer."""
+        self._states.clear()
+
+
 # Import agent-specific tools
 def _get_analyst_tools() -> List[Any]:
     """Get analyst agent tools."""
@@ -36,9 +55,15 @@ def _get_quantcode_tools() -> List[Any]:
 
 
 def _get_copilot_tools() -> List[Any]:
-    """Get copilot agent tools."""
+    """Get copilot agent tools.
+
+    Note: copilot_v2 now returns tool names as strings for documentation.
+    Returns empty list since tools are handled by Claude CLI.
+    """
+    # COPILOT_TOOLS is now a list of tool names (strings) for documentation
+    # The actual tool execution is handled by Claude CLI via MCP servers
     from src.agents.copilot_v2 import COPILOT_TOOLS
-    return COPILOT_TOOLS
+    return []  # Return empty list as tools are now handled by Claude orchestrator
 
 
 # Tool loader mapping
@@ -228,35 +253,34 @@ class DependencyContainer:
     def _create_checkpointer(self, config: AgentConfig) -> Any:
         """
         Create a checkpointer based on config.
-        
+
         Args:
             config: Agent configuration
-            
+
         Returns:
             Checkpointer instance
         """
-        from langgraph.checkpoint.memory import MemorySaver
-        
+        # Use local MemorySaver instead of langgraph
         checkpointer_type = config.checkpointer_type
-        
+
         if checkpointer_type == "memory":
             return MemorySaver()
-        
+
         elif checkpointer_type == "postgres":
             return self._create_postgres_checkpointer(config)
-        
+
         elif checkpointer_type == "redis":
             return self._create_redis_checkpointer(config)
-        
+
         # Default to memory
         return MemorySaver()
-    
+
     def _create_postgres_checkpointer(self, config: AgentConfig) -> Any:
-        """Create a Postgres checkpointer."""
+        """Create a Postgres-backed checkpointer."""
         try:
-            from langgraph.checkpoint.postgres import PostgresSaver
             import psycopg2
-            
+            from typing import Optional
+
             # Get connection details from config or environment
             conn_config = config.checkpointer_config or {}
             db_url = conn_config.get(
@@ -267,21 +291,58 @@ class DependencyContainer:
                 f"{config.custom.get('db_port', 5432)}/"
                 f"{config.custom.get('db_name', 'quantmind')}"
             )
-            
-            # Create connection pool
+
+            # Create connection and return a simple wrapper
             conn = psycopg2.connect(db_url)
-            return PostgresSaver(conn)
-            
+
+            class PostgresCheckpointer:
+                """Simple Postgres-backed state persistence."""
+                def __init__(self, connection):
+                    self._conn = connection
+                    self._cursor = connection.cursor()
+                    self._cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS agent_states (
+                            thread_id TEXT PRIMARY KEY,
+                            state JSONB
+                        )
+                    """)
+                    connection.commit()
+
+                def save(self, thread_id: str, state: Dict[str, Any]) -> None:
+                    import json
+                    self._cursor.execute(
+                        "INSERT INTO agent_states (thread_id, state) VALUES (%s, %s) "
+                        "ON CONFLICT (thread_id) DO UPDATE SET state = %s",
+                        (thread_id, json.dumps(state), json.dumps(state))
+                    )
+                    self._conn.commit()
+
+                def load(self, thread_id: str) -> Optional[Dict[str, Any]]:
+                    import json
+                    self._cursor.execute(
+                        "SELECT state FROM agent_states WHERE thread_id = %s",
+                        (thread_id,)
+                    )
+                    row = self._cursor.fetchone()
+                    return json.loads(row[0]) if row else None
+
+                def close(self) -> None:
+                    self._cursor.close()
+                    self._conn.close()
+
+            return PostgresCheckpointer(conn)
+
         except Exception as e:
             logger.warning(f"Failed to create Postgres checkpointer: {e}, using MemorySaver")
             return MemorySaver()
-    
+
     def _create_redis_checkpointer(self, config: AgentConfig) -> Any:
-        """Create a Redis checkpointer."""
+        """Create a Redis-backed checkpointer."""
         try:
-            from langgraph.checkpoint.redis import RedisSaver
             import redis
-            
+            import json
+            from typing import Optional
+
             # Get connection details from config or environment
             conn_config = config.checkpointer_config or {}
             redis_url = conn_config.get(
@@ -289,11 +350,27 @@ class DependencyContainer:
                 f"redis://{config.custom.get('redis_host', 'localhost')}:"
                 f"{config.custom.get('redis_port', 6379)}/0"
             )
-            
-            # Create Redis client
+
+            # Create Redis client and return a simple wrapper
             client = redis.from_url(redis_url)
-            return RedisSaver(client)
-            
+
+            class RedisCheckpointer:
+                """Simple Redis-backed state persistence."""
+                def __init__(self, redis_client):
+                    self._client = redis_client
+
+                def save(self, thread_id: str, state: Dict[str, Any]) -> None:
+                    self._client.set(f"agent_state:{thread_id}", json.dumps(state))
+
+                def load(self, thread_id: str) -> Optional[Dict[str, Any]]:
+                    data = self._client.get(f"agent_state:{thread_id}")
+                    return json.loads(data) if data else None
+
+                def close(self) -> None:
+                    self._client.close()
+
+            return RedisCheckpointer(client)
+
         except Exception as e:
             logger.warning(f"Failed to create Redis checkpointer: {e}, using MemorySaver")
             return MemorySaver()

@@ -476,8 +476,8 @@ const generateOptimizationReport: Skill = {
           bestSharpe: 2.15,
           bestParameters: { 'FastMAPeriod': 12, 'SlowMAPeriod': 26 }
         },
-        topResults: [...],
-        parameterSensitivity: {...},
+        topResults: [],
+        parameterSensitivity: {},
         recommendations: [
           'Fast MA between 10-14 performs best',
           'Avoid Slow MA > 30 (diminishing returns)'

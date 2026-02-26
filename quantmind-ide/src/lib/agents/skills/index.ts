@@ -14,10 +14,18 @@
  */
 
 import { z } from 'zod';
-import type { AgentType } from '../langchainAgent';
 import { copilotSkills } from './copilotSkills';
 import { analystSkills } from './analystSkills';
 import { quantcodeSkills } from './quantcodeSkills';
+
+// ============================================================================
+// AGENT TYPES
+// ============================================================================
+
+/**
+ * Supported agent types in the QuantMindX system
+ */
+export type AgentType = 'copilot' | 'quantcode' | 'analyst';
 
 // ============================================================================
 // SKILL TYPES
@@ -78,7 +86,7 @@ export interface Skill {
  */
 export interface SkillExample {
   input: Record<string, any>;
-  output: string;
+  output: string | Record<string, any>;
   description?: string;
 }
 
@@ -87,6 +95,7 @@ export interface SkillExample {
  */
 export interface SkillContext {
   agentType: AgentType;
+  agent?: AgentType;
   sessionId?: string;
   metadata?: Record<string, any>;
 }
@@ -293,7 +302,7 @@ export function getSkillsAsTools(agent: AgentType) {
     description: skill.description,
     schema: skill.schema,
     func: async (params: any) => {
-      const result = await executeSkill(skill.id, params, { agent });
+      const result = await executeSkill(skill.id, params, { agentType: agent, agent });
       if (result.success) {
         return JSON.stringify(result.data);
       } else {
@@ -335,4 +344,3 @@ initializeSkills();
 // ============================================================================
 
 export { copilotSkills, analystSkills, quantcodeSkills };
-export type { AgentType } from '../langchainAgent';

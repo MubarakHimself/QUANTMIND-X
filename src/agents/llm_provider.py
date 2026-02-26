@@ -8,6 +8,9 @@ Provider Priority:
 1. OpenRouter (most flexible, best routing)
 2. Z.ai (cost-effective, fast)
 3. Anthropic direct (fallback for Claude models)
+
+DEPRECATED: LangChain imports removed. Use ClaudeOrchestrator instead.
+For backward compatibility, this module provides simple stubs.
 """
 
 import os
@@ -97,6 +100,59 @@ def get_available_providers() -> List[ProviderType]:
     return [p for p in ProviderType if has_api_key(p)]
 
 
+class SimpleLLM:
+    """
+    Simple LLM wrapper that provides LangChain-like interface.
+
+    This is a stub for backward compatibility. Use ClaudeOrchestrator
+    for actual LLM operations.
+    """
+
+    def __init__(
+        self,
+        model: str,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+        base_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        default_headers: Optional[Dict[str, str]] = None,
+    ):
+        """Initialize the LLM wrapper."""
+        self.model = model
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.base_url = base_url
+        self.api_key = api_key
+        self.default_headers = default_headers or {}
+        self._tools = []
+
+    def bind_tools(self, tools: List[Any]) -> "SimpleLLM":
+        """Bind tools to the LLM."""
+        self._tools = tools
+        return self
+
+    def invoke(self, messages: List[Any]) -> Any:
+        """
+        Invoke the LLM with messages.
+
+        Note: This is a stub. Use ClaudeOrchestrator for actual LLM calls.
+        """
+        logger.warning(
+            "SimpleLLM.invoke() is a stub. Use ClaudeOrchestrator for actual LLM operations."
+        )
+
+        # Return a mock response
+        class MockResponse:
+            content = "LLM stub response - use ClaudeOrchestrator for actual operations"
+            tool_calls = []
+
+        return MockResponse()
+
+    async def ainvoke(self, messages: List[Any]) -> Any:
+        """Async invoke the LLM."""
+        return self.invoke(messages)
+
+
 def get_llm_for_agent(
     agent_type: str,
     tools: List[Any] = None,
@@ -105,16 +161,16 @@ def get_llm_for_agent(
     """
     Get configured LLM for a specific agent type.
 
+    DEPRECATED: This returns a SimpleLLM stub. Use ClaudeOrchestrator instead.
+
     Args:
         agent_type: Agent type (copilot, analyst, quantcode)
         tools: List of tools to bind to the LLM
         use_fallback: Force use of fallback model
 
     Returns:
-        Configured LLM instance with tools bound if provided
+        SimpleLLM instance (stub for backward compatibility)
     """
-    from langchain_openai import ChatOpenAI
-
     config = AGENT_MODELS.get(agent_type)
     if not config:
         logger.warning(f"Unknown agent type: {agent_type}, using default config")
@@ -150,16 +206,17 @@ def get_llm_for_agent(
             model_id = "gpt-4"
             provider = ProviderType.OPENAI
         else:
-            raise ValueError(
+            logger.warning(
                 f"No API keys available for agent {agent_type}. "
-                f"Set one of: OPENROUTER_API_KEY, ZHIPU_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY"
+                f"Using stub LLM. Set one of: OPENROUTER_API_KEY, ZHIPU_API_KEY, "
+                f"ANTHROPIC_API_KEY, or OPENAI_API_KEY"
             )
 
     # Get base URL and API key
     base_url = PROVIDER_BASE_URLS.get(provider)
     api_key = get_api_key(provider)
 
-    # For OpenRouter, we need to set extra headers
+    # For OpenRouter, set extra headers
     extra_headers = {}
     if provider == ProviderType.OPENROUTER:
         extra_headers = {
@@ -167,28 +224,22 @@ def get_llm_for_agent(
             "X-Title": "QuantMind Trading System",
         }
 
-    # Create LLM instance
-    llm_kwargs = {
-        "model": model_id,
-        "temperature": config.temperature,
-        "max_tokens": config.max_tokens,
-    }
+    # Create SimpleLLM stub
+    llm = SimpleLLM(
+        model=model_id,
+        temperature=config.temperature,
+        max_tokens=config.max_tokens,
+        base_url=base_url,
+        api_key=api_key,
+        default_headers=extra_headers,
+    )
 
-    if provider != ProviderType.ANTHROPIC:
-        # Anthropic uses different SDK, others use OpenAI-compatible
-        llm_kwargs["base_url"] = base_url
-        llm_kwargs["api_key"] = api_key
-        if extra_headers:
-            llm_kwargs["default_headers"] = extra_headers
-
-    llm = ChatOpenAI(**llm_kwargs)
-
-    logger.info(f"Created LLM for {agent_type}: {model_id} via {provider.value}")
+    logger.info(f"Created SimpleLLM stub for {agent_type}: {model_id} via {provider.value}")
 
     # Bind tools if provided
     if tools:
         llm = llm.bind_tools(tools)
-        logger.debug(f"Bound {len(tools)} tools to LLM")
+        logger.debug(f"Bound {len(tools)} tools to LLM stub")
 
     return llm
 

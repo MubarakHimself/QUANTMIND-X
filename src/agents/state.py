@@ -1,27 +1,58 @@
 """
-Agent State Management for LangGraph
+Agent State Management
 
 Defines the state structure for all agents in the system.
+Uses simple dataclasses instead of LangGraph for cleaner architecture.
 
 **Validates: Property 16: Agent State Persistence**
+
+DEPRECATED: LangGraph imports removed. Use ClaudeOrchestrator instead.
 """
 
-from typing import TypedDict, Annotated, List, Dict, Any, Optional, Tuple
-from langchain_core.messages import BaseMessage
-from langgraph.graph.message import add_messages
+from typing import TypedDict, List, Dict, Any, Optional, Tuple
+from dataclasses import dataclass, field
 from datetime import datetime
+
+
+# Simple message type for portability
+@dataclass
+class BaseMessage:
+    """Base message class for agent communication."""
+    content: str
+    role: str = "user"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"content": self.content, "role": self.role}
+
+
+@dataclass
+class HumanMessage(BaseMessage):
+    """Human message."""
+    role: str = "user"
+
+
+@dataclass
+class AIMessage(BaseMessage):
+    """AI message."""
+    role: str = "assistant"
+
+
+class MessagesState(TypedDict):
+    """
+    Simple messages state for basic agent workflows.
+
+    Contains only the messages field.
+    """
+    messages: List[Dict[str, Any]]
 
 
 class AgentState(TypedDict):
     """
-    LangGraph agent state with message accumulation.
-    
+    Agent state with message history.
+
     **Validates: Requirements 8.1**
-    
-    The add_messages annotation ensures messages are accumulated rather than replaced,
-    allowing agents to maintain conversation history across state updates.
     """
-    messages: Annotated[List[BaseMessage], add_messages]
+    messages: List[Dict[str, Any]]
     current_task: Optional[str]
     workspace_path: str
     context: Dict[str, Any]

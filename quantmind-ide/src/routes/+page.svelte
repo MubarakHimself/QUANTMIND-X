@@ -2,7 +2,6 @@
   import TopBar from "$lib/components/TopBar.svelte";
   import ActivityBar from "$lib/components/ActivityBar.svelte";
   import MainContent from "$lib/components/MainContent.svelte";
-  import CopilotPanel from "$lib/components/CopilotPanel.svelte";
   import BottomPanel from "$lib/components/BottomPanel.svelte";
 
   let activeView = "live";
@@ -52,7 +51,10 @@
 
 <div class="ide-layout">
   <TopBar on:openSettings={handleOpenSettings} />
-  <ActivityBar bind:activeView on:viewChange={handleViewChange} />
+  <ActivityBar
+    bind:activeView
+    on:viewChange={handleViewChange}
+  />
   <MainContent
     {activeView}
     {openFiles}
@@ -61,7 +63,6 @@
     on:closeTab={handleCloseTab}
     on:viewChange={handleViewChange}
   />
-  <CopilotPanel />
   <BottomPanel />
 </div>
 
@@ -69,10 +70,10 @@
   .ide-layout {
     display: grid;
     grid-template-areas:
-      "topbar topbar topbar topbar"
-      "activity main agents agents"
-      "activity bottom bottom bottom";
-    grid-template-columns: var(--sidebar-width) 1fr 380px;
+      "topbar topbar"
+      "activity main"
+      "activity bottom";
+    grid-template-columns: var(--sidebar-width) 1fr;
     grid-template-rows: var(--header-height) 1fr auto;
     height: 100vh;
     width: 100vw;

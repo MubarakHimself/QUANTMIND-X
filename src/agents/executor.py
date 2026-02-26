@@ -1,7 +1,8 @@
 """
 Executor Agent Workflow
 
-Implements the Executor agent using LangGraph for trade execution and position management.
+Implements the Executor agent using simple workflow logic for trade execution and position management.
+Replaces LangGraph with simple state transitions.
 
 The Executor agent is responsible for:
 - Validating trade proposals against risk parameters
@@ -10,17 +11,34 @@ The Executor agent is responsible for:
 - Coordinating with the Socket Server for HFT execution
 
 **Validates: Requirements 8.6**
+
+DEPRECATED: LangGraph imports removed. Use ClaudeOrchestrator instead.
 """
 
 import logging
-from typing import Dict, Any
-
-from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.memory import MemorySaver
+from typing import Dict, Any, Optional, List
+from dataclasses import dataclass, field
 
 from src.agents.state import ExecutorState
 
 logger = logging.getLogger(__name__)
+
+
+# Simple in-memory state store
+class MemorySaver:
+    """Simple in-memory state persistence."""
+    def __init__(self):
+        self._states: Dict[str, Dict[str, Any]] = {}
+
+    def save(self, thread_id: str, state: Dict[str, Any]) -> None:
+        self._states[thread_id] = state
+
+    def load(self, thread_id: str) -> Optional[Dict[str, Any]]:
+        return self._states.get(thread_id)
+
+
+# Simple workflow state constants
+END = "__END__"
 
 
 # ============================================================================
@@ -99,56 +117,94 @@ def should_close(state: ExecutorState) -> str:
 
 
 # ============================================================================
-# Graph Construction
+# Simple Workflow Wrapper
 # ============================================================================
 
-def create_executor_graph() -> StateGraph:
-    """Create the Executor agent workflow graph."""
-    workflow = StateGraph(ExecutorState)
-    
-    # Add nodes
-    workflow.add_node("validate", validate_proposal_node)
-    workflow.add_node("execute", execute_trade_node)
-    workflow.add_node("monitor", monitor_position_node)
-    workflow.add_node("close", close_position_node)
-    
-    # Set entry point
-    workflow.set_entry_point("validate")
-    
-    # Add edges
-    workflow.add_conditional_edges(
-        "validate",
-        should_execute,
-        {
-            "execute": "execute",
-            "end": END
-        }
-    )
-    workflow.add_edge("execute", "monitor")
-    workflow.add_conditional_edges(
-        "monitor",
-        should_close,
-        {
-            "close": "close",
-            "end": END
-        }
-    )
-    workflow.add_edge("close", END)
-    
-    return workflow
+class ExecutorWorkflow:
+    """
+    Simple workflow wrapper for the Executor agent.
+
+    Replaces LangGraph StateGraph with simple sequential execution.
+    """
+
+    def __init__(self):
+        self._checkpointer = None
+
+    def compile(self, checkpointer: Optional[MemorySaver] = None) -> "ExecutorWorkflow":
+        """Compile the workflow with optional checkpointer."""
+        self._checkpointer = checkpointer
+        return self
+
+    def invoke(
+        self,
+        state: Dict[str, Any],
+        config: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Execute the workflow synchronously."""
+        thread_id = (config or {}).get("configurable", {}).get("thread_id", "default")
+
+        # Load previous state if checkpointer available
+        if self._checkpointer:
+            saved_state = self._checkpointer.load(thread_id)
+            if saved_state:
+                state = {**saved_state, **state}
+
+        try:
+            # Step 1: Validate proposal
+            validate_result = validate_proposal_node(state)
+            state.update(validate_result)
+
+            # Step 2: Check if should execute
+            next_step = should_execute(state)
+            if next_step == "execute":
+                # Step 3: Execute trade
+                execute_result = execute_trade_node(state)
+                state.update(execute_result)
+
+                # Step 4: Monitor position
+                monitor_result = monitor_position_node(state)
+                state.update(monitor_result)
+
+                # Step 5: Check if should close
+                next_step = should_close(state)
+                if next_step == "close":
+                    close_result = close_position_node(state)
+                    state.update(close_result)
+
+            # Save final state if checkpointer available
+            if self._checkpointer:
+                self._checkpointer.save(thread_id, state)
+
+            return state
+
+        except Exception as e:
+            logger.error(f"Executor workflow failed: {e}")
+            state["execution_status"] = "failed"
+            state["error"] = str(e)
+            raise
+
+    async def ainvoke(
+        self,
+        state: Dict[str, Any],
+        config: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Execute the workflow asynchronously."""
+        return self.invoke(state, config)
 
 
-def compile_executor_graph(checkpointer: MemorySaver = None) -> Any:
+def create_executor_graph() -> ExecutorWorkflow:
+    """Create the Executor agent workflow wrapper."""
+    return ExecutorWorkflow()
+
+
+def compile_executor_graph(checkpointer: MemorySaver = None) -> ExecutorWorkflow:
     """
-    Compile the Executor agent graph with optional checkpointing.
-    
-    Required by langgraph.json for agent registration.
+    Compile the Executor agent workflow with optional checkpointing.
+
+    Required for backward compatibility.
     """
-    graph = create_executor_graph()
-    
-    if checkpointer:
-        return graph.compile(checkpointer=checkpointer)
-    return graph.compile()
+    workflow = create_executor_graph()
+    return workflow.compile(checkpointer=checkpointer)
 
 
 # ============================================================================
@@ -162,29 +218,29 @@ async def run_executor_workflow(
 ) -> Dict[str, Any]:
     """
     Execute a trade proposal through the Executor agent workflow.
-    
+
     Args:
         trade_proposal: Trade proposal with symbol, volume, direction
         broker_id: Target broker for execution
         memory_namespace: Memory namespace for state persistence
-        
+
     Returns:
         Final execution state
     """
-    graph = compile_executor_graph()
-    
-    initial_state = ExecutorState(
-        messages=[],
-        current_task="execute_trade",
-        workspace_path="workspaces/executor",
-        context={"broker_id": broker_id},
-        memory_namespace=memory_namespace,
-        trade_proposal=trade_proposal,
-        execution_status="pending",
-        position_updates=[],
-        risk_approval=None,
-        broker_id=broker_id
-    )
-    
-    result = await graph.ainvoke(initial_state)
+    workflow = compile_executor_graph()
+
+    initial_state: Dict[str, Any] = {
+        "messages": [],
+        "current_task": "execute_trade",
+        "workspace_path": "workspaces/executor",
+        "context": {"broker_id": broker_id},
+        "memory_namespace": memory_namespace,
+        "trade_proposal": trade_proposal,
+        "execution_status": "pending",
+        "position_updates": [],
+        "risk_approval": None,
+        "broker_id": broker_id,
+    }
+
+    result = await workflow.ainvoke(initial_state)
     return result

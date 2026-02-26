@@ -7,23 +7,32 @@
     TestTube,
     PlayCircle,
     Settings,
-    Database,
     Server,
     FileText,
     Edit3,
     Activity,
     MonitorPlay,
     Github,
+    Wrench,
   } from "lucide-svelte";
   import { navigationStore } from "../stores/navigationStore";
 
   const dispatch = createEventDispatcher();
   let unsubscribe: (() => void) | null = null;
 
+  // Type definition for activity items
+  interface ActivityItem {
+    id: string;
+    icon: any;
+    label: string;
+    route?: string;
+  }
+
   // Left sidebar icons - clicking opens view in MAIN EDITOR
   // Removed duplicates: backtest-results, shared-assets, kill-switch, database-view, news
   // These are now accessible as sub-tabs within their parent sections
-  const activities = [
+  const activities: ActivityItem[] = [
+    { id: "workshop", icon: Wrench, label: "Workshop" },
     { id: "knowledge", icon: BookOpen, label: "Knowledge Hub" },
     { id: "assets", icon: Boxes, label: "Shared Assets & Database" },
     { id: "ea", icon: Bot, label: "EA Management" },
@@ -45,6 +54,11 @@
   function selectView(viewId: string) {
     const activity = activities.find((a) => a.id === viewId);
     if (activity) {
+      // If it has a route, navigate to it
+      if (activity.route) {
+        window.location.href = activity.route;
+        return;
+      }
       navigationStore.navigateToView(viewId, activity.label);
       dispatch("viewChange", { view: viewId });
     }
@@ -129,6 +143,7 @@
     flex: 1;
   }
 
+  .top-icons,
   .bottom-icons {
     display: flex;
     flex-direction: column;
