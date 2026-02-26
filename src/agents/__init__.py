@@ -4,7 +4,7 @@ Agent implementations for QuantMindX Unified Backend.
 Simplified version - uses Claude Code native agents.
 Legacy LangGraph agents have been removed.
 
-Includes comprehensive hooks, cron, and subagent systems.
+Includes comprehensive hooks for agent lifecycle management.
 """
 
 from src.agents.state import (
@@ -26,40 +26,56 @@ from src.agents.router import (
     MemorySaver,
 )
 
-# Hooks system (inspired by OpenClaw)
-from src.agents.hooks import (
-    HookType,
-    HookContext,
-    HookCondition,
-    HookResult,
-    HookRegistry,
-    get_global_registry as get_hook_registry,
-    register_hook,
-    execute_hooks,
-)
+# Hooks system - hook functions for agents
+try:
+    from src.agents.hooks import (
+        pre_analyst_hook,
+        post_analyst_hook,
+        pre_quantcode_hook,
+        post_quantcode_hook,
+        pre_copilot_hook,
+        post_copilot_hook,
+        pre_router_hook,
+        post_router_hook,
+        pre_executor_hook,
+        post_executor_hook,
+        pre_pinescript_hook,
+        post_pinescript_hook,
+    )
+    _HOOKS_AVAILABLE = True
+except ImportError:
+    _HOOKS_AVAILABLE = False
 
-# Cron scheduler
-from src.agents.cron import (
-    CronJob,
-    JobSchedule,
-    Scheduler,
-    get_scheduler,
-    initialize_scheduler,
-    MemoryConsolidationJob,
-    SessionCleanupJob,
-    EmbeddingSyncJob,
-    HealthCheckJob,
-)
+# Cron scheduler - optional
+try:
+    from src.agents.cron import (
+        CronJob,
+        JobSchedule,
+        Scheduler,
+        get_scheduler,
+        initialize_scheduler,
+        MemoryConsolidationJob,
+        SessionCleanupJob,
+        EmbeddingSyncJob,
+        HealthCheckJob,
+    )
+    _CRON_AVAILABLE = True
+except ImportError:
+    _CRON_AVAILABLE = False
 
-# Sub-agent spawner
-from src.agents.subagent import (
-    SubAgentConfig,
-    SubAgentStatus,
-    SubAgent,
-    AgentSpawner,
-    AgentPoolConfig,
-    get_spawner,
-)
+# Sub-agent spawner - optional
+try:
+    from src.agents.subagent import (
+        SubAgentConfig,
+        SubAgentStatus,
+        SubAgent,
+        AgentSpawner,
+        AgentPoolConfig,
+        get_spawner,
+    )
+    _SUBAGENT_AVAILABLE = True
+except ImportError:
+    _SUBAGENT_AVAILABLE = False
 
 # Placeholder functions for backward compatibility
 # These will use Claude Code native backend
@@ -122,33 +138,44 @@ __all__ = [
     "create_router_from_config",
     "RouterGraphWrapper",
     "MemorySaver",
-
-    # Hooks system
-    "HookType",
-    "HookContext",
-    "HookCondition",
-    "HookResult",
-    "HookRegistry",
-    "get_hook_registry",
-    "register_hook",
-    "execute_hooks",
-
-    # Cron scheduler
-    "CronJob",
-    "JobSchedule",
-    "Scheduler",
-    "get_scheduler",
-    "initialize_scheduler",
-    "MemoryConsolidationJob",
-    "SessionCleanupJob",
-    "EmbeddingSyncJob",
-    "HealthCheckJob",
-
-    # Sub-agent spawner
-    "SubAgentConfig",
-    "SubAgentStatus",
-    "SubAgent",
-    "AgentSpawner",
-    "AgentPoolConfig",
-    "get_spawner",
 ]
+
+# Add optional exports to __all__
+if _HOOKS_AVAILABLE:
+    __all__.extend([
+        "pre_analyst_hook",
+        "post_analyst_hook",
+        "pre_quantcode_hook",
+        "post_quantcode_hook",
+        "pre_copilot_hook",
+        "post_copilot_hook",
+        "pre_router_hook",
+        "post_router_hook",
+        "pre_executor_hook",
+        "post_executor_hook",
+        "pre_pinescript_hook",
+        "post_pinescript_hook",
+    ])
+
+if _CRON_AVAILABLE:
+    __all__.extend([
+        "CronJob",
+        "JobSchedule",
+        "Scheduler",
+        "get_scheduler",
+        "initialize_scheduler",
+        "MemoryConsolidationJob",
+        "SessionCleanupJob",
+        "EmbeddingSyncJob",
+        "HealthCheckJob",
+    ])
+
+if _SUBAGENT_AVAILABLE:
+    __all__.extend([
+        "SubAgentConfig",
+        "SubAgentStatus",
+        "SubAgent",
+        "AgentSpawner",
+        "AgentPoolConfig",
+        "get_spawner",
+    ])
