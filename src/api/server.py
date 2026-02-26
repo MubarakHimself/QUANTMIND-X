@@ -70,6 +70,7 @@ try:
     from src.api.claude_agent_endpoints import router as claude_agent_router
     from src.api.agent_tools import router as agent_tools_router
     from src.api.memory_endpoints import router as memory_router
+    from src.api.trading_floor_endpoints import router as trading_floor_router
 except ImportError as e:
     logger.error(f"Import Error: {e}")
     # Fallback/Debug info
@@ -173,6 +174,7 @@ app.include_router(demo_mode_router)
 app.include_router(claude_agent_router)
 app.include_router(agent_tools_router)
 app.include_router(memory_router)
+app.include_router(trading_floor_router)
 
 # Mount Monte Carlo WebSocket endpoint
 @app.websocket("/api/monte-carlo/ws")
