@@ -26,40 +26,69 @@ from src.agents.router import (
     MemorySaver,
 )
 
-# Hooks system (inspired by OpenClaw)
-from src.agents.hooks import (
-    HookType,
-    HookContext,
-    HookCondition,
-    HookResult,
-    HookRegistry,
-    get_global_registry as get_hook_registry,
-    register_hook,
-    execute_hooks,
-)
+# Hooks system (inspired by OpenClaw) - optional
+try:
+    from src.agents.hooks import (
+        HookType,
+        HookContext,
+        HookCondition,
+        HookResult,
+        HookRegistry,
+        get_global_registry as get_hook_registry,
+        register_hook,
+        execute_hooks,
+    )
+except ImportError:
+    HookType = None
+    HookContext = None
+    HookCondition = None
+    HookResult = None
+    HookRegistry = None
+    get_hook_registry = None
+    register_hook = None
+    execute_hooks = None
 
-# Cron scheduler
-from src.agents.cron import (
-    CronJob,
-    JobSchedule,
-    Scheduler,
-    get_scheduler,
-    initialize_scheduler,
-    MemoryConsolidationJob,
-    SessionCleanupJob,
-    EmbeddingSyncJob,
-    HealthCheckJob,
-)
+# Cron scheduler - optional
+try:
+    from src.agents.cron import (
+        CronJob,
+        JobSchedule,
+        Scheduler,
+        get_scheduler,
+        initialize_scheduler,
+        MemoryConsolidationJob,
+        SessionCleanupJob,
+        EmbeddingSyncJob,
+        HealthCheckJob,
+    )
+except ImportError:
+    CronJob = None
+    JobSchedule = None
+    Scheduler = None
+    get_scheduler = None
+    initialize_scheduler = None
+    MemoryConsolidationJob = None
+    SessionCleanupJob = None
+    EmbeddingSyncJob = None
+    HealthCheckJob = None
 
-# Sub-agent spawner
-from src.agents.subagent import (
-    SubAgentConfig,
-    SubAgentStatus,
-    SubAgent,
-    AgentSpawner,
-    AgentPoolConfig,
-    get_spawner,
-)
+# Sub-agent spawner - optional
+try:
+    from src.agents.subagent import (
+        SubAgentConfig,
+        SubAgentStatus,
+        SubAgent,
+        AgentSpawner,
+        AgentPoolConfig,
+        get_spawner,
+    )
+except ImportError:
+    SubAgentConfig = None
+    SubAgentStatus = None
+    SubAgent = None
+    AgentSpawner = None
+    AgentPoolConfig = None
+    get_spawner = None
 
 # Placeholder functions for backward compatibility
 # These will use Claude Code native backend

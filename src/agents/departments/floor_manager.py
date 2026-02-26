@@ -6,6 +6,7 @@ It routes tasks to appropriate Department Heads and manages cross-department com
 
 Model Tier: Opus (highest reasoning capability)
 """
+import json
 import logging
 from typing import Dict, List, Optional, Any
 from pathlib import Path
@@ -16,7 +17,11 @@ from src.agents.departments.types import (
     get_department_configs,
     get_model_tier,
 )
-from src.agents.departments.department_mail import DepartmentMailService
+from src.agents.departments.department_mail import (
+    DepartmentMailService,
+    MessageType,
+    Priority,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +42,32 @@ class FloorManager:
         departments: Dictionary of department configurations
         model_tier: Model tier (always "opus" for Floor Manager)
     """
+
+    # Keyword-based task classification
+    DEPARTMENT_KEYWORDS = {
+        Department.ANALYSIS: [
+            "analyze", "analysis", "market", "sentiment", "news", "scan",
+            "technical", "indicator", "signal", "pattern", "chart",
+            "trend", "support", "resistance", "forecast",
+        ],
+        Department.RESEARCH: [
+            "research", "strategy", "backtest", "develop", "create",
+            "alpha", "factor", "optimize", "validate", "test",
+            "pinescript", "code", "implement",
+        ],
+        Department.RISK: [
+            "risk", "position size", "drawdown", "var", "exposure",
+            "limit", "stop loss", "take profit", "margin", "leverage",
+        ],
+        Department.EXECUTION: [
+            "execute", "order", "buy", "sell", "trade", "fill",
+            "route", "slippage", "broker", "venue",
+        ],
+        Department.PORTFOLIO: [
+            "portfolio", "allocation", "rebalance", "performance",
+            "diversify", "asset", "balance", "attribut",
+        ],
+    }
 
     def __init__(
         self,
@@ -73,6 +104,124 @@ class FloorManager:
         return {
             Department(dept_name): config
             for dept_name, config in configs.items()
+        }
+
+    def classify_task(self, task: str) -> Department:
+        """
+        Classify a task to determine which department should handle it.
+
+        Uses keyword matching for simple classification.
+        Can be upgraded to LLM-based classification for complex tasks.
+
+        Args:
+            task: The task description
+
+        Returns:
+            The department that should handle this task
+        """
+        task_lower = task.lower()
+
+        # Score each department based on keyword matches
+        scores: Dict[Department, int] = {}
+        for dept, keywords in self.DEPARTMENT_KEYWORDS.items():
+            score = sum(1 for kw in keywords if kw in task_lower)
+            if score > 0:
+                scores[dept] = score
+
+        # Return highest scoring department, default to ANALYSIS
+        if scores:
+            return max(scores, key=scores.get)
+        return Department.ANALYSIS
+
+    def dispatch(
+        self,
+        to_dept: Department,
+        task: str,
+        priority: str = "normal",
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Dispatch a task to a department via mail.
+
+        Args:
+            to_dept: Target department
+            task: Task description
+            priority: Message priority (low, normal, high, urgent)
+            context: Optional context dictionary
+
+        Returns:
+            Dispatch result with status and message ID
+        """
+        # Map priority string to enum
+        priority_map = {
+            "low": Priority.LOW,
+            "normal": Priority.NORMAL,
+            "high": Priority.HIGH,
+            "urgent": Priority.URGENT,
+        }
+        msg_priority = priority_map.get(priority.lower(), Priority.NORMAL)
+
+        # Build message body
+        body = task
+        if context:
+            body = json.dumps({
+                "task": task,
+                "context": context,
+            })
+
+        # Send mail message
+        message = self.mail_service.send(
+            from_dept="floor_manager",
+            to_dept=to_dept.value,
+            type=MessageType.DISPATCH,
+            subject=f"Task: {task[:50]}...",
+            body=body,
+            priority=msg_priority,
+        )
+
+        logger.info(f"Dispatched task to {to_dept.value}: {message.id}")
+
+        return {
+            "status": "dispatched",
+            "message_id": message.id,
+            "to_dept": to_dept.value,
+            "priority": priority,
+        }
+
+    def process(
+        self,
+        task: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Process an incoming task.
+
+        1. Classify the task to determine department
+        2. Dispatch to the appropriate department
+
+        Args:
+            task: Task description
+            context: Optional context dictionary
+
+        Returns:
+            Processing result with classification and dispatch info
+        """
+        # Classify task
+        dept = self.classify_task(task)
+        logger.info(f"Classified task to {dept.value}: {task[:50]}...")
+
+        # Dispatch to department
+        dispatch_result = self.dispatch(
+            to_dept=dept,
+            task=task,
+            priority="normal",
+            context=context,
+        )
+
+        return {
+            "status": "processed",
+            "classified_dept": dept.value,
+            "dispatch": dispatch_result,
         }
 
     def close(self):
