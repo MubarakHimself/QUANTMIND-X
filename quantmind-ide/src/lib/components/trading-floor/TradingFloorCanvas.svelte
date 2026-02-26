@@ -1,22 +1,24 @@
 <script lang="ts">
-  import { onMount, onDestroy, tick } from 'svelte';
-  import { tradingFloorStore } from '$lib/stores/tradingFloorStore';
+  import { onMount, onDestroy } from 'svelte';
+  import {
+    agents,
+    departments,
+    mailMessages,
+    animatingMail,
+    selectedAgent,
+    floorStats,
+    selectAgent,
+    type AgentState,
+    type DepartmentPosition,
+    type MailMessage
+  } from '$lib/stores/tradingFloorStore';
 
   const CANVAS_WIDTH = 1000;
   const CANVAS_HEIGHT = 600;
 
   let canvas: HTMLCanvasElement;
-  let ctx: CanvasRenderingContext2D | null;
+  let ctx: CanvasRenderingContext2D | null = null;
   let animationFrame: number = 0;
-
-  $: {
-    agents: Map<string, AgentState>;
-    departments: Map<string, DepartmentPosition>;
-    mailMessages: MailMessage[];
-    animatingMail: MailMessage | null;
-    selectedAgent: string | null;
-    floorStats: { totalTasks: number; activeTasks: number; completedTasks: number; pendingMail: number };
-  } = tradingFloorStore;
 
   const COLORS = {
     background: '#1a1a2a',
@@ -27,19 +29,19 @@
     research: '#8b5cf6',
     risk: '#ef4444',
     execution: '#f97316',
-    portfolio: '#10b981a',
+    portfolio: '#10b981',
     agent: {
       idle: '#6b7280',
       thinking: '#60a5fa',
-      typing: '#fbbf7',
+      typing: '#fbbf24',
       reading: '#fde68a',
       walking: '#34d399',
       spawning: '#9333ea',
     },
     mail: {
       dispatch: '#3b82f6',
-      result: '#10b981a',
-      question: '#f59e00',
+      result: '#10b981',
+      question: '#f59e0b',
       status: '#6b7280',
     }
   };
@@ -50,49 +52,36 @@
     research: '#8b5cf6',
     risk: '#ef4444',
     execution: '#f97316',
-    portfolio: '#10b981a',
+    portfolio: '#10b981',
     coordination: '#6366f1',
   };
 
   onMount(() => {
     if (!canvas) return;
     ctx = canvas.getContext('2d');
-
-    // Subscribe to store
-    const unsubAgents = tradingFloorStore.agents.subscribe((value) => {
-      agents = value;
-      render();
-    });
-
-    const unsubDepts = tradingFloorStore.departments.subscribe((value) => {
-      departments = value;
-      render();
-    });
-
-    const unsubMail = tradingFloorStore.animatingMail.subscribe((value) => {
-      animatingMail = value;
-      render();
-    });
-
-    const unsubStats = tradingFloorStore.floorStats.subscribe((value) => {
-      floorStats = value;
-      renderStats();
-    });
-
-    // Start animation loop
-    animationFrame = requestAnimationFrame(animate);
+    startAnimationLoop();
   });
 
   onDestroy(() => {
     cancelAnimationFrame(animationFrame);
   });
 
-  function animate() {
-    animationFrame = requestAnimationFrame(animate);
+  function startAnimationLoop() {
+    function loop() {
+      render();
+      animationFrame = requestAnimationFrame(loop);
+    }
+    animationFrame = requestAnimationFrame(loop);
   }
 
   function render() {
     if (!ctx) return;
+
+    const $agents = get(agents);
+    const $departments = get(departments);
+    const $animatingMail = get(animatingMail);
+    const $selectedAgent = get(selectedAgent);
+    const $floorStats = get(floorStats);
 
     // Clear canvas
     ctx.fillStyle = COLORS.background;
@@ -103,29 +92,28 @@
     ctx.fillRect(50, 50, CANVAS_WIDTH - 100, 30);
 
     // Draw departments
-    departments.forEach((dept) => {
-      drawDepartment(dept);
+    $departments.forEach((dept, key) => {
+      drawDepartment(dept, key, $selectedAgent);
     });
 
     // Draw agents
-    agents.forEach((agent) => {
-      drawAgent(agent);
+    $agents.forEach((agent) => {
+      drawAgent(agent, $selectedAgent);
     });
 
     // Draw mail animation
-    if (animatingMail) {
-      drawMail(animatingMail);
+    if ($animatingMail) {
+      drawMail($animatingMail, $departments);
     }
 
     // Draw stats
-    renderStats();
+    renderStats($floorStats);
   }
 
-  function drawDepartment(dept: DepartmentPosition) {
-    const isHovered = selectedAgent === dept.x.toString();
+  function drawDepartment(dept: DepartmentPosition, key: string, selectedId: string | null) {
+    const isHovered = selectedId === key;
     const color = isHovered ? COLORS.deskHover : COLORS.desk;
-    const deptName = dept.x.toString().split('-')[0];
-    const name = deptName.charAt(0).toUpperCase() + deptName.slice(1);
+    const name = key.charAt(0).toUpperCase() + key.slice(1);
 
     // Desk shadow
     ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
@@ -142,11 +130,11 @@
     ctx.fillText(name, dept.x + dept.width / 2, dept.y + 30);
   }
 
-  function drawAgent(agent: AgentState) {
+  function drawAgent(agent: AgentState, selectedId: string | null) {
     const { x, y } = agent.position;
-    const isSelected = selectedAgent === agent.id;
+    const isSelected = selectedId === agent.id;
     const color = AGENT_COLORS[agent.department] || AGENT_COLORS.coordination;
-    const statusColor = COLORS.agent[agent.status];
+    const statusColor = COLORS.agent[agent.status] || COLORS.agent.idle;
 
     // Agent body (circle)
     ctx.beginPath();
@@ -174,13 +162,13 @@
       ctx.fill();
       ctx.fillStyle = '#ffffff';
       ctx.font = '8px Arial';
-      ctx.fillText(`${agent.subAgents.length}`, x + AGENT_SIZE / 2 + 10, y + AGENT_SIZE / 2 + 8);
+      ctx.fillText(`${agent.subAgents.length}`, x + AGENT_SIZE / 2 + 10, y + AGENT_SIZE / 2 + 13);
     }
   }
 
-  function drawMail(mail: MailMessage) {
-    const fromDept = departments.get(mail.fromDept);
-    const toDept = departments.get(mail.toDept);
+  function drawMail(mail: MailMessage, depts: Map<string, DepartmentPosition>) {
+    const fromDept = depts.get(mail.fromDept);
+    const toDept = depts.get(mail.toDept);
 
     if (!fromDept || !toDept) return;
 
@@ -206,54 +194,74 @@
     ctx.fill();
 
     // Mail type icon
-    ctx.fillStyle = mail.type === 'dispatch' ? '#3b82f6' : mail.type === 'result' ? '#10b981a' : '#f59e0';
+    const mailColor = mail.type === 'dispatch' ? '#3b82f6' :
+                      mail.type === 'result' ? '#10b981' : '#f59e0b';
+    ctx.fillStyle = mailColor;
     ctx.beginPath();
     ctx.arc(currentX, currentY, 5, 0, 2 * Math.PI);
     ctx.fill();
   }
 
-  function renderStats() {
+  function renderStats(stats: { totalTasks: number; activeTasks: number; completedTasks: number; pendingMail: number }) {
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 16px Arial';
-    ctx.fillText('Trading Floor', 20, 20);
+    ctx.textAlign = 'left';
+    ctx.fillText('Trading Floor', 20, 30);
 
     ctx.font = '12px Arial';
-    ctx.fillText(`Active: ${floorStats.activeTasks} | Total: ${floorStats.totalTasks}`, 20, CANVAS_HEIGHT - 20);
+    ctx.fillText(`Active: ${stats.activeTasks} | Total: ${stats.totalTasks}`, 20, CANVAS_HEIGHT - 10);
   }
 
   function handleClick(event: MouseEvent) {
+    if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
+    const $departments = get(departments);
+    const $agents = get(agents);
+
     // Check if clicked on department
     let clickedDept: string | null = null;
-    departments.forEach((dept) => {
+    $departments.forEach((dept, key) => {
       if (
         x >= dept.x && x <= dept.x + dept.width &&
         y >= dept.y && y <= dept.y + dept.height
       ) {
-        clickedDept = dept.x.toString();
+        clickedDept = key;
       }
     });
 
     // Check if clicked on agent
     let clickedAgent: AgentState | null = null;
-    agents.forEach((agent) => {
+    $agents.forEach((agent) => {
       const dx = x - agent.position.x;
       const dy = y - agent.position.y;
-      if (dx >= 0 && dx <= AGENT_SIZE && dy >= 0 && dy <= AGENT_SIZE) {
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance <= AGENT_SIZE / 2) {
         clickedAgent = agent;
       }
     });
 
-    if (clickedDept) {
-    tradingFloorStore.selectAgent(clickedDept);
-    } else if (clickedAgent) {
-    tradingFloorStore.selectAgent(clickedAgent.id);
+    if (clickedAgent) {
+      selectAgent(clickedAgent.id);
+    } else if (clickedDept) {
+      selectAgent(clickedDept);
     }
   }
+
+  // Import get from svelte/store
+  import { get } from 'svelte/store';
 </script>
+
+<div class="trading-floor-canvas">
+  <canvas
+    bind:this={canvas}
+    width={CANVAS_WIDTH}
+    height={CANVAS_HEIGHT}
+    on:click={handleClick}
+  ></canvas>
+</div>
 
 <style>
   .trading-floor-canvas {
@@ -261,6 +269,14 @@
     height: 600px;
     background: #1a1a2a;
     border-radius: 8px;
-    cursor: pointer;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  canvas {
+    max-width: 100%;
+    max-height: 100%;
   }
 </style>

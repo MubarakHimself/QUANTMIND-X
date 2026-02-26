@@ -1,13 +1,23 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import {
     Bot, Send, Loader, RefreshCw, Wrench, Database, Clock, GitBranch,
-    MessageSquare
+    MessageSquare, Users
   } from "lucide-svelte";
   import { memoryStore } from "$lib/stores/memoryStore";
   import { cronStore } from "$lib/stores/cronStore";
   import { hooksStore } from "$lib/stores/hooksStore";
   import * as memoryApi from "$lib/api/memory";
+  import TradingFloorCanvas from "$lib/components/trading-floor/TradingFloorCanvas.svelte";
+  import {
+    tradingFloorStore,
+    updateAgentState,
+    addSubAgent,
+    sendMail,
+    reset,
+    type AgentState
+  } from "$lib/stores/tradingFloorStore";
+  import { connectTradingFloorWS, disconnectTradingFloorWS, wsConnected } from "$lib/services/tradingFloorWebSocket";
 
   // API base URL
   const API_BASE = "http://localhost:8000/api";
@@ -16,6 +26,7 @@
   let activeTab = "chat";
   const tabs = [
     { id: "chat", label: "Chat", icon: MessageSquare },
+    { id: "trading-floor", label: "Trading Floor", icon: Users },
     { id: "memory", label: "Memory", icon: Database },
     { id: "cron", label: "Cron Jobs", icon: Clock },
     { id: "hooks", label: "Hooks", icon: GitBranch },
@@ -50,11 +61,138 @@
   $: hooksLoading = $hooksStore.loading;
   $: hooksError = $hooksStore.error;
 
+  // Trading Floor state
+  let isRunning = false;
+  let demoInterval: number | null = null;
+  const departments = ['analysis', 'research', 'risk', 'execution', 'portfolio'];
+  const sampleTasks = [
+    { from: 'analysis', to: 'execution', type: 'dispatch', subject: 'EURUSD Signal: BUY' },
+    { from: 'research', to: 'analysis', type: 'result', subject: 'Backtest Complete' },
+    { from: 'risk', to: 'execution', type: 'question', subject: 'Position Size Query' },
+    { from: 'analysis', to: 'portfolio', type: 'dispatch', subject: 'Market Update' },
+    { from: 'execution', to: 'risk', type: 'status', subject: 'Order Filled' },
+  ];
+  $: floorStats = $tradingFloorStore.floorStats || { totalTasks: 0, activeTasks: 0 };
+  $: isConnected = $wsConnected || false;
+
   onMount(() => {
     loadMemoryData();
     loadCronData();
     loadHooksData();
+    initializeTradingFloor();
+    connectTradingFloorWS();
   });
+
+  onDestroy(() => {
+    stopDemo();
+    disconnectTradingFloorWS();
+  });
+
+  function initializeTradingFloor() {
+    reset();
+    const positions: Record<string, { x: number; y: number }> = {
+      analysis: { x: 170, y: 130 },
+      research: { x: 370, y: 130 },
+      risk: { x: 570, y: 130 },
+      execution: { x: 270, y: 300 },
+      portfolio: { x: 470, y: 300 },
+    };
+
+    departments.forEach((dept) => {
+      const agent: AgentState = {
+        id: `${dept}-head`,
+        name: `${dept.charAt(0).toUpperCase() + dept.slice(1)} Head`,
+        department: dept,
+        status: 'idle',
+        position: positions[dept],
+        target: null,
+        subAgents: [],
+        isExpanded: false,
+      };
+      addSubAgent('floor-manager', agent);
+    });
+  }
+
+  function startDemo() {
+    if (isRunning) return;
+    isRunning = true;
+    demoInterval = window.setInterval(() => runDemoStep(), 2000);
+  }
+
+  function stopDemo() {
+    isRunning = false;
+    if (demoInterval) {
+      clearInterval(demoInterval);
+      demoInterval = null;
+    }
+  }
+
+  let stepCount = 0;
+  function runDemoStep() {
+    stepCount++;
+    const agentStates: AgentState['status'][] = ['thinking', 'typing', 'reading', 'idle'];
+    const randomDept = departments[stepCount % departments.length];
+    const randomState = agentStates[stepCount % agentStates.length];
+
+    updateAgentState(`${randomDept}-head`, {
+      status: randomState,
+      speechBubble: randomState === 'thinking'
+        ? { text: 'Analyzing...', type: 'thinking', duration: 2000 }
+        : undefined,
+    });
+
+    if (stepCount % 3 === 0) {
+      const task = sampleTasks[stepCount % sampleTasks.length];
+      sendMail({
+        id: `mail-${Date.now()}`,
+        fromDept: task.from,
+        toDept: task.to,
+        type: task.type as 'dispatch' | 'result' | 'question' | 'status',
+        subject: task.subject,
+        startX: 0,
+        startY: 0,
+        progress: 0,
+        duration: 1500,
+      });
+    }
+
+    if (stepCount % 5 === 0) {
+      const dept = departments[stepCount % departments.length];
+      const workerTypes: Record<string, string> = {
+        analysis: 'market_analyst',
+        research: 'backtester',
+        risk: 'position_sizer',
+        execution: 'order_router',
+        portfolio: 'rebalancer',
+      };
+      const parentPos = getPositionForDept(dept);
+      const subAgent: AgentState = {
+        id: `${dept}-worker-${stepCount}`,
+        name: workerTypes[dept] || 'worker',
+        department: dept,
+        status: 'thinking',
+        position: {
+          x: parentPos.x + (Math.random() * 60 - 30),
+          y: parentPos.y + (Math.random() * 60 - 30),
+        },
+        target: null,
+        subAgents: [],
+        isExpanded: false,
+      };
+      addSubAgent(`${dept}-head`, subAgent);
+    }
+  }
+
+  function getPositionForDept(dept: string): { x: number; y: number } {
+    const positions: Record<string, { x: number; y: number }> = {
+      analysis: { x: 170, y: 130 },
+      research: { x: 370, y: 130 },
+      risk: { x: 570, y: 130 },
+      execution: { x: 270, y: 300 },
+      portfolio: { x: 470, y: 300 },
+    };
+    return positions[dept] || { x: 300, y: 200 };
+  }
 
   async function loadMemoryData() {
     memoryStore.setLoading(true);
@@ -453,6 +591,62 @@
           {/each}
         {/if}
       </div>
+    </div>
+    {/if}
+
+    <!-- Trading Floor Tab -->
+    {#if activeTab === "trading-floor"}
+    <div class="trading-floor-panel">
+      <div class="panel-header-row">
+        <h3>Department-Based Agent Framework</h3>
+        <div class="tf-controls">
+          <button
+            class="tf-btn"
+            on:click={startDemo}
+            disabled={isRunning}
+          >
+            {isRunning ? 'Running...' : 'Start Demo'}
+          </button>
+          <button
+            class="tf-btn tf-btn-secondary"
+            on:click={stopDemo}
+            disabled={!isRunning}
+          >
+            Stop
+          </button>
+          <button
+            class="tf-btn tf-btn-outline"
+            on:click={initializeTradingFloor}
+          >
+            Reset
+          </button>
+        </div>
+      </div>
+
+      <div class="tf-stats">
+        <div class="tf-stat">
+          <span class="tf-stat-label">Active</span>
+          <span class="tf-stat-value">{floorStats.activeTasks}</span>
+        </div>
+        <div class="tf-stat">
+          <span class="tf-stat-label">Total</span>
+          <span class="tf-stat-value">{floorStats.totalTasks}</span>
+        </div>
+        <div class="tf-stat">
+          <span class="tf-stat-label">WS</span>
+          <span class="tf-stat-value ws-indicator" class:connected={isConnected}>
+            {isConnected ? '●' : '○'}
+          </span>
+        </div>
+      </div>
+
+      <div class="tf-canvas-container">
+        <TradingFloorCanvas />
+      </div>
+
+      <p class="tf-footer">
+        Click on agents or departments to select. Demo shows 5 department heads with dynamic task routing.
+      </p>
     </div>
     {/if}
   </div>
@@ -958,5 +1152,108 @@
     padding: 3rem;
     color: var(--text-muted, #64748b);
     gap: 0.75rem;
+  }
+
+  /* Trading Floor styles */
+  .trading-floor-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 1rem;
+  }
+
+  .tf-controls {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .tf-btn {
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    background: var(--accent-primary, #3b82f6);
+    color: white;
+  }
+
+  .tf-btn:hover:not(:disabled) {
+    background: var(--accent-hover, #2563eb);
+  }
+
+  .tf-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .tf-btn-secondary {
+    background: var(--bg-tertiary, #475569);
+  }
+
+  .tf-btn-secondary:hover:not(:disabled) {
+    background: var(--bg-hover, #64748b);
+  }
+
+  .tf-btn-outline {
+    background: transparent;
+    border: 1px solid var(--border-color, #475569);
+    color: var(--text-secondary, #94a3b8);
+  }
+
+  .tf-btn-outline:hover:not(:disabled) {
+    background: var(--bg-tertiary, #1e293b);
+  }
+
+  .tf-stats {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    margin: 1rem 0;
+  }
+
+  .tf-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .tf-stat-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary, #94a3b8);
+    text-transform: uppercase;
+  }
+
+  .tf-stat-value {
+    font-size: 1.25rem;
+    font-weight: 600;
+  }
+
+  .ws-indicator {
+    color: #ef4444;
+  }
+
+  .ws-indicator.connected {
+    color: #22c55e;
+  }
+
+  .tf-canvas-container {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: var(--bg-secondary, #1e293b);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    min-height: 400px;
+  }
+
+  .tf-footer {
+    text-align: center;
+    padding-top: 0.75rem;
+    font-size: 0.75rem;
+    color: var(--text-muted, #64748b);
+    margin: 0;
   }
 </style>

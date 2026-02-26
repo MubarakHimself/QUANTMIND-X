@@ -89,12 +89,7 @@ const initDepartments = () => {
     portfolio: { x: 900, y: 80, width: 140, height: 100 },
   };
 
-  departments.set(new Map(Object.entries(deptPositions) as [k, v]: ({
-    x: v.x,
-    y: v.y,
-    width: v.width,
-    height: v.height,
-  })));
+  departments.set(new Map(Object.entries(deptPositions)));
 };
 
 // Derived stores
@@ -149,7 +144,7 @@ export function sendMail(message: MailMessage) {
   floorStats.update((stats) => ({
     ...stats,
     pendingMail: stats.pendingMail + 1,
-  });
+  }));
 }
 
 export function completeMailAnimation() {
@@ -178,5 +173,30 @@ export function reset() {
   });
 
   initDepartments();
-  initFloorManager();
+
+  // Re-initialize floor manager
+  agents.update((state) => {
+    state.set(floorManager.id, floorManager);
+    return state;
+  });
 }
+
+// Derived combined store for convenience
+export const tradingFloorStore = derived(
+  [agents, departments, floorStats],
+  ([$agents, $departments, $floorStats]) => ({
+    agents: $agents,
+    departments: $departments,
+    floorStats: $floorStats,
+  })
+);
+
+// Export stores for direct access
+export {
+  agents,
+  departments,
+  mailMessages,
+  animatingMail,
+  selectedAgent,
+  floorStats,
+};
