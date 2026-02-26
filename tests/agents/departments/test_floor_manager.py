@@ -61,3 +61,54 @@ class TestDepartmentHeadConfig:
 
         dept_names = {c.department.value for c in configs.values()}
         assert dept_names == {"analysis", "research", "risk", "execution", "portfolio"}
+
+
+class TestFloorManagerInit:
+    """Test Floor Manager initialization."""
+
+    def test_floor_manager_initializes_with_dependencies(self):
+        """Floor Manager should initialize with mail service and spawner."""
+        from src.agents.departments.floor_manager import FloorManager
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "test_mail.db")
+            manager = FloorManager(mail_db_path=db_path)
+
+            assert manager.mail_service is not None
+            assert manager.spawner is not None
+            assert len(manager.departments) == 5
+
+            manager.close()
+
+    def test_floor_manager_has_all_departments(self):
+        """Floor Manager should have all 5 departments configured."""
+        from src.agents.departments.floor_manager import FloorManager
+        from src.agents.departments.types import Department
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "test_mail.db")
+            manager = FloorManager(mail_db_path=db_path)
+
+            dept_values = {d.value for d in manager.departments.keys()}
+            expected = {"analysis", "research", "risk", "execution", "portfolio"}
+            assert dept_values == expected
+
+            manager.close()
+
+    def test_floor_manager_model_is_opus(self):
+        """Floor Manager should use opus tier."""
+        from src.agents.departments.floor_manager import FloorManager
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "test_mail.db")
+            manager = FloorManager(mail_db_path=db_path)
+
+            assert manager.model_tier == "opus"
+
+            manager.close()
