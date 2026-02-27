@@ -224,6 +224,126 @@ class FloorManager:
             "dispatch": dispatch_result,
         }
 
+    def handle_dispatch(
+        self,
+        from_department: str,
+        task: str,
+        suggested_department: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Handle a dispatch request from Copilot or another department.
+
+        Processes incoming delegation requests and routes them to the appropriate
+        department. If a suggested department is provided and valid, uses it.
+        Otherwise, classifies the task automatically.
+
+        Args:
+            from_department: Department sending the dispatch (e.g., "copilot")
+            task: Task description to dispatch
+            suggested_department: Optional target department suggestion
+            context: Optional context dictionary
+
+        Returns:
+            Dispatch result with status, message ID, and routing info
+        """
+        # Determine target department
+        target_dept = None
+
+        if suggested_department:
+            # Validate suggested department
+            try:
+                target_dept = Department(suggested_department.lower())
+                logger.info(f"Using suggested department: {suggested_department}")
+            except ValueError:
+                logger.warning(
+                    f"Invalid suggested department: {suggested_department}, "
+                    "falling back to classification"
+                )
+                target_dept = self.classify_task(task)
+        else:
+            # Auto-classify if no suggestion
+            target_dept = self.classify_task(task)
+
+        # Delegate to the determined department
+        message = self.delegate_to_department(
+            from_dept=from_department,
+            to_dept=target_dept.value,
+            task=task,
+            priority="normal",
+            context=context,
+        )
+
+        return {
+            "status": "dispatched",
+            "message_id": message.id,
+            "from_department": from_department,
+            "to_department": target_dept.value,
+            "priority": "normal",
+        }
+
+    def delegate_to_department(
+        self,
+        from_dept: str,
+        to_dept: str,
+        task: str,
+        priority: str = "normal",
+        context: Optional[Dict[str, Any]] = None,
+    ) -> "DepartmentMessage":
+        """
+        Delegate a task to a department via mail.
+
+        Sends a dispatch message through the mail service to the target department.
+
+        Args:
+            from_dept: Sending department identifier
+            to_dept: Target department identifier
+            task: Task description
+            priority: Message priority (low, normal, high, urgent)
+            context: Optional context dictionary
+
+        Returns:
+            The created DepartmentMessage
+        """
+        # Map priority string to enum
+        priority_map = {
+            "low": Priority.LOW,
+            "normal": Priority.NORMAL,
+            "high": Priority.HIGH,
+            "urgent": Priority.URGENT,
+        }
+        msg_priority = priority_map.get(priority.lower(), Priority.NORMAL)
+
+        # Build message body with optional context
+        body = task
+        if context:
+            body = json.dumps({
+                "task": task,
+                "context": context,
+            })
+
+        # Create subject line
+        subject = f"Task from {from_dept}: {task[:50]}..."
+        if len(task) > 50:
+            subject += "..."
+
+        # Send mail message
+        message = self.mail_service.send(
+            from_dept=from_dept,
+            to_dept=to_dept,
+            type=MessageType.DISPATCH,
+            subject=subject,
+            body=body,
+            priority=msg_priority,
+        )
+
+        logger.info(
+            f"Delegated task from {from_dept} to {to_dept}: "
+            f"message_id={message.id}"
+        )
+
+        return message
+
     def close(self):
         """Clean up resources."""
         if self.mail_service:
