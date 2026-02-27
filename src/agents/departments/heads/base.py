@@ -27,6 +27,7 @@ from src.agents.departments.department_mail import (
 )
 from src.agents.departments.memory_manager import DepartmentMemoryManager
 from src.agents.departments.tool_access import ToolAccessController
+from src.agents.departments.tool_registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -78,19 +79,44 @@ class DepartmentHead:
         # Initialize tool access controller
         self.tool_access = ToolAccessController(department=self.department)
 
+        # Initialize tool registry
+        self.tool_registry = ToolRegistry()
+        self._tools = self.tool_registry.get_tools_for_department(self.department)
+
         self.mail_service = DepartmentMailService(db_path=mail_db_path)
         self._init_spawner()
 
-        logger.info(f"DepartmentHead initialized: {self.department.value}")
+        logger.info(f"DepartmentHead initialized: {self.department.value} with {len(self._tools)} tools")
 
-    def get_available_tools(self) -> List[str]:
+    def get_available_tools(self) -> Dict[str, Any]:
         """
-        Get list of available tools for this department based on permissions.
+        Get all available tools for this department.
 
         Returns:
-            List of tool names this department can access
+            Dictionary of tool_name to tool_instance
         """
-        return self.tool_access.get_available_tools()
+        return self._tools
+
+    def get_tool(self, tool_name: str) -> Optional[Any]:
+        """
+        Get a specific tool instance.
+
+        Args:
+            tool_name: Name of the tool
+
+        Returns:
+            Tool instance or None if not available
+        """
+        return self._tools.get(tool_name)
+
+    def refresh_tools(self) -> None:
+        """
+        Refresh available tools from registry.
+
+        Useful after permission changes.
+        """
+        self._tools = self.tool_registry.get_tools_for_department(self.department)
+        logger.info(f"Refreshed tools for {self.department.value}: {len(self._tools)} available")
 
     def has_tool_access(self, tool_name: str, permission: str = "read") -> bool:
         """
@@ -272,21 +298,27 @@ class DepartmentHead:
         try:
             from src.agents.subagent.spawner import SubAgentConfig
 
+            # Prepare input data with tools
+            worker_input = input_data or {"task": task}
+            worker_input["available_tools"] = list(self._tools.keys())
+            worker_input["department"] = self.department.value
+
             config = SubAgentConfig(
                 agent_type=worker_type,
                 name=f"{self.department.value}_{worker_type}",
                 parent_agent_id=f"dept_head_{self.department.value}",
-                input_data=input_data or {"task": task},
+                input_data=worker_input,
                 pool_key=self.department.value,
             )
 
             agent = self.spawner.spawn(config)
-            logger.info(f"Spawned worker {agent.id} for {self.department.value}")
+            logger.info(f"Spawned worker {agent.id} for {self.department.value} with {len(self._tools)} tools")
 
             return {
                 "status": "spawned",
                 "agent_id": agent.id,
                 "worker_type": worker_type,
+                "tools_available": len(self._tools),
             }
 
         except Exception as e:
