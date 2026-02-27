@@ -40,6 +40,14 @@ class DispatchRequest(BaseModel):
     context: Optional[Dict[str, Any]] = None
 
 
+class DelegationRequest(BaseModel):
+    """Request to delegate a task from Copilot to the Trading Floor."""
+    from_department: str
+    task: str
+    suggested_department: Optional[str] = None
+    context: Optional[Dict[str, Any]] = None
+
+
 class AgentStateResponse(BaseModel):
     """Response with agent state."""
     id: str
@@ -205,4 +213,35 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "trading-floor",
+    }
+
+
+@router.post("/delegate")
+async def delegate_task(request: DelegationRequest):
+    """
+    Delegate a task from Copilot or another agent to the Trading Floor.
+
+    This endpoint allows external agents (like Copilot) to delegate tasks
+    to the Trading Floor. The Floor Manager will route the task to the
+    appropriate department based on the suggested_department or auto-classify.
+
+    Args:
+        request: Delegation request with from_department, task, and optional
+                 suggested_department and context
+
+    Returns:
+        Delegation result with dispatch information
+    """
+    manager = get_floor_manager()
+
+    result = manager.handle_dispatch(
+        from_department=request.from_department,
+        task=request.task,
+        suggested_department=request.suggested_department,
+        context=request.context,
+    )
+
+    return {
+        "status": "success",
+        "dispatch": result,
     }

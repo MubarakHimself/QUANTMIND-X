@@ -15,7 +15,11 @@
     Plus,
     Power,
     Database,
+    ChevronDown,
+    Briefcase,
   } from "lucide-svelte";
+
+  import { delegateToFloor, DEPARTMENTS, type Department } from "../stores/departmentMailStore";
 
   const dispatch = createEventDispatcher();
 
@@ -23,6 +27,10 @@
 
   let activeAgent = "copilot";
   let message = "";
+  let showDelegationUI = false;
+  let selectedDepartmentForDelegation: Department | null = null;
+  let isDelegating = false;
+  let delegationResult: { success: boolean; message: string } | null = null;
   let messages: Array<{ role: string; content: string; agent?: string }> = [
     {
       role: "assistant",
@@ -415,6 +423,59 @@
     }
     return null; // Not a special command, process normally
   }
+
+  // Delegation functions
+  function toggleDelegationUI() {
+    showDelegationUI = !showDelegationUI;
+    if (!showDelegationUI) {
+      selectedDepartmentForDelegation = null;
+      delegationResult = null;
+    }
+  }
+
+  async function delegateToTradingFloor() {
+    if (!message.trim() || isDelegating) return;
+
+    isDelegating = true;
+    delegationResult = null;
+
+    const task = message.trim();
+    const result = await delegateToFloor({
+      from_department: "copilot",
+      task: task,
+      suggested_department: selectedDepartmentForDelegation,
+    });
+
+    isDelegating = false;
+
+    if (result.status === "success") {
+      delegationResult = {
+        success: true,
+        message: `Task delegated to ${result.dispatch?.to_department || 'Trading Floor'}`,
+      };
+
+      // Add system message about delegation
+      messages = [
+        ...messages,
+        {
+          role: "assistant",
+          content: `I've delegated "${task}" to the **${result.dispatch?.to_department || 'Trading Floor'}** department. You can track progress in the Trading Floor view.`,
+          agent: "system",
+        },
+      ];
+
+      // Clear input and close UI after a delay
+      setTimeout(() => {
+        message = "";
+        toggleDelegationUI();
+      }, 1500);
+    } else {
+      delegationResult = {
+        success: false,
+        message: result.error || "Failed to delegate task",
+      };
+    }
+  }
 </script>
 
 <aside class="copilot-panel">
@@ -629,6 +690,15 @@
         </button>
         <button
           class="action-btn"
+          title="Delegate to Trading Floor"
+          on:click={toggleDelegationUI}
+          class:active={showDelegationUI}
+        >
+          <Briefcase size={14} />
+          <span>Delegate</span>
+        </button>
+        <button
+          class="action-btn"
           title="Model Config"
           on:click={toggleSettings}
         >
@@ -654,6 +724,67 @@
         </button>
       </div>
     </div>
+
+    {#if showDelegationUI}
+      <div class="delegation-panel">
+        <div class="delegation-header">
+          <span class="delegation-title">Delegate to Trading Floor</span>
+          <button class="icon-btn-small" on:click={toggleDelegationUI}>
+            <X size={14} />
+          </button>
+        </div>
+
+        <div class="delegation-content">
+          <p class="delegation-description">
+            Send this task to the Trading Floor for processing by a specialized department.
+          </p>
+
+          <div class="delegation-field">
+            <label>Target Department (Optional)</label>
+            <div class="department-selector">
+              <button
+                class="dept-option"
+                class:selected={selectedDepartmentForDelegation === null}
+                on:click={() => selectedDepartmentForDelegation = null}
+              >
+                Auto-detect
+              </button>
+              {#each DEPARTMENTS as dept}
+                <button
+                  class="dept-option"
+                  class:selected={selectedDepartmentForDelegation === dept.id}
+                  on:click={() => selectedDepartmentForDelegation = dept.id}
+                >
+                  {dept.name}
+                </button>
+              {/each}
+            </div>
+          </div>
+
+          {#if delegationResult}
+            <div class="delegation-result" class:success={delegationResult.success} class:error={!delegationResult.success}>
+              {delegationResult.message}
+            </div>
+          {/if}
+
+          <div class="delegation-actions">
+            <button
+              class="btn-delegate"
+              on:click={delegateToTradingFloor}
+              disabled={!message.trim() || isDelegating}
+            >
+              {#if isDelegating}
+                <Loader size={14} class="spinning" />
+                Delegating...
+              {:else}
+                <Send size={14} />
+                Delegate to Trading Floor
+              {/if}
+            </button>
+          </div>
+        </div>
+      </div>
+    {/if}
   </div>
 </aside>
 ```
@@ -1283,5 +1414,173 @@
     align-items: center;
     padding: 6px;
     color: var(--text-muted);
+  }
+
+  /* Delegation Panel */
+  .delegation-panel {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px 4px 0 0;
+    padding: 12px;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 100;
+  }
+
+  .delegation-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .delegation-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .icon-btn-small {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.1s ease;
+  }
+
+  .icon-btn-small:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .delegation-content {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .delegation-description {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.4;
+  }
+
+  .delegation-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .delegation-field label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+  }
+
+  .department-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .dept-option {
+    flex: 1;
+    min-width: 80px;
+    padding: 6px 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 3px;
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-transform: capitalize;
+  }
+
+  .dept-option:hover {
+    background: var(--bg-input);
+    border-color: var(--accent-primary);
+    color: var(--text-primary);
+  }
+
+  .dept-option.selected {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: var(--bg-primary);
+  }
+
+  .delegation-result {
+    padding: 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    text-align: center;
+  }
+
+  .delegation-result.success {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+
+  .delegation-result.error {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+
+  .delegation-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 4px;
+  }
+
+  .btn-delegate {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: var(--accent-secondary);
+    color: var(--bg-primary);
+    border: none;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-delegate:hover:not(:disabled) {
+    background: var(--accent-primary);
+    transform: translateY(-1px);
+  }
+
+  .btn-delegate:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .action-btn.active {
+    background: var(--accent-secondary);
+    color: var(--bg-primary);
+    border-color: var(--accent-secondary);
   }
 </style>
