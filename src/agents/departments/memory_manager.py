@@ -36,7 +36,8 @@ class DepartmentMemoryManager:
     def __init__(
         self,
         department: Department,
-        base_path: Optional[Path] = None
+        base_path: Optional[Path] = None,
+        auto_initialize: bool = True
     ):
         """
         Initialize the memory manager.
@@ -44,6 +45,7 @@ class DepartmentMemoryManager:
         Args:
             department: The department enum
             base_path: Base directory for all departments (default: Path("data/departments"))
+            auto_initialize: Whether to auto-create directories and files (default: True)
         """
         self.department = department
         self.base_path = base_path or Path("data/departments")
@@ -52,7 +54,8 @@ class DepartmentMemoryManager:
         self.memory_file = self.dept_path / "MEMORY.md"
 
         # Create directories and initialize memory file
-        self._initialize()
+        if auto_initialize:
+            self._initialize()
 
     def _initialize(self) -> None:
         """Create directory structure and initialize MEMORY.md if needed."""
