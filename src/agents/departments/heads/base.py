@@ -2,6 +2,8 @@
 Department Head Base Class
 
 Base class for all department heads. Provides:
+- Isolated markdown-based memory per department
+- Tool access control with permission filtering
 - Mail inbox checking
 - Cross-department messaging
 - Worker spawning capability
@@ -23,6 +25,8 @@ from src.agents.departments.department_mail import (
     MessageType,
     Priority,
 )
+from src.agents.departments.memory_manager import DepartmentMemoryManager
+from src.agents.departments.tool_access import ToolAccessController
 
 logger = logging.getLogger(__name__)
 
@@ -65,10 +69,76 @@ class DepartmentHead:
         self.memory_namespace = config.memory_namespace
         self.model_tier = "sonnet"
 
+        # Initialize isolated memory for this department
+        self.memory_manager = DepartmentMemoryManager(
+            department=self.department,
+            base_path=".quantmind/departments"
+        )
+
+        # Initialize tool access controller
+        self.tool_access = ToolAccessController(department=self.department)
+
         self.mail_service = DepartmentMailService(db_path=mail_db_path)
         self._init_spawner()
 
         logger.info(f"DepartmentHead initialized: {self.department.value}")
+
+    def get_available_tools(self) -> List[str]:
+        """
+        Get list of available tools for this department based on permissions.
+
+        Returns:
+            List of tool names this department can access
+        """
+        return self.tool_access.get_available_tools()
+
+    def has_tool_access(self, tool_name: str, permission: str = "read") -> bool:
+        """
+        Check if department has access to a specific tool.
+
+        Args:
+            tool_name: Name of the tool
+            permission: Permission level to check ("read" or "write")
+
+        Returns:
+            True if department has access, False otherwise
+        """
+        from src.agents.departments.tool_access import ToolPermission
+
+        perm = ToolPermission.READ if permission == "read" else ToolPermission.WRITE
+        return self.tool_access.can_access(tool_name, perm)
+
+    def add_memory(self, content: str, memory_type: str = "note") -> None:
+        """
+        Add a memory to this department's isolated memory.
+
+        Args:
+            content: Memory content
+            memory_type: Type of memory (note, observation, decision, etc.)
+        """
+        self.memory_manager.add_memory(content, memory_type)
+
+    def read_memory(self) -> str:
+        """
+        Read this department's memory.
+
+        Returns:
+            Department memory content
+        """
+        return self.memory_manager.read_memory()
+
+    def search_memory(self, query: str, limit: int = 10) -> List:
+        """
+        Search this department's memory.
+
+        Args:
+            query: Search query
+            limit: Maximum results
+
+        Returns:
+            List of memory results
+        """
+        return self.memory_manager.search(query, limit)
 
     def _init_spawner(self):
         """Initialize the agent spawner."""
