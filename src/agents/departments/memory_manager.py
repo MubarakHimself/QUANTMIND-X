@@ -48,7 +48,7 @@ class DepartmentMemoryManager:
             auto_initialize: Whether to auto-create directories and files (default: True)
         """
         self.department = department
-        self.base_path = base_path or Path("data/departments")
+        self.base_path = Path(base_path) if base_path else Path("data/departments")
         self.dept_path = self.base_path / department.value
         self.memory_dir = self.dept_path / "memory"
         self.memory_file = self.dept_path / "MEMORY.md"
