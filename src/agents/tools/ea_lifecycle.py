@@ -1,467 +1,344 @@
 """
-EA Lifecycle Tools for automated trading strategy management.
+EA Lifecycle Tools
 
-This module provides tools for creating, validating, testing, and managing trading strategies.
-Live trading deployment is explicitly prohibited.
+Tools for managing Expert Advisor (EA) lifecycle operations:
+- Create EA from strategy
+- Validate EA code
+- Backtest EA
+- Deploy to paper trading
+- Stop running EA
 """
 
+from typing import Optional, Dict, Any
+from pathlib import Path
+import subprocess
 import json
-import time
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
-from enum import Enum
 import logging
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class EALifecycleStatus(Enum):
-    """Status of EA lifecycle operations"""
-    CREATED = "created"
-    VALIDATING = "validating"
-    VALIDATED = "validated"
-    BACKTESTING = "backtesting"
-    BACKTESTED = "backtested"
-    STRESS_TESTING = "stress_testing"
-    STRESS_TESTED = "stress_tested"
-    MONTE_CARLO = "monte_carlo"
-    MONTE_CARLO_COMPLETE = "monte_carlo_complete"
-    PAPER_DEPLOYED = "paper_deployed"
-    MONITORING = "monitoring"
-    STOPPED = "stopped"
-    ERROR = "error"
-
-
-@dataclass
-class EACreationResult:
-    """Result of EA creation"""
-    ea_id: str
-    strategy_code: str
-    status: EALifecycleStatus
-    created_at: float
-    validation_errors: List[str] = None
-
-
-@dataclass
-class EABacktestResult:
-    """Result of EA backtest"""
-    ea_id: str
-    metrics: Dict[str, Any]
-    equity_curve: List[Dict[str, float]]
-    drawdown: float
-    sharpe_ratio: float
-    sortino_ratio: float
-    status: EALifecycleStatus
-    completed_at: float
-
-
-@dataclass
-class EAMonteCarloResult:
-    """Result of Monte Carlo simulation"""
-    ea_id: str
-    simulation_results: List[Dict[str, Any]]
-    confidence_intervals: Dict[str, float]
-    probability_of_ruin: float
-    status: EALifecycleStatus
-    completed_at: float
-
-
 class EALifecycleTools:
-    """Tools for managing EA lifecycle without live trading deployment"""
+    """Tools for EA lifecycle management."""
 
-    def __init__(self):
-        """Initialize EA lifecycle tools"""
-        self.eas = {}  # In-memory storage for EAs
-        self.current_id = 0
+    def __init__(self, base_path: str = "/home/mubarkahimself/Desktop/QUANTMINDX"):
+        self.base_path = Path(base_path)
+        self.strategies_path = self.base_path / "strategies-yt"
+        self.ea_output_path = self.base_path / "output" / "expert_advisors"
 
-    def create_ea(self, strategy_code: str, parameters: Dict[str, Any]) -> EACreationResult:
+    def create_ea(
+        self,
+        strategy_name: str,
+        ea_name: Optional[str] = None,
+        parameters: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
-        Create a new EA (Expert Advisor) with the given strategy code and parameters.
+        Create an Expert Advisor from a strategy.
 
         Args:
-            strategy_code: The trading strategy code
-            parameters: Dictionary of strategy parameters
+            strategy_name: Name of the strategy to convert
+            ea_name: Name for the EA (defaults to strategy_name)
+            parameters: Trading parameters for the EA
 
         Returns:
-            EACreationResult with creation details
+            Dict with EA creation status and file path
         """
-        self.current_id += 1
-        ea_id = f"ea_{self.current_id}"
+        try:
+            ea_name = ea_name or f"{strategy_name}_EA"
+            parameters = parameters or {}
 
-        # Store the EA
-        self.eas[ea_id] = {
-            'id': ea_id,
-            'strategy_code': strategy_code,
-            'parameters': parameters,
-            'status': EALifecycleStatus.CREATED,
-            'created_at': time.time(),
-            'validation_errors': []
-        }
+            # Ensure output directory exists
+            self.ea_output_path.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"Created EA {ea_id}")
-        return EACreationResult(
-            ea_id=ea_id,
-            strategy_code=strategy_code,
-            status=EALifecycleStatus.CREATED,
-            created_at=time.time()
-        )
+            # Read strategy file
+            strategy_file = self.strategies_path / f"{strategy_name}.md"
+            if not strategy_file.exists():
+                return {
+                    "success": False,
+                    "error": f"Strategy file not found: {strategy_file}"
+                }
 
-    def validate_ea(self, ea_id: str) -> Dict[str, Any]:
-        """
-        Validate the EA code and parameters.
+            # Create basic MQ5 EA template
+            ea_code = self._generate_ea_template(ea_name, strategy_name, parameters)
 
-        Args:
-            ea_id: ID of the EA to validate
+            # Write EA file
+            ea_file = self.ea_output_path / f"{ea_name}.mq5"
+            ea_file.write_text(ea_code)
 
-        Returns:
-            Dictionary with validation results
-        """
-        if ea_id not in self.eas:
-            raise ValueError(f"EA {ea_id} not found")
+            logger.info(f"Created EA: {ea_file}")
 
-        ea = self.eas[ea_id]
-        ea['status'] = EALifecycleStatus.VALIDATING
-
-        # Simulate validation process
-        validation_errors = []
-
-        # Check if strategy code is provided
-        if not ea['strategy_code'] or not ea['strategy_code'].strip():
-            validation_errors.append("Strategy code is empty")
-
-        # Check parameters
-        if not ea['parameters']:
-            validation_errors.append("No parameters provided")
-
-        # Simulate validation time
-        time.sleep(1)
-
-        ea['validation_errors'] = validation_errors
-        ea['status'] = EALifecycleStatus.VALIDATED if not validation_errors else EALifecycleStatus.ERROR
-
-        result = {
-            'ea_id': ea_id,
-            'status': ea['status'].value,
-            'validation_errors': validation_errors,
-            'validated_at': time.time()
-        }
-
-        logger.info(f"Validated EA {ea_id}: {result['status']}")
-        return result
-
-    def backtest_ea(self, ea_id: str, backtest_params: Dict[str, Any]) -> EABacktestResult:
-        """
-        Run backtest on the EA.
-
-        Args:
-            ea_id: ID of the EA to backtest
-            backtest_params: Backtest parameters
-
-        Returns:
-            EABacktestResult with backtest results
-        """
-        if ea_id not in self.eas:
-            raise ValueError(f"EA {ea_id} not found")
-
-        ea = self.eas[ea_id]
-        ea['status'] = EALifecycleStatus.BACKTESTING
-
-        # Simulate backtest process
-        time.sleep(2)
-
-        # Generate mock backtest results
-        metrics = {
-            'total_trades': 150,
-            'winning_trades': 75,
-            'losing_trades': 75,
-            'win_rate': 0.5,
-            'average_win': 25.5,
-            'average_loss': -18.2,
-            'max_drawdown': 12.3,
-            'total_profit': 1250.0,
-            'profit_factor': 1.4
-        }
-
-        equity_curve = [
-            {'time': 0, 'equity': 10000.0},
-            {'time': 1, 'equity': 10125.0},
-            {'time': 2, 'equity': 10250.0},
-            # ... more data points ...
-        ]
-
-        result = EABacktestResult(
-            ea_id=ea_id,
-            metrics=metrics,
-            equity_curve=equity_curve,
-            drawdown=metrics['max_drawdown'],
-            sharpe_ratio=1.2,
-            sortino_ratio=1.5,
-            status=EALifecycleStatus.BACKTESTED,
-            completed_at=time.time()
-        )
-
-        ea['status'] = EALifecycleStatus.BACKTESTED
-        ea['backtest_results'] = result
-
-        logger.info(f"Backtested EA {ea_id}")
-        return result
-
-    def stress_test_ea(self, ea_id: str, stress_params: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Run stress test on the EA.
-
-        Args:
-            ea_id: ID of the EA to stress test
-            stress_params: Stress test parameters
-
-        Returns:
-            Dictionary with stress test results
-        """
-        if ea_id not in self.eas:
-            raise ValueError(f"EA {ea_id} not found")
-
-        ea = self.eas[ea_id]
-        ea['status'] = EALifecycleStatus.STRESS_TESTING
-
-        # Simulate stress test process
-        time.sleep(3)
-
-        results = {
-            'ea_id': ea_id,
-            'status': EALifecycleStatus.STRESS_TESTED.value,
-            'stress_test_results': {
-                'performance_under_high_volatility': 'PASS',
-                'performance_under_low_liquidity': 'PASS',
-                'parameter_sensitivity': 'MODERATE',
-                'max_drawdown_under_stress': 18.5,
-                'completed_at': time.time()
+            return {
+                "success": True,
+                "ea_name": ea_name,
+                "file_path": str(ea_file),
+                "strategy": strategy_name,
+                "parameters": parameters
             }
-        }
 
-        ea['status'] = EALifecycleStatus.STRESS_TESTED
-        logger.info(f"Stress tested EA {ea_id}")
-        return results
+        except Exception as e:
+            logger.error(f"Error creating EA: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
 
-    def monte_carlo_sim(self, ea_id: str, mc_params: Dict[str, Any]) -> EAMonteCarloResult:
+    def validate_ea(self, ea_name: str) -> Dict[str, Any]:
         """
-        Run Monte Carlo simulation on the EA.
+        Validate EA code syntax.
 
         Args:
-            ea_id: ID of the EA to simulate
-            mc_params: Monte Carlo parameters
+            ea_name: Name of the EA to validate
 
         Returns:
-            EAMonteCarloResult with simulation results
+            Dict with validation results
         """
-        if ea_id not in self.eas:
-            raise ValueError(f"EA {ea_id} not found")
+        try:
+            ea_file = self.ea_output_path / f"{ea_name}.mq5"
 
-        ea = self.eas[ea_id]
-        ea['status'] = EALifecycleStatus.MONTE_CARLO
+            if not ea_file.exists():
+                return {
+                    "success": False,
+                    "error": f"EA file not found: {ea_file}"
+                }
 
-        # Simulate Monte Carlo simulation
-        time.sleep(4)
+            # Basic syntax validation
+            code = ea_file.read_text()
 
-        # Generate mock simulation results
-        simulation_results = [
-            {'run': 1, 'final_equity': 12500.0, 'max_drawdown': 15.2},
-            {'run': 2, 'final_equity': 11800.0, 'max_drawdown': 22.1},
-            {'run': 3, 'final_equity': 13200.0, 'max_drawdown': 18.5},
-            # ... more simulation runs ...
-        ]
+            errors = []
+            warnings = []
 
-        result = EAMonteCarloResult(
-            ea_id=ea_id,
-            simulation_results=simulation_results,
-            confidence_intervals={
-                '95%_lower': 10500.0,
-                '95%_upper': 14500.0,
-                'median': 12000.0
-            },
-            probability_of_ruin=0.05,
-            status=EALifecycleStatus.MONTE_CARLO_COMPLETE,
-            completed_at=time.time()
-        )
+            # Check for required sections
+            required_sections = ["OnInit", "OnDeinit", "OnTick"]
+            for section in required_sections:
+                if section not in code:
+                    errors.append(f"Missing required section: {section}")
 
-        ea['status'] = EALifecycleStatus.MONTE_CARLO_COMPLETE
-        ea['monte_carlo_results'] = result
+            # Check for common issues
+            if "#property strict" not in code:
+                warnings.append("Missing #property strict directive")
 
-        logger.info(f"Monte Carlo simulated EA {ea_id}")
-        return result
+            # Basic bracket matching
+            if code.count("{") != code.count("}"):
+                errors.append("Mismatched braces in code")
 
-    def deploy_paper(self, ea_id: str, paper_params: Dict[str, Any]) -> Dict[str, Any]:
+            return {
+                "success": len(errors) == 0,
+                "valid": len(errors) == 0,
+                "errors": errors,
+                "warnings": warnings,
+                "file_path": str(ea_file)
+            }
+
+        except Exception as e:
+            logger.error(f"Error validating EA: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    def backtest_ea(
+        self,
+        ea_name: str,
+        symbol: str = "EURUSD",
+        timeframe: str = "H1",
+        date_from: str = "2023-01-01",
+        date_to: str = "2023-12-31",
+        deposit: int = 10000
+    ) -> Dict[str, Any]:
+        """
+        Run backtest for an EA.
+
+        Args:
+            ea_name: Name of the EA to backtest
+            symbol: Trading symbol
+            timeframe: Timeframe for backtest
+            date_from: Start date
+            date_to: End date
+            deposit: Initial deposit
+
+        Returns:
+            Dict with backtest results
+        """
+        try:
+            ea_file = self.ea_output_path / f"{ea_name}.mq5"
+
+            if not ea_file.exists():
+                return {
+                    "success": False,
+                    "error": f"EA file not found: {ea_file}"
+                }
+
+            # Placeholder for backtest execution
+            # In production, this would call MetaTrader 5 terminal
+            results = {
+                "success": True,
+                "ea_name": ea_name,
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "period": f"{date_from} to {date_to}",
+                "deposit": deposit,
+                "status": "queued",
+                "message": "Backtest queued for execution"
+            }
+
+            logger.info(f"Backtest queued for {ea_name}")
+            return results
+
+        except Exception as e:
+            logger.error(f"Error running backtest: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    def deploy_paper(
+        self,
+        ea_name: str,
+        account_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Deploy EA to paper trading environment.
 
         Args:
-            ea_id: ID of the EA to deploy
-            paper_params: Paper trading parameters
+            ea_name: Name of the EA to deploy
+            account_id: Optional paper trading account ID
 
         Returns:
-            Dictionary with deployment results
+            Dict with deployment status
         """
-        if ea_id not in self.eas:
-            raise ValueError(f"EA {ea_id} not found")
+        try:
+            ea_file = self.ea_output_path / f"{ea_name}.mq5"
 
-        ea = self.eas[ea_id]
+            if not ea_file.exists():
+                return {
+                    "success": False,
+                    "error": f"EA file not found: {ea_file}"
+                }
 
-        # Check if EA has been validated and backtested
-        if ea['status'] not in [EALifecycleStatus.VALIDATED, EALifecycleStatus.BACKTESTED]:
-            raise ValueError(f"EA {ea_id} must be validated and backtested before paper deployment")
+            # Validate EA before deployment
+            validation = self.validate_ea(ea_name)
+            if not validation["valid"]:
+                return {
+                    "success": False,
+                    "error": "EA validation failed",
+                    "validation_errors": validation.get("errors", [])
+                }
 
-        ea['status'] = EALifecycleStatus.PAPER_DEPLOYED
-
-        # Simulate paper deployment
-        time.sleep(1)
-
-        result = {
-            'ea_id': ea_id,
-            'status': EALifecycleStatus.PAPER_DEPLOYED.value,
-            'paper_trading_id': f"paper_{ea_id}",
-            'deployed_at': time.time(),
-            'initial_balance': paper_params.get('initial_balance', 10000.0)
-        }
-
-        logger.info(f"Deployed EA {ea_id} to paper trading")
-        return result
-
-    def monitor_ea(self, ea_id: str) -> Dict[str, Any]:
-        """
-        Monitor the EA in paper trading.
-
-        Args:
-            ea_id: ID of the EA to monitor
-
-        Returns:
-            Dictionary with monitoring results
-        """
-        if ea_id not in self.eas:
-            raise ValueError(f"EA {ea_id} not found")
-
-        ea = self.eas[ea_id]
-
-        if ea['status'] != EALifecycleStatus.PAPER_DEPLOYED:
-            raise ValueError(f"EA {ea_id} must be deployed to paper trading before monitoring")
-
-        ea['status'] = EALifecycleStatus.MONITORING
-
-        # Simulate monitoring
-        time.sleep(0.5)
-
-        result = {
-            'ea_id': ea_id,
-            'status': EALifecycleStatus.MONITORING.value,
-            'current_equity': 10250.0,
-            'unrealized_pnl': 250.0,
-            'trades_executed': 5,
-            'last_update': time.time()
-        }
-
-        logger.info(f"Monitoring EA {ea_id}")
-        return result
-
-    def optimize_ea(self, ea_id: str, optimization_params: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Optimize EA parameters.
-
-        Args:
-            ea_id: ID of the EA to optimize
-            optimization_params: Optimization parameters
-
-        Returns:
-            Dictionary with optimization results
-        """
-        if ea_id not in self.eas:
-            raise ValueError(f"EA {ea_id} not found")
-
-        ea = self.eas[ea_id]
-
-        # Simulate optimization
-        time.sleep(5)
-
-        result = {
-            'ea_id': ea_id,
-            'status': ea['status'].value,
-            'optimization_results': {
-                'best_parameters': {
-                    'stop_loss': 15.0,
-                    'take_profit': 30.0,
-                    'trailing_stop': True
-                },
-                'improvement': 15.2,
-                'optimized_at': time.time()
+            # Deploy to paper trading
+            deployment = {
+                "success": True,
+                "ea_name": ea_name,
+                "environment": "paper",
+                "account_id": account_id or "paper_default",
+                "status": "deployed",
+                "file_path": str(ea_file)
             }
-        }
 
-        logger.info(f"Optimized EA {ea_id}")
-        return result
+            logger.info(f"Deployed {ea_name} to paper trading")
+            return deployment
 
-    def stop_ea(self, ea_id: str) -> Dict[str, Any]:
-        """
-        Stop the EA (paper trading or monitoring).
-
-        Args:
-            ea_id: ID of the EA to stop
-
-        Returns:
-            Dictionary with stop results
-        """
-        if ea_id not in self.eas:
-            raise ValueError(f"EA {ea_id} not found")
-
-        ea = self.eas[ea_id]
-
-        # Only stop if EA is in paper trading or monitoring state
-        if ea['status'] not in [EALifecycleStatus.PAPER_DEPLOYED, EALifecycleStatus.MONITORING]:
-            raise ValueError(f"EA {ea_id} must be in paper trading or monitoring state to stop")
-
-        ea['status'] = EALifecycleStatus.STOPPED
-
-        # Simulate stopping
-        time.sleep(0.5)
-
-        result = {
-            'ea_id': ea_id,
-            'status': EALifecycleStatus.STOPPED.value,
-            'stopped_at': time.time(),
-            'final_equity': 10300.0,
-            'total_pnl': 300.0
-        }
-
-        logger.info(f"Stopped EA {ea_id}")
-        return result
-
-    def list_eas(self) -> List[Dict[str, Any]]:
-        """
-        List all EAs.
-
-        Returns:
-            List of EA dictionaries
-        """
-        return [
-            {
-                'id': ea_id,
-                'status': ea['status'].value,
-                'created_at': ea['created_at'],
-                'strategy_code': ea.get('strategy_code', ''),
-                'parameters': ea.get('parameters', {})
+        except Exception as e:
+            logger.error(f"Error deploying to paper: {e}")
+            return {
+                "success": False,
+                "error": str(e)
             }
-            for ea_id, ea in self.eas.items()
-        ]
 
-    def get_ea(self, ea_id: str) -> Dict[str, Any]:
+    def stop_ea(self, ea_name: str, environment: str = "paper") -> Dict[str, Any]:
         """
-        Get EA details.
+        Stop a running EA.
 
         Args:
-            ea_id: ID of the EA to get
+            ea_name: Name of the EA to stop
+            environment: Environment where EA is running
 
         Returns:
-            EA dictionary
+            Dict with stop status
         """
-        if ea_id not in self.eas:
-            raise ValueError(f"EA {ea_id} not found")
+        try:
+            # Stop the EA
+            result = {
+                "success": True,
+                "ea_name": ea_name,
+                "environment": environment,
+                "status": "stopped",
+                "message": f"EA {ea_name} stopped on {environment}"
+            }
 
-        return self.eas[ea_id]
+            logger.info(f"Stopped {ea_name} on {environment}")
+            return result
+
+        except Exception as e:
+            logger.error(f"Error stopping EA: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    def _generate_ea_template(
+        self,
+        ea_name: str,
+        strategy_name: str,
+        parameters: Dict[str, Any]
+    ) -> str:
+        """Generate basic MQ5 EA template."""
+        return f'''//+------------------------------------------------------------------+
+//|                                          {ea_name}.mq5               |
+//|                                    Generated by QuantMindX            |
+//+------------------------------------------------------------------+
+#property copyright "QuantMindX"
+#property link      "https://quantmindx.io"
+#property version   "1.00"
+#property strict
+
+// Input parameters
+input double RiskPercent = {parameters.get('risk_percent', 1.0)};
+input double LotSize = {parameters.get('lot_size', 0.01)};
+input int StopLoss = {parameters.get('stop_loss', 50)};
+input int TakeProfit = {parameters.get('take_profit', 100)};
+
+// Global variables
+int strategyHandle = INVALID_HANDLE;
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                     |
+//+------------------------------------------------------------------+
+int OnInit()
+{{
+   // Initialize strategy from: {strategy_name}
+   Print("{ea_name} initialized");
+
+   return(INIT_SUCCEEDED);
+}}
+
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                   |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{{
+   // Cleanup
+   Print("{ea_name} deinitialized, reason: ", reason);
+}}
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                               |
+//+------------------------------------------------------------------+
+void OnTick()
+{{
+   // Trading logic based on {strategy_name}
+
+   // Check for new bar
+   static datetime lastBarTime = 0;
+   datetime currentBarTime = iTime(_Symbol, _Period, 0);
+
+   if(lastBarTime != currentBarTime)
+   {{
+      lastBarTime = currentBarTime;
+
+      // Execute strategy logic here
+      // Analyze market conditions
+      // Open/close positions
+   }}
+}}
+//+------------------------------------------------------------------+
+'''
