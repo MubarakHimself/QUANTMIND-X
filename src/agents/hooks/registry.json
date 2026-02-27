@@ -1,0 +1,9 @@
+{
+  "copilot_log_trades": {
+    "path": "/home/mubarkahimself/Desktop/QUANTMINDX/agent-workshop/copilot/hooks/post_trade_log_trades.py",
+    "type": "post",
+    "event": "trade",
+    "agent_id": "copilot",
+    "created_at": "2026-02-23T09:49:29.300463"
+  }
+}

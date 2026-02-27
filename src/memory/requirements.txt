@@ -1,0 +1,17 @@
+# QuantMindX Memory System Dependencies
+
+# Core dependencies
+aiosqlite>=0.19.0
+numpy>=1.24.0
+
+# OpenAI embeddings
+openai>=1.0.0
+
+# Local embeddings (optional)
+sentence-transformers>=2.2.0
+
+# Vector search (sqlite-vec)
+sqlite-vec>=0.1.0
+
+# Optional: For better performance
+uvloop>=0.17.0; sys_platform != "win32"

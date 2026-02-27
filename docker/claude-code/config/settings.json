@@ -1,0 +1,44 @@
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "$ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL": "$ANTHROPIC_BASE_URL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "GLM-4.6V",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "GLM-5",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "GLM-4.7",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  },
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "Bash(git clone:*)",
+      "Bash(npm install:*)",
+      "Bash(curl:*)",
+      "Bash(npm search:*)",
+      "Bash(claude mcp add:*)",
+      "Bash(export:*)",
+      "Bash(claude:*)",
+      "Bash(chmod:*)",
+      "WebSearch",
+      "Bash(ls:*)",
+      "Bash(source:*)",
+      "Bash(npx:*)",
+      "Bash(echo:*)",
+      "Bash(env:*)",
+      "Bash(exec:*)",
+      "mcp__pencil",
+      "mcp__web-reader__webReader",
+      "mcp__zread__get_repo_structure",
+      "mcp__zread__read_file",
+      "mcp__zread__search_doc",
+      "mcp__github__get_file_contents",
+      "mcp__github__search_code"
+    ],
+    "deny": []
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "input=$(cat); user=$(whoami); host=$(hostname -s); dir=$(echo \"$input\" | jq -r '.workspace.current_dir'); model=$(echo \"$input\" | jq -r '.model.display_name // empty'); info=\"${user}@${host}:${dir}\"; [ -n \"$model\" ] && info=\"${info} | ${model}\"; printf \"%s\" \"$info\""
+  },
+  "skipDangerousModePermissionPrompt": true
+}

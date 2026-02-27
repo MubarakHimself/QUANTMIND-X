@@ -1,0 +1,58 @@
+# Claude Code Docker Compose
+# Isolated Claude Code environment for QuantMindX
+
+services:
+  claude-code:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USERNAME: node
+
+    container_name: quantmind-claude-code
+
+    # Run with TTY for interactive use
+    stdin_open: true
+    tty: true
+
+    # Environment variables
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
+      - CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+
+    # Volume mounts
+    volumes:
+      # Project workspace
+      - ../..:/workspace:rw
+
+      # Claude configuration (copied from host)
+      - ./config:/config:ro
+
+      # Persistent Claude data
+      - claude-data:/home/node/.claude
+
+      # Docker socket (for Docker MCP)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+      # Git configuration
+      - ~/.gitconfig:/home/claude/.gitconfig:ro
+
+    # Network mode for local services
+    network_mode: host
+
+    # Working directory
+    working_dir: /workspace
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+
+volumes:
+  claude-data:
+    name: quantmind-claude-data
