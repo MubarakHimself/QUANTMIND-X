@@ -114,12 +114,57 @@
   }> = [
     {
       id: 'context7',
-      name: 'Context7',
+      name: 'Context7 MCP',
       command: 'npx',
       args: ['-y', '@context7/mcp-server'],
       status: 'stopped',
       type: 'builtin',
-      description: 'Documentation lookup for LangChain, LangGraph, and libraries'
+      description: 'MQL5 documentation retrieval and code context'
+    },
+    {
+      id: 'filesystem',
+      name: 'Filesystem MCP',
+      command: 'npx',
+      args: ['-y', '@anthropic-ai/mcp-server-filesystem', '--root', './workspace'],
+      status: 'stopped',
+      type: 'builtin',
+      description: 'Local filesystem access and file operations'
+    },
+    {
+      id: 'metatrader5',
+      name: 'MetaTrader 5 MCP',
+      command: 'npx',
+      args: ['-y', '@anthropic-ai/mcp-server-mt5'],
+      status: 'stopped',
+      type: 'builtin',
+      description: 'MetaTrader 5 trading platform integration'
+    },
+    {
+      id: 'sequential_thinking',
+      name: 'Sequential Thinking MCP',
+      command: 'npx',
+      args: ['-y', '@anthropic-ai/mcp-server-sequential-thinking'],
+      status: 'stopped',
+      type: 'builtin',
+      description: 'Task decomposition and reasoning'
+    },
+    {
+      id: 'svelte',
+      name: 'Svelte MCP',
+      command: 'npx',
+      args: ['-y', '@sveltejs/mcp'],
+      status: 'stopped',
+      type: 'builtin',
+      description: 'Svelte component development tools'
+    },
+    {
+      id: 'chrome_devtools',
+      name: 'Chrome DevTools MCP',
+      command: 'npx',
+      args: ['-y', 'chrome-devtools-mcp@latest'],
+      status: 'stopped',
+      type: 'builtin',
+      description: 'Browser automation and testing'
     }
   ];
 
@@ -1297,6 +1342,33 @@ Configure your agent behavior here..."
           <button on:click={() => mcpModalOpen = false}><X size={20} /></button>
         </div>
         <div class="modal-body">
+          <!-- Quick Add Templates -->
+          <div class="quick-add-section">
+            <h4>Quick Add</h4>
+            <div class="template-grid">
+              {#each DEFAULT_MCP_SERVERS as template}
+                <button
+                  class="template-card"
+                  on:click={() => {
+                    newMcpServer = {
+                      name: template.name,
+                      command: template.command,
+                      args: template.args.join(' '),
+                      description: template.description
+                    };
+                  }}
+                >
+                  <Terminal size={16} />
+                  <span>{template.name}</span>
+                </button>
+              {/each}
+            </div>
+          </div>
+
+          <div class="divider">
+            <span>or add custom</span>
+          </div>
+
           <div class="form-group">
             <label>Server Name</label>
             <input type="text" placeholder="My Custom Server" bind:value={newMcpServer.name} />
@@ -1954,6 +2026,68 @@ Configure your agent behavior here..."
     gap: 8px;
     padding: 16px 20px;
     border-top: 1px solid var(--border-subtle);
+  }
+
+  /* Quick Add Section */
+  .quick-add-section {
+    margin-bottom: 20px;
+  }
+
+  .quick-add-section h4 {
+    margin: 0 0 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .template-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .template-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .template-card:hover {
+    background: var(--bg-secondary);
+    border-color: var(--accent-primary);
+    transform: translateY(-1px);
+  }
+
+  .template-card :global(svg) {
+    color: var(--accent-primary);
+    flex-shrink: 0;
+  }
+
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 20px 0;
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
+  .divider::before,
+  .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border-subtle);
   }
 
   /* AGENTS.md Editor */
