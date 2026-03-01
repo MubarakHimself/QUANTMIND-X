@@ -4,6 +4,7 @@
 .worktrees/
 .worktree-args/
 .quantmind/
+hummingbot-repo/
 
 # ============================================================
 # SYSTEM & OS
