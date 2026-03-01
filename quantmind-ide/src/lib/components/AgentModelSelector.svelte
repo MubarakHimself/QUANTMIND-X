@@ -24,7 +24,7 @@
 
   onMount(async () => {
     try {
-      const response = await fetch(`${API_BASE}/agents/available-models`);
+      const response = await fetch(`${API_BASE}/agent-config/available-models`);
       if (!response.ok) {
         throw new Error('Failed to fetch models');
       }
@@ -59,7 +59,7 @@
 
   async function updateModel() {
     try {
-      await fetch(`${API_BASE}/agents/${agentId}/model`, {
+      await fetch(`${API_BASE}/agent-config/${agentId}/model`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: selectedModel })

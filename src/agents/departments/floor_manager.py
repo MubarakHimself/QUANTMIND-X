@@ -351,3 +351,20 @@ class FloorManager:
         if self.mail_service:
             self.mail_service.close()
         logger.info("FloorManager closed")
+
+
+# Singleton instance
+_floor_manager: Optional[FloorManager] = None
+
+
+def get_floor_manager() -> FloorManager:
+    """
+    Get the singleton FloorManager instance.
+
+    Returns:
+        FloorManager instance
+    """
+    global _floor_manager
+    if _floor_manager is None:
+        _floor_manager = FloorManager()
+    return _floor_manager

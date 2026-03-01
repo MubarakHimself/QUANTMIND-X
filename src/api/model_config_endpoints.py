@@ -12,7 +12,7 @@ from src.agents.llm_provider import (
     has_api_key,
 )
 
-router = APIRouter(prefix="/api/agents", tags=["agents"])
+router = APIRouter(prefix="/api/agent-config", tags=["agent-config"])
 
 # Config file for persistence
 CONFIG_DIR = Path(".quantmind")
