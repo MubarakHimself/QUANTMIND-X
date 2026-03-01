@@ -1,16 +1,64 @@
 <script lang="ts">
   import { fade, slide } from 'svelte/transition';
   import { onMount } from 'svelte';
-  import { Plus, Trash2, RefreshCw, Server, Check, X, AlertCircle, ExternalLink, Loader2 } from 'lucide-svelte';
+  import { Plus, Trash2, RefreshCw, Server, Check, X, AlertCircle, ExternalLink, Loader2, Terminal, Globe } from 'lucide-svelte';
   import { settingsStore } from '../../../stores/settingsStore';
   import type { MCPServer } from '../../../stores/settingsStore';
   import { API_CONFIG } from '$lib/config/api';
 
   const API_BASE = API_CONFIG.API_BASE;
 
+  // Default server templates
+  const DEFAULT_SERVERS = [
+    {
+      id: 'context7',
+      name: 'Context7 MCP',
+      description: 'MQL5 documentation retrieval',
+      type: 'stdio' as const,
+      command: 'npx',
+      args: ['-y', '@context7/mcp-server'],
+      autoConnect: false
+    },
+    {
+      id: 'filesystem',
+      name: 'Filesystem MCP',
+      description: 'Local filesystem access',
+      type: 'stdio' as const,
+      command: 'npx',
+      args: ['-y', '@anthropic-ai/mcp-server-filesystem', '--root', './workspace'],
+      autoConnect: false
+    },
+    {
+      id: 'metatrader5',
+      name: 'MetaTrader 5 MCP',
+      description: 'MetaTrader 5 trading platform integration',
+      type: 'stdio' as const,
+      command: 'npx',
+      args: ['-y', '@anthropic-ai/mcp-server-mt5'],
+      autoConnect: false
+    },
+    {
+      id: 'sequential_thinking',
+      name: 'Sequential Thinking MCP',
+      description: 'Task decomposition and reasoning',
+      type: 'stdio' as const,
+      command: 'npx',
+      args: ['-y', '@anthropic-ai/mcp-server-sequential-thinking'],
+      autoConnect: false
+    }
+  ];
+
   // State
   let showAddModal = false;
-  let newServer = { name: '', url: '', autoConnect: true };
+  let serverType: 'http' | 'stdio' = 'stdio';
+  let newServer = {
+    name: '',
+    description: '',
+    url: '',
+    command: '',
+    args: '',
+    autoConnect: false
+  };
   let editingServer: MCPServer | null = null;
   let loading = false;
   let backendAvailable = false;
@@ -79,18 +127,44 @@
   
   // Add new server
   function handleAddServer() {
-    if (!newServer.name || !newServer.url) return;
-    
-    settingsStore.addMCPServer({
+    if (!newServer.name) return;
+    if (serverType === 'http' && !newServer.url) return;
+    if (serverType === 'stdio' && !newServer.command) return;
+
+    const serverData: Omit<MCPServer, 'id'> = {
       name: newServer.name,
-      url: newServer.url,
+      description: newServer.description,
+      type: serverType,
       status: 'disconnected',
       capabilities: [],
       autoConnect: newServer.autoConnect
-    });
-    
-    newServer = { name: '', url: '', autoConnect: true };
+    };
+
+    if (serverType === 'http') {
+      serverData.url = newServer.url;
+    } else {
+      serverData.command = newServer.command;
+      serverData.args = newServer.args ? newServer.args.split(' ').filter(a => a) : [];
+    }
+
+    settingsStore.addMCPServer(serverData);
+
+    newServer = { name: '', description: '', url: '', command: '', args: '', autoConnect: false };
     showAddModal = false;
+  }
+
+  // Add from template
+  function addFromTemplate(template: typeof DEFAULT_SERVERS[0]) {
+    settingsStore.addMCPServer({
+      name: template.name,
+      description: template.description,
+      type: template.type,
+      command: template.command,
+      args: template.args,
+      status: 'disconnected',
+      capabilities: [],
+      autoConnect: template.autoConnect
+    });
   }
   
   // Remove server
@@ -258,40 +332,112 @@
       <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions a11y-no-noninteractive-element-interactions -->
       <div class="modal" on:click|stopPropagation transition:slide role="dialog" aria-modal="true" aria-labelledby="mcp-modal-title">
         <h4 id="mcp-modal-title">Add MCP Server</h4>
-        
+
+        <!-- Quick Add Templates -->
+        <div class="templates-section">
+          <h5>Quick Add</h5>
+          <div class="template-grid">
+            {#each DEFAULT_SERVERS as template}
+              <button class="template-btn" on:click={() => addFromTemplate(template)}>
+                <Terminal size={14} />
+                {template.name}
+              </button>
+            {/each}
+          </div>
+        </div>
+
+        <div class="divider">
+          <span>or add custom</span>
+        </div>
+
+        <!-- Server Type Toggle -->
+        <div class="form-group">
+          <label>Server Type</label>
+          <div class="type-toggle">
+            <button
+              class="type-btn"
+              class:active={serverType === 'http'}
+              on:click={() => serverType = 'http'}
+            >
+              <Globe size={14} />
+              HTTP URL
+            </button>
+            <button
+              class="type-btn"
+              class:active={serverType === 'stdio'}
+              on:click={() => serverType = 'stdio'}
+            >
+              <Terminal size={14} />
+              Command (Stdio)
+            </button>
+          </div>
+        </div>
+
         <div class="form-group">
           <label for="server-name">Server Name</label>
-          <input 
+          <input
             id="server-name"
-            type="text" 
-            placeholder="e.g., File System"
+            type="text"
+            placeholder="e.g., My Custom Server"
             bind:value={newServer.name}
           />
         </div>
-        
+
         <div class="form-group">
-          <label for="server-url">Server URL</label>
-          <input 
-            id="server-url"
-            type="text" 
-            placeholder="e.g., http://localhost:3000"
-            bind:value={newServer.url}
+          <label for="server-description">Description (optional)</label>
+          <input
+            id="server-description"
+            type="text"
+            placeholder="What does this server provide?"
+            bind:value={newServer.description}
           />
         </div>
-        
+
+        {#if serverType === 'http'}
+          <div class="form-group">
+            <label for="server-url">Server URL</label>
+            <input
+              id="server-url"
+              type="text"
+              placeholder="e.g., http://localhost:3000/mcp"
+              bind:value={newServer.url}
+            />
+          </div>
+        {:else}
+          <div class="form-group">
+            <label for="server-command">Command</label>
+            <input
+              id="server-command"
+              type="text"
+              placeholder="e.g., npx, python, node"
+              bind:value={newServer.command}
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="server-args">Arguments</label>
+            <input
+              id="server-args"
+              type="text"
+              placeholder="e.g., -y @package-name --flag value"
+              bind:value={newServer.args}
+            />
+          </div>
+        {/if}
+
         <div class="form-group">
           <label class="checkbox-label">
             <input type="checkbox" bind:checked={newServer.autoConnect} />
             Auto-connect on startup
           </label>
         </div>
-        
+
         <div class="modal-actions">
           <button class="btn secondary" on:click={() => showAddModal = false}>Cancel</button>
-          <button 
-            class="btn primary" 
+          <button
+            class="btn primary"
             on:click={handleAddServer}
-            disabled={!newServer.name || !newServer.url}
+            disabled={!newServer.name || (serverType === 'http' ? !newServer.url : !newServer.command)}
           >
             Add Server
           </button>
@@ -658,5 +804,93 @@
   
   .docs-link:hover {
     text-decoration: underline;
+  }
+
+  /* Templates Section */
+  .templates-section {
+    margin-bottom: 16px;
+  }
+
+  .templates-section h5 {
+    margin: 0 0 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .template-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .template-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .template-btn:hover {
+    background: var(--bg-secondary);
+    border-color: var(--accent-primary);
+  }
+
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 16px 0;
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
+  .divider::before,
+  .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border-subtle);
+  }
+
+  /* Type Toggle */
+  .type-toggle {
+    display: flex;
+    gap: 8px;
+  }
+
+  .type-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .type-btn:hover {
+    background: var(--bg-secondary);
+  }
+
+  .type-btn.active {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: var(--bg-primary);
   }
 </style>

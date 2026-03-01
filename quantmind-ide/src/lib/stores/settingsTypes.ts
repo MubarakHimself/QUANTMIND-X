@@ -26,7 +26,17 @@ export interface APIKeys {
 export interface MCPServer {
   id: string;
   name: string;
-  url: string;
+  description?: string;
+  // Server type: 'http' (URL-based) or 'stdio' (command-based)
+  type: 'http' | 'stdio';
+  // For HTTP servers
+  url?: string;
+  headers?: Record<string, string>;
+  // For Stdio servers
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  // Status
   status: 'connected' | 'disconnected' | 'error';
   capabilities: string[];
   lastConnected?: Date;
