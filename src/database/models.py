@@ -12,9 +12,32 @@ from sqlalchemy import (
     Column, Integer, String, Float, Boolean, DateTime,
     ForeignKey, UniqueConstraint, Index, JSON, Text, Enum
 )
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import declarative_base, relationship, Session
+from typing import Generator
+
+# Import session from engine for FastAPI dependency injection
+from .engine import get_session
 
 Base = declarative_base()
+
+
+def get_db_session() -> Generator[Session, None, None]:
+    """
+    FastAPI dependency for database session management.
+
+    Yields a database session and ensures cleanup after request.
+
+    Usage:
+        @router.get("/items")
+        async def get_items(db: Session = Depends(get_db_session)):
+            items = db.query(Item).all()
+            return items
+    """
+    session = get_session()
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 class TradingMode(PyEnum):
@@ -1304,7 +1327,7 @@ class ImportedEA(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     ea_filename = Column(String(200), nullable=False, index=True)
     github_path = Column(String(500), nullable=False)
-    bot_manifest_id = Column(String(100), nullable=True, index=True)
+    bot_manifest_id = Column(Integer, ForeignKey('bot_manifests.id'), nullable=True, index=True)
     imported_at = Column(DateTime, nullable=True)
     last_synced = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     version = Column(String(50), nullable=True)
@@ -1319,6 +1342,9 @@ class ImportedEA(Base):
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    # Relationship to BotManifest
+    bot_manifest = relationship("BotManifest", back_populates="imported_eas")
 
     __table_args__ = (
         Index('idx_imported_eas_filename', 'ea_filename'),
@@ -1347,8 +1373,82 @@ class ImportedEA(Base):
             "timeframe": self.timeframe,
             "symbols": self.symbols,
             "lines_of_code": self.lines_of_code,
-            "ea_metadata": self.ea_metadata,
+            "metadata": self.ea_metadata,
             "error_message": self.error_message,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
+class BotManifest(Base):
+    """
+    Bot Manifest for EA routing and lifecycle management.
+
+    Defines the characteristics and requirements for a trading bot,
+    enabling automatic routing to appropriate accounts.
+
+    Attributes:
+        id: Primary key
+        bot_name: Name of the bot
+        bot_type: Bot type (scalper, structural, swing, hft)
+        strategy_type: Strategy classification
+        trade_frequency: Expected trading frequency
+        broker_type: Preferred broker type
+        required_margin: Minimum margin required
+        max_drawdown_pct: Maximum acceptable drawdown
+        min_win_rate: Minimum win rate required
+        target_sharpe: Target Sharpe ratio
+        trading_mode: Current trading mode (demo, live)
+        status: Bot status (active, paused, stopped)
+        bot_metadata: Additional bot configuration
+        created_at: Manifest creation timestamp
+        updated_at: Last update timestamp
+    """
+    __tablename__ = 'bot_manifests'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    bot_name = Column(String(255), nullable=False, unique=True, index=True)
+    bot_type = Column(String(50), nullable=False)
+    strategy_type = Column(String(50), nullable=False)
+    trade_frequency = Column(String(50), nullable=True)
+    broker_type = Column(String(50), nullable=False, default='STANDARD')
+    required_margin = Column(Float, nullable=False, default=100.0)
+    max_drawdown_pct = Column(Float, nullable=False, default=10.0)
+    min_win_rate = Column(Float, nullable=False, default=0.55)
+    target_sharpe = Column(Float, nullable=True)
+    trading_mode = Column(Enum(TradingMode), nullable=False, default=TradingMode.DEMO, index=True)
+    status = Column(String(20), nullable=False, default='active', index=True)
+    bot_metadata = Column('metadata', JSON, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # Relationship to ImportedEAs
+    imported_eas = relationship("ImportedEA", back_populates="bot_manifest")
+
+    __table_args__ = (
+        Index('idx_bot_manifests_status', 'status'),
+        Index('idx_bot_manifests_mode', 'trading_mode'),
+    )
+
+    def __repr__(self):
+        return f"<BotManifest(id={self.id}, name={self.bot_name}, type={self.bot_type}, mode={self.trading_mode})>"
+
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "bot_name": self.bot_name,
+            "bot_type": self.bot_type,
+            "strategy_type": self.strategy_type,
+            "trade_frequency": self.trade_frequency,
+            "broker_type": self.broker_type,
+            "required_margin": self.required_margin,
+            "max_drawdown_pct": self.max_drawdown_pct,
+            "min_win_rate": self.min_win_rate,
+            "target_sharpe": self.target_sharpe,
+            "trading_mode": self.trading_mode.value if self.trading_mode else None,
+            "status": self.status,
+            "metadata": self.bot_metadata,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }

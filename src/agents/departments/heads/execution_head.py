@@ -1,10 +1,10 @@
 """
-Execution Department Head
+Trading Department Head
 
 Responsible for:
-- Order routing and execution
+- Order execution (paper trading)
 - Fill tracking and confirmation
-- Slippage monitoring and optimization
+- Trade monitoring and management
 """
 import logging
 from typing import Dict, List, Any
@@ -15,11 +15,11 @@ from src.agents.departments.types import Department, get_department_config
 logger = logging.getLogger(__name__)
 
 
-class ExecutionHead(DepartmentHead):
-    """Execution Department Head for order execution."""
+class TradingHead(DepartmentHead):
+    """Trading Department Head for order execution."""
 
     def __init__(self, mail_db_path: str = ".quantmind/department_mail.db"):
-        config = get_department_config(Department.EXECUTION)
+        config = get_department_config(Department.TRADING)
         super().__init__(config=config, mail_db_path=mail_db_path)
 
     def get_tools(self) -> List[Dict[str, Any]]:

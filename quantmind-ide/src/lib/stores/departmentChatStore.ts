@@ -230,13 +230,14 @@ function createDepartmentChatStore() {
         this.setTyping(departmentId, true);
 
         // Call API to send message to department
-        const response = await fetch(`${API_BASE}/floor-manager/chat`, {
+        const response = await fetch(`${API_BASE}/chat/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            department: departmentId,
+            agent: departmentId,
             message: content,
-            task_type: options?.taskType,
+            model: 'default',
+            provider: 'anthropic',
           }),
         });
 
@@ -318,14 +319,15 @@ function createDepartmentChatStore() {
       });
 
       try {
-        const response = await fetch(`${API_BASE}/floor-manager/delegate`, {
+        const response = await fetch(`${API_BASE}/trading-floor/delegate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            department: departmentId,
+            from_department: 'floor_manager',
+            to_department: departmentId,
             task,
             task_type: taskType,
-            task_id: delegatedTask.id,
+            suggested_department: departmentId,
           }),
         });
 

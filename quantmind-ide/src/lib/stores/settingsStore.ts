@@ -53,7 +53,9 @@ const defaultAPIKeys: APIKeys = {
   google: '',
   anthropic: '',
   openai: '',
-  qwen: ''
+  qwen: '',
+  zhipu: '',
+  minimax: ''
 };
 
 const defaultMemoryConfig: MemoryConfig = {

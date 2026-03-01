@@ -1,588 +1,277 @@
 """
 Memory Tools for QuantMind Agents.
 
-This module provides tools for agents to interact with the LangMem memory system,
-supporting semantic, episodic, and procedural memory operations.
+This module provides tools for agents to interact with the QuantMind memory system,
+supporting department-based memory operations using SQLite with optional embeddings.
 """
 
-import asyncio
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+
+from src.memory.memory_manager import (
+    MemoryManager,
+    MemorySource,
+    create_memory_manager,
+)
 
 logger = logging.getLogger(__name__)
 
 
 # Global memory manager instance
-_memory_manager = None
+_memory_manager: Optional[MemoryManager] = None
 
 
-def get_memory_manager():
+async def get_memory_manager() -> MemoryManager:
     """Get or create the global memory manager instance."""
     global _memory_manager
     if _memory_manager is None:
-        from src.memory.langmem_manager import LangMemManager
-        _memory_manager = LangMemManager()
+        _memory_manager = await create_memory_manager(
+            db_path=".quantmind/memory.db",
+            enable_embeddings=False,  # No embeddings due to low compute
+        )
     return _memory_manager
 
 
 # =============================================================================
-# Semantic Memory Tools (Facts and Concepts)
+# Core Memory Tools
 # =============================================================================
 
-async def add_semantic_memory(
+async def add_memory(
     content: str,
-    agent_name: str = "analyst",
+    department: str = "research",
     importance: float = 0.5,
+    tags: Optional[List[str]] = None,
     metadata: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
-    Add a semantic memory (fact or concept).
-    
-    Semantic memories store factual knowledge and concepts that can be
-    retrieved and used across sessions.
-    
+    Add a memory entry for a department.
+
+    Stores knowledge, findings, or insights that can be retrieved later.
+
     Args:
-        content: The fact or concept to remember
-        agent_name: Agent to associate memory with (default: "analyst")
+        content: The content to remember
+        department: Department to associate memory with
         importance: Importance score 0-1 (default: 0.5)
+        tags: Optional tags for categorization
         metadata: Optional metadata for the memory
-        
+
     Returns:
-        Dictionary containing:
-        - success: Whether the memory was added
-        - memory_id: ID of the created memory
-        - message: Status message
+        Dictionary containing success status and memory_id
     """
-    logger.info(f"Adding semantic memory for {agent_name}: {content[:50]}...")
-    
-    manager = get_memory_manager()
-    
+    logger.info(f"Adding memory for {department}: {content[:50]}...")
+
+    manager = await get_memory_manager()
+
+    full_metadata = metadata or {}
+    full_metadata["department"] = department
+
     try:
-        entry = await manager.add_semantic_memory(
-            agent_name=agent_name,
+        entry = await manager.add_memory(
+            source=MemorySource.MEMORY,
             content=content,
+            metadata=full_metadata,
             importance=importance,
-            metadata=metadata
+            tags=tags or [department],
         )
-        
+
         return {
             "success": True,
             "memory_id": entry.id,
-            "message": f"Semantic memory added successfully",
+            "message": f"Memory added to {department}",
             "content": content,
-            "importance": importance
+            "department": department
         }
-        
+
     except Exception as e:
-        logger.error(f"Failed to add semantic memory: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "message": "Failed to add semantic memory"
-        }
+        logger.error(f"Failed to add memory: {e}")
+        return {"success": False, "error": str(e)}
 
 
-async def search_semantic_memory(
+async def search_memories(
     query: str,
-    agent_name: str = "analyst",
-    limit: int = 10,
-    min_relevance: float = 0.0
+    department: str = "all",
+    limit: int = 10
 ) -> Dict[str, Any]:
     """
-    Search semantic memories by query.
-    
-    Retrieves factual knowledge and concepts matching the query.
-    
+    Search memories using full-text search.
+
     Args:
         query: Search query
-        agent_name: Agent to search memories for (default: "analyst")
-        limit: Maximum results to return (default: 10)
-        min_relevance: Minimum relevance threshold (default: 0.0)
-        
+        department: Department to search (default: all)
+        limit: Maximum results (default: 10)
+
     Returns:
-        Dictionary containing:
-        - results: List of matching memories with relevance scores
-        - total: Total number of results
-        - query: Original query
+        Dictionary containing search results
     """
-    logger.info(f"Searching semantic memory for {agent_name}: {query}")
-    
-    manager = get_memory_manager()
-    
+    logger.info(f"Searching memories: {query}")
+
+    manager = await get_memory_manager()
+
     try:
-        results = await manager.search_semantic_memory(
-            agent_name=agent_name,
-            query=query,
-            limit=limit
-        )
-        
+        # Returns List[Tuple[MemoryEntry, float]]
+        results = await manager.search_fts(query=query, limit=limit)
+
+        # Filter by department
+        filtered = []
+        for entry, score in results:
+            if department == "all" or entry.metadata.get("department") == department:
+                filtered.append({
+                    "content": entry.content,
+                    "memory_id": entry.id,
+                    "created_at": entry.created_at.isoformat() if entry.created_at else None,
+                    "tags": entry.tags,
+                    "metadata": entry.metadata,
+                    "score": score
+                })
+
         return {
             "success": True,
-            "results": [
-                {
-                    "content": r.entry.content,
-                    "relevance": r.relevance,
-                    "memory_id": r.entry.id,
-                    "created_at": r.entry.created_at,
-                    "importance": r.entry.importance
+            "results": filtered[:limit],
+            "total": len(filtered),
+            "query": query
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to search memories: {e}")
+        return {"success": False, "error": str(e), "results": []}
+
+
+async def get_memory(memory_id: str) -> Dict[str, Any]:
+    """
+    Get a specific memory by ID.
+
+    Args:
+        memory_id: ID of the memory to retrieve
+
+    Returns:
+        Dictionary containing the memory entry
+    """
+    manager = await get_memory_manager()
+
+    try:
+        entry = await manager.get_memory(memory_id)
+        if entry:
+            return {
+                "success": True,
+                "memory": {
+                    "id": entry.id,
+                    "content": entry.content,
+                    "department": entry.metadata.get("department"),
+                    "tags": entry.tags,
+                    "importance": entry.importance,
+                    "created_at": entry.created_at.isoformat() if entry.created_at else None
                 }
-                for r in results
-                if r.relevance >= min_relevance
-            ],
-            "total": len(results),
-            "query": query
-        }
-        
+            }
+        return {"success": False, "error": "Memory not found"}
+
     except Exception as e:
-        logger.error(f"Failed to search semantic memory: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "results": [],
-            "total": 0,
-            "query": query
-        }
+        logger.error(f"Failed to get memory: {e}")
+        return {"success": False, "error": str(e)}
 
 
-# =============================================================================
-# Episodic Memory Tools (Events and Experiences)
-# =============================================================================
-
-async def add_episodic_memory(
-    content: str,
-    agent_name: str = "analyst",
-    importance: float = 0.5,
-    metadata: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
-    """
-    Add an episodic memory (event or experience).
-    
-    Episodic memories store events, experiences, and interactions that
-    occurred during agent operation.
-    
-    Args:
-        content: Description of the event or experience
-        agent_name: Agent to associate memory with (default: "analyst")
-        importance: Importance score 0-1 (default: 0.5)
-        metadata: Optional metadata (e.g., timestamp, context)
-        
-    Returns:
-        Dictionary containing:
-        - success: Whether the memory was added
-        - memory_id: ID of the created memory
-        - message: Status message
-    """
-    logger.info(f"Adding episodic memory for {agent_name}: {content[:50]}...")
-    
-    manager = get_memory_manager()
-    
-    # Add timestamp to metadata
-    if metadata is None:
-        metadata = {}
-    metadata["event_timestamp"] = datetime.now().isoformat()
-    
-    try:
-        entry = await manager.add_episodic_memory(
-            agent_name=agent_name,
-            content=content,
-            importance=importance,
-            metadata=metadata
-        )
-        
-        return {
-            "success": True,
-            "memory_id": entry.id,
-            "message": "Episodic memory added successfully",
-            "content": content,
-            "importance": importance
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to add episodic memory: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "message": "Failed to add episodic memory"
-        }
-
-
-async def search_episodic_memory(
-    query: str,
-    agent_name: str = "analyst",
-    limit: int = 10,
-    min_relevance: float = 0.0
-) -> Dict[str, Any]:
-    """
-    Search episodic memories by query.
-    
-    Retrieves events and experiences matching the query.
-    
-    Args:
-        query: Search query
-        agent_name: Agent to search memories for (default: "analyst")
-        limit: Maximum results to return (default: 10)
-        min_relevance: Minimum relevance threshold (default: 0.0)
-        
-    Returns:
-        Dictionary containing:
-        - results: List of matching memories with relevance scores
-        - total: Total number of results
-        - query: Original query
-    """
-    logger.info(f"Searching episodic memory for {agent_name}: {query}")
-    
-    manager = get_memory_manager()
-    
-    try:
-        results = await manager.search_episodic_memory(
-            agent_name=agent_name,
-            query=query,
-            limit=limit
-        )
-        
-        return {
-            "success": True,
-            "results": [
-                {
-                    "content": r.entry.content,
-                    "relevance": r.relevance,
-                    "memory_id": r.entry.id,
-                    "created_at": r.entry.created_at,
-                    "importance": r.entry.importance,
-                    "metadata": r.entry.metadata
-                }
-                for r in results
-                if r.relevance >= min_relevance
-            ],
-            "total": len(results),
-            "query": query
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to search episodic memory: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "results": [],
-            "total": 0,
-            "query": query
-        }
-
-
-# =============================================================================
-# Procedural Memory Tools (Skills and Procedures)
-# =============================================================================
-
-async def add_procedural_memory(
-    content: str,
-    agent_name: str = "analyst",
-    importance: float = 0.7,
-    metadata: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
-    """
-    Add a procedural memory (skill or procedure).
-    
-    Procedural memories store how-to knowledge, skills, and procedures
-    that can be applied to similar situations.
-    
-    Args:
-        content: Description of the skill or procedure
-        agent_name: Agent to associate memory with (default: "analyst")
-        importance: Importance score 0-1 (default: 0.7, higher for procedures)
-        metadata: Optional metadata (e.g., steps, prerequisites)
-        
-    Returns:
-        Dictionary containing:
-        - success: Whether the memory was added
-        - memory_id: ID of the created memory
-        - message: Status message
-    """
-    logger.info(f"Adding procedural memory for {agent_name}: {content[:50]}...")
-    
-    manager = get_memory_manager()
-    
-    try:
-        entry = await manager.add_procedural_memory(
-            agent_name=agent_name,
-            content=content,
-            importance=importance,
-            metadata=metadata
-        )
-        
-        return {
-            "success": True,
-            "memory_id": entry.id,
-            "message": "Procedural memory added successfully",
-            "content": content,
-            "importance": importance
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to add procedural memory: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "message": "Failed to add procedural memory"
-        }
-
-
-async def search_procedural_memory(
-    query: str,
-    agent_name: str = "analyst",
-    limit: int = 10,
-    min_relevance: float = 0.0
-) -> Dict[str, Any]:
-    """
-    Search procedural memories by query.
-    
-    Retrieves skills and procedures matching the query.
-    
-    Args:
-        query: Search query
-        agent_name: Agent to search memories for (default: "analyst")
-        limit: Maximum results to return (default: 10)
-        min_relevance: Minimum relevance threshold (default: 0.0)
-        
-    Returns:
-        Dictionary containing:
-        - results: List of matching memories with relevance scores
-        - total: Total number of results
-        - query: Original query
-    """
-    logger.info(f"Searching procedural memory for {agent_name}: {query}")
-    
-    manager = get_memory_manager()
-    
-    try:
-        results = await manager.search_procedural_memory(
-            agent_name=agent_name,
-            query=query,
-            limit=limit
-        )
-        
-        return {
-            "success": True,
-            "results": [
-                {
-                    "content": r.entry.content,
-                    "relevance": r.relevance,
-                    "memory_id": r.entry.id,
-                    "created_at": r.entry.created_at,
-                    "importance": r.entry.importance,
-                    "metadata": r.entry.metadata
-                }
-                for r in results
-                if r.relevance >= min_relevance
-            ],
-            "total": len(results),
-            "query": query
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to search procedural memory: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "results": [],
-            "total": 0,
-            "query": query
-        }
-
-
-# =============================================================================
-# General Memory Tools
-# =============================================================================
-
-async def get_all_memories(
-    agent_name: str = "analyst",
-    memory_type: Optional[str] = None
-) -> Dict[str, Any]:
-    """
-    Get all memories for an agent.
-    
-    Args:
-        agent_name: Agent to get memories for (default: "analyst")
-        memory_type: Filter by memory type (optional)
-        
-    Returns:
-        Dictionary containing all memories
-    """
-    logger.info(f"Getting all memories for {agent_name}")
-    
-    manager = get_memory_manager()
-    
-    try:
-        memories = await manager.get_all_memories(
-            agent_name=agent_name,
-            memory_type=memory_type
-        )
-        
-        return {
-            "success": True,
-            "memories": [m.to_dict() for m in memories],
-            "total": len(memories),
-            "agent_name": agent_name,
-            "memory_type": memory_type
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to get memories: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "memories": [],
-            "total": 0
-        }
-
-
-async def delete_memory(
-    memory_id: str
-) -> Dict[str, Any]:
+async def delete_memory(memory_id: str) -> Dict[str, Any]:
     """
     Delete a specific memory.
-    
+
     Args:
         memory_id: ID of the memory to delete
-        
+
     Returns:
         Dictionary containing deletion status
     """
     logger.info(f"Deleting memory: {memory_id}")
-    
-    manager = get_memory_manager()
-    
+    manager = await get_memory_manager()
+
     try:
         deleted = await manager.delete_memory(memory_id)
-        
         return {
             "success": deleted,
-            "memory_id": memory_id,
             "message": "Memory deleted" if deleted else "Memory not found"
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to delete memory: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "memory_id": memory_id
-        }
+        return {"success": False, "error": str(e)}
 
 
-async def clear_memories(
-    agent_name: str
+async def get_all_memories(
+    department: str = "all",
+    limit: int = 100
 ) -> Dict[str, Any]:
     """
-    Clear all memories for an agent.
-    
+    Get all memories, optionally filtered by department.
+
     Args:
-        agent_name: Agent to clear memories for
-        
+        department: Department to filter by (default: all)
+        limit: Maximum results (default: 100)
+
     Returns:
-        Dictionary containing number of memories cleared
+        Dictionary containing all memories
     """
-    logger.info(f"Clearing memories for {agent_name}")
-    
-    manager = get_memory_manager()
-    
+    manager = await get_memory_manager()
+
     try:
-        count = await manager.clear_memories(agent_name)
-        
+        # Search for all memories in the department
+        if department == "all":
+            query = "*"
+        else:
+            query = department
+
+        # Returns List[Tuple[MemoryEntry, float]]
+        results = await manager.search_fts(query=query, limit=limit)
+
+        memories = []
+        for entry, score in results:
+            memories.append({
+                "id": entry.id,
+                "content": entry.content,
+                "department": entry.metadata.get("department"),
+                "tags": entry.tags,
+                "importance": entry.importance,
+                "created_at": entry.created_at.isoformat() if entry.created_at else None
+            })
+
         return {
             "success": True,
-            "cleared_count": count,
-            "agent_name": agent_name,
-            "message": f"Cleared {count} memories"
+            "memories": memories,
+            "total": len(memories)
         }
-        
+
     except Exception as e:
-        logger.error(f"Failed to clear memories: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "cleared_count": 0
-        }
+        logger.error(f"Failed to get memories: {e}")
+        return {"success": False, "error": str(e), "memories": []}
 
 
 # =============================================================================
-# Tool Registry for LangGraph Integration
+# Tool Registry for Claude Agent SDK
 # =============================================================================
 
 MEMORY_TOOLS = {
-    # Semantic memory tools
-    "add_semantic_memory": {
-        "function": add_semantic_memory,
-        "description": "Add a semantic memory (fact or concept)",
+    "add_memory": {
+        "function": add_memory,
+        "description": "Add a memory entry for a department",
         "parameters": {
-            "content": {"type": "string", "required": True},
-            "agent_name": {"type": "string", "required": False, "default": "analyst"},
+            "content": {"type": "string", "required": True, "description": "Content to remember"},
+            "department": {"type": "string", "required": False, "default": "research", "description": "Department (research, development, trading, risk, portfolio)"},
             "importance": {"type": "number", "required": False, "default": 0.5},
+            "tags": {"type": "array", "required": False},
             "metadata": {"type": "object", "required": False}
         }
     },
-    "search_semantic_memory": {
-        "function": search_semantic_memory,
-        "description": "Search semantic memories by query",
+    "search_memories": {
+        "function": search_memories,
+        "description": "Search memories using full-text search",
         "parameters": {
             "query": {"type": "string", "required": True},
-            "agent_name": {"type": "string", "required": False, "default": "analyst"},
-            "limit": {"type": "integer", "required": False, "default": 10},
-            "min_relevance": {"type": "number", "required": False, "default": 0.0}
+            "department": {"type": "string", "required": False, "default": "all"},
+            "limit": {"type": "integer", "required": False, "default": 10}
         }
     },
-    
-    # Episodic memory tools
-    "add_episodic_memory": {
-        "function": add_episodic_memory,
-        "description": "Add an episodic memory (event or experience)",
+    "get_memory": {
+        "function": get_memory,
+        "description": "Get a specific memory by ID",
         "parameters": {
-            "content": {"type": "string", "required": True},
-            "agent_name": {"type": "string", "required": False, "default": "analyst"},
-            "importance": {"type": "number", "required": False, "default": 0.5},
-            "metadata": {"type": "object", "required": False}
-        }
-    },
-    "search_episodic_memory": {
-        "function": search_episodic_memory,
-        "description": "Search episodic memories by query",
-        "parameters": {
-            "query": {"type": "string", "required": True},
-            "agent_name": {"type": "string", "required": False, "default": "analyst"},
-            "limit": {"type": "integer", "required": False, "default": 10},
-            "min_relevance": {"type": "number", "required": False, "default": 0.0}
-        }
-    },
-    
-    # Procedural memory tools
-    "add_procedural_memory": {
-        "function": add_procedural_memory,
-        "description": "Add a procedural memory (skill or procedure)",
-        "parameters": {
-            "content": {"type": "string", "required": True},
-            "agent_name": {"type": "string", "required": False, "default": "analyst"},
-            "importance": {"type": "number", "required": False, "default": 0.7},
-            "metadata": {"type": "object", "required": False}
-        }
-    },
-    "search_procedural_memory": {
-        "function": search_procedural_memory,
-        "description": "Search procedural memories by query",
-        "parameters": {
-            "query": {"type": "string", "required": True},
-            "agent_name": {"type": "string", "required": False, "default": "analyst"},
-            "limit": {"type": "integer", "required": False, "default": 10},
-            "min_relevance": {"type": "number", "required": False, "default": 0.0}
-        }
-    },
-    
-    # General memory tools
-    "get_all_memories": {
-        "function": get_all_memories,
-        "description": "Get all memories for an agent",
-        "parameters": {
-            "agent_name": {"type": "string", "required": False, "default": "analyst"},
-            "memory_type": {"type": "string", "required": False}
+            "memory_id": {"type": "string", "required": True}
         }
     },
     "delete_memory": {
@@ -592,11 +281,12 @@ MEMORY_TOOLS = {
             "memory_id": {"type": "string", "required": True}
         }
     },
-    "clear_memories": {
-        "function": clear_memories,
-        "description": "Clear all memories for an agent",
+    "get_all_memories": {
+        "function": get_all_memories,
+        "description": "Get all memories, optionally filtered by department",
         "parameters": {
-            "agent_name": {"type": "string", "required": True}
+            "department": {"type": "string", "required": False, "default": "all"},
+            "limit": {"type": "integer", "required": False, "default": 100}
         }
     }
 }
@@ -617,6 +307,6 @@ async def invoke_memory_tool(name: str, **kwargs) -> Dict[str, Any]:
     tool = get_memory_tool(name)
     if not tool:
         raise ValueError(f"Unknown memory tool: {name}")
-    
+
     func = tool["function"]
     return await func(**kwargs)

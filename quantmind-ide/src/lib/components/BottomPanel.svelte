@@ -14,7 +14,7 @@
     ExternalLink,
   } from "lucide-svelte";
 
-  let activeTab = "terminal";
+  let activeTab = "output";  // Default to output, not terminal
   let isExpanded = true;
   let terminalInput = "";
   let terminalHistory: Array<{

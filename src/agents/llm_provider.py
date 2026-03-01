@@ -27,6 +27,7 @@ class ProviderType(str, Enum):
     ZHIPU = "zhipu"
     ANTHROPIC = "anthropic"
     OPENAI = "openai"  # Fallback for local development
+    MINIMAX = "minimax"  # Minimax M2.5, M2.1, M2 models (Anthropic-compatible)
 
 
 @dataclass
@@ -41,26 +42,42 @@ class ModelConfig:
 
 
 # Agent-specific model configurations per AGENTS.md
+# Primary uses direct Anthropic (via Agent SDK), fallbacks use GLM/Minimax
 AGENT_MODELS: Dict[str, ModelConfig] = {
     "copilot": ModelConfig(
-        model_id="anthropic/claude-sonnet-4",
-        provider=ProviderType.OPENROUTER,
-        fallback_model="glm-4-plus",
-        fallback_provider=ProviderType.ZHIPU,
+        model_id="claude-sonnet-4-20250514",
+        provider=ProviderType.ANTHROPIC,
+        fallback_model="MiniMax-M2.5",
+        fallback_provider=ProviderType.MINIMAX,
         temperature=0.0,
     ),
     "quantcode": ModelConfig(
-        model_id="deepseek/deepseek-coder",
-        provider=ProviderType.OPENROUTER,
-        fallback_model="glm-4-flash",
+        model_id="claude-sonnet-4-20250514",
+        provider=ProviderType.ANTHROPIC,
+        fallback_model="glm-4-plus",
         fallback_provider=ProviderType.ZHIPU,
         temperature=0.0,
     ),
     "analyst": ModelConfig(
-        model_id="anthropic/claude-sonnet-4",
-        provider=ProviderType.OPENROUTER,
-        fallback_model="glm-4-plus",
-        fallback_provider=ProviderType.ZHIPU,
+        model_id="claude-sonnet-4-20250514",
+        provider=ProviderType.ANTHROPIC,
+        fallback_model="MiniMax-M2.5",
+        fallback_provider=ProviderType.MINIMAX,
+        temperature=0.0,
+    ),
+    # Department head agents
+    "research_head": ModelConfig(
+        model_id="claude-sonnet-4-20250514",
+        provider=ProviderType.ANTHROPIC,
+        fallback_model="MiniMax-M2.5",
+        fallback_provider=ProviderType.MINIMAX,
+        temperature=0.0,
+    ),
+    "execution_head": ModelConfig(
+        model_id="claude-sonnet-4-20250514",
+        provider=ProviderType.ANTHROPIC,
+        fallback_model="MiniMax-M2.1",
+        fallback_provider=ProviderType.MINIMAX,
         temperature=0.0,
     ),
 }
@@ -71,6 +88,7 @@ PROVIDER_BASE_URLS: Dict[ProviderType, str] = {
     ProviderType.ZHIPU: "https://open.bigmodel.cn/api/paas/v4",
     ProviderType.ANTHROPIC: "https://api.anthropic.com/v1",
     ProviderType.OPENAI: "https://api.openai.com/v1",
+    ProviderType.MINIMAX: "https://api.minimax.chat/v1",
 }
 
 # Environment variable names for API keys
@@ -79,6 +97,7 @@ API_KEY_ENV_VARS: Dict[ProviderType, str] = {
     ProviderType.ZHIPU: "ZHIPU_API_KEY",
     ProviderType.ANTHROPIC: "ANTHROPIC_API_KEY",
     ProviderType.OPENAI: "OPENAI_API_KEY",
+    ProviderType.MINIMAX: "MINIMAX_API_KEY",
 }
 
 
@@ -208,8 +227,8 @@ def get_llm_for_agent(
         else:
             logger.warning(
                 f"No API keys available for agent {agent_type}. "
-                f"Using stub LLM. Set one of: OPENROUTER_API_KEY, ZHIPU_API_KEY, "
-                f"ANTHROPIC_API_KEY, or OPENAI_API_KEY"
+                f"Using stub LLM. Set one of: ANTHROPIC_API_KEY, MINIMAX_API_KEY, "
+                f"ZHIPU_API_KEY, or OPENROUTER_API_KEY"
             )
 
     # Get base URL and API key

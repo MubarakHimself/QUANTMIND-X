@@ -1,15 +1,16 @@
 """
-Analysis Department Head
+Research Department Head
 
 Responsible for:
-- Market analysis and technical analysis
-- Sentiment analysis and news monitoring
-- Signal generation for trading opportunities
+- Strategy research and development
+- Market analysis and signal generation
+- Backtesting and validation
+- Knowledge management
 
 Workers:
-- market_analyst: Deep technical analysis
-- sentiment_scanner: Social and news sentiment
-- news_monitor: Real-time news monitoring
+- strategy_researcher: Develop new trading strategies
+- market_analyst: Technical and fundamental analysis
+- backtester: Run backtests on strategies
 """
 import logging
 from typing import Dict, List, Any, Optional
@@ -21,21 +22,21 @@ from src.agents.departments.types import Department, get_department_config
 logger = logging.getLogger(__name__)
 
 
-class AnalysisHead(DepartmentHead):
+class ResearchHead(DepartmentHead):
     """
-    Analysis Department Head.
+    Research Department Head.
 
-    Handles market analysis, sentiment scanning, and signal generation.
+    Handles strategy research, market analysis, and signal generation.
     """
 
     def __init__(self, mail_db_path: str = ".quantmind/department_mail.db"):
-        """Initialize Analysis Department Head."""
-        config = get_department_config(Department.ANALYSIS)
+        """Initialize Research Department Head."""
+        config = get_department_config(Department.RESEARCH)
         super().__init__(config=config, mail_db_path=mail_db_path)
 
     def get_tools(self) -> List[Dict[str, Any]]:
         """
-        Get available tools for Analysis department.
+        Get available tools for Research department.
 
         Returns:
             List of tool definitions

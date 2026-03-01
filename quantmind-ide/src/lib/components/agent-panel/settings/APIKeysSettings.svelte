@@ -7,7 +7,9 @@
     google: false,
     anthropic: false,
     openai: false,
-    qwen: false
+    qwen: false,
+    zhipu: false,
+    minimax: false
   };
   
   let savedKeys: Record<string, boolean> = {};
@@ -17,9 +19,11 @@
   
   // Provider configuration
   const providers = [
+    { id: 'anthropic', name: 'Anthropic (Claude)', placeholder: 'sk-ant-...', docs: 'https://console.anthropic.com/' },
+    { id: 'minimax', name: 'Minimax (M2.5/M2.1)', placeholder: 'mm-...', docs: 'https://platform.minimax.io/user-center/payment/coding-plan' },
+    { id: 'zhipu', name: 'Zhipu/GLM', placeholder: 'sk-...', docs: 'https://open.bigmodel.cn/' },
+    { id: 'openai', name: 'OpenAI (GPT)', placeholder: 'sk-...', docs: 'https://platform.openai.com/' },
     { id: 'google', name: 'Google AI', placeholder: 'AIza...', docs: 'https://ai.google.dev/' },
-    { id: 'anthropic', name: 'Anthropic', placeholder: 'sk-ant-...', docs: 'https://console.anthropic.com/' },
-    { id: 'openai', name: 'OpenAI', placeholder: 'sk-...', docs: 'https://platform.openai.com/' },
     { id: 'qwen', name: 'Qwen', placeholder: 'sk-...', docs: 'https://dashscope.aliyun.com/' }
   ];
   
@@ -46,7 +50,7 @@
   // Validate key format (basic)
   function validateKey(provider: string, key: string): boolean {
     if (!key) return true; // Empty is valid (not set)
-    
+
     switch (provider) {
       case 'google':
         return key.startsWith('AIza');
@@ -56,6 +60,10 @@
         return key.startsWith('sk-');
       case 'qwen':
         return key.length > 10;
+      case 'zhipu':
+        return key.length > 10;
+      case 'minimax':
+        return key.startsWith('mm-');
       default:
         return true;
     }

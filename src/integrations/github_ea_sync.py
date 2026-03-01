@@ -618,7 +618,7 @@ class GitHubEASync:
         
         return result
     
-    def _map_strategy_type(self, strategy_type_str: str) -> StrategyType:
+    def _map_strategy_type(self, strategy_type_str: str) -> 'StrategyType':
         """Map strategy type string to StrategyType enum."""
         strategy_map = {
             'RSI Strategy': StrategyType.SCALPER,
@@ -636,7 +636,7 @@ class GitHubEASync:
         }
         return strategy_map.get(strategy_type_str, StrategyType.STRUCTURAL)
     
-    def _map_complexity_to_frequency(self, complexity: str) -> TradeFrequency:
+    def _map_complexity_to_frequency(self, complexity: str) -> 'TradeFrequency':
         """Map complexity string to TradeFrequency enum."""
         complexity_map = {
             'Simple': TradeFrequency.LOW,

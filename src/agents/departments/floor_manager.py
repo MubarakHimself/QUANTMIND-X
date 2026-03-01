@@ -43,25 +43,27 @@ class FloorManager:
         model_tier: Model tier (always "opus" for Floor Manager)
     """
 
-    # Keyword-based task classification
+    # Keyword-based task classification (Option B departments)
     DEPARTMENT_KEYWORDS = {
-        Department.ANALYSIS: [
+        Department.RESEARCH: [
             "analyze", "analysis", "market", "sentiment", "news", "scan",
             "technical", "indicator", "signal", "pattern", "chart",
             "trend", "support", "resistance", "forecast",
-        ],
-        Department.RESEARCH: [
             "research", "strategy", "backtest", "develop", "create",
             "alpha", "factor", "optimize", "validate", "test",
-            "pinescript", "code", "implement",
+        ],
+        Department.DEVELOPMENT: [
+            "develop", "build", "ea", "expert advisor", "bot",
+            "pinescript", "mql5", "python", "code", "implement",
+            "script", "automate", "algorithm",
         ],
         Department.RISK: [
             "risk", "position size", "drawdown", "var", "exposure",
             "limit", "stop loss", "take profit", "margin", "leverage",
         ],
-        Department.EXECUTION: [
+        Department.TRADING: [
             "execute", "order", "buy", "sell", "trade", "fill",
-            "route", "slippage", "broker", "venue",
+            "route", "slippage", "broker", "venue", "paper",
         ],
         Department.PORTFOLIO: [
             "portfolio", "allocation", "rebalance", "performance",
@@ -128,10 +130,10 @@ class FloorManager:
             if score > 0:
                 scores[dept] = score
 
-        # Return highest scoring department, default to ANALYSIS
+        # Return highest scoring department, default to RESEARCH
         if scores:
             return max(scores, key=scores.get)
-        return Department.ANALYSIS
+        return Department.RESEARCH
 
     def dispatch(
         self,

@@ -21,60 +21,72 @@ class ToolPermission(Enum):
 LIVE_TRADING_PROHIBITED = True
 
 
-# Tool access configuration per department
-# Strategy Router, Risk/Position, Broker are READ-ONLY for ALL
+# Tool access configuration per department (Option B)
+# All departments get: memory_tools, knowledge_tools, mail (WRITE)
+# Strategy Router, Risk/Position, Broker are READ-ONLY for most
 TOOL_ACCESS: Dict[str, Dict[str, Set[ToolPermission]]] = {
-    "analysis": {
-        "memory_tools": {ToolPermission.READ, ToolPermission.WRITE},
-        "knowledge_tools": {ToolPermission.READ, ToolPermission.WRITE},
-        "strategy_router": {ToolPermission.READ},  # READ-ONLY
-        "risk_tools": {ToolPermission.READ},        # READ-ONLY
-        "broker_tools": {ToolPermission.READ},      # READ-ONLY
-        "ea_lifecycle": {ToolPermission.READ},      # READ-ONLY
-        "strategy_extraction": {ToolPermission.READ, ToolPermission.WRITE},
-        "mail": {ToolPermission.READ, ToolPermission.WRITE},
-    },
+    # RESEARCH: Strategy development + Analysis
+    # Tools: knowledge_tools, backtest_tools, memory_tools, mail (WRITE)
     "research": {
         "memory_tools": {ToolPermission.READ, ToolPermission.WRITE},
         "knowledge_tools": {ToolPermission.READ, ToolPermission.WRITE},
-        "pinescript_tools": {ToolPermission.READ, ToolPermission.WRITE},
-        "mql5_tools": {ToolPermission.READ, ToolPermission.WRITE},
         "backtest_tools": {ToolPermission.READ, ToolPermission.WRITE},
-        "strategy_router": {ToolPermission.READ},   # READ-ONLY
-        "risk_tools": {ToolPermission.READ},         # READ-ONLY
-        "broker_tools": {ToolPermission.READ},       # READ-ONLY
-        "ea_lifecycle": {ToolPermission.READ, ToolPermission.WRITE},  # READ-WRITE
+        "strategy_router": {ToolPermission.READ},  # READ-ONLY
+        "risk_tools": {ToolPermission.READ},       # READ-ONLY
+        "broker_tools": {ToolPermission.READ},      # READ-ONLY
         "strategy_extraction": {ToolPermission.READ, ToolPermission.WRITE},
         "mail": {ToolPermission.READ, ToolPermission.WRITE},
     },
+    # DEVELOPMENT: EA/Bot building (Python, PineScript, MQL5)
+    # Tools: mql5_tools, pinescript_tools, backtest_tools, knowledge_tools, memory_tools, mail
+    "development": {
+        "memory_tools": {ToolPermission.READ, ToolPermission.WRITE},
+        "knowledge_tools": {ToolPermission.READ, ToolPermission.WRITE},
+        "backtest_tools": {ToolPermission.READ, ToolPermission.WRITE},
+        "pinescript_tools": {ToolPermission.READ, ToolPermission.WRITE},
+        "mql5_tools": {ToolPermission.READ, ToolPermission.WRITE},
+        "ea_lifecycle": {ToolPermission.READ, ToolPermission.WRITE},
+        "strategy_router": {ToolPermission.READ},   # READ-ONLY
+        "risk_tools": {ToolPermission.READ},         # READ-ONLY
+        "broker_tools": {ToolPermission.READ},       # READ-ONLY
+        "strategy_extraction": {ToolPermission.READ, ToolPermission.WRITE},
+        "mail": {ToolPermission.READ, ToolPermission.WRITE},
+    },
+    # TRADING: Order execution (READ-ONLY for broker)
+    # Tools: broker_tools (READ), memory_tools, mail
+    "trading": {
+        "memory_tools": {ToolPermission.READ, ToolPermission.WRITE},
+        "knowledge_tools": {ToolPermission.READ},
+        "broker_tools": {ToolPermission.READ},       # READ-ONLY (no placing orders)
+        "strategy_router": {ToolPermission.READ},     # READ-ONLY
+        "risk_tools": {ToolPermission.READ},         # READ-ONLY
+        "mail": {ToolPermission.READ, ToolPermission.WRITE},
+    },
+    # RISK: Risk management (READ-ONLY)
+    # Tools: risk_tools (READ), memory_tools, mail
     "risk": {
         "memory_tools": {ToolPermission.READ, ToolPermission.WRITE},
         "knowledge_tools": {ToolPermission.READ},
-        "strategy_router": {ToolPermission.READ},   # READ-ONLY
-        "risk_tools": {ToolPermission.READ},         # READ-ONLY (no setting limits)
-        "broker_tools": {ToolPermission.READ},       # READ-ONLY
+        "risk_tools": {ToolPermission.READ},          # READ-ONLY (no setting limits)
+        "strategy_router": {ToolPermission.READ},      # READ-ONLY
+        "broker_tools": {ToolPermission.READ},        # READ-ONLY
         "mail": {ToolPermission.READ, ToolPermission.WRITE},
     },
-    "execution": {
-        "memory_tools": {ToolPermission.READ, ToolPermission.WRITE},
-        "knowledge_tools": {ToolPermission.READ},
-        "strategy_router": {ToolPermission.READ},   # READ-ONLY
-        "risk_tools": {ToolPermission.READ},         # READ-ONLY
-        "broker_tools": {ToolPermission.READ},       # READ-ONLY (no placing orders)
-        "mail": {ToolPermission.READ, ToolPermission.WRITE},
-    },
+    # PORTFOLIO: Allocation
+    # Tools: memory_tools, mail
     "portfolio": {
         "memory_tools": {ToolPermission.READ, ToolPermission.WRITE},
         "knowledge_tools": {ToolPermission.READ},
-        "strategy_router": {ToolPermission.READ},   # READ-ONLY
-        "risk_tools": {ToolPermission.READ},         # READ-ONLY
-        "broker_tools": {ToolPermission.READ},       # READ-ONLY
+        "strategy_router": {ToolPermission.READ},      # READ-ONLY
+        "risk_tools": {ToolPermission.READ},           # READ-ONLY
+        "broker_tools": {ToolPermission.READ},         # READ-ONLY
         "strategy_extraction": {ToolPermission.READ},
         "mail": {ToolPermission.READ, ToolPermission.WRITE},
     },
+    # FLOOR MANAGER: Cross-department coordination
     "floor_manager": {
         "memory_tools": {ToolPermission.READ, ToolPermission.WRITE},
-        "memory_all_depts": {ToolPermission.READ},  # Cross-dept read access
+        "memory_all_depts": {ToolPermission.READ},     # Cross-dept read access
         "knowledge_tools": {ToolPermission.READ},
         "strategy_router": {ToolPermission.READ},
         "risk_tools": {ToolPermission.READ},

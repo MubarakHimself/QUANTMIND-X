@@ -602,16 +602,16 @@
     word-wrap: break-word;
   }
 
-  .terminal-line:contains('INFO') {
+  .terminal-line.info {
     color: var(--text-secondary);
   }
 
-  .terminal-line:contains('TRADE') {
+  .terminal-line.trade {
     color: var(--accent-success);
     font-weight: 600;
   }
 
-  .terminal-line:contains('ERROR') {
+  .terminal-line.error {
     color: var(--accent-danger);
   }
 

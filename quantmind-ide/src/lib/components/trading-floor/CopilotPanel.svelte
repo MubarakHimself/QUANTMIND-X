@@ -26,6 +26,8 @@
     type DelegatedTask,
   } from "$lib/stores/departmentChatStore";
 
+  export let isCopilot: boolean = false;
+
   const dispatch = createEventDispatcher();
 
   // API base URL
@@ -59,12 +61,18 @@
     };
   }
 
-  let messages: FloorManagerMessage[] = [
+  // Dynamic greeting based on agent type
+  const copilotGreeting = "Hello! I'm QuantMind Copilot, your AI trading assistant. I can help with market analysis, strategy questions, or delegate tasks to the Floor Manager for trading operations. How can I assist you?";
+  const floorManagerGreeting = "Hello! I'm the Floor Manager. I coordinate tasks across all departments - Analysis, Research, Risk, Execution, and Portfolio. I can delegate tasks, check status, or answer questions about the trading floor. How can I help?";
+
+  $: greeting = isCopilot ? copilotGreeting : floorManagerGreeting;
+  $: agentName = isCopilot ? "QuantMind Copilot" : "Floor Manager";
+  $: placeholderText = isCopilot ? "Ask QuantMind Copilot..." : "Ask the Floor Manager...";
+  $: messages = [
     {
       id: "fm_welcome",
-      role: "floor_manager",
-      content:
-        "Hello! I'm the Floor Manager. I coordinate tasks across all departments - Analysis, Research, Risk, Execution, and Portfolio. I can delegate tasks, check status, or answer questions about the trading floor. How can I help?",
+      role: isCopilot ? "copilot" : "floor_manager",
+      content: greeting,
       timestamp: new Date(),
     },
   ];
@@ -112,12 +120,14 @@
     scrollToBottom();
 
     try {
-      const response = await fetch(`${API_BASE}/floor-manager/chat`, {
+      const response = await fetch(`${API_BASE}/chat/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userContent,
-          department: "coordination",
+          agent: "floor_manager",
+          model: "default",
+          provider: "anthropic",
         }),
       });
 
@@ -403,7 +413,7 @@
         <Building2 size={18} />
       </div>
       <div class="manager-info">
-        <span class="manager-name">Floor Manager</span>
+        <span class="manager-name">{agentName}</span>
         <span class="manager-role">Trading Floor Coordinator</span>
       </div>
     </div>
@@ -546,7 +556,7 @@
         </div>
         <div class="message-body">
           {#if msg.role === "floor_manager"}
-            <div class="message-label">Floor Manager</div>
+            <div class="message-label">{agentName}</div>
           {:else if msg.role === "system"}
             <div class="message-label system">System</div>
           {/if}
@@ -622,7 +632,7 @@
         bind:value={message}
         on:keydown={handleKeydown}
         on:input={autoResize}
-        placeholder="Ask the Floor Manager..."
+        placeholder={placeholderText}
         rows="1"
         disabled={isLoading}
       ></textarea>

@@ -864,10 +864,12 @@
 
   <!-- Confirmation Dialog -->
   {#if confirmDialog.open}
-    <button
+    <div
       class="dialog-overlay"
       on:click={() => (confirmDialog.open = false)}
       on:keydown={(e) => e.key === "Escape" && (confirmDialog.open = false)}
+      role="button"
+      tabindex="-1"
       aria-label="Close dialog"
     >
       <div
@@ -904,8 +906,8 @@
             Confirm
           </button>
         </div>
-      </div></button
-    >
+      </div>
+    </div>
   {/if}
 </div>
 

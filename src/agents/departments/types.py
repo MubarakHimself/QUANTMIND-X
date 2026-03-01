@@ -10,11 +10,11 @@ from typing import Dict, List, Optional
 
 
 class Department(str, Enum):
-    """Trading Floor Departments."""
-    ANALYSIS = "analysis"
+    """Trading Floor Departments (Option B)."""
     RESEARCH = "research"
+    DEVELOPMENT = "development"
+    TRADING = "trading"
     RISK = "risk"
-    EXECUTION = "execution"
     PORTFOLIO = "portfolio"
 
 
@@ -61,27 +61,8 @@ class DepartmentHeadConfig:
             self.memory_namespace = f"dept_{self.department.value}"
 
 
-# Default configurations for all departments
+# Default configurations for all departments (Option B)
 DEFAULT_DEPARTMENT_CONFIGS: Dict[str, DepartmentHeadConfig] = {
-    "analysis": DepartmentHeadConfig(
-        department=Department.ANALYSIS,
-        agent_type="analyst_head",
-        system_prompt="""You are the Analysis Department Head.
-
-Your department is responsible for:
-- Market analysis and technical analysis
-- Sentiment analysis and news monitoring
-- Signal generation for trading opportunities
-
-You can spawn workers for specific tasks:
-- market_analyst: Deep technical analysis
-- sentiment_scanner: Social and news sentiment
-- news_monitor: Real-time news monitoring
-
-Coordinate with Research for strategy validation and Risk for exposure limits.
-Dispatch trade signals to Execution department.""",
-        sub_agents=["market_analyst", "sentiment_scanner", "news_monitor"],
-    ),
     "research": DepartmentHeadConfig(
         department=Department.RESEARCH,
         agent_type="research_head",
@@ -89,16 +70,54 @@ Dispatch trade signals to Execution department.""",
 
 Your department is responsible for:
 - Strategy research and development
+- Market analysis and signal generation
 - Backtesting and validation
-- Alpha research and data science
+- Knowledge management
 
 You can spawn workers for specific tasks:
 - strategy_researcher: Develop new trading strategies
+- market_analyst: Technical and fundamental analysis
 - backtester: Run backtests on strategies
-- data_scientist: Statistical analysis and feature engineering
 
-Receive analysis from Analysis department, validate strategies, and hand off to Risk.""",
-        sub_agents=["strategy_researcher", "backtester", "data_scientist"],
+Coordinate with Development for implementation and Risk for validation.""",
+        sub_agents=["strategy_researcher", "market_analyst", "backtester"],
+    ),
+    "development": DepartmentHeadConfig(
+        department=Department.DEVELOPMENT,
+        agent_type="development_head",
+        system_prompt="""You are the Development Department Head.
+
+Your department is responsible for:
+- Building and maintaining trading bots (Python, PineScript, MQL5)
+- EA lifecycle management (create, test, deploy)
+- Strategy implementation and optimization
+
+You can spawn workers for specific tasks:
+- python_dev: Python-based strategy implementation
+- pinescript_dev: TradingView PineScript development
+- mql5_dev: MetaTrader 5 EA development
+
+Receive validated strategies from Research, implement EAs, hand off to Trading.""",
+        sub_agents=["python_dev", "pinescript_dev", "mql5_dev"],
+    ),
+    "trading": DepartmentHeadConfig(
+        department=Department.TRADING,
+        agent_type="trading_head",
+        system_prompt=""""You are the Trading Department Head.
+
+Your department is responsible for:
+- Order execution (paper trading via MT5 demo)
+- Fill tracking and confirmation
+- Trade monitoring and management
+
+You can spawn workers for specific tasks:
+- order_executor: Execute validated trades
+- fill_tracker: Track order fills
+- trade_monitor: Monitor open positions
+
+** READ-ONLY for broker/risk tools **
+Receive dispatches from Research/Development, validate with Risk, execute trades.""",
+        sub_agents=["order_executor", "fill_tracker", "trade_monitor"],
     ),
     "risk": DepartmentHeadConfig(
         department=Department.RISK,
@@ -109,6 +128,9 @@ Your department is responsible for:
 - Position sizing and exposure management
 - Drawdown monitoring and limits
 - Value at Risk (VaR) calculations
+- Risk validation for all trades
+
+** READ-ONLY access - cannot place trades **
 
 You can spawn workers for specific tasks:
 - position_sizer: Calculate optimal position sizes
@@ -117,24 +139,6 @@ You can spawn workers for specific tasks:
 
 Coordinate with all departments to enforce risk limits.""",
         sub_agents=["position_sizer", "drawdown_monitor", "var_calculator"],
-    ),
-    "execution": DepartmentHeadConfig(
-        department=Department.EXECUTION,
-        agent_type="executor_head",
-        system_prompt="""You are the Execution Department Head.
-
-Your department is responsible for:
-- Order routing and execution
-- Fill tracking and confirmation
-- Slippage monitoring and optimization
-
-You can spawn workers for specific tasks:
-- order_router: Route orders to best venues
-- fill_tracker: Track order fills
-- slippage_monitor: Monitor and optimize slippage
-
-Receive dispatches from Analysis, validate with Risk, execute trades.""",
-        sub_agents=["order_router", "fill_tracker", "slippage_monitor"],
     ),
     "portfolio": DepartmentHeadConfig(
         department=Department.PORTFOLIO,

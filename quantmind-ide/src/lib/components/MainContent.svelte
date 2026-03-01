@@ -52,9 +52,11 @@
     Newspaper,
     DollarSign,
     Server,
+    Wrench,
   } from "lucide-svelte";
   import CodeEditor from "./CodeEditor.svelte";
   import MonacoEditor from "./MonacoEditor.svelte";
+  import WorkshopView from "./WorkshopView.svelte";
 
   import MonteCarloChart from "./charts/MonteCarloChart.svelte";
   import MonteCarloVisualization from "./MonteCarloVisualization.svelte";
@@ -529,6 +531,11 @@
   // Removed duplicate views: backtest-results, shared-assets, kill-switch, database-view, news
   // These are now accessible as sub-pages within their parent sections
   const viewConfig: Record<string, any> = {
+    workshop: {
+      title: "QuantMind Workshop",
+      icon: Wrench,
+      description: "AI agent framework with Trading Floor, Copilot, and Department management",
+    },
     knowledge: {
       title: "Knowledge Hub",
       icon: BookOpen,
@@ -1158,10 +1165,13 @@
     </button>
 
     {#each openFiles as file}
-      <button
+      <div
         class="tab"
         class:active={activeTabId === file.id}
+        role="button"
+        tabindex="0"
         on:click={() => (activeTabId = file.id)}
+        on:keydown={(e) => e.key === 'Enter' && (activeTabId = file.id)}
       >
         <File size={14} />
         <span>{file.name}</span>
@@ -1170,7 +1180,7 @@
           on:click|stopPropagation={() => dispatch("closeTab", file.id)}
           >×</button
         >
-      </button>
+      </div>
     {/each}
   </div>
 
@@ -1923,6 +1933,11 @@
         {:else if activeView === "news"}
           <!-- News View -->
           <NewsView />
+        {:else if activeView === "workshop"}
+          <!-- QuantMind Workshop -->
+          <div class="workshop-container">
+            <WorkshopView />
+          </div>
         {:else if activeView === "assets"}
           <!-- Shared Assets with Database tab -->
           <div class="tab-nav">
@@ -2594,15 +2609,18 @@
             <div class="editor-tabs">
               <div class="tab-list">
                 {#each editorFiles as file}
-                  <button
+                  <div
                     class="tab-item"
                     class:active={activeEditorFile?.id === file.id}
+                    role="button"
+                    tabindex="0"
                     on:click={() => {
                       activeEditorFile = file;
                       editorContent = file.content;
                       editorLanguage = file.language;
                       editorFilename = file.name;
                     }}
+                    on:keydown={(e) => e.key === 'Enter' && (activeEditorFile = file, editorContent = file.content, editorLanguage = file.language, editorFilename = file.name)}
                   >
                     <FileText size={12} />
                     <span>{file.name}</span>
@@ -2612,7 +2630,7 @@
                     >
                       <X size={10} />
                     </button>
-                  </button>
+                  </div>
                 {/each}
                 {#if editorFiles.length === 0}
                   <div class="empty-editor">
@@ -2745,6 +2763,13 @@
   }
   .view-content {
     padding: 20px;
+  }
+
+  .workshop-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
   }
 
   /* Header & Breadcrumbs - Windows Explorer Style */

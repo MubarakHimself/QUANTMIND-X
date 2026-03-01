@@ -1,17 +1,80 @@
 <script lang="ts">
   import { fade, slide } from 'svelte/transition';
-  import { Plus, Trash2, RefreshCw, Server, Check, X, AlertCircle, ExternalLink } from 'lucide-svelte';
+  import { onMount } from 'svelte';
+  import { Plus, Trash2, RefreshCw, Server, Check, X, AlertCircle, ExternalLink, Loader2 } from 'lucide-svelte';
   import { settingsStore } from '../../../stores/settingsStore';
   import type { MCPServer } from '../../../stores/settingsStore';
-  
+
+  const API_BASE = "http://localhost:8000/api";
+
   // State
   let showAddModal = false;
   let newServer = { name: '', url: '', autoConnect: true };
   let editingServer: MCPServer | null = null;
-  
+  let loading = false;
+  let backendAvailable = false;
+
   // Reactive state
   $: mcpServers = $settingsStore.mcpServers;
   $: connectedCount = mcpServers.filter(s => s.status === 'connected').length;
+
+  // Fetch servers from backend on mount
+  onMount(async () => {
+    try {
+      loading = true;
+      const response = await fetch(`${API_BASE}/mcp/servers`);
+      if (response.ok) {
+        backendAvailable = true;
+        const data = await response.json();
+        console.log('MCP servers from backend:', data);
+        // Could merge with local servers here if needed
+      }
+    } catch (e) {
+      console.log('MCP backend not available, using local store');
+      backendAvailable = false;
+    } finally {
+      loading = false;
+    }
+  });
+
+  // Connect to server via API
+  async function connectServer(server: MCPServer) {
+    if (backendAvailable) {
+      try {
+        const response = await fetch(`${API_BASE}/mcp/servers/${server.id}/connect`, {
+          method: 'POST'
+        });
+        if (response.ok) {
+          settingsStore.updateMCPServer(server.id, { status: 'connected' });
+        }
+      } catch (e) {
+        console.error('Failed to connect via API:', e);
+        // Fallback to local
+        settingsStore.updateMCPServer(server.id, { status: 'connected' });
+      }
+    } else {
+      settingsStore.updateMCPServer(server.id, { status: 'connected' });
+    }
+  }
+
+  // Disconnect from server via API
+  async function disconnectServer(server: MCPServer) {
+    if (backendAvailable) {
+      try {
+        const response = await fetch(`${API_BASE}/mcp/servers/${server.id}/disconnect`, {
+          method: 'POST'
+        });
+        if (response.ok) {
+          settingsStore.updateMCPServer(server.id, { status: 'disconnected' });
+        }
+      } catch (e) {
+        console.error('Failed to disconnect via API:', e);
+        settingsStore.updateMCPServer(server.id, { status: 'disconnected' });
+      }
+    } else {
+      settingsStore.updateMCPServer(server.id, { status: 'disconnected' });
+    }
+  }
   
   // Add new server
   function handleAddServer() {
@@ -38,11 +101,11 @@
   
   // Toggle server connection
   function handleToggleConnection(server: MCPServer) {
-    const newStatus = server.status === 'connected' ? 'disconnected' : 'connected';
-    settingsStore.updateMCPServer(server.id, { 
-      status: newStatus,
-      lastConnected: newStatus === 'connected' ? new Date() : server.lastConnected
-    });
+    if (server.status === 'connected') {
+      disconnectServer(server);
+    } else {
+      connectServer(server);
+    }
   }
   
   // Refresh server capabilities
@@ -67,6 +130,12 @@
     if (!date) return 'Never';
     return new Date(date).toLocaleString();
   }
+
+  // Get backend status
+  function getBackendStatus(): string {
+    if (loading) return 'Checking...';
+    return backendAvailable ? 'API Connected' : 'Local Mode';
+  }
 </script>
 
 <div class="mcp-settings">
@@ -83,6 +152,12 @@
       <span class="stat">
         <Server size={12} />
         {mcpServers.length} total
+      </span>
+      <span class="stat" class:success={backendAvailable}>
+        {#if loading}
+          <Loader2 size={10} class="spin" />
+        {/if}
+        {getBackendStatus()}
       </span>
     </div>
   </div>
@@ -279,6 +354,20 @@
     padding: 4px 8px;
     background: var(--bg-tertiary);
     border-radius: 4px;
+  }
+
+  .stat.success {
+    color: var(--accent-success);
+    background: rgba(16, 185, 129, 0.1);
+  }
+
+  :global(.spin) {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
   
   .server-list {

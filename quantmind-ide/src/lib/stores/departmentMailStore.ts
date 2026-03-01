@@ -14,6 +14,9 @@ export type MessageType = 'dispatch' | 'result' | 'question' | 'status' | 'error
 
 export type Priority = 'low' | 'normal' | 'high' | 'urgent';
 
+// Alias for MessagePriority (used by DepartmentMailPanel)
+export type MessagePriority = Priority;
+
 export type DepartmentMailMessage = {
   id: string;
   from: string;
@@ -47,12 +50,29 @@ export type DelegationResponse = {
 
 // Available departments for delegation
 export const DEPARTMENTS = [
-  { id: 'analysis', name: 'Analysis', description: 'Market analysis and signals' },
-  { id: 'research', name: 'Research', description: 'Strategy development and backtesting' },
-  { id: 'risk', name: 'Risk', description: 'Position sizing and risk management' },
-  { id: 'execution', name: 'Execution', description: 'Order execution and routing' },
-  { id: 'portfolio', name: 'Portfolio', description: 'Portfolio management and allocation' },
+  { id: 'analysis', name: 'Analysis', description: 'Market analysis and signals', color: '#3b82f6' },
+  { id: 'research', name: 'Research', description: 'Strategy development and backtesting', color: '#8b5cf6' },
+  { id: 'risk', name: 'Risk', description: 'Position sizing and risk management', color: '#ef4444' },
+  { id: 'execution', name: 'Execution', description: 'Order execution and routing', color: '#f97316' },
+  { id: 'portfolio', name: 'Portfolio', description: 'Portfolio management and allocation', color: '#10b981' },
 ] as const;
+
+// Department colors for UI
+export const DEPARTMENT_COLORS: Record<string, string> = {
+  analysis: '#3b82f6',
+  research: '#8b5cf6',
+  risk: '#ef4444',
+  execution: '#f97316',
+  portfolio: '#10b981',
+};
+
+// Priority colors for UI
+export const PRIORITY_COLORS: Record<Priority, string> = {
+  low: '#6b7280',
+  normal: '#3b82f6',
+  high: '#f59e0b',
+  urgent: '#ef4444',
+};
 
 export type Department = typeof DEPARTMENTS[number]['id'];
 
@@ -62,6 +82,63 @@ const loading = writable(false);
 const error = writable<string | null>(null);
 const selectedDepartment = writable<Department | null>(null);
 const unreadCounts = writable<Map<string, number>>(new Map());
+
+// Export writable stores for component access
+export { loading as mailLoading, error as mailError, selectedDepartment };
+
+// Unread count for selected department
+export const unreadCount = derived(
+  [unreadCounts, selectedDepartment],
+  ([$unreadCounts, $selectedDepartment]) => {
+    if (!$selectedDepartment) return 0;
+    return $unreadCounts.get($selectedDepartment) || 0;
+  }
+);
+
+// All messages across departments (for inbox view)
+export const allMessages = derived(mailMessages, ($mailMessages) => {
+  const all: DepartmentMailMessage[] = [];
+  for (const messages of $mailMessages.values()) {
+    all.push(...messages);
+  }
+  return all.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+});
+
+// Filter inbox by selected department
+export const filteredInbox = derived(
+  [allMessages, selectedDepartment],
+  ([$allMessages, $selectedDepartment]) => {
+    if (!$selectedDepartment) return $allMessages;
+    return $allMessages.filter((m) => m.to === $selectedDepartment);
+  }
+);
+
+// Messages sent by selected department
+export const sentMessages = derived(
+  [allMessages, selectedDepartment],
+  ([$allMessages, $selectedDepartment]) => {
+    if (!$selectedDepartment) return [];
+    return $allMessages.filter((m) => m.from === $selectedDepartment);
+  }
+);
+
+// Mail statistics
+export const mailStats = derived(mailMessages, ($mailMessages) => {
+  const stats = {
+    total: 0,
+    unread: 0,
+    byDepartment: {} as Record<string, { total: number; unread: number }>,
+  };
+
+  for (const [dept, messages] of $mailMessages.entries()) {
+    const unread = messages.filter((m) => !m.read).length;
+    stats.total += messages.length;
+    stats.unread += unread;
+    stats.byDepartment[dept] = { total: messages.length, unread };
+  }
+
+  return stats;
+});
 
 // Derived stores
 export const mailList = derived(
@@ -211,6 +288,74 @@ export function selectDepartment(department: Department | null): void {
 
 export function clearError(): void {
   error.set(null);
+}
+
+// Fetch all messages for all departments
+export async function fetchAllInbox(): Promise<void> {
+  loading.set(true);
+  error.set(null);
+
+  try {
+    const departments: Department[] = ['analysis', 'research', 'risk', 'execution', 'portfolio'];
+    for (const dept of departments) {
+      await fetchDepartmentMail(dept);
+    }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Unknown error';
+    error.set(message);
+    console.error('Failed to fetch all mail:', e);
+  } finally {
+    loading.set(false);
+  }
+}
+
+// Fetch sent messages for current department
+export async function fetchSent(): Promise<void> {
+  // Same as filteredInbox, the component will use the derived store
+  const dept = get(selectedDepartment);
+  if (dept) {
+    await fetchDepartmentMail(dept);
+  }
+}
+
+// Fetch statistics
+export async function fetchStats(): Promise<void> {
+  // Stats are derived from mailMessages, just trigger a refresh
+  const dept = get(selectedDepartment);
+  if (dept) {
+    await fetchDepartmentMail(dept);
+  }
+}
+
+// Fetch single message
+export async function fetchMessage(messageId: string): Promise<DepartmentMailMessage | null> {
+  const all = get(allMessages);
+  return all.find((m) => m.id === messageId) || null;
+}
+
+// Set selected department wrapper
+export { selectDepartment as setSelectedDepartment };
+
+// Alias for markMessageRead (used by DepartmentMailPanel)
+export { markMessageRead as markAsRead };
+
+// Clear all mail
+export function clearMail(): void {
+  mailMessages.set(new Map());
+  unreadCounts.set(new Map());
+}
+
+// Get selected message wrapper
+export function getSelectedMessage(): DepartmentMailMessage | null {
+  const dept = get(selectedDepartment);
+  if (!dept) return null;
+  const list = get(mailList);
+  return list.length > 0 ? list[0] : null;
+}
+
+// Set selected message (placeholder for future use)
+export function setSelectedMessage(message: DepartmentMailMessage | null): void {
+  // Could be used to show message detail
 }
 
 // Utility functions

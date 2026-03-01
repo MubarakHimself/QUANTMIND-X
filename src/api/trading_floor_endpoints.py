@@ -164,6 +164,28 @@ async def get_department_mail(department: str):
     """Get mail for a specific department."""
     manager = get_floor_manager()
 
+    # Allow floor_manager as special case (not a Department enum)
+    if department == "floor_manager":
+        # Return floor_manager's inbox (messages sent TO floor_manager)
+        messages = manager.mail_service.check_inbox("floor_manager")
+        return {
+            "department": department,
+            "messages": [
+                {
+                    "id": msg.id,
+                    "from": msg.from_dept,
+                    "to": msg.to_dept,
+                    "type": msg.type.value,
+                    "subject": msg.subject,
+                    "body": msg.body,
+                    "priority": msg.priority.value,
+                    "timestamp": msg.timestamp.isoformat(),
+                    "read": msg.read,
+                }
+                for msg in messages
+            ],
+        }
+
     try:
         dept = Department(department)
     except ValueError:

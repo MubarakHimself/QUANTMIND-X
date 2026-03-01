@@ -19,6 +19,8 @@ export interface APIKeys {
   anthropic: string;
   openai: string;
   qwen: string;
+  zhipu: string;
+  minimax: string;
 }
 
 export interface MCPServer {

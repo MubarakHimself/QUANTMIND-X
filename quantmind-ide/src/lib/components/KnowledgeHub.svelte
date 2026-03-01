@@ -14,6 +14,14 @@
     status: string;
   }
 
+  interface KnowledgeArticle {
+    id: string;
+    name: string;
+    category: string;
+    size_bytes: number;
+    indexed: boolean;
+  }
+
   interface IndexingStatus {
     job_id: string;
     status: "pending" | "processing" | "completed" | "failed";
@@ -32,10 +40,12 @@
 
   // State
   let documents: PDFDocument[] = [];
+  let articles: KnowledgeArticle[] = [];
   let namespaces: Namespace[] = [];
   let loading = true;
   let uploading = false;
   let error: string | null = null;
+  let articlesLoading = false;
 
   // Upload state
   let dragOver = false;
@@ -67,6 +77,21 @@
       documents = data.documents;
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to fetch documents";
+    }
+  }
+
+  // Fetch scraped articles from knowledge base
+  async function fetchArticles() {
+    articlesLoading = true;
+    try {
+      const response = await fetch("/api/knowledge");
+      if (response.ok) {
+        articles = await response.json();
+      }
+    } catch (e) {
+      console.error("Failed to fetch articles:", e);
+    } finally {
+      articlesLoading = false;
     }
   }
 
@@ -236,7 +261,7 @@
 
   // Lifecycle
   onMount(async () => {
-    await Promise.all([fetchDocuments(), fetchNamespaces()]);
+    await Promise.all([fetchDocuments(), fetchNamespaces(), fetchArticles()]);
     loading = false;
   });
 </script>
@@ -390,6 +415,36 @@
               >
                 🗑️
               </button>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  </div>
+
+  <!-- Scraped Articles Section -->
+  <div class="articles-section">
+    <h3>Scraped Articles ({articles.length})</h3>
+
+    {#if articlesLoading}
+      <div class="loading-state">
+        <p>Loading articles...</p>
+      </div>
+    {:else if articles.length === 0}
+      <div class="empty-state">
+        <p>No scraped articles found.</p>
+      </div>
+    {:else}
+      <div class="articles-list">
+        {#each articles.slice(0, 20) as article}
+          <div class="article-item">
+            <div class="article-info">
+              <div class="article-name">{article.name}</div>
+              <div class="article-meta">
+                <span class="category-tag">{article.category}</span>
+                <span>•</span>
+                <span>{formatSize(article.size_bytes)}</span>
+              </div>
             </div>
           </div>
         {/each}
@@ -701,5 +756,62 @@
   .delete-btn:hover {
     opacity: 1;
     background: rgba(243, 139, 168, 0.1);
+  }
+
+  /* Articles Section */
+  .articles-section {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-color, #313244);
+  }
+
+  .articles-section h3 {
+    margin: 0 0 16px;
+    font-size: 1rem;
+    color: var(--text-primary, #cdd6f4);
+  }
+
+  .articles-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .article-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--bg-secondary, #1e1e2e);
+    border: 1px solid var(--border-color, #313244);
+    border-radius: 8px;
+  }
+
+  .article-info {
+    flex: 1;
+  }
+
+  .article-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-primary, #cdd6f4);
+    margin-bottom: 4px;
+  }
+
+  .article-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: var(--text-secondary, #a6adc8);
+  }
+
+  .category-tag {
+    padding: 2px 8px;
+    background: rgba(137, 180, 250, 0.15);
+    color: var(--accent, #89b4fa);
+    border-radius: 4px;
+    font-size: 0.7rem;
+    text-transform: capitalize;
   }
 </style>

@@ -14,7 +14,13 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+from src.agents.departments.memory_manager import DepartmentMemoryManager
+from src.agents.departments.types import Department
+
 router = APIRouter(prefix="/api/memory", tags=["memory"])
+
+# Department routes (with /dept prefix to avoid conflicts)
+dept_router = APIRouter(prefix="/api/memory", tags=["memory-department"])
 
 # =============================================================================
 # Models
@@ -421,3 +427,321 @@ async def delete_memory(memory_id: str):
 
     logger.info(f"Deleted memory: {memory_id}")
     return {"status": "deleted", "id": memory_id}
+
+
+# =============================================================================
+# Department Memory Endpoints
+# =============================================================================
+
+@dept_router.get("/department/{department}")
+async def get_department_memory(department: str) -> Dict[str, Any]:
+    """
+    Get all memories for a department.
+
+    Args:
+        department: Department name (analysis, research, risk, execution, portfolio, floor_manager)
+
+    Returns:
+        Department memories and metadata
+    """
+    try:
+        # Validate department
+        try:
+            dept_enum = Department(department)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid department: {department}")
+
+        # Create memory manager
+        memory_manager = DepartmentMemoryManager(department=dept_enum)
+
+        # Read memory file
+        content = memory_manager.read_memory()
+
+        # Parse memories (basic parsing of markdown format)
+        memories = _parse_memory_content(content)
+
+        return {
+            "department": department,
+            "memories": memories,
+            "stats": memory_manager.get_stats()
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting department memory: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@dept_router.get("/department/{department}/logs")
+async def get_daily_logs(department: str, days: int = 7) -> Dict[str, Any]:
+    """
+    Get recent daily logs for a department.
+
+    Args:
+        department: Department name
+        days: Number of recent days to retrieve
+
+    Returns:
+        Daily logs
+    """
+    try:
+        try:
+            dept_enum = Department(department)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid department: {department}")
+
+        memory_manager = DepartmentMemoryManager(department=dept_enum)
+        recent_logs = memory_manager.get_recent_logs(days=days)
+
+        # Parse logs
+        logs = []
+        for date_str, content in recent_logs.items():
+            entries = _parse_log_content(content)
+            logs.append({
+                "date": date_str,
+                "entries": entries
+            })
+
+        return {
+            "department": department,
+            "logs": logs
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting daily logs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@dept_router.get("/department/{department}/stats")
+async def get_department_memory_stats(department: str) -> Dict[str, Any]:
+    """
+    Get memory statistics for a department.
+
+    Args:
+        department: Department name
+
+    Returns:
+        Memory statistics
+    """
+    try:
+        try:
+            dept_enum = Department(department)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid department: {department}")
+
+        memory_manager = DepartmentMemoryManager(department=dept_enum)
+        stats = memory_manager.get_stats()
+
+        return stats
+
+    except Exception as e:
+        logger.error(f"Error getting memory stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@dept_router.get("/department/{department}/search")
+async def search_department_memory(department: str, q: str, category: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Search department memory.
+
+    Args:
+        department: Department name
+        q: Search query
+        category: Optional category filter
+
+    Returns:
+        Search results
+    """
+    try:
+        try:
+            dept_enum = Department(department)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid department: {department}")
+
+        memory_manager = DepartmentMemoryManager(department=dept_enum)
+        results = memory_manager.search(query=q, category=category)
+
+        # Parse results into structured format
+        parsed_results = []
+        for result in results:
+            parsed_results.append({
+                "content": result,
+                "match_text": q
+            })
+
+        return {
+            "department": department,
+            "query": q,
+            "results": parsed_results
+        }
+
+    except Exception as e:
+        logger.error(f"Error searching memory: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@dept_router.post("/department/{department}")
+async def add_department_memory(
+    department: str,
+    category: str,
+    content: str,
+    tags: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """
+    Add a memory entry to department memory.
+
+    Args:
+        department: Department name
+        category: Memory category
+        content: Memory content
+        tags: Optional list of tags
+
+    Returns:
+        Success status
+    """
+    try:
+        try:
+            dept_enum = Department(department)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid department: {department}")
+
+        memory_manager = DepartmentMemoryManager(department=dept_enum)
+        memory_manager.add_memory(category=category, content=content, tags=tags or [])
+
+        return {
+            "success": True,
+            "department": department,
+            "category": category
+        }
+
+    except Exception as e:
+        logger.error(f"Error adding memory: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@dept_router.post("/department/{department}/logs")
+async def add_daily_log(
+    department: str,
+    content: str,
+    log_date: Optional[str] = None,
+    category: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Add an entry to a daily log.
+
+    Args:
+        department: Department name
+        content: Log content
+        log_date: Optional date string (YYYY-MM-DD), defaults to today
+        category: Optional category
+
+    Returns:
+        Success status
+    """
+    try:
+        try:
+            dept_enum = Department(department)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid department: {department}")
+
+        memory_manager = DepartmentMemoryManager(department=dept_enum)
+
+        # Parse date or use today
+        if log_date:
+            log_date_obj = datetime.strptime(log_date, "%Y-%m-%d").date()
+        else:
+            from datetime import date
+            log_date_obj = date.today()
+
+        memory_manager.add_daily_log(date=log_date_obj, content=content, category=category)
+
+        from datetime import date
+        return {
+            "success": True,
+            "department": department,
+            "date": log_date or str(date.today())
+        }
+
+    except Exception as e:
+        logger.error(f"Error adding daily log: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _parse_memory_content(content: str) -> List[Dict[str, Any]]:
+    """Parse MEMORY.md content into structured entries."""
+    memories = []
+    current_entry = None
+
+    for line in content.split('\n'):
+        # Check for memory header: ## Category - timestamp
+        if line.startswith('## ') and ' - ' in line:
+            if current_entry:
+                memories.append(current_entry)
+
+            parts = line[3:].split(' - ', 1)
+            category = parts[0].strip()
+            timestamp = parts[1].strip() if len(parts) > 1 else ''
+
+            current_entry = {
+                "category": category,
+                "timestamp": timestamp,
+                "content": '',
+                "tags": []
+            }
+
+        elif current_entry:
+            # Check for tags
+            if line.startswith('**Tags:**'):
+                tags_content = line.split('**Tags:**')[1].strip()
+                current_entry["tags"] = [t.strip('` ') for t in tags_content.split(',')]
+            # Skip separator lines
+            elif line.strip() == '---':
+                continue
+            # Add to content
+            else:
+                current_entry["content"] += line + '\n'
+
+    if current_entry:
+        memories.append(current_entry)
+
+    return memories
+
+
+def _parse_log_content(content: str) -> List[Dict[str, Any]]:
+    """Parse daily log content into structured entries."""
+    entries = []
+    current_entry = None
+
+    for line in content.split('\n'):
+        # Check for time header: ## HH:MM:SS or ### Category - HH:MM:SS
+        if line.startswith('### ') and ' - ' in line:
+            if current_entry:
+                entries.append(current_entry)
+
+            parts = line[4:].split(' - ', 1)
+            category = parts[0].strip()
+            time_str = parts[1].strip() if len(parts) > 1 else ''
+
+            current_entry = {
+                "time": time_str,
+                "category": category,
+                "content": ''
+            }
+
+        elif line.startswith('## ') and ':' in line:
+            if current_entry:
+                entries.append(current_entry)
+
+            time_str = line[3:].strip()
+            current_entry = {
+                "time": time_str,
+                "category": None,
+                "content": ''
+            }
+
+        elif current_entry:
+            current_entry["content"] += line + '\n'
+
+    if current_entry:
+        entries.append(current_entry)
+
+    return entries

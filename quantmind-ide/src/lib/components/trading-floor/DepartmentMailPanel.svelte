@@ -2,7 +2,6 @@
   import { onMount, onDestroy } from 'svelte';
   import { Mail, Send, Inbox, CheckCircle, AlertCircle, Clock, Filter, RefreshCw, X, ChevronRight, User } from 'lucide-svelte';
   import {
-    departmentMailStore,
     filteredInbox,
     sentMessages,
     mailStats,
@@ -15,19 +14,17 @@
     fetchAllInbox,
     fetchSent,
     fetchStats,
-    fetchMessage,
     markAsRead,
     setSelectedDepartment,
-    setSelectedMessage,
-    clearMail,
     type DepartmentMailMessage,
-    type MessagePriority,
+    type Priority as MessagePriority,
     type MessageType,
   } from '$lib/stores/departmentMailStore';
 
   // Local state
   let viewMode: 'inbox' | 'sent' | 'stats' = 'inbox';
   let refreshInterval: number | null = null;
+  let selectedMsg: DepartmentMailMessage | null = null;
 
   // Reactive state from store
   $: inbox = $filteredInbox;
@@ -37,10 +34,6 @@
   $: error = $mailError;
   $: selectedDept = $selectedDepartment;
   $: unread = $unreadCount;
-
-  // Get store directly for selected message
-  $: state = $departmentMailStore;
-  $: selectedMsg = state.selectedMessage;
 
   // Departments for filtering
   const departments = ['analysis', 'research', 'risk', 'execution', 'portfolio'];
@@ -72,14 +65,14 @@
   }
 
   async function handleSelectMessage(message: DepartmentMailMessage) {
-    setSelectedMessage(message);
-    if (!message.is_read) {
+    selectedMsg = message;
+    if (!message.read) {
       await markAsRead(message.id);
     }
   }
 
   function handleCloseMessage() {
-    setSelectedMessage(null);
+    selectedMsg = null;
   }
 
   function formatTimestamp(timestamp: string): string {
@@ -145,8 +138,8 @@
     >
       <Inbox size={14} />
       Inbox
-      {#if stats.total_unread > 0}
-        <span class="mini-badge">{stats.total_unread}</span>
+      {#if stats.unread > 0}
+        <span class="mini-badge">{stats.unread}</span>
       {/if}
     </button>
     <button
@@ -191,8 +184,8 @@
         >
           <span class="chip-dot"></span>
           {dept}
-          {#if stats.unread_by_department[dept] > 0}
-            <span class="chip-count">{stats.unread_by_department[dept]}</span>
+          {#if stats.byDepartment[dept]?.unread > 0}
+            <span class="chip-count">{stats.byDepartment[dept].unread}</span>
           {/if}
         </button>
       {/each}
@@ -231,7 +224,7 @@
               {selectedMsg.priority}
             </span>
             <span class="type-badge">
-              {selectedMsg.message_type}
+              {selectedMsg.type}
             </span>
           </div>
         </div>
@@ -241,27 +234,15 @@
         <div class="detail-parties">
           <div class="party from">
             <span class="label">From:</span>
-            <span class="dept-badge" style="--dept-color: {DEPARTMENT_COLORS[selectedMsg.from_department]}">
-              {selectedMsg.from_department}
+            <span class="dept-badge" style="--dept-color: {DEPARTMENT_COLORS[selectedMsg.from]}">
+              {selectedMsg.from}
             </span>
-            {#if selectedMsg.from_agent}
-              <span class="agent-name">
-                <User size={10} />
-                {selectedMsg.from_agent}
-              </span>
-            {/if}
           </div>
           <div class="party to">
             <span class="label">To:</span>
-            <span class="dept-badge" style="--dept-color: {DEPARTMENT_COLORS[selectedMsg.to_department]}">
-              {selectedMsg.to_department}
+            <span class="dept-badge" style="--dept-color: {DEPARTMENT_COLORS[selectedMsg.to]}">
+              {selectedMsg.to}
             </span>
-            {#if selectedMsg.to_agent}
-              <span class="agent-name">
-                <User size={10} />
-                {selectedMsg.to_agent}
-              </span>
-            {/if}
           </div>
         </div>
 
@@ -272,12 +253,12 @@
         <div class="detail-footer">
           <span class="timestamp">
             <Clock size={12} />
-            {formatTimestamp(selectedMsg.created_at)}
+            {formatTimestamp(selectedMsg.timestamp)}
           </span>
-          {#if selectedMsg.is_read && selectedMsg.read_at}
+          {#if selectedMsg.read}
             <span class="read-status">
               <CheckCircle size={12} />
-              Read {formatTimestamp(selectedMsg.read_at)}
+              Read
             </span>
           {/if}
         </div>
@@ -294,28 +275,28 @@
           {#each inbox as message (message.id)}
             <button
               class="message-item"
-              class:unread={!message.is_read}
+              class:unread={!message.read}
               on:click={() => handleSelectMessage(message)}
             >
-              <div class="item-indicator" style="background-color: {DEPARTMENT_COLORS[message.from_department]}"></div>
+              <div class="item-indicator" style="background-color: {DEPARTMENT_COLORS[message.from]}"></div>
               <div class="item-content">
                 <div class="item-header">
-                  <span class="from-dept" style="color: {DEPARTMENT_COLORS[message.from_department]}">
-                    {message.from_department}
+                  <span class="from-dept" style="color: {DEPARTMENT_COLORS[message.from]}">
+                    {message.from}
                   </span>
                   <span class="to-arrow">→</span>
-                  <span class="to-dept" style="color: {DEPARTMENT_COLORS[message.to_department]}">
-                    {message.to_department}
+                  <span class="to-dept" style="color: {DEPARTMENT_COLORS[message.to]}">
+                    {message.to}
                   </span>
-                  <span class="timestamp">{formatTimestamp(message.created_at)}</span>
+                  <span class="timestamp">{formatTimestamp(message.timestamp)}</span>
                 </div>
                 <div class="item-subject">{message.subject}</div>
                 <div class="item-footer">
                   <span class="priority-dot {getPriorityBadgeClass(message.priority)}"></span>
-                  <span class="message-type">{message.message_type}</span>
+                  <span class="message-type">{message.type}</span>
                 </div>
               </div>
-              {#if !message.is_read}
+              {#if !message.read}
                 <div class="unread-dot"></div>
               {/if}
             </button>
@@ -333,18 +314,18 @@
         {:else}
           {#each sent as message (message.id)}
             <div class="message-item sent-item">
-              <div class="item-indicator" style="background-color: {DEPARTMENT_COLORS[message.to_department]}"></div>
+              <div class="item-indicator" style="background-color: {DEPARTMENT_COLORS[message.to]}"></div>
               <div class="item-content">
                 <div class="item-header">
-                  <span class="to-dept" style="color: {DEPARTMENT_COLORS[message.to_department]}">
-                    To: {message.to_department}
+                  <span class="to-dept" style="color: {DEPARTMENT_COLORS[message.to]}">
+                    To: {message.to}
                   </span>
-                  <span class="timestamp">{formatTimestamp(message.created_at)}</span>
+                  <span class="timestamp">{formatTimestamp(message.timestamp)}</span>
                 </div>
                 <div class="item-subject">{message.subject}</div>
                 <div class="item-footer">
                   <span class="priority-dot {getPriorityBadgeClass(message.priority)}"></span>
-                  <span class="message-type">{message.message_type}</span>
+                  <span class="message-type">{message.type}</span>
                 </div>
               </div>
             </div>
@@ -356,15 +337,15 @@
       <div class="stats-view">
         <div class="stat-cards">
           <div class="stat-card">
-            <span class="stat-value">{stats.total_inbox}</span>
+            <span class="stat-value">{stats.total}</span>
             <span class="stat-label">Total Inbox</span>
           </div>
           <div class="stat-card">
-            <span class="stat-value">{stats.total_unread}</span>
+            <span class="stat-value">{stats.unread}</span>
             <span class="stat-label">Unread</span>
           </div>
           <div class="stat-card">
-            <span class="stat-value">{stats.total_sent}</span>
+            <span class="stat-value">{sent.length}</span>
             <span class="stat-label">Sent</span>
           </div>
         </div>
@@ -378,7 +359,7 @@
                   <span class="dept-dot" style="background-color: {DEPARTMENT_COLORS[dept]}"></span>
                   <span class="dept-name">{dept}</span>
                 </div>
-                <span class="dept-count">{stats.unread_by_department[dept] || 0}</span>
+                <span class="dept-count">{stats.byDepartment[dept]?.unread || 0}</span>
               </div>
             {/each}
           </div>
@@ -387,13 +368,14 @@
         <div class="stats-section">
           <h4>By Priority</h4>
           <div class="priority-stats">
-            {#each Object.entries(stats.by_priority) as [priority, count]}
+            {#each Object.entries(PRIORITY_COLORS) as [priority, color]}
+              {@const count = inbox.filter(m => m.priority === priority).length}
               <div class="priority-stat-row">
                 <span class="priority-label {`priority-${priority}`}">{priority}</span>
                 <div class="priority-bar-container">
                   <div
                     class="priority-bar"
-                    style="width: {Math.min((count / (stats.total_inbox || 1)) * 100, 100)}%; background-color: {PRIORITY_COLORS[priority]}"
+                    style="width: {Math.min((count / (stats.total || 1)) * 100, 100)}%; background-color: {color}"
                   ></div>
                 </div>
                 <span class="priority-count">{count}</span>
