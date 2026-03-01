@@ -23,6 +23,11 @@ export const API_CONFIG = {
     return import.meta.env.PROD
       ? this.CLOUDZY_API_URL
       : this.LOCAL_API_URL;
+  },
+
+  // API base path for backend endpoints (includes /api prefix)
+  get API_BASE() {
+    return `${this.API_URL}/api`;
   }
 };
 

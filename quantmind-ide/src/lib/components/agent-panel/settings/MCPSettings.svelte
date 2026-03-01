@@ -4,8 +4,9 @@
   import { Plus, Trash2, RefreshCw, Server, Check, X, AlertCircle, ExternalLink, Loader2 } from 'lucide-svelte';
   import { settingsStore } from '../../../stores/settingsStore';
   import type { MCPServer } from '../../../stores/settingsStore';
+  import { API_CONFIG } from '$lib/config/api';
 
-  const API_BASE = "http://localhost:8000/api";
+  const API_BASE = API_CONFIG.API_BASE;
 
   // State
   let showAddModal = false;

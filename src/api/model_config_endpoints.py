@@ -1,6 +1,9 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Optional, List
+import json
+import os
+from pathlib import Path
 
 from src.agents.llm_provider import (
     ProviderType,
@@ -10,6 +13,11 @@ from src.agents.llm_provider import (
 )
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
+
+# Config file for persistence
+CONFIG_DIR = Path(".quantmind")
+CONFIG_FILE = CONFIG_DIR / "agent_models.json"
+CONFIG_FILE.parent.mkdir(exist_ok=True)
 
 # Available models per provider
 PROVIDER_MODELS: Dict[str, List[dict]] = {
@@ -38,16 +46,37 @@ class ModelUpdate(BaseModel):
     model: str
     provider: Optional[str] = None
 
-# In-memory model config
-_agent_models: Dict[str, dict] = {
+# Default model config - aligned with Department enum
+_DEFAULT_MODELS: Dict[str, dict] = {
     "copilot": {"model": "opus", "provider": "anthropic"},
     "floor_manager": {"model": "opus", "provider": "anthropic"},
-    "analysis": {"model": "sonnet", "provider": "anthropic"},
     "research": {"model": "sonnet", "provider": "anthropic"},
+    "development": {"model": "sonnet", "provider": "anthropic"},
+    "trading": {"model": "sonnet", "provider": "anthropic"},
     "risk": {"model": "sonnet", "provider": "anthropic"},
-    "execution": {"model": "sonnet", "provider": "anthropic"},
     "portfolio": {"model": "sonnet", "provider": "anthropic"},
 }
+
+
+def _load_models() -> Dict[str, dict]:
+    """Load model config from file or return defaults."""
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return _DEFAULT_MODELS.copy()
+
+
+def _save_models(models: Dict[str, dict]) -> None:
+    """Persist model config to file."""
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(models, f, indent=2)
+
+
+# In-memory model config (loaded from file or defaults)
+_agent_models: Dict[str, dict] = _load_models()
 
 @router.get("/models")
 async def list_agent_models():
@@ -82,4 +111,5 @@ async def update_agent_model(agent_id: str, config: ModelUpdate):
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
 
     _agent_models[agent_id] = {"model": config.model, "provider": config.provider or "anthropic"}
+    _save_models(_agent_models)  # Persist to file
     return {"status": "success", "agent": agent_id, "model": config.model}

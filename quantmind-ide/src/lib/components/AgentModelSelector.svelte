@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { API_CONFIG } from '$lib/config/api';
 
   export let agentId: string;
   export let currentModel: string = 'sonnet';
@@ -19,7 +20,7 @@
   let selectedModel = currentModel;
   let loading = true;
 
-  const API_BASE = "http://localhost:8000/api";
+  const API_BASE = API_CONFIG.API_BASE;
 
   onMount(async () => {
     try {

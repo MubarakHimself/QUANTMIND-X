@@ -87,8 +87,11 @@
       const response = await fetch("/api/knowledge");
       if (response.ok) {
         articles = await response.json();
+      } else {
+        error = "Failed to fetch articles";
       }
-    } catch (e) {
+    } catch (e: any) {
+      error = e.message || "Failed to fetch articles";
       console.error("Failed to fetch articles:", e);
     } finally {
       articlesLoading = false;

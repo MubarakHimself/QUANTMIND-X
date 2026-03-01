@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { Loader2, Play, CheckCircle, XCircle, AlertCircle } from 'lucide-svelte';
+  import { API_CONFIG } from '$lib/config/api';
 
   interface NPRDJob {
     id: string;
@@ -10,7 +11,7 @@
     result?: any;
   }
 
-  const API_BASE = "http://localhost:8000/api";
+  const API_BASE = API_CONFIG.API_BASE;
 
   let youtubeUrl = '';
   let loading = false;

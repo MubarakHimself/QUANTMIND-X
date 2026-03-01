@@ -5,6 +5,7 @@
   } from "lucide-svelte";
   import { memoryStore } from "$lib/stores/memoryStore";
   import * as memoryApi from "$lib/api/memory";
+  import { API_CONFIG } from "$lib/config/api";
   import TradingFloorCanvas from "$lib/components/trading-floor/TradingFloorCanvas.svelte";
   import TradingFloorPanel from "$lib/components/TradingFloorPanel.svelte";
   import CopilotPanel from "$lib/components/trading-floor/CopilotPanel.svelte";
@@ -23,7 +24,7 @@
   import { connectTradingFloorWS, disconnectTradingFloorWS, wsConnected } from "$lib/services/tradingFloorWebSocket";
 
   // API base URL
-  const API_BASE = "http://localhost:8000/api";
+  const API_BASE = API_CONFIG.API_BASE;
 
   // Simplified tabs
   let activeTab = "trading-floor";
