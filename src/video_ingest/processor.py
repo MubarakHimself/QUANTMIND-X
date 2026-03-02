@@ -393,12 +393,9 @@ class VideoIngestProcessor:
             return None
         
         try:
-            cached_data = self.cache.get(cache_key)
-            if cached_data:
-                # Reconstruct ProcessingResult from cached data
-                # This is a simplified version - full implementation would
-                # serialize/deserialize the complete result
-                return None  # For now, don't use cached timeline results
+            # Skip cache checking for now - simplified implementation
+            # Full cache support requires artifact_type parameter
+            return None
         except Exception as e:
             logger.warning(f"Cache check failed: {e}")
         
@@ -438,11 +435,8 @@ class VideoIngestProcessor:
         """
         def download_attempt():
             return self.downloader.download(url, str(work_dir / "video"))
-        
-        return self.retry_handler.execute(
-            download_attempt,
-            error_type=DownloadError
-        )
+
+        return self.retry_handler.execute(download_attempt)
     
     def _extract_frames(
         self,
