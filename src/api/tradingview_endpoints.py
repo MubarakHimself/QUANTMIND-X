@@ -22,7 +22,7 @@ from src.config import get_settings
 from src.database.models import WebhookLog, SessionLocal
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/tradingview", tags=["tradingview"])
+router = APIRouter(prefix="/api/tradingview", tags=["tradingview"])
 
 # Configuration
 settings = get_settings()
