@@ -242,6 +242,7 @@ VERIFICATION_*.md
 
 # Task/Plan directories
 plans/
+docs/plans/
 TASK_GROUP*.md
 
 # Docker dev summaries
