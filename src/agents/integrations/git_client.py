@@ -5,7 +5,7 @@ Git client for raw file storage in Assets Hub.
 Provides methods for reading, writing, and committing template and skill files
 to the Git repository at /data/git/assets-hub/.
 
-Follows the file operation pattern from server_chroma.py lines 249-255.
+Follows the file operation pattern for raw file storage.
 """
 
 import subprocess

@@ -68,7 +68,6 @@ def log_trade_event(
 
     # In production, this would write to:
     # - SQLite database at /data/journal/trade_journal.db
-    # - ChromaDB collection for semantic search
     # - Redis Pub/Sub channel for real-time monitoring
 
     # For now, we just return success with the log entry data

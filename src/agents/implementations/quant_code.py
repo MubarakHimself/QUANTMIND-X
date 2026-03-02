@@ -49,17 +49,17 @@ class QuantCodeAgent(BaseAgent):
 
     async def planning_node(self, state: CodeState):
         """
-        Analyze TRD and plan file structure. 
+        Analyze TRD and plan file structure.
         Fetches CODING STANDARDS from Assets Hub first.
         """
         standards = "Standard: Use Python 3.10+, Type Hints."
-        
+
         # Try to fetch real standards via MCP
         # Assuming self.call_mcp_tool is available in BaseAgent or we use a direct client
         # For simplicity in this scaffold, we simulate the retrieval if the client isn't ready
         try:
-             # This would be: self.call_tool("quantmindx-kb-chroma", "get_coding_standards", {})
-             pass 
+             # This would be: self.call_tool("quantmindx-kb", "get_coding_standards", {})
+             pass
         except Exception:
              pass
 

@@ -89,7 +89,7 @@ class SkillDefinition(BaseModel):
         - tools: List[BaseTool]
         - system_prompt_addition: str
 
-        Since SkillDefinition is a data model for storage/retrieval from ChromaDB,
+        Since SkillDefinition is a data model for storage/retrieval,
         we check that it has the minimal fields needed to create an AgentSkill.
         """
         return bool(

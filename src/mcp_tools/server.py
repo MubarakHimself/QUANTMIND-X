@@ -156,40 +156,22 @@ if mcp:
     def search_memory(request: MemorySearchRequest) -> MemorySearchResponse:
         """
         Search agent memory using semantic similarity.
-        
+
+        Note: ChromaDB has been removed. This function currently returns empty results.
+
         Args:
             request: Memory search request
-            
+
         Returns:
             Matching memory entries
         """
-        try:
-            from src.database.manager import DatabaseManager
-            
-            db = DatabaseManager()
-            
-            # Search agent memory in ChromaDB
-            results = db.search_agent_memory(
-                query=request.query,
-                agent_type=request.agent_type,
-                memory_type=request.memory_type,
-                limit=request.limit
-            )
-            
-            return MemorySearchResponse(
-                success=True,
-                results=results,
-                count=len(results)
-            )
-            
-        except Exception as e:
-            logger.error(f"Memory search failed: {e}")
-            return MemorySearchResponse(
-                success=False,
-                results=[],
-                count=0,
-                message=f"Error: {str(e)}"
-            )
+        # ChromaDB has been removed - return empty results
+        return MemorySearchResponse(
+            success=True,
+            results=[],
+            count=0,
+            message="ChromaDB has been removed from the system"
+        )
 
 
 # ============================================================================
@@ -410,32 +392,23 @@ if mcp:
     @mcp.tool()
     def search_knowledge_base(request: KnowledgeSearchRequest) -> Dict[str, Any]:
         """
-        Search knowledge base using ChromaDB.
-        
+        Search knowledge base.
+
+        Note: ChromaDB has been removed. This function currently returns empty results.
+
         Args:
             request: Knowledge search request
-            
+
         Returns:
             Matching knowledge articles
         """
-        try:
-            from src.database.manager import DatabaseManager
-            
-            db = DatabaseManager()
-            results = db.search_knowledge(request.query, limit=request.limit)
-            
-            return {
-                "success": True,
-                "results": results,
-                "count": len(results)
-            }
-            
-        except Exception as e:
-            logger.error(f"Knowledge search failed: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+        # ChromaDB has been removed - return empty results
+        return {
+            "success": True,
+            "results": [],
+            "count": 0,
+            "message": "ChromaDB has been removed from the system"
+        }
 
 
 # ============================================================================

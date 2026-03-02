@@ -1,7 +1,7 @@
 """
 Unified Database Manager
 
-Provides a unified interface to both SQLite (via SQLAlchemy) and ChromaDB.
+Provides a unified interface to SQLite (via SQLAlchemy).
 Implements singleton pattern for application-wide database access with
 automatic retry logic and connection management.
 """
@@ -20,9 +20,7 @@ class DatabaseManager:
     """
     Unified database manager for QuantMind Hybrid Core.
 
-    Provides methods for:
-    - SQLite operations (accounts, snapshots, proposals)
-    - ChromaDB operations (strategies, knowledge, patterns)
+    Provides methods for SQLite operations (accounts, snapshots, proposals).
 
     Usage:
         db = DatabaseManager()
@@ -66,13 +64,6 @@ class DatabaseManager:
             # Log but don't fail initialization
             import logging
             logging.getLogger(__name__).warning(f"Initial database connection check failed: {e}")
-
-        # Initialize ChromaDB client
-        try:
-            from .chroma_client import ChromaDBClient
-            self.chroma = ChromaDBClient()
-        except ImportError as e:
-            self.chroma = None
 
         self._initialized = True
 
@@ -657,183 +648,6 @@ class DatabaseManager:
             for strategy in strategies:
                 session.expunge(strategy)
             return strategies
-
-    # ========================================================================
-    # ChromaDB Methods
-    # ========================================================================
-
-    def search_strategies(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """
-        Search trading strategies by semantic similarity.
-
-        Args:
-            query: Search query text
-            limit: Maximum results to return
-
-        Returns:
-            List of matching strategies with metadata
-        """
-        if self.chroma is None:
-            return []
-        return self.chroma.search_strategies(query, limit)
-
-    def add_strategy(
-        self,
-        strategy_id: str,
-        code: str,
-        strategy_name: str,
-        code_hash: str,
-        performance_metrics: Optional[Dict[str, Any]] = None
-    ) -> None:
-        """
-        Add a trading strategy to the vector store.
-
-        Args:
-            strategy_id: Unique identifier
-            code: Strategy code
-            strategy_name: Human-readable name
-            code_hash: Hash of the code
-            performance_metrics: Optional performance data
-        """
-        if self.chroma is None:
-            raise RuntimeError("ChromaDB not initialized")
-        self.chroma.add_strategy(strategy_id, code, strategy_name, code_hash, performance_metrics)
-
-    def search_knowledge(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """
-        Search knowledge base by semantic similarity.
-
-        Args:
-            query: Search query text
-            limit: Maximum results to return
-
-        Returns:
-            List of matching knowledge articles
-        """
-        if self.chroma is None:
-            return []
-        return self.chroma.search_knowledge(query, limit)
-
-    def add_knowledge(
-        self,
-        article_id: str,
-        content: str,
-        title: str,
-        url: str,
-        categories: str,
-        relevance_score: float = 0.5
-    ) -> None:
-        """
-        Add knowledge article to the vector store.
-
-        Args:
-            article_id: Unique identifier
-            content: Article content
-            title: Article title
-            url: Article URL
-            categories: Comma-separated categories
-            relevance_score: Relevance score (0-1)
-        """
-        if self.chroma is None:
-            raise RuntimeError("ChromaDB not initialized")
-        self.chroma.add_knowledge(article_id, content, title, url, categories, relevance_score)
-
-    def search_patterns(
-        self,
-        query: str,
-        limit: int = 10,
-        where: Optional[Dict[str, Any]] = None
-    ) -> List[Dict[str, Any]]:
-        """
-        Search market patterns by semantic similarity.
-
-        Args:
-            query: Search query text
-            limit: Maximum results to return
-            where: Optional metadata filter
-
-        Returns:
-            List of matching market patterns
-        """
-        if self.chroma is None:
-            return []
-        return self.chroma.search_patterns(query, limit, where)
-
-    def add_pattern(
-        self,
-        pattern_id: str,
-        description: str,
-        pattern_type: str,
-        volatility_level: str,
-        timestamp: Optional[str] = None
-    ) -> None:
-        """
-        Add market pattern to the vector store.
-
-        Args:
-            pattern_id: Unique identifier
-            description: Pattern description
-            pattern_type: Type of pattern
-            volatility_level: Market volatility (low, medium, high)
-            timestamp: ISO timestamp
-        """
-        if self.chroma is None:
-            raise RuntimeError("ChromaDB not initialized")
-        self.chroma.add_market_pattern(pattern_id, description, pattern_type, volatility_level, timestamp)
-
-    def add_agent_memory(
-        self,
-        memory_id: str,
-        content: str,
-        agent_type: str,
-        memory_type: str,
-        context: str,
-        importance: float = 0.5
-    ) -> None:
-        """
-        Add agent memory to the vector store.
-
-        Args:
-            memory_id: Unique identifier
-            content: Memory content
-            agent_type: Type of agent (analyst/quant/executor)
-            memory_type: Type of memory (semantic/episodic/procedural)
-            context: Context in which memory was created
-            importance: Importance score (0-1)
-        """
-        if self.chroma is None:
-            raise RuntimeError("ChromaDB not initialized")
-        self.chroma.add_agent_memory(memory_id, content, agent_type, memory_type, context, importance)
-
-    def search_agent_memory(
-        self,
-        query: str,
-        agent_type: Optional[str] = None,
-        memory_type: Optional[str] = None,
-        limit: int = 10
-    ) -> List[Dict[str, Any]]:
-        """
-        Search agent memories by semantic similarity.
-
-        Args:
-            query: Search query text
-            agent_type: Filter by agent type (optional)
-            memory_type: Filter by memory type (optional)
-            limit: Maximum results to return
-
-        Returns:
-            List of matching agent memories
-        """
-        if self.chroma is None:
-            return []
-
-        where = {}
-        if agent_type is not None:
-            where['agent_type'] = agent_type
-        if memory_type is not None:
-            where['memory_type'] = memory_type
-
-        return self.chroma.search_patterns(query, limit, where if where else None)
 
     def close_all_sessions(self):
         """Close all database sessions."""

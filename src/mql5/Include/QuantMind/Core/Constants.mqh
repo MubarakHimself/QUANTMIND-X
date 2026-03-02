@@ -157,12 +157,6 @@
 //+------------------------------------------------------------------+
 // Database file paths (relative to Python backend)
 #define QM_DB_SQLITE_PATH               "data/quantmind.db"
-#define QM_DB_CHROMADB_PATH             "data/chromadb/"
-
-// Collection names
-#define QM_COLLECTION_STRATEGY_DNA      "strategy_dna"
-#define QM_COLLECTION_MARKET_RESEARCH   "market_research"
-#define QM_COLLECTION_AGENT_MEMORY      "agent_memory"
 
 //+------------------------------------------------------------------+
 //| Error Codes                                                      |
