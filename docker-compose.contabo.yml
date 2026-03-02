@@ -7,9 +7,7 @@ version: "3.8"
 services:
   # ========== HMM Inference API ==========
   hmm-inference-api:
-    build:
-      context: .
-      dockerfile: docker/strategy-agent/Dockerfile
+    image: python:3.11-slim
     container_name: quantmind-hmm-inference-api
     restart: unless-stopped
     ports:
@@ -29,7 +27,7 @@ services:
       - CONTABO_MODEL_PATH=/data/hmm/models
       - CONTABO_METADATA_PATH=/data/hmm/metadata
     working_dir: /app
-    command: python -m uvicorn src.api.hmm_inference_server:app --host 0.0.0.0 --port 8001
+    command: sh -c "pip install --no-cache-dir fastapi uvicorn && python -m uvicorn src.api.hmm_inference_server:app --host 0.0.0.0 --port 8001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s

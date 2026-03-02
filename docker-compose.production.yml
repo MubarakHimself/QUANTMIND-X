@@ -56,9 +56,10 @@ services:
 
   # ========== QuantMindX API Server ==========
   quantmind-api:
+    image: quantmind-api:latest
     build:
       context: .
-      dockerfile: docker/strategy-agent/Dockerfile
+      dockerfile: server/Dockerfile
     container_name: quantmind-api
     restart: unless-stopped
     ports:
