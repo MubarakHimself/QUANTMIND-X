@@ -181,6 +181,25 @@ app.include_router(memory_dept_router)
 app.include_router(trading_floor_router)
 app.include_router(floor_manager_router)
 
+# Standardized error handlers
+from fastapi import HTTPException
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request, exc):
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"}
+    )
+
 # Mount Monte Carlo WebSocket endpoint
 @app.websocket("/api/monte-carlo/ws")
 async def monte_carlo_websocket_endpoint(websocket: WebSocket):
