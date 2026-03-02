@@ -43,6 +43,7 @@ from .trd_tools import (
 
 from .video_analysis_tools import (
     analyze_trading_video,
+    analyze_playlist,
     extract_indicators,
     extract_entry_rules,
     extract_exit_rules,

@@ -22,6 +22,15 @@ from dataclasses import dataclass, field, asdict
 from enum import Enum
 import re
 
+# Import video_ingest processor
+try:
+    from src.video_ingest.processor import VideoIngestProcessor
+    from src.video_ingest.models import JobOptions
+    VIDEO_INGEST_AVAILABLE = True
+except ImportError:
+    VIDEO_INGEST_AVAILABLE = False
+    logger.warning("video_ingest module not available, using mock analysis")
+
 logger = logging.getLogger(__name__)
 
 
@@ -156,6 +165,9 @@ async def analyze_trading_video(
     """
     Analyze trading video and extract strategy elements.
 
+    Uses the video_ingest processor to process YouTube videos with Gemini CLI
+    or Qwen CLI for AI-powered analysis.
+
     Args:
         video_id: YouTube video ID or identifier
         video_url: Optional direct URL to video
@@ -169,57 +181,94 @@ async def analyze_trading_video(
     """
     logger.info(f"Analyzing trading video: {video_id} (depth: {analysis_depth})")
 
+    # Build the full URL if only ID is provided
+    if not video_url:
+        video_url = f"https://www.youtube.com/watch?v={video_id}"
+
     try:
-        # In production, this would call video analysis pipeline
-        # For now, return a mock analysis result
-        analysis = VideoAnalysisResult(
-            video_id=video_id,
-            title=f"Trading Strategy from {video_id}",
-            total_duration="45:00",
-            speakers={
-                "SPEAKER_01": "Host",
-                "SPEAKER_02": "Expert"
-            },
-            timeline=[
-                VideoClip(
-                    clip_id=1,
-                    timestamp_start="04:15",
-                    timestamp_end="05:30",
-                    speaker="SPEAKER_02",
-                    visual_description="Chart showing moving averages and price action",
-                    transcript="We use the 20 and 50 period EMA crossovers to identify trend direction",
-                    ocr_content=["EMA 20", "EMA 50", "GBPUSD H1"],
-                    clip_type=ClipType.INDICATOR_EXPLANATION,
-                    confidence=0.85
-                ),
-                VideoClip(
-                    clip_id=2,
-                    timestamp_start="12:45",
-                    timestamp_end="14:20",
-                    speaker="SPEAKER_02",
-                    visual_description="Chart showing entry setup with indicators aligned",
-                    transcript="For entry, we wait for price to pull back to the 20 EMA and show rejection candlestick",
-                    ocr_content=["Entry Signal", "20 EMA", "Rejection Candle"],
-                    clip_type=ClipType.ENTRY_RULE,
-                    confidence=0.90
-                )
-            ],
-            confidence_score=0.87
-        )
+        # Use video_ingest processor if available
+        if VIDEO_INGEST_AVAILABLE:
+            logger.info(f"Using video_ingest processor for {video_url}")
 
-        # Extract strategy elements
-        analysis.extracted_elements = await _extract_all_elements(analysis.timeline)
+            # Create processor with options based on analysis depth
+            options = JobOptions()
 
-        # Generate summary
-        summary = _generate_analysis_summary(analysis)
+            # Adjust frame interval based on analysis depth
+            if analysis_depth == "quick":
+                options.frame_interval = 60  # Every 60 seconds
+            elif analysis_depth == "deep":
+                options.frame_interval = 10  # Every 10 seconds
+            else:  # standard
+                options.frame_interval = 30  # Every 30 seconds
 
-        return {
-            "success": True,
-            "analysis": analysis.to_dict(),
-            "summary": summary,
-            "video_id": video_id,
-            "analyzed_at": analysis.analyzed_at
-        }
+            # Process the video
+            processor = VideoIngestProcessor()
+            result = processor.process(url=video_url, job_id=f"agent_{video_id}", options=options)
+
+            # Convert ProcessingResult to VideoAnalysisResult format
+            timeline = result.timeline
+
+            # Map timeline clips to VideoClip format
+            video_clips = []
+            for i, clip in enumerate(timeline.timeline):
+                # Determine clip type from description
+                clip_type = ClipType.OTHER
+                desc_lower = (clip.description or "").lower()
+                if any(word in desc_lower for word in ["entry", "buy", "sell", "signal"]):
+                    clip_type = ClipType.ENTRY_RULE
+                elif any(word in desc_lower for word in ["exit", "stop", "take profit", "tp"]):
+                    clip_type = ClipType.EXIT_RULE
+                elif any(word in desc_lower for word in ["indicator", "ma", "ema", "rsi", "macd"]):
+                    clip_type = ClipType.INDICATOR_EXPLANATION
+                elif any(word in desc_lower for word in ["risk", "position", "lot", "size"]):
+                    clip_type = ClipType.RISK_MANAGEMENT
+
+                video_clips.append(VideoClip(
+                    clip_id=i + 1,
+                    timestamp_start=clip.timestamp_start,
+                    timestamp_end=clip.timestamp_end,
+                    speaker=clip.speaker or "SPEAKER_01",
+                    visual_description=clip.description or "",
+                    transcript=clip.transcript or "",
+                    ocr_content=clip.ocr_content or [],
+                    clip_type=clip_type,
+                    confidence=clip.confidence_score or 0.8
+                ))
+
+            # Format duration
+            total_seconds = timeline.duration_seconds
+            minutes, seconds = divmod(total_seconds, 60)
+            hours, minutes = divmod(minutes, 60)
+            if hours > 0:
+                total_duration = f"{hours}:{minutes:02d}:{seconds:02d}"
+            else:
+                total_duration = f"{minutes}:{seconds:02d}"
+
+            # Create VideoAnalysisResult
+            analysis = VideoAnalysisResult(
+                video_id=video_id,
+                title=timeline.title or f"Video {video_id}",
+                total_duration=total_duration,
+                speakers={"SPEAKER_01": "Speaker"},
+                timeline=video_clips,
+                confidence_score=0.85  # Default since provider doesn't return score
+            )
+            analysis.extracted_elements = await _extract_all_elements(analysis.timeline)
+            summary = _generate_analysis_summary(analysis)
+
+            return {
+                "success": True,
+                "analysis": analysis.to_dict(),
+                "summary": summary,
+                "video_id": video_id,
+                "provider_used": result.provider_used,
+                "processing_time": result.processing_time_seconds,
+                "analyzed_at": datetime.now(timezone.utc).isoformat()
+            }
+        else:
+            # Fallback to mock if video_ingest not available
+            logger.warning("video_ingest not available, using mock analysis")
+            raise Exception("video_ingest module not available")
 
     except Exception as e:
         logger.error(f"Failed to analyze video: {e}", exc_info=True)
@@ -227,6 +276,147 @@ async def analyze_trading_video(
             "success": False,
             "error": str(e),
             "video_id": video_id
+        }
+
+
+async def analyze_playlist(
+    playlist_url: str,
+    max_videos: int = 10,
+    analysis_depth: str = "standard"
+) -> Dict[str, Any]:
+    """
+    Analyze a YouTube playlist and extract strategy elements from multiple videos.
+
+    Uses the video_ingest processor to batch process playlist videos with Gemini CLI
+    or Qwen CLI for AI-powered analysis.
+
+    Args:
+        playlist_url: YouTube playlist URL
+        max_videos: Maximum number of videos to process (default: 10)
+        analysis_depth: "quick", "standard", or "deep"
+
+    Returns:
+        Dictionary containing:
+        - success: Analysis status
+        - videos: Array of video analysis results
+        - summary: Summary of all strategies found
+        - total_processed: Number of videos processed
+    """
+    logger.info(f"Analyzing playlist: {playlist_url} (max: {max_videos}, depth: {analysis_depth})")
+
+    try:
+        if not VIDEO_INGEST_AVAILABLE:
+            raise Exception("video_ingest module not available")
+
+        # Create processor
+        processor = VideoIngestProcessor()
+        options = JobOptions()
+
+        # Adjust based on analysis depth
+        if analysis_depth == "quick":
+            options.frame_interval = 60
+        elif analysis_depth == "deep":
+            options.frame_interval = 10
+        else:
+            options.frame_interval = 30
+
+        # Process playlist
+        results = processor.process_playlist(
+            playlist_url=playlist_url,
+            max_videos=max_videos,
+            options=options
+        )
+
+        # Convert each result to VideoAnalysisResult format
+        videos = []
+        all_indicators = []
+        all_entries = []
+        all_exits = []
+        all_risk = []
+
+        for i, result in enumerate(results):
+            timeline = result.timeline
+
+            # Map clips
+            video_clips = []
+            for j, clip in enumerate(timeline.timeline):
+                clip_type = ClipType.OTHER
+                desc_lower = (clip.description or "").lower()
+                if any(word in desc_lower for word in ["entry", "buy", "sell", "signal"]):
+                    clip_type = ClipType.ENTRY_RULE
+                    all_entries.append(clip.transcript or "")
+                elif any(word in desc_lower for word in ["exit", "stop", "take profit", "tp"]):
+                    clip_type = ClipType.EXIT_RULE
+                    all_exits.append(clip.transcript or "")
+                elif any(word in desc_lower for word in ["indicator", "ma", "ema", "rsi", "macd"]):
+                    clip_type = ClipType.INDICATOR_EXPLANATION
+                    all_indicators.append(clip.description or "")
+                elif any(word in desc_lower for word in ["risk", "position", "lot", "size"]):
+                    clip_type = ClipType.RISK_MANAGEMENT
+                    all_risk.append(clip.transcript or "")
+
+                video_clips.append(VideoClip(
+                    clip_id=j + 1,
+                    timestamp_start=clip.timestamp_start,
+                    timestamp_end=clip.timestamp_end,
+                    speaker=clip.speaker or "SPEAKER_01",
+                    visual_description=clip.description or "",
+                    transcript=clip.transcript or "",
+                    ocr_content=clip.ocr_content or [],
+                    clip_type=clip_type,
+                    confidence=clip.confidence_score or 0.8
+                ))
+
+            total_seconds = timeline.duration_seconds
+            minutes, seconds = divmod(total_seconds, 60)
+            hours, minutes = divmod(minutes, 60)
+            total_duration = f"{hours}:{minutes:02d}:{seconds:02d}" if hours > 0 else f"{minutes}:{seconds:02d}"
+
+            analysis = VideoAnalysisResult(
+                video_id=f"video_{i}",
+                title=timeline.title or f"Video {i}",
+                total_duration=total_duration,
+                speakers={"SPEAKER_01": "Speaker"},
+                timeline=video_clips,
+                confidence_score=0.85
+            )
+            analysis.extracted_elements = await _extract_all_elements(analysis.timeline)
+
+            videos.append({
+                "index": i,
+                "video_id": f"video_{i}",
+                "title": timeline.title,
+                "analysis": analysis.to_dict(),
+                "provider_used": result.provider_used,
+                "processing_time": result.processing_time_seconds
+            })
+
+        # Generate summary
+        summary = f"Processed {len(videos)} videos from playlist. "
+        if all_indicators:
+            summary += f"Found {len(all_indicators)} indicator explanations. "
+        if all_entries:
+            summary += f"Found {len(all_entries)} entry rules. "
+        if all_exits:
+            summary += f"Found {len(all_exits)} exit rules. "
+        if all_risk:
+            summary += f"Found {len(all_risk)} risk management rules. "
+
+        return {
+            "success": True,
+            "playlist_url": playlist_url,
+            "videos": videos,
+            "summary": summary,
+            "total_processed": len(videos),
+            "analyzed_at": datetime.now(timezone.utc).isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to analyze playlist: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e),
+            "playlist_url": playlist_url
         }
 
 
@@ -785,10 +975,19 @@ def _generate_analysis_summary(analysis: VideoAnalysisResult) -> Dict[str, Any]:
 VIDEO_ANALYSIS_TOOLS = {
     "analyze_trading_video": {
         "function": analyze_trading_video,
-        "description": "Analyze trading video and extract strategy elements",
+        "description": "Analyze trading video and extract strategy elements using AI",
         "parameters": {
             "video_id": {"type": "string", "required": True},
             "video_url": {"type": "string", "required": False},
+            "analysis_depth": {"type": "string", "required": False, "default": "standard"}
+        }
+    },
+    "analyze_playlist": {
+        "function": analyze_playlist,
+        "description": "Analyze YouTube playlist and extract strategy elements from multiple videos",
+        "parameters": {
+            "playlist_url": {"type": "string", "required": True},
+            "max_videos": {"type": "integer", "required": False, "default": 10},
             "analysis_depth": {"type": "string", "required": False, "default": "standard"}
         }
     },
