@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import List, Optional
 from datetime import datetime, timedelta
 import subprocess
+import os
 import json
 import logging
 
@@ -104,11 +105,59 @@ class GeminiCLIProvider(ModelProvider):
             api_key: Optional API key (uses GEMINI_API_KEY env var if not provided)
         """
         self.yolo_mode = yolo_mode
-        self.api_key = api_key
+        self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
         self.rate_limit = RateLimit(requests_per_day=None)  # Subscription-based, no hard limit
-        
+
         logger.info(f"Initialized GeminiCLIProvider with yolo_mode={yolo_mode}")
-    
+
+    def is_authenticated(self) -> bool:
+        """
+        Check if Gemini CLI is authenticated via OAuth.
+
+        Runs 'gemini auth --status' to check authentication state.
+        Returns True if authenticated (OAuth or API key available).
+        """
+        import subprocess
+
+        # First check if API key is set
+        if self.api_key or os.environ.get("GEMINI_API_KEY"):
+            return True
+
+        # Check OAuth authentication status
+        try:
+            result = subprocess.run(
+                ["gemini", "auth", "--status"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            # If command succeeds and shows authenticated status
+            if result.returncode == 0 and "authenticated" in result.stdout.lower():
+                return True
+        except Exception as e:
+            logger.debug(f"Gemini auth check failed: {e}")
+
+        return False
+
+    def authenticate(self) -> bool:
+        """
+        Trigger OAuth authentication flow.
+
+        Opens browser for Google login. User needs to run this once.
+        """
+        import subprocess
+
+        try:
+            subprocess.run(
+                ["gemini", "auth"],
+                capture_output=True,
+                timeout=60
+            )
+            return self.is_authenticated()
+        except Exception as e:
+            logger.error(f"Gemini auth failed: {e}")
+            return False
+
     def analyze(self, frames: List[Path], audio: Path, prompt: str) -> TimelineOutput:
         """
         Analyze video content using Gemini CLI.
@@ -804,7 +853,6 @@ class OpenRouterProvider(ModelProvider):
             model: Model to use (default: anthropic/claude-sonnet-4)
             base_url: OpenRouter API base URL
         """
-        import os
         self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY")
         self.model = model or self.DEFAULT_MODEL
         self.base_url = base_url
@@ -1188,14 +1236,67 @@ class QwenCodeCLIProvider(ModelProvider):
             headless: Run in headless mode (no GUI) (default: True)
             model: Model to use (default: qwen-vl-plus)
         """
-        import os
         self.api_key = api_key or os.environ.get("QWEN_API_KEY")
         self.headless = headless
         self.model = model
         self.rate_limit = RateLimit(requests_per_day=2000)  # Free tier limit
-        
+
         logger.info(f"Initialized QwenCodeCLIProvider with headless={headless}, model={model}")
-    
+
+    def is_authenticated(self) -> bool:
+        """
+        Check if Qwen Code CLI is authenticated via OAuth.
+
+        Qwen Code uses OAuth sign-in (1,000 free requests/day).
+        Checks if CLI is installed and can authenticate.
+        """
+        import subprocess
+
+        # First check if API key is set
+        if self.api_key or os.environ.get("QWEN_API_KEY"):
+            return True
+
+        # Check if Qwen CLI is installed and can run
+        try:
+            result = subprocess.run(
+                ["qwen", "--version"],
+                capture_output=True,
+                timeout=10
+            )
+            if result.returncode == 0:
+                # CLI is installed - assume authenticated for OAuth
+                # (Qwen uses browser-based OAuth, not CLI auth command)
+                return True
+        except Exception as e:
+            logger.debug(f"Qwen auth check failed: {e}")
+
+        return False
+
+    def authenticate(self) -> bool:
+        """
+        Open browser for Qwen OAuth sign-in.
+
+        User needs to sign in once via browser.
+        Get 1,000 free requests per day.
+        """
+        import subprocess
+        import webbrowser
+
+        try:
+            # Try to open browser-based OAuth
+            # Qwen typically opens browser automatically on first use
+            result = subprocess.run(
+                ["qwen"],
+                capture_output=True,
+                timeout=5
+            )
+            # If that doesn't work, open the sign-in page
+            webbrowser.open("https://qwenlm.github.io/")
+            return True
+        except Exception as e:
+            logger.error(f"Qwen auth failed: {e}")
+            return False
+
     def analyze(self, frames: List[Path], audio: Path, prompt: str) -> TimelineOutput:
         """
         Analyze video content using Qwen Code CLI.

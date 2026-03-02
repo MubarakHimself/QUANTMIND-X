@@ -1081,34 +1081,39 @@ def create_ide_api_app():
     @app.get("/api/video-ingest/auth-status")
     async def get_video_ingest_auth_status():
         """Get authentication status for video_ingest AI providers."""
-        # Check for Gemini CLI
         gemini_auth = False
         qwen_auth = False
+        gemini_mode = "none"
+        qwen_mode = "none"
 
+        # Check Gemini CLI authentication
         try:
-            import subprocess
-            # Check Gemini CLI
-            result = subprocess.run(
-                ["gemini", "auth", "--status"],
-                capture_output=True,
-                timeout=5
-            )
-            gemini_auth = result.returncode == 0
-        except Exception:
-            pass
+            from src.video_ingest.providers import GeminiCLIProvider
+            gemini_provider = GeminiCLIProvider()
+            gemini_auth = gemini_provider.is_authenticated()
+            gemini_mode = "yolo" if gemini_provider.yolo_mode else "interactive"
+        except Exception as e:
+            logger.debug(f"Gemini CLI check failed: {e}")
 
+        # Check Qwen CLI authentication
         try:
-            # Check Qwen CLI
-            result = subprocess.run(
-                ["qwen", "--version"],
-                capture_output=True,
-                timeout=5
-            )
-            qwen_auth = result.returncode == 0
-        except Exception:
-            pass
+            from src.video_ingest.providers import QwenCodeCLIProvider
+            qwen_provider = QwenCodeCLIProvider()
+            qwen_auth = qwen_provider.is_authenticated()
+            qwen_mode = "headless" if qwen_provider.headless else "interactive"
+        except Exception as e:
+            logger.debug(f"Qwen CLI check failed: {e}")
 
-        return VideoIngestAuthStatus(gemini=gemini_auth, qwen=qwen_auth)
+        return {
+            "gemini": gemini_auth,
+            "qwen": qwen_auth,
+            "gemini_mode": gemini_mode,
+            "qwen_mode": qwen_mode,
+            "setup_instructions": {
+                "gemini": "Run 'gemini auth' in terminal, then use 'gemini --yolo' for automation",
+                "qwen": "Sign in at https://qwenlm.github.io/, get 1000 free requests/day"
+            }
+        }
     
     # -------------------------------------------------------------------------
     # Broker Accounts Endpoints
