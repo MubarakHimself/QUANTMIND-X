@@ -112,30 +112,20 @@ class GeminiCLIProvider(ModelProvider):
 
     def is_authenticated(self) -> bool:
         """
-        Check if Gemini CLI is authenticated via OAuth.
+        Check if Gemini CLI is authenticated via OAuth or API key.
 
-        Runs 'gemini auth --status' to check authentication state.
-        Returns True if authenticated (OAuth or API key available).
+        Checks for:
+        1. GEMINI_API_KEY environment variable
+        2. OAuth credentials file (~/.gemini/oauth_creds.json)
         """
-        import subprocess
-
         # First check if API key is set
         if self.api_key or os.environ.get("GEMINI_API_KEY"):
             return True
 
-        # Check OAuth authentication status
-        try:
-            result = subprocess.run(
-                ["gemini", "auth", "--status"],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            # If command succeeds and shows authenticated status
-            if result.returncode == 0 and "authenticated" in result.stdout.lower():
-                return True
-        except Exception as e:
-            logger.debug(f"Gemini auth check failed: {e}")
+        # Check for OAuth credentials file
+        oauth_creds_path = Path.home() / ".gemini" / "oauth_creds.json"
+        if oauth_creds_path.exists():
+            return True
 
         return False
 
@@ -1245,30 +1235,29 @@ class QwenCodeCLIProvider(ModelProvider):
 
     def is_authenticated(self) -> bool:
         """
-        Check if Qwen Code CLI is authenticated via OAuth.
+        Check if Qwen Code CLI is authenticated.
 
-        Qwen Code uses OAuth sign-in (1,000 free requests/day).
-        Checks if CLI is installed and can authenticate.
+        Checks for:
+        1. QWEN_API_KEY environment variable
+        2. Qwen CLI installed and config exists
         """
-        import subprocess
-
         # First check if API key is set
         if self.api_key or os.environ.get("QWEN_API_KEY"):
             return True
 
-        # Check if Qwen CLI is installed and can run
+        # Check if Qwen CLI is installed
         try:
+            import subprocess
             result = subprocess.run(
                 ["qwen", "--version"],
                 capture_output=True,
                 timeout=10
             )
             if result.returncode == 0:
-                # CLI is installed - assume authenticated for OAuth
-                # (Qwen uses browser-based OAuth, not CLI auth command)
+                # CLI is installed - assume available
                 return True
         except Exception as e:
-            logger.debug(f"Qwen auth check failed: {e}")
+            logger.debug(f"Qwen CLI not installed: {e}")
 
         return False
 
