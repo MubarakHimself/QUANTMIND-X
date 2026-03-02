@@ -12,11 +12,15 @@ export const API_CONFIG = {
   // Local development
   LOCAL_API_URL: 'http://localhost:8000',
 
-  // Cloudzy production (for data access)
-  CLOUDZY_API_URL: 'http://<cloudzy-ip>:8000',
+  // Cloudzy production (for data access) - use env var override
+  get CLOUDZY_API_URL() {
+    return import.meta.env.VITE_CLOUDZY_API_URL || 'http://localhost:8000';
+  },
 
-  // Contabo HMM API
-  CONTABO_HMM_API: 'http://155.133.27.86:8001',
+  // Contabo HMM API - use env var override
+  get CONTABO_HMM_API() {
+    return import.meta.env.VITE_CONTABO_HMM_API || 'http://localhost:8001';
+  },
 
   // Which API to use (determined by build mode)
   get API_URL() {
@@ -36,8 +40,10 @@ export const AGENT_CONFIG = {
   // Local agent endpoint (default)
   LOCAL_AGENT_URL: '/api/v2/agents',
 
-  // Remote agent endpoint (Cloudzy)
-  REMOTE_AGENT_URL: 'http://<cloudzy-ip>:8000/api/v2/agents',
+  // Remote agent endpoint (Cloudzy) - use env var override
+  get REMOTE_AGENT_URL() {
+    return import.meta.env.VITE_REMOTE_AGENT_URL || 'http://localhost:8000/api/v2/agents';
+  },
 
   // Which agent URL to use (supports VITE_AGENT_URL override)
   get AGENT_URL() {
