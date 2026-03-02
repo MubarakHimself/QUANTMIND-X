@@ -26,11 +26,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, validator
 
-from .models import NPRDConfig, JobOptions, JobState, TimelineOutput, JobStatus
-from .processor import NPRDProcessor
+from .models import VideoIngestConfig, JobOptions, JobState, TimelineOutput, JobStatus
+from .processor import VideoIngestProcessor
 from .job_queue import JobQueueManager
 from .exceptions import (
-    NPRDError,
+    VideoIngestError,
     ValidationError,
     JobError,
     ConfigurationError,
@@ -167,16 +167,16 @@ class ErrorResponse(BaseModel):
 # ============================================================================
 
 # Global instances (initialized on startup)
-_config: Optional[NPRDConfig] = None
+_config: Optional[VideoIngestConfig] = None
 _job_queue: Optional[JobQueueManager] = None
-_processor: Optional[NPRDProcessor] = None
+_processor: Optional[VideoIngestProcessor] = None
 
 
-def get_config() -> NPRDConfig:
+def get_config() -> VideoIngestConfig:
     """Get current configuration."""
     global _config
     if _config is None:
-        _config = NPRDConfig.from_env()
+        _config = VideoIngestConfig.from_env()
     return _config
 
 
@@ -188,11 +188,11 @@ def get_job_queue() -> JobQueueManager:
     return _job_queue
 
 
-def get_processor() -> NPRDProcessor:
+def get_processor() -> VideoIngestProcessor:
     """Get NPRD processor."""
     global _processor
     if _processor is None:
-        _processor = NPRDProcessor(config=get_config())
+        _processor = VideoIngestProcessor(config=get_config())
     return _processor
 
 
@@ -271,7 +271,7 @@ async def config_error_handler(request, exc):
     )
 
 
-@app.exception_handler(NPRDError)
+@app.exception_handler(VideoIngestError)
 async def nprd_error_handler(request, exc):
     return JSONResponse(
         status_code=500,

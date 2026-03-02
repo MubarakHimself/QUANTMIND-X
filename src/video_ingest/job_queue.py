@@ -15,7 +15,7 @@ from typing import Optional, List, Dict, Any, Callable
 from concurrent.futures import ThreadPoolExecutor, Future
 import logging
 
-from .models import JobStatus, JobState, JobOptions, TimelineOutput, NPRDConfig
+from .models import JobStatus, JobState, JobOptions, TimelineOutput, VideoIngestConfig
 from .exceptions import JobError
 
 
@@ -42,7 +42,7 @@ class JobQueueManager:
     - FAILED: Job failed with error
     """
     
-    def __init__(self, config: NPRDConfig):
+    def __init__(self, config: VideoIngestConfig):
         """
         Initialize Job Queue Manager.
         

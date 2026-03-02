@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 from enum import Enum
 
-from src.nprd.exceptions import CacheError, ValidationError
+from src.video_ingest.exceptions import CacheError, ValidationError
 
 
 logger = logging.getLogger(__name__)

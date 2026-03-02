@@ -4,7 +4,7 @@ A dumb video processing tool that extracts unbiased, objective data from videos.
 No trading knowledge, no strategy inference, no downstream awareness.
 """
 
-from src.nprd.models import (
+from src.video_ingest.models import (
     TimelineOutput,
     TimelineClip,
     VideoMetadata,
@@ -12,18 +12,18 @@ from src.nprd.models import (
     JobState,
     JobOptions,
     RateLimit,
-    NPRDConfig,
+    VideoIngestConfig,
 )
-from src.nprd.providers import ModelProvider, GeminiCLIProvider, QwenVLProvider
-from src.nprd.processor import NPRDProcessor, PlaylistInfo, ProcessingResult
-from src.nprd.job_queue import JobQueueManager
-from src.nprd.downloader import VideoDownloader
-from src.nprd.extractors import FrameExtractor, AudioExtractor
-from src.nprd.cache import ArtifactCache
-from src.nprd.retry import RetryHandler
-from src.nprd.rate_limiter import RateLimiter
-from src.nprd.exceptions import (
-    NPRDError,
+from src.video_ingest.providers import ModelProvider, GeminiCLIProvider, QwenVLProvider
+from src.video_ingest.processor import VideoIngestProcessor, PlaylistInfo, ProcessingResult
+from src.video_ingest.job_queue import JobQueueManager
+from src.video_ingest.downloader import VideoDownloader
+from src.video_ingest.extractors import FrameExtractor, AudioExtractor
+from src.video_ingest.cache import ArtifactCache
+from src.video_ingest.retry import RetryHandler
+from src.video_ingest.rate_limiter import RateLimiter
+from src.video_ingest.exceptions import (
+    VideoIngestError,
     DownloadError,
     ExtractionError,
     ValidationError,
@@ -35,10 +35,10 @@ from src.nprd.exceptions import (
     JobError,
     ConfigurationError,
 )
-from src.nprd.logger import NPRDLogger, LogEntry, LogLevel, get_logger, set_log_level
-from src.nprd.cli import cli, main as cli_main, EXIT_SUCCESS, EXIT_ERROR, EXIT_VALIDATION_ERROR, EXIT_AUTH_ERROR
-from src.nprd.api import app as api_app, create_app, run_server
-from src.nprd.validator import (
+from src.video_ingest.logger import VideoIngestLogger, LogEntry, LogLevel, get_logger, set_log_level
+from src.video_ingest.cli import cli, main as cli_main, EXIT_SUCCESS, EXIT_ERROR, EXIT_VALIDATION_ERROR, EXIT_AUTH_ERROR
+from src.video_ingest.api import app as api_app, create_app, run_server
+from src.video_ingest.validator import (
     TimelineValidator,
     ValidationResult,
     validate_timeline,
@@ -55,9 +55,9 @@ __all__ = [
     "JobState",
     "JobOptions",
     "RateLimit",
-    "NPRDConfig",
+    "VideoIngestConfig",
     # Processor
-    "NPRDProcessor",
+    "VideoIngestProcessor",
     "PlaylistInfo",
     "ProcessingResult",
     # Providers
@@ -73,7 +73,7 @@ __all__ = [
     "RetryHandler",
     "RateLimiter",
     # Exceptions
-    "NPRDError",
+    "VideoIngestError",
     "DownloadError",
     "ExtractionError",
     "ValidationError",
@@ -85,7 +85,7 @@ __all__ = [
     "JobError",
     "ConfigurationError",
     # Logging
-    "NPRDLogger",
+    "VideoIngestLogger",
     "LogEntry",
     "LogLevel",
     "get_logger",

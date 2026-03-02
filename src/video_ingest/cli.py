@@ -27,12 +27,12 @@ from datetime import datetime
 
 import click
 
-from .models import NPRDConfig, JobOptions, JobState, TimelineOutput
-from .processor import NPRDProcessor
+from .models import VideoIngestConfig, JobOptions, JobState, TimelineOutput
+from .processor import VideoIngestProcessor
 from .job_queue import JobQueueManager
-from .logger import NPRDLogger
+from .logger import VideoIngestLogger
 from .exceptions import (
-    NPRDError,
+    VideoIngestError,
     DownloadError,
     ValidationError,
     ProviderError,
@@ -63,17 +63,17 @@ def setup_logging(verbose: bool, log_file: Optional[Path] = None) -> None:
     )
 
 
-def get_config() -> NPRDConfig:
+def get_config() -> VideoIngestConfig:
     """Load configuration from environment."""
-    return NPRDConfig.from_env()
+    return VideoIngestConfig.from_env()
 
 
-def create_processor(config: NPRDConfig) -> NPRDProcessor:
+def create_processor(config: VideoIngestConfig) -> VideoIngestProcessor:
     """Create NPRD processor with configuration."""
-    return NPRDProcessor(config=config)
+    return VideoIngestProcessor(config=config)
 
 
-def create_job_queue(config: NPRDConfig) -> JobQueueManager:
+def create_job_queue(config: VideoIngestConfig) -> JobQueueManager:
     """Create job queue manager with configuration."""
     return JobQueueManager(config=config)
 
@@ -238,7 +238,7 @@ def process(
     except ValidationError as e:
         click.echo(click.style(f"Validation error: {e}", fg="red"), err=True)
         sys.exit(EXIT_VALIDATION_ERROR)
-    except NPRDError as e:
+    except VideoIngestError as e:
         click.echo(click.style(f"Error: {e}", fg="red"), err=True)
         sys.exit(EXIT_ERROR)
     except Exception as e:

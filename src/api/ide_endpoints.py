@@ -117,12 +117,12 @@ class KnowledgeItem(BaseModel):
     indexed: bool = False
 
 
-class NPRDProcessRequest(BaseModel):
+class VideoIngestProcessRequest(BaseModel):
     url: str = Field(..., description="YouTube URL to process")
     strategy_name: str = Field(..., description="Name for the strategy folder")
 
 
-class NPRDProcessResponse(BaseModel):
+class VideoIngestProcessResponse(BaseModel):
     job_id: str
     status: str
     strategy_folder: str
@@ -491,20 +491,20 @@ class KnowledgeAPIHandler:
             return None
 
 
-class NPRDAPIHandler:
-    """Handler for NPRD processing."""
-    
+class VideoIngestAPIHandler:
+    """Handler for video_ingest processing."""
+
     def __init__(self):
         self.jobs: Dict[str, Dict] = {}
-    
-    def process(self, request: NPRDProcessRequest) -> NPRDProcessResponse:
-        """Start NPRD processing for a YouTube URL."""
+
+    def process(self, request: VideoIngestProcessRequest) -> VideoIngestProcessResponse:
+        """Start video_ingest processing for a YouTube URL."""
         import uuid
-        
+
         job_id = str(uuid.uuid4())
         strategy_handler = StrategyAPIHandler()
         folder_name = strategy_handler.create_strategy_folder(request.strategy_name)
-        
+
         # Store job info
         self.jobs[job_id] = {
             "status": "queued",
@@ -513,15 +513,15 @@ class NPRDAPIHandler:
             "created_at": datetime.now().isoformat(),
             "progress": 0
         }
-        
-        # Trigger actual NPRD processing pipeline
+
+        # Trigger actual video_ingest processing pipeline
         try:
-            from src.nprd.processor import NPRDProcessor
-            
+            from src.video_ingest.processor import VideoIngestProcessor
+
             # Run processing (synchronous, but FastAPI handles this in thread pool)
-            processor = NPRDProcessor()
+            processor = VideoIngestProcessor()
             result = processor.process(url=request.url, job_id=job_id)
-            
+
             # Update job status on success
             self.jobs[job_id]["status"] = "processing"
             self.jobs[job_id]["progress"] = 50
@@ -529,22 +529,22 @@ class NPRDAPIHandler:
                 "timeline": result.timeline if hasattr(result, 'timeline') else [],
                 "metadata": result.metadata if hasattr(result, 'metadata') else {}
             }
-            
-            logger.info(f"NPRD processing started for job {job_id}")
-            
+
+            logger.info(f"video_ingest processing started for job {job_id}")
+
         except Exception as e:
-            logger.error(f"NPRD processing failed: {e}")
+            logger.error(f"video_ingest processing failed: {e}")
             self.jobs[job_id]["status"] = "failed"
             self.jobs[job_id]["error"] = str(e)
-        
-        return NPRDProcessResponse(
+
+        return VideoIngestProcessResponse(
             job_id=job_id,
             status="queued",
             strategy_folder=folder_name
         )
-    
+
     def get_job_status(self, job_id: str) -> Optional[Dict]:
-        """Get NPRD job status."""
+        """Get video_ingest job status."""
         return self.jobs.get(job_id)
 
 
@@ -804,7 +804,7 @@ def create_ide_api_app():
     strategy_handler = StrategyAPIHandler()
     assets_handler = AssetsAPIHandler()
     knowledge_handler = KnowledgeAPIHandler()
-    nprd_handler = NPRDAPIHandler()
+    video_ingest_handler = VideoIngestAPIHandler()
     broker_handler = BrokerAccountsAPIHandler()
     trading_handler = LiveTradingAPIHandler()
     
@@ -1055,18 +1055,18 @@ def create_ide_api_app():
             raise HTTPException(500, f"Note creation failed: {str(e)}")
     
     # -------------------------------------------------------------------------
-    # NPRD Processing Endpoints
+    # Video Ingest Processing Endpoints
     # -------------------------------------------------------------------------
-    
-    @app.post("/api/nprd/process")
-    async def process_nprd(request: NPRDProcessRequest):
-        """Start NPRD processing for a YouTube URL."""
-        return nprd_handler.process(request)
-    
-    @app.get("/api/nprd/jobs/{job_id}")
-    async def get_nprd_job(job_id: str):
-        """Get NPRD job status."""
-        result = nprd_handler.get_job_status(job_id)
+
+    @app.post("/api/video-ingest/process")
+    async def process_video_ingest(request: VideoIngestProcessRequest):
+        """Start video_ingest processing for a YouTube URL."""
+        return video_ingest_handler.process(request)
+
+    @app.get("/api/video-ingest/jobs/{job_id}")
+    async def get_video_ingest_job(job_id: str):
+        """Get video_ingest job status."""
+        result = video_ingest_handler.get_job_status(job_id)
         if not result:
             raise HTTPException(404, "Job not found")
         return result
@@ -1237,8 +1237,8 @@ def create_ide_api_app():
             
             if "backtest" in message.lower():
                 response = "I can run backtests in 4 variants. Which strategy would you like to test?"
-            elif "nprd" in message.lower():
-                response = "To process NPRD: 1. Click Process NPRD in EA Management 2. Paste YouTube URL 3. The system will transcribe and analyze."
+            elif "video" in message.lower() or "youtube" in message.lower() or "ingest" in message.lower():
+                response = "To process video: 1. Click Video Ingest in EA Management 2. Paste YouTube URL 3. The system will transcribe and analyze."
             elif "bot" in message.lower() or "active" in message.lower():
                 bots = trading_handler.get_active_bots()
                 response = f"You have {len(bots)} active bots. Go to Live Trading to manage them."

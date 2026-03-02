@@ -10,8 +10,8 @@ from typing import Optional
 import time
 import yt_dlp
 
-from src.nprd.models import VideoMetadata
-from src.nprd.exceptions import DownloadError, ValidationError
+from src.video_ingest.models import VideoMetadata
+from src.video_ingest.exceptions import DownloadError, ValidationError
 
 
 logger = logging.getLogger(__name__)

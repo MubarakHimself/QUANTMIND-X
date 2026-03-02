@@ -1,7 +1,7 @@
 """
 NPRD Processing Pipeline.
 
-This module provides the main NPRDProcessor class that orchestrates the entire video
+This module provides the main VideoIngestProcessor class that orchestrates the entire video
 processing pipeline: download → frame extraction → audio extraction → AI analysis.
 """
 
@@ -19,7 +19,7 @@ from .models import (
     VideoMetadata,
     JobOptions,
     JobState,
-    NPRDConfig,
+    VideoIngestConfig,
 )
 from .downloader import VideoDownloader
 from .extractors import FrameExtractor, AudioExtractor
@@ -34,7 +34,7 @@ from .cache import ArtifactCache
 from .retry import RetryHandler
 from .rate_limiter import RateLimiter
 from .exceptions import (
-    NPRDError,
+    VideoIngestError,
     DownloadError,
     ExtractionError,
     ValidationError,
@@ -115,7 +115,7 @@ class ProcessingResult:
         }
 
 
-class NPRDProcessor:
+class VideoIngestProcessor:
     """
     Main NPRD processing pipeline orchestrator.
     
@@ -136,7 +136,7 @@ class NPRDProcessor:
     
     def __init__(
         self,
-        config: Optional[NPRDConfig] = None,
+        config: Optional[VideoIngestConfig] = None,
         downloader: Optional[VideoDownloader] = None,
         frame_extractor: Optional[FrameExtractor] = None,
         audio_extractor: Optional[AudioExtractor] = None,
@@ -158,7 +158,7 @@ class NPRDProcessor:
             retry_handler: Retry handler instance
             rate_limiter: Rate limiter instance
         """
-        self.config = config or NPRDConfig()
+        self.config = config or VideoIngestConfig()
         
         # Initialize components
         self.downloader = downloader or VideoDownloader(
@@ -194,7 +194,7 @@ class NPRDProcessor:
         self._status_callback: Optional[callable] = None
         
         logger.info(
-            f"NPRDProcessor initialized with {len(self.providers)} providers, "
+            f"VideoIngestProcessor initialized with {len(self.providers)} providers, "
             f"cache at {self.config.cache_dir}"
         )
     

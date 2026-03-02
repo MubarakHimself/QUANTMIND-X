@@ -249,7 +249,7 @@ class RateLimit:
 
 
 @dataclass
-class NPRDConfig:
+class VideoIngestConfig:
     """
     Global configuration for NPRD system.
     
@@ -325,7 +325,7 @@ class NPRDConfig:
         }
     
     @classmethod
-    def from_env(cls) -> "NPRDConfig":
+    def from_env(cls) -> "VideoIngestConfig":
         """Load configuration from environment variables."""
         import os
         

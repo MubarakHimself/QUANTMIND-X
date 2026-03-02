@@ -63,7 +63,7 @@ class LogEntry:
         return json.dumps(self.to_dict())
 
 
-class NPRDLogger:
+class VideoIngestLogger:
     """
     Structured logger for NPRD system.
     
@@ -772,27 +772,27 @@ class NPRDLogger:
 
 
 # Global logger instance
-_default_logger: Optional[NPRDLogger] = None
+_default_logger: Optional[VideoIngestLogger] = None
 
 
 def get_logger(
     name: str = "nprd",
     **kwargs
-) -> NPRDLogger:
+) -> VideoIngestLogger:
     """
     Get or create the default NPRD logger.
     
     Args:
         name: Logger name
-        **kwargs: Additional arguments for NPRDLogger
+        **kwargs: Additional arguments for VideoIngestLogger
         
     Returns:
-        NPRDLogger instance
+        VideoIngestLogger instance
     """
     global _default_logger
     
     if _default_logger is None or name != _default_logger.name:
-        _default_logger = NPRDLogger(name=name, **kwargs)
+        _default_logger = VideoIngestLogger(name=name, **kwargs)
     
     return _default_logger
 

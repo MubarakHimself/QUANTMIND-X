@@ -10,8 +10,8 @@ import random
 from typing import Callable, Any, TypeVar, Optional
 from functools import wraps
 
-from src.nprd.exceptions import (
-    NPRDError,
+from src.video_ingest.exceptions import (
+    VideoIngestError,
     AuthenticationError,
     ValidationError,
     NetworkError,

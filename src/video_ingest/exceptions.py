@@ -5,12 +5,12 @@ This module defines all exception types used throughout the NPRD video processin
 """
 
 
-class NPRDError(Exception):
+class VideoIngestError(Exception):
     """Base exception for all NPRD errors."""
     pass
 
 
-class DownloadError(NPRDError):
+class DownloadError(VideoIngestError):
     """
     Raised when video download fails.
     
@@ -27,7 +27,7 @@ class DownloadError(NPRDError):
         self.retryable = retryable
 
 
-class ExtractionError(NPRDError):
+class ExtractionError(VideoIngestError):
     """
     Raised when frame or audio extraction fails.
     
@@ -36,7 +36,7 @@ class ExtractionError(NPRDError):
     pass
 
 
-class ValidationError(NPRDError):
+class ValidationError(VideoIngestError):
     """
     Raised when input validation fails.
     
@@ -45,7 +45,7 @@ class ValidationError(NPRDError):
     pass
 
 
-class CacheError(NPRDError):
+class CacheError(VideoIngestError):
     """
     Raised when cache operations fail.
     
@@ -54,7 +54,7 @@ class CacheError(NPRDError):
     pass
 
 
-class ProviderError(NPRDError):
+class ProviderError(VideoIngestError):
     """
     Base exception for model provider errors.
     
@@ -98,7 +98,7 @@ class RateLimitError(ProviderError):
         self.reset_time = reset_time
 
 
-class JobError(NPRDError):
+class JobError(VideoIngestError):
     """
     Raised when job queue operations fail.
     
@@ -107,7 +107,7 @@ class JobError(NPRDError):
     pass
 
 
-class ConfigurationError(NPRDError):
+class ConfigurationError(VideoIngestError):
     """
     Raised when configuration is invalid or missing.
     

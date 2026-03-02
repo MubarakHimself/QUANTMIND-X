@@ -11,7 +11,7 @@ from typing import Dict, Optional, List
 from threading import Lock
 from collections import deque
 
-from src.nprd.exceptions import RateLimitError
+from src.video_ingest.exceptions import RateLimitError
 
 
 logger = logging.getLogger(__name__)
