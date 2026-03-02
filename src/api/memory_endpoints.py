@@ -20,7 +20,7 @@ from src.agents.departments.types import Department
 router = APIRouter(prefix="/api/memory", tags=["memory"])
 
 # Department routes (with /dept prefix to avoid conflicts)
-dept_router = APIRouter(prefix="/api/memory", tags=["memory-department"])
+dept_router = APIRouter(prefix="/api/memory/department", tags=["memory-department"])
 
 # =============================================================================
 # Models
@@ -433,7 +433,7 @@ async def delete_memory(memory_id: str):
 # Department Memory Endpoints
 # =============================================================================
 
-@dept_router.get("/department/{department}")
+@dept_router.get("/{department}")
 async def get_department_memory(department: str) -> Dict[str, Any]:
     """
     Get all memories for a department.
@@ -471,7 +471,7 @@ async def get_department_memory(department: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@dept_router.get("/department/{department}/logs")
+@dept_router.get("/{department}/logs")
 async def get_daily_logs(department: str, days: int = 7) -> Dict[str, Any]:
     """
     Get recent daily logs for a department.
@@ -511,7 +511,7 @@ async def get_daily_logs(department: str, days: int = 7) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@dept_router.get("/department/{department}/stats")
+@dept_router.get("/{department}/stats")
 async def get_department_memory_stats(department: str) -> Dict[str, Any]:
     """
     Get memory statistics for a department.
@@ -538,7 +538,7 @@ async def get_department_memory_stats(department: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@dept_router.get("/department/{department}/search")
+@dept_router.get("/{department}/search")
 async def search_department_memory(department: str, q: str, category: Optional[str] = None) -> Dict[str, Any]:
     """
     Search department memory.
@@ -579,7 +579,7 @@ async def search_department_memory(department: str, q: str, category: Optional[s
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@dept_router.post("/department/{department}")
+@dept_router.post("/{department}")
 async def add_department_memory(
     department: str,
     category: str,
@@ -618,7 +618,7 @@ async def add_department_memory(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@dept_router.post("/department/{department}/logs")
+@dept_router.post("/{department}/logs")
 async def add_daily_log(
     department: str,
     content: str,

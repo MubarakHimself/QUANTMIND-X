@@ -23,7 +23,7 @@ from src.agents.observers.prometheus_observer import PrometheusObserver
 logger = logging.getLogger(__name__)
 
 # Create router
-router = APIRouter(prefix="/api/agents", tags=["agents"])
+router = APIRouter(prefix="/api/agent-management", tags=["agent-management"])
 
 
 # =============================================================================
