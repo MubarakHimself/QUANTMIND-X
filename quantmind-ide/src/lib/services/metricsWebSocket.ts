@@ -59,6 +59,37 @@ export interface MetricsUpdate {
   timestamp: Date;
 }
 
+// Raw metrics payload from WebSocket (dates as strings)
+interface RawMetricsPayload {
+  system?: Partial<SystemMetrics>;
+  trading?: Partial<TradingMetrics>;
+  database?: Partial<DatabaseMetrics>;
+  tick_stream?: Partial<TickStreamMetrics>;
+}
+
+// WebSocket message types
+type MetricsMessageType = 'metrics' | 'alert' | 'pong';
+
+interface BaseMetricsMessage {
+  type: MetricsMessageType;
+}
+
+interface MetricsMessage extends BaseMetricsMessage {
+  type: 'metrics';
+  payload: RawMetricsPayload;
+}
+
+interface AlertMessage extends BaseMetricsMessage {
+  type: 'alert';
+  payload: AlertData & { timestamp: string };
+}
+
+interface PongMessage extends BaseMetricsMessage {
+  type: 'pong';
+}
+
+type MetricsWebSocketMessage = MetricsMessage | AlertMessage | PongMessage;
+
 // Connection state
 type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'reconnecting';
 
@@ -170,16 +201,21 @@ class MetricsWebSocketService {
     }
   }
 
-  private handleMessage(data: any): void {
+  private handleMessage(data: unknown): void {
+    if (!data || typeof data !== 'object') {
+      return;
+    }
+
+    const message = data as MetricsWebSocketMessage;
     const timestamp = new Date();
 
-    switch (data.type) {
+    switch (message.type) {
       case 'metrics':
-        this.updateMetrics(data.payload, timestamp);
+        this.updateMetrics(message.payload, timestamp);
         break;
 
       case 'alert':
-        this.handleAlert(data.payload);
+        this.handleAlert(message.payload);
         break;
 
       case 'pong':
@@ -187,13 +223,13 @@ class MetricsWebSocketService {
         break;
 
       default:
-        console.warn('Unknown message type:', data.type);
+        console.warn('Unknown message type:', (message as BaseMetricsMessage).type);
     }
 
     lastUpdate.set(timestamp);
   }
 
-  private updateMetrics(payload: any, timestamp: Date): void {
+  private updateMetrics(payload: RawMetricsPayload, timestamp: Date): void {
     // Update individual metric stores
     if (payload.system) {
       systemMetrics.update(current => ({ ...current, ...payload.system }));
@@ -235,17 +271,17 @@ class MetricsWebSocketService {
     }
   }
 
-  private handleAlert(payload: AlertData): void {
+  private handleAlert(payload: AlertData & { timestamp: string }): void {
     alerts.update(current => {
       // Add new alert at the beginning
-      const newAlerts = [{ ...payload, timestamp: new Date(payload.timestamp || Date.now()) }, ...current];
+      const newAlerts = [{ ...payload, timestamp: new Date(payload.timestamp) }, ...current];
       // Keep only the last 100 alerts
       return newAlerts.slice(0, 100);
     });
 
     // Optionally trigger a notification
     if (payload.severity === 'critical') {
-      this.showNotification(payload);
+      this.showNotification({ ...payload, timestamp: new Date(payload.timestamp) });
     }
   }
 

@@ -21,7 +21,88 @@ export interface BrokerInfo {
   status: 'connected' | 'disconnected' | 'pending' | 'error';
   is_testnet?: boolean;
   type: 'mt5' | 'binance';
+  detected_at?: Date;
 }
+
+// Raw broker data from WebSocket (before normalization)
+interface RawBrokerData {
+  id: string;
+  account_id: string;
+  server: string;
+  broker_name: string;
+  balance: number;
+  equity: number;
+  margin: number;
+  leverage: number;
+  currency: string;
+  last_seen: string;
+  status: BrokerInfo['status'];
+  is_testnet?: boolean;
+  type: BrokerInfo['type'];
+  detected_at?: string;
+}
+
+// WebSocket message types
+type BrokerMessageType =
+  | 'broker_detected'
+  | 'broker_status'
+  | 'broker_disconnected'
+  | 'broker_list'
+  | 'broker_confirmed'
+  | 'broker_synced'
+  | 'pong';
+
+interface BaseBrokerMessage {
+  type: BrokerMessageType;
+}
+
+interface BrokerDetectedMessage extends BaseBrokerMessage {
+  type: 'broker_detected';
+  broker: RawBrokerData;
+}
+
+interface BrokerStatusMessage extends BaseBrokerMessage {
+  type: 'broker_status';
+  broker_id: string;
+  status: BrokerInfo['status'];
+  balance: number;
+  equity: number;
+  margin: number;
+  last_seen: string;
+}
+
+interface BrokerDisconnectedMessage extends BaseBrokerMessage {
+  type: 'broker_disconnected';
+  broker_id: string;
+}
+
+interface BrokerListMessage extends BaseBrokerMessage {
+  type: 'broker_list';
+  brokers: RawBrokerData[];
+}
+
+interface BrokerConfirmedMessage extends BaseBrokerMessage {
+  type: 'broker_confirmed';
+  broker: RawBrokerData;
+}
+
+interface BrokerSyncedMessage extends BaseBrokerMessage {
+  type: 'broker_synced';
+  broker: RawBrokerData;
+}
+
+interface PongMessage extends BaseBrokerMessage {
+  type: 'pong';
+}
+
+type BrokerWebSocketMessage =
+  | BrokerDetectedMessage
+  | BrokerStatusMessage
+  | BrokerDisconnectedMessage
+  | BrokerListMessage
+  | BrokerConfirmedMessage
+  | BrokerSyncedMessage
+  | PongMessage;
 
 export interface BrokerDetectionEvent {
   type: 'broker_detected';
@@ -111,30 +192,36 @@ class BrokerWebSocketService {
     }
   }
 
-  private handleMessage(data: any): void {
-    switch (data.type) {
+  private handleMessage(data: unknown): void {
+    if (!data || typeof data !== 'object') {
+      return;
+    }
+
+    const message = data as BrokerWebSocketMessage;
+
+    switch (message.type) {
       case 'broker_detected':
-        this.handleBrokerDetected(data.broker);
+        this.handleBrokerDetected(message.broker);
         break;
 
       case 'broker_status':
-        this.handleBrokerStatus(data);
+        this.handleBrokerStatus(message);
         break;
 
       case 'broker_disconnected':
-        this.handleBrokerDisconnected(data.broker_id);
+        this.handleBrokerDisconnected(message.broker_id);
         break;
 
       case 'broker_list':
-        brokers.set(data.brokers.map(this.normalizeBroker));
+        brokers.set(message.brokers.map(this.normalizeBroker));
         break;
 
       case 'broker_confirmed':
-        this.handleBrokerConfirmed(data.broker);
+        this.handleBrokerConfirmed(message.broker);
         break;
 
       case 'broker_synced':
-        this.handleBrokerSynced(data.broker);
+        this.handleBrokerSynced(message.broker);
         break;
 
       case 'pong':
@@ -142,15 +229,26 @@ class BrokerWebSocketService {
     }
   }
 
-  private normalizeBroker(b: any): BrokerInfo {
+  private normalizeBroker(b: RawBrokerData): BrokerInfo {
     return {
-      ...b,
+      id: b.id,
+      account_id: b.account_id,
+      server: b.server,
+      broker_name: b.broker_name,
+      balance: b.balance,
+      equity: b.equity,
+      margin: b.margin,
+      leverage: b.leverage,
+      currency: b.currency,
       last_seen: new Date(b.last_seen),
+      status: b.status,
+      is_testnet: b.is_testnet,
+      type: b.type,
       detected_at: b.detected_at ? new Date(b.detected_at) : new Date()
     };
   }
 
-  private handleBrokerDetected(broker: any): void {
+  private handleBrokerDetected(broker: RawBrokerData): void {
     const normalized = this.normalizeBroker(broker);
 
     // Check if already registered
@@ -171,7 +269,7 @@ class BrokerWebSocketService {
     this.showDetectionNotification(normalized);
   }
 
-  private handleBrokerStatus(data: any): void {
+  private handleBrokerStatus(data: BrokerStatusMessage): void {
     brokers.update(current =>
       current.map(b =>
         b.id === data.broker_id || b.account_id === data.broker_id
@@ -196,7 +294,7 @@ class BrokerWebSocketService {
     );
   }
 
-  private handleBrokerConfirmed(broker: any): void {
+  private handleBrokerConfirmed(broker: RawBrokerData): void {
     const normalized = this.normalizeBroker(broker);
     
     // Remove from pending if present
@@ -223,7 +321,7 @@ class BrokerWebSocketService {
     this.showConfirmationNotification(normalized);
   }
 
-  private handleBrokerSynced(broker: any): void {
+  private handleBrokerSynced(broker: RawBrokerData): void {
     const normalized = this.normalizeBroker(broker);
     
     // Update broker data in the brokers list
@@ -379,11 +477,13 @@ class BrokerWebSocketService {
    * Subscribe to broker WebSocket messages.
    * Returns an unsubscribe function.
    */
-  subscribe(callback: (message: any) => void): () => void {
+  subscribe(callback: (message: BrokerWebSocketMessage) => void): () => void {
     const handler = (event: MessageEvent) => {
       try {
-        const message = JSON.parse(event.data);
-        callback(message);
+        const data = JSON.parse(event.data);
+        if (data && typeof data === 'object' && 'type' in data) {
+          callback(data as BrokerWebSocketMessage);
+        }
       } catch (e) {
         console.error('Failed to parse WebSocket message:', e);
       }
