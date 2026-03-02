@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
 
     # Database Settings
-    database_url: str = "sqlite:///./data/quantmind.db"
+    database_url: str = "sqlite:///data/quantmind.db"
 
     # MT5 Settings
     mt5_login: Optional[int] = None
