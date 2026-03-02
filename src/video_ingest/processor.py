@@ -32,7 +32,7 @@ from .providers import (
 )
 from .cache import ArtifactCache
 from .retry import RetryHandler
-from .rate_limiter import RateLimiter
+from .rate_limiter import RateLimiter, MultiProviderRateLimiter
 from .exceptions import (
     VideoIngestError,
     DownloadError,
@@ -183,12 +183,12 @@ class VideoIngestProcessor:
         
         # Initialize retry handler
         self.retry_handler = retry_handler or RetryHandler(
-            max_attempts=self.config.max_retry_attempts,
+            max_retries=self.config.max_retry_attempts,
             base_delay=self.config.base_retry_delay
         )
         
         # Initialize rate limiter
-        self.rate_limiter = rate_limiter or RateLimiter()
+        self.rate_limiter = rate_limiter or MultiProviderRateLimiter()
         
         # Job status update callback
         self._status_callback: Optional[callable] = None

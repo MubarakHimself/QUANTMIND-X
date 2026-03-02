@@ -323,7 +323,7 @@ async def analyze_playlist(
         # Process playlist
         results = processor.process_playlist(
             playlist_url=playlist_url,
-            max_videos=max_videos,
+            job_id_prefix=f"playlist_{max_videos}" if max_videos else "playlist",
             options=options
         )
 

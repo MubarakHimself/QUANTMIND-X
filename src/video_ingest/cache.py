@@ -73,7 +73,20 @@ class ArtifactCache:
             f"Initialized artifact cache at {self.cache_dir} "
             f"(max_size: {max_size_gb}GB, max_age: {max_age_days} days)"
         )
-    
+
+    def generate_key(self, url: str) -> str:
+        """
+        Generate cache key from URL.
+
+        Args:
+            url: Video URL to generate key for
+
+        Returns:
+            SHA-256 hash of URL
+        """
+        import hashlib
+        return hashlib.sha256(url.encode()).hexdigest()
+
     def get(self, content_hash: str, artifact_type: ArtifactType) -> Optional[Path]:
         """
         Get cached artifact by content hash.
