@@ -35,6 +35,7 @@ TOOL_ACCESS: Dict[str, Dict[str, Set[ToolPermission]]] = {
         "risk_tools": {ToolPermission.READ},       # READ-ONLY
         "broker_tools": {ToolPermission.READ},      # READ-ONLY
         "strategy_extraction": {ToolPermission.READ, ToolPermission.WRITE},
+        "video_ingest": {ToolPermission.READ, ToolPermission.WRITE},  # Video processing
         "mail": {ToolPermission.READ, ToolPermission.WRITE},
     },
     # DEVELOPMENT: EA/Bot building (Python, PineScript, MQL5)
@@ -50,6 +51,7 @@ TOOL_ACCESS: Dict[str, Dict[str, Set[ToolPermission]]] = {
         "risk_tools": {ToolPermission.READ},         # READ-ONLY
         "broker_tools": {ToolPermission.READ},       # READ-ONLY
         "strategy_extraction": {ToolPermission.READ, ToolPermission.WRITE},
+        "video_ingest": {ToolPermission.READ, ToolPermission.WRITE},  # Video processing
         "mail": {ToolPermission.READ, ToolPermission.WRITE},
     },
     # TRADING: Order execution (READ-ONLY for broker)

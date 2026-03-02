@@ -119,13 +119,20 @@ class KnowledgeItem(BaseModel):
 
 class VideoIngestProcessRequest(BaseModel):
     url: str = Field(..., description="YouTube URL to process")
-    strategy_name: str = Field(..., description="Name for the strategy folder")
+    strategy_name: str = Field(default="video_ingest", description="Name for the strategy folder")
+    is_playlist: bool = Field(default=False, description="Whether URL is a playlist")
 
 
 class VideoIngestProcessResponse(BaseModel):
     job_id: str
     status: str
     strategy_folder: str
+
+
+class VideoIngestAuthStatus(BaseModel):
+    """Authentication status for video_ingest AI providers."""
+    gemini: bool = Field(default=False, description="Gemini CLI authentication status")
+    qwen: bool = Field(default=False, description="Qwen CLI authentication status")
 
 
 class BotControl(BaseModel):
@@ -1070,6 +1077,38 @@ def create_ide_api_app():
         if not result:
             raise HTTPException(404, "Job not found")
         return result
+
+    @app.get("/api/video-ingest/auth-status")
+    async def get_video_ingest_auth_status():
+        """Get authentication status for video_ingest AI providers."""
+        # Check for Gemini CLI
+        gemini_auth = False
+        qwen_auth = False
+
+        try:
+            import subprocess
+            # Check Gemini CLI
+            result = subprocess.run(
+                ["gemini", "auth", "--status"],
+                capture_output=True,
+                timeout=5
+            )
+            gemini_auth = result.returncode == 0
+        except Exception:
+            pass
+
+        try:
+            # Check Qwen CLI
+            result = subprocess.run(
+                ["qwen", "--version"],
+                capture_output=True,
+                timeout=5
+            )
+            qwen_auth = result.returncode == 0
+        except Exception:
+            pass
+
+        return VideoIngestAuthStatus(gemini=gemini_auth, qwen=qwen_auth)
     
     # -------------------------------------------------------------------------
     # Broker Accounts Endpoints

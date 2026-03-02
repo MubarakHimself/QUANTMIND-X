@@ -12,7 +12,7 @@
   import DepartmentChatPanel from "$lib/components/trading-floor/DepartmentChatPanel.svelte";
   import DepartmentMailPanel from "$lib/components/trading-floor/DepartmentMailPanel.svelte";
   import MCPSettings from "$lib/components/agent-panel/settings/MCPSettings.svelte";
-  import NPRDWorkflow from "$lib/components/NPRDWorkflow.svelte";
+  import VideoIngestWorkflow from "$lib/components/VideoIngestWorkflow.svelte";
   import {
     tradingFloorStore,
     updateAgentState,
@@ -33,7 +33,7 @@
     { id: "mail", label: "Mail", icon: Mail },
     { id: "memory", label: "Memory", icon: Database },
     { id: "mcp", label: "MCP Servers", icon: Server },
-    { id: "nprd", label: "NPRD", icon: Bot },
+    { id: "video-ingest", label: "Video Ingest", icon: Bot },
   ];
 
   // Memory state
@@ -339,10 +339,10 @@
     </div>
     {/if}
 
-    <!-- NPRD Tab -->
-    {#if activeTab === "nprd"}
-    <div class="nprd-view">
-      <NPRDWorkflow />
+    <!-- Video Ingest Tab -->
+    {#if activeTab === "video-ingest"}
+    <div class="video-ingest-view">
+      <VideoIngestWorkflow />
     </div>
     {/if}
   </div>
