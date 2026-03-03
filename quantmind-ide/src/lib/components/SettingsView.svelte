@@ -1265,12 +1265,51 @@ Configure your agent behavior here..."
             <h3>Database Configuration</h3>
 
             <div class="setting-group">
-              <label>SQLite (Transactional)</label>
-              <div class="setting-row">
-                <span>Path</span>
-                <input type="text" bind:value={dbSettings.sqlitePath} class="text-input" />
+              <label>Connection Type</label>
+              <div class="connection-type-selector">
+                <button
+                  class="connection-type-btn"
+                  class:active={dbSettings.connectionType === 'sqlite'}
+                  on:click={() => dbSettings.connectionType = 'sqlite'}
+                >
+                  <Database size={16} />
+                  <span>SQLite</span>
+                </button>
+                <button
+                  class="connection-type-btn"
+                  class:active={dbSettings.connectionType === 'postgresql'}
+                  on:click={() => dbSettings.connectionType = 'postgresql'}
+                >
+                  <Server size={16} />
+                  <span>PostgreSQL</span>
+                </button>
               </div>
             </div>
+
+            {#if dbSettings.connectionType === 'postgresql'}
+              <div class="setting-group">
+                <label>PostgreSQL Connection</label>
+                <div class="setting-row">
+                  <span>Database URL</span>
+                  <input
+                    type="text"
+                    bind:value={dbSettings.databaseUrl}
+                    class="text-input"
+                    placeholder="postgresql://user:pass@host:5432/dbname"
+                  />
+                </div>
+              </div>
+            {/if}
+
+            {#if dbSettings.connectionType === 'sqlite'}
+              <div class="setting-group">
+                <label>SQLite (Transactional)</label>
+                <div class="setting-row">
+                  <span>Path</span>
+                  <input type="text" bind:value={dbSettings.sqlitePath} class="text-input" />
+                </div>
+              </div>
+            {/if}
 
             <div class="setting-group">
               <label>DuckDB (Analytics)</label>
