@@ -22,6 +22,8 @@ from dataclasses import dataclass, field, asdict
 from enum import Enum
 import re
 
+logger = logging.getLogger(__name__)
+
 # Import video_ingest processor
 try:
     from src.video_ingest.processor import VideoIngestProcessor
@@ -30,8 +32,6 @@ try:
 except ImportError:
     VIDEO_INGEST_AVAILABLE = False
     logger.warning("video_ingest module not available, using mock analysis")
-
-logger = logging.getLogger(__name__)
 
 
 # =============================================================================

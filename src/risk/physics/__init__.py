@@ -19,5 +19,12 @@ __all__ = [
     "CorrelationSensor",
 ]
 
+# Backward compatibility - HMM sensor (legacy module)
+try:
+    from .hmm_sensor import HMMRegimeSensor
+    __all__.append("HMMRegimeSensor")
+except ImportError:
+    pass
+
 # Version
 __version__ = "1.0.0"
