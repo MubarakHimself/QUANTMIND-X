@@ -181,3 +181,65 @@ class VideoIngestTool:
         if result.returncode != 0:
             raise RuntimeError(f"Failed to extract chunk: {result.stderr}")
         return output_path
+
+    def process_with_qwen(self, video_path: Path, prompt: str, rate_limiter) -> dict:
+        """
+        Process video with Qwen3-VL vision model.
+
+        Args:
+            video_path: Path to video file
+            prompt: Prompt for the model
+            rate_limiter: RateLimiter instance
+
+        Returns:
+            Parsed JSON response from Qwen
+        """
+        import json
+
+        # Wait for rate limit
+        rate_limiter.acquire()
+
+        # Build Qwen command - pass video file
+        cmd = [
+            "qwen",
+            "-m", "qwen3-vl-8b",  # Use latest Qwen3-VL model
+            "-p", f"Analyze this video: {prompt}",
+            "-y"  # yolo mode
+        ]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=600  # 10 min timeout
+        )
+
+        if result.returncode != 0:
+            raise RuntimeError(f"Qwen processing failed: {result.stderr}")
+
+        # Parse JSON response
+        output = result.stdout.strip()
+        if output.startswith("```json"):
+            output = output.split("```json")[1].split("```")[0].strip()
+
+        return json.loads(output)
+
+    def build_analysis_prompt(self, metadata: VideoMetadata) -> str:
+        """Build prompt for video analysis."""
+        return f"""You are an expert algorithmic trading analyst.
+Analyze the trading video and extract:
+
+1. Strategy name and description
+2. Indicators used (list all)
+3. Entry conditions (bulleted list)
+4. Exit conditions (bulleted list)
+5. Risk management rules
+6. Timeframe suitability
+7. Market type (forex/stocks/crypto)
+
+Video: {metadata.title}
+Duration: {metadata.duration // 60} minutes
+Uploader: {metadata.uploader}
+
+Return as JSON with keys: strategy_name, indicators, entry_conditions, exit_conditions, risk_management, timeframe, market_type, confidence
+"""
