@@ -1224,6 +1224,27 @@ Configure your agent behavior here..."
             </div>
 
             <div class="setting-group">
+              <label>Prop Firm Preset</label>
+              <div class="setting-row">
+                <span>Select Preset</span>
+                <select bind:value={riskSettings.propFirmPreset} class="select-input">
+                  <option value="ftmo">FTMO</option>
+                  <option value="the5ers">The5ers</option>
+                  <option value="fundingpips">FundingPips</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+              {#if riskSettings.propFirmPreset !== 'custom'}
+                <p class="hint">
+                  Preset: {PROP_FIRM_PRESETS[riskSettings.propFirmPreset].name} -
+                  Max Risk: {PROP_FIRM_PRESETS[riskSettings.propFirmPreset].maxRisk}%,
+                  Daily Loss: {PROP_FIRM_PRESETS[riskSettings.propFirmPreset].dailyLoss}%,
+                  Total Loss: {PROP_FIRM_PRESETS[riskSettings.propFirmPreset].totalLoss}%
+                </p>
+              {/if}
+            </div>
+
+            <div class="setting-group">
               <label>Risk Mode</label>
               <div class="setting-row">
                 <span>Mode</span>
