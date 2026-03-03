@@ -10,7 +10,7 @@ from typing import Optional, List, Dict
 
 # Configuration
 VIDEO_IN_ROOT = Path("/home/mubarkahimself/Desktop/QUANTMINDX/video_in")
-DEFAULT_MODEL = "qwen3-vl-8b"  # Latest Qwen3-VL model
+DEFAULT_MODEL = "qwen3-vl-235b-a22b-thinking"  # Qwen3-VL with thinking capability
 
 
 @dataclass

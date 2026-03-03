@@ -12,7 +12,10 @@ python3 scripts/video_ingest_cli.py "https://youtu.be/VIDEO_ID"
 python3 scripts/video_ingest_cli.py "https://youtu.be/VIDEO_ID" --no-llm
 
 # Specify model
-python3 scripts/video_ingest_cli.py "https://youtu.be/VIDEO_ID" --model qwen3-vl-8b
+python3 scripts/video_ingest_cli.py "https://youtu.be/VIDEO_ID" --model qwen3-vl-235b-a22b-thinking
+
+# Verbose output
+python3 scripts/video_ingest_cli.py "https://youtu.be/VIDEO_ID" --verbose
 ```
 
 ## Output Structure
@@ -50,6 +53,6 @@ Video duration -> chunks:
 
 ## Models
 
-- Uses Qwen3-VL-8B (latest vision model)
-- Handles up to 1 hour of video per chunk
-- 256K token context window
+- Default: Qwen3-VL-235B-A22B-Thinking (with reasoning/thinking capability)
+- Handles hours-long videos with full recall
+- Large context window for comprehensive analysis
