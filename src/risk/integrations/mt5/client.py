@@ -215,6 +215,7 @@ class MT5Client:
                 self.is_connected = True
                 self.last_error = None
                 self._cache.clear()
+                self._mt5_cache.clear()
                 logger.info("MT5Client connected successfully")
                 return True
             else:
@@ -244,6 +245,7 @@ class MT5Client:
                 self.is_connected = False
                 self.last_error = None
                 self._cache.clear()
+                self._mt5_cache.clear()
                 logger.info("MT5Client disconnected successfully")
                 return True
             else:
@@ -532,6 +534,7 @@ class MT5Client:
             result = self._account_manager_internal.switch_account(login)
             if result.get("success"):
                 self._cache.clear()
+                self._mt5_cache.clear()
                 self.is_connected = True
                 self.last_error = None
                 logger.info(f"Switched to account {login}")
