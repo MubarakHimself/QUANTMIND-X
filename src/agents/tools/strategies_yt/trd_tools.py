@@ -23,6 +23,9 @@ import hashlib
 
 logger = logging.getLogger(__name__)
 
+# Import ZMQ endpoint from config
+from src.config import ZMQ_ENDPOINT, get_zmq_endpoint
+
 
 # =============================================================================
 # PATH CONSTANTS
@@ -141,6 +144,70 @@ class TRDValidationResult:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+
+# =============================================================================
+# TRD GENERATOR CLASS (For Variant Support)
+# =============================================================================
+
+class TRDGenerator:
+    """TRD Generator with variant support for vanilla and spiced variants."""
+
+    def generate_trd(self, video_context: Dict, generate_variants: str = "both") -> Dict:
+        """
+        Generate Trading Requirements Document with variant support.
+
+        Args:
+            video_context: Video analysis results
+            generate_variants: "both", "vanilla", or "spiced"
+
+        Returns:
+            Dict with variant keys: {"vanilla": {...}, "spiced": {...}}
+        """
+        vanilla = self._generate_vanilla_trd(video_context)
+
+        if generate_variants == "vanilla":
+            return vanilla
+
+        if generate_variants == "spiced":
+            spiced = self._generate_spiced_trd(video_context)
+            return spiced
+
+        # Both - generate both
+        spiced = self._generate_spiced_trd(video_context)
+        return {"vanilla": vanilla, "spiced": spiced}
+
+    def _generate_vanilla_trd(self, video_context: Dict) -> Dict:
+        """Generate vanilla TRD from video only."""
+        return {
+            "strategy_name": video_context.get("title", "Untitled"),
+            "sources": ["video"],
+            "entry_rules": video_context.get("entry_rules", []),
+            "exit_rules": video_context.get("exit_rules", []),
+            "indicators": video_context.get("indicators", []),
+            "timeframe": video_context.get("timeframe", "H1"),
+            "risk_reward": video_context.get("risk_reward", 2.0),
+        }
+
+    def _generate_spiced_trd(self, video_context: Dict) -> Dict:
+        """Generate spiced TRD from video + scraped articles."""
+        vanilla = self._generate_vanilla_trd(video_context)
+
+        # Fetch related articles
+        articles = self._fetch_related_articles(video_context.get("title", ""))
+
+        return {
+            **vanilla,
+            "sources": ["video", "article"],
+            "articles": articles,
+            "sentiment": articles.get("sentiment", "neutral") if articles else "neutral",
+            "market_context": articles.get("market_context", {}) if articles else {},
+        }
+
+    def _fetch_related_articles(self, strategy_name: str) -> List[Dict]:
+        """Fetch related articles for spiced TRD."""
+        # Placeholder - implement article scraper integration
+        return []
 
 
 # =============================================================================
@@ -409,7 +476,7 @@ async def trd_to_config(
         if include_zmq_config:
             config["zmq_router"] = {
                 "enabled": True,
-                "endpoint": "tcp://localhost:5555",
+                "endpoint": get_zmq_endpoint(),
                 "heartbeat_interval_ms": 5000,
                 "message_types": ["TRADE_OPEN", "TRADE_CLOSE", "TRADE_MODIFY", "HEARTBEAT", "RISK_UPDATE"],
                 "subscription_topics": ["risk_multiplier", "regime_change", "circuit_breaker"]
@@ -646,7 +713,7 @@ The EA integrates with QuantMindX ZMQ Strategy Router for:
 
 ### Connection Details
 
-- **Endpoint**: tcp://localhost:5555
+- **Endpoint**: {ZMQ_ENDPOINT}
 - **Heartbeat Interval**: 5000ms
 - **Message Types**: TRADE_OPEN, TRADE_CLOSE, TRADE_MODIFY, HEARTBEAT, RISK_UPDATE
 
@@ -760,7 +827,7 @@ def _generate_config_json(truth: TruthObject, validation: TRDValidationResult) -
 
         "zmq_router": {
             "enabled": True,
-            "endpoint": "tcp://localhost:5555",
+            "endpoint": ZMQ_ENDPOINT,
             "heartbeat_interval_ms": 5000,
             "message_types": ["TRADE_OPEN", "TRADE_CLOSE", "TRADE_MODIFY", "HEARTBEAT", "RISK_UPDATE"],
             "subscription_topics": ["risk_multiplier", "regime_change", "circuit_breaker"]

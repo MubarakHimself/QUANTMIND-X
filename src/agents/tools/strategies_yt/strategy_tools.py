@@ -24,6 +24,9 @@ import hashlib
 
 logger = logging.getLogger(__name__)
 
+# Import ZMQ endpoint from config
+from src.config import ZMQ_ENDPOINT, get_zmq_endpoint
+
 
 # =============================================================================
 # PATH CONSTANTS
@@ -364,7 +367,7 @@ async def deploy_strategy(
             mode=config.mode,
             deployment_id=deployment_id,
             message=f"Strategy deployed to {config.mode.value} trading",
-            connection_string=f"tcp://localhost:5555"  # ZMQ endpoint
+            connection_string=get_zmq_endpoint()  # ZMQ endpoint from config
         )
 
         # In production, this would:
@@ -392,7 +395,7 @@ async def deploy_strategy(
             "deployment": deployment.to_dict(),
             "strategy_id": strategy_id,
             "connection_info": {
-                "zmq_endpoint": "tcp://localhost:5555",
+                "zmq_endpoint": get_zmq_endpoint(),
                 "heartbeat_interval": 5000,
                 "message_types": ["TRADE_OPEN", "TRADE_CLOSE", "HEARTBEAT", "RISK_UPDATE"]
             }
@@ -547,7 +550,7 @@ input int      MaxSpreadPips = 3;                     // Maximum spread
 input string   TradingHours = "08:00-17:00";          // Trading hours
 
 //--- ZMQ Strategy Router Integration
-input string   ROUTER_ENDPOINT = "tcp://localhost:5555";
+input string   ROUTER_ENDPOINT = "{ZMQ_ENDPOINT}";
 input int      HEARTBEAT_INTERVAL = 5000;
 
 //--- Kelly Position Sizing Parameters

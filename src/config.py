@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     anthropic_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
 
+    # ZMQ Settings
+    zmq_endpoint: str = "tcp://localhost:5555"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
@@ -66,3 +69,12 @@ def get_database_url() -> str:
 def get_redis_url() -> str:
     """Get Redis URL from environment or default."""
     return get_settings().redis_url
+
+
+def get_zmq_endpoint() -> str:
+    """Get ZMQ endpoint from environment or default."""
+    return get_settings().zmq_endpoint
+
+
+# Module-level constant for direct import (backward compatibility)
+ZMQ_ENDPOINT = os.environ.get('ZMQ_ENDPOINT', 'tcp://localhost:5555')
