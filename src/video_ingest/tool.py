@@ -244,3 +244,72 @@ Uploader: {metadata.uploader}
 
 Return as JSON with keys: strategy_name, indicators, entry_conditions, exit_conditions, risk_management, timeframe, market_type, confidence
 """
+
+    def process_video(self, url: str, use_llm: bool = True) -> Path:
+        """
+        Complete video processing workflow.
+
+        Args:
+            url: YouTube URL
+            use_llm: Whether to process with Qwen (default True)
+
+        Returns:
+            Path to output directory
+        """
+        from src.video_ingest.rate_limiter import RateLimiter
+
+        # Get video info
+        print(f"Getting video info: {url}")
+        metadata = self.get_video_info(url)
+
+        # Create output directory
+        safe_title = "".join(c for c in metadata.title if c.isalnum() or c in " -_")[:50]
+        output_dir = self.downloads_dir / f"{metadata.video_id}_{safe_title}"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Download files
+        print("Downloading video...")
+        video_path = self.download_video(url, output_dir)
+
+        print("Downloading audio...")
+        audio_path = self.download_audio(url, output_dir)
+
+        print("Downloading captions...")
+        captions_path = self.download_captions(url, output_dir)
+
+        # Save metadata
+        metadata_dict = {
+            "video_id": metadata.video_id,
+            "title": metadata.title,
+            "duration": metadata.duration,
+            "description": metadata.description,
+            "uploader": metadata.uploader,
+            "upload_date": metadata.upload_date,
+            "view_count": metadata.view_count,
+            "processed_at": datetime.now().isoformat()
+        }
+        (output_dir / "metadata.json").write_text(json.dumps(metadata_dict, indent=2))
+
+        # Calculate chunks
+        chunks = self.calculate_chunks(metadata.duration)
+        (output_dir / "chunks.json").write_text(json.dumps(chunks, indent=2))
+
+        # Process with Qwen if requested
+        if use_llm:
+            print(f"Processing with Qwen3-VL...")
+            rate_limiter = RateLimiter(provider="qwen", limit=2000, window_seconds=86400)
+
+            results = []
+            for chunk in chunks:
+                print(f"  Processing {chunk['label']}...")
+
+                # For now, pass the full video - Qwen3-VL can handle hours
+                prompt = self.build_analysis_prompt(metadata)
+                result = self.process_with_qwen(video_path, prompt, rate_limiter)
+                results.append(result)
+
+            # Save combined results
+            (output_dir / "analysis.json").write_text(json.dumps(results, indent=2))
+
+        print(f"Done! Output: {output_dir}")
+        return output_dir
