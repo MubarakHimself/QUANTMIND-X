@@ -16,11 +16,28 @@
     models: Model[];
   }
 
-  let models: Model[] = [];
+  interface ProviderGroup {
+    name: string;
+    displayName: string;
+    models: Model[];
+  }
+
+  let providerGroups: ProviderGroup[] = [];
   let selectedModel = currentModel;
   let loading = true;
 
   const API_BASE = API_CONFIG.API_BASE;
+
+  // Map provider keys to display names
+  const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+    anthropic: 'Anthropic',
+    openai: 'OpenAI',
+    minimax: 'MiniMax',
+    zhipu: 'Zhipu (GLM)',
+    google: 'Google',
+    deepseek: 'DeepSeek',
+    openrouter: 'OpenRouter'
+  };
 
   onMount(async () => {
     try {
@@ -30,29 +47,40 @@
       }
       const data = await response.json();
 
-      // Collect all available models from providers
-      const allModels: Model[] = [];
+      // Group models by provider
+      const groups: ProviderGroup[] = [];
       for (const [provider, info] of Object.entries(data.providers)) {
         const providerInfo = info as ProviderModels;
-        if (providerInfo.available && providerInfo.models) {
-          allModels.push(...providerInfo.models);
+        if (providerInfo.available && providerInfo.models && providerInfo.models.length > 0) {
+          groups.push({
+            name: provider,
+            displayName: PROVIDER_DISPLAY_NAMES[provider] || provider,
+            models: providerInfo.models
+          });
         }
       }
 
-      models = allModels;
+      providerGroups = groups;
 
       // Set selected model to first available or default
-      if (models.length > 0 && !models.find(m => m.id === selectedModel)) {
-        selectedModel = models[0].id;
+      const allModels = providerGroups.flatMap(g => g.models);
+      if (allModels.length > 0 && !allModels.find(m => m.id === selectedModel)) {
+        selectedModel = allModels[0].id;
       }
     } catch (e) {
       console.error('Failed to fetch models:', e);
       // Fallback to basic models
-      models = [
-        { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', tier: 'sonnet' },
-        { id: 'claude-haiku-3-20240307', name: 'Claude Haiku 3.5', tier: 'haiku' },
+      providerGroups = [
+        {
+          name: 'anthropic',
+          displayName: 'Anthropic',
+          models: [
+            { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', tier: 'sonnet' },
+            { id: 'claude-haiku-3-20240307', name: 'Claude Haiku 3.5', tier: 'haiku' },
+          ]
+        }
       ];
-      selectedModel = models[0].id;
+      selectedModel = providerGroups[0].models[0].id;
     }
     loading = false;
   });
@@ -80,8 +108,12 @@
     on:change={updateModel}
     class="model-selector"
   >
-    {#each models as model}
-      <option value={model.id}>{model.name}</option>
+    {#each providerGroups as group}
+      <optgroup label={group.displayName}>
+        {#each group.models as model}
+          <option value={model.id}>{model.name}</option>
+        {/each}
+      </optgroup>
     {/each}
   </select>
 {/if}
@@ -105,5 +137,16 @@
   .model-selector:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+
+  :global(.model-selector optgroup) {
+    font-weight: 600;
+    color: var(--text-secondary, #a0a0a0);
+  }
+
+  :global(.model-selector option) {
+    padding: 4px 8px;
+    background: var(--bg-secondary, #1e1e1e);
+    color: var(--text-primary, #e0e0e0);
   }
 </style>
