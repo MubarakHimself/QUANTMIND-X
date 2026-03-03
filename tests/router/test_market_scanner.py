@@ -22,6 +22,15 @@ from src.router.market_scanner import (
 )
 
 
+def test_scanner_imports():
+    """Scanners should be importable from new module."""
+    from src.router.scanners import MarketScanner, SymbolScanner, TrendScanner
+
+    assert MarketScanner is not None
+    assert SymbolScanner is not None
+    assert TrendScanner is not None
+
+
 class TestScannerAlert:
     """Test ScannerAlert data class."""
     
@@ -709,32 +718,43 @@ class TestSchedulerIntegration:
 
 class TestDynamicBotLimiterIntegration:
     """Test DynamicBotLimiter integration."""
-    
+
     def test_check_scanner_opportunity_limits_low_confidence(self):
         """Test that low confidence opportunities are rejected."""
         from src.router.market_scanner import check_scanner_opportunity_limits
-        
+
         can_act, reason = check_scanner_opportunity_limits(
             opportunity_confidence=0.5,
             current_bots=2
         )
-        
+
         assert can_act is False
         assert "confidence" in reason.lower()
-    
+
     def test_check_scanner_opportunity_limits_high_confidence(self):
         """Test that high confidence opportunities pass confidence check."""
         from src.router.market_scanner import check_scanner_opportunity_limits
-        
+
         # With high confidence but bot limit not reached
         can_act, reason = check_scanner_opportunity_limits(
             opportunity_confidence=0.8,
             current_bots=1,
             account_balance=1000.0
         )
-        
+
         # Should pass confidence check
         assert "confidence" not in reason.lower()
+
+
+# ============== Tests for Modular Scanner Structure ==============
+
+def test_scanner_imports():
+    """Scanners should be importable from new module."""
+    from src.router.scanners import MarketScanner, SymbolScanner, TrendScanner
+
+    assert MarketScanner is not None
+    assert SymbolScanner is not None
+    assert TrendScanner is not None
 
 
 if __name__ == "__main__":
