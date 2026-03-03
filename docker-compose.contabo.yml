@@ -1,157 +1,158 @@
-version: "3.8"
-
-# QuantMindX Contabo VPS Docker Compose
-# Runs: HMM Inference API, HMM Scheduler, Prometheus Agent, Promtail
-# Usage: docker-compose -f docker-compose.contabo.yml up -d
-
-services:
-  # ========== HMM Inference API ==========
-  hmm-inference-api:
-    image: python:3.11-slim
-    container_name: quantmind-hmm-inference-api
-    restart: unless-stopped
-    ports:
-      - "8001:8001"    # HMM Inference API port
-    volumes:
-      - ./data/hmm:/data/hmm
-      - ./config:/app/config:ro
-      - ./logs:/app/logs
-    environment:
-      - QUANTMIND_ENV=production
-      - PYTHONPATH=/app
-      - CONTABO_HMM_API_KEY=${CONTABO_HMM_API_KEY}
-      - CONTABO_HOST=${CONTABO_HOST}
-      - CONTABO_USER=${CONTABO_USER}
-      - CONTABO_SSH_KEY_PATH=${CONTABO_SSH_KEY_PATH}
-      - WARM_DB_PATH=/data/market_data.duckdb
-      - CONTABO_MODEL_PATH=/data/hmm/models
-      - CONTABO_METADATA_PATH=/data/hmm/metadata
-    working_dir: /app
-    command: sh -c "pip install --no-cache-dir fastapi uvicorn && python -m uvicorn src.api.hmm_inference_server:app --host 0.0.0.0 --port 8001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - quantmind-network
-    labels:
-      - "com.docker.compose.project=quantmindx"
-      - "service=hmm-inference-api"
-
-  # ========== HMM Training Scheduler ==========
-  hmm-scheduler:
-    image: python:3.11-slim
-    container_name: quantmind-hmm-scheduler
-    restart: unless-stopped
-    ports:
-      - "9093:9093"    # Prometheus metrics port
-    volumes:
-      - ./data/hmm:/data/hmm
-      - ./config:/app/config:ro
-      - ./scripts:/app/scripts:ro
-    environment:
-      - QUANTMIND_ENV=production
-      - PYTHONPATH=/app
-      - PROMETHEUS_PORT=9093
-      - CONTABO_HOST=${CONTABO_HOST}
-      - CONTABO_USER=${CONTABO_USER}
-      - CONTABO_SSH_KEY_PATH=${CONTABO_SSH_KEY_PATH}
-    working_dir: /app
-    command: python scripts/schedule_hmm_training.py --start
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9093/metrics"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - quantmind-network
-    labels:
-      - "com.docker.compose.project=quantmindx"
-      - "service=hmm-scheduler"
-    depends_on:
-      - hmm-inference-api
-
-  # ========== Prometheus Agent for Grafana Cloud (Contabo) ==========
-  # Scrapes HMM services and remote_writes to Grafana Cloud
-  prometheus-agent-contabo:
-    image: prom/prometheus:latest
-    container_name: quantmind-prometheus-agent-contabo
-    restart: unless-stopped
-    command:
-      - '--config.file=/etc/prometheus/agent-prometheus-contabo.yml'
-      - '--storage.agent.path=/prometheus/wal'
-      - '--enable-feature=agent'  # Run in agent mode (remote_write only)
-    ports:
-      - "9099:9090"    # Prometheus agent UI (optional, for debugging)
-    volumes:
-      - ./docker/prometheus/agent-prometheus-contabo.yml:/etc/prometheus/agent-prometheus-contabo.yml:ro
-      - prometheus-wal:/prometheus/wal
-    environment:
-      - GRAFANA_PROMETHEUS_URL=${GRAFANA_PROMETHEUS_URL}
-      - GRAFANA_INSTANCE_ID=${GRAFANA_INSTANCE_ID}
-      - GRAFANA_API_KEY=${GRAFANA_API_KEY}
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - quantmind-network
-    labels:
-      - "com.docker.compose.project=quantmindx"
-      - "service=prometheus-agent-contabo"
-    depends_on:
-      - hmm-inference-api
-      - hmm-scheduler
-
-  # ========== Promtail Log Shipper ==========
-  promtail:
-    image: grafana/promtail:latest
-    container_name: quantmind-promtail
-    restart: unless-stopped
-    command:
-      - -config.file=/etc/promtail/config.yml
-      - -config.expand-env=true
-    volumes:
-      - ./docker/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
-      - ./logs:/app/logs:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:
-      - GRAFANA_LOKI_URL=${GRAFANA_LOKI_URL}
-      - GRAFANA_INSTANCE_ID=${GRAFANA_INSTANCE_ID}
-      - GRAFANA_API_KEY=${GRAFANA_API_KEY}
-      - HOSTNAME=contabo-vps
-    deploy:
-      resources:
-        limits:
-          memory: 100M
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9080/ready"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - quantmind-network
-    labels:
-      - "com.docker.compose.project=quantmindx"
-      - "service=promtail"
-
-# ========== Networks ==========
 networks:
   quantmind-network:
     driver: bridge
     name: quantmind-network
-
-# ========== Volumes ==========
+services:
+  hmm-inference-api:
+    command: sh -c "pip install --no-cache-dir fastapi uvicorn && python -m uvicorn
+      src.api.hmm_inference_server:app --host 0.0.0.0 --port 8001"
+    container_name: quantmind-hmm-inference-api
+    environment:
+    - QUANTMIND_ENV=production
+    - PYTHONPATH=/app
+    - CONTABO_HMM_API_KEY=${CONTABO_HMM_API_KEY}
+    - CONTABO_HOST=${CONTABO_HOST}
+    - CONTABO_USER=${CONTABO_USER}
+    - CONTABO_SSH_KEY_PATH=${CONTABO_SSH_KEY_PATH}
+    - WARM_DB_PATH=/data/market_data.duckdb
+    - CONTABO_MODEL_PATH=/data/hmm/models
+    - CONTABO_METADATA_PATH=/data/hmm/metadata
+    healthcheck:
+      interval: 30s
+      retries: 3
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8001/health
+      timeout: 10s
+    image: quantmindx-hmm-scheduler:updated
+    labels:
+    - com.docker.compose.project=quantmindx
+    - service=hmm-inference-api
+    networks:
+    - quantmind-network
+    ports:
+    - 8001:8001
+    restart: unless-stopped
+    volumes:
+    - ./src:/app/src:ro
+    - ./data/hmm:/data/hmm
+    - ./config:/app/config:ro
+    - ./logs:/app/logs
+    working_dir: /app
+  hmm-scheduler:
+    command: python scripts/schedule_hmm_training.py --start
+    container_name: quantmind-hmm-scheduler
+    depends_on:
+    - hmm-inference-api
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    environment:
+    - QUANTMIND_ENV=production
+    - PYTHONPATH=/app
+    - PROMETHEUS_PORT=9093
+    - CONTABO_HOST=${CONTABO_HOST}
+    - CONTABO_USER=${CONTABO_USER}
+    - CONTABO_SSH_KEY_PATH=${CONTABO_SSH_KEY_PATH}
+    healthcheck:
+      interval: 30s
+      retries: 3
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:9093/metrics
+      timeout: 10s
+    image: quantmindx-hmm-scheduler:updated
+    labels:
+    - com.docker.compose.project=quantmindx
+    - service=hmm-scheduler
+    networks:
+    - quantmind-network
+    ports:
+    - 9093:9093
+    restart: unless-stopped
+    volumes:
+    - ./data/hmm:/data/hmm
+    - ./config:/app/config:ro
+    - ./scripts:/app/scripts:ro
+    working_dir: /app
+  prometheus-agent-contabo:
+    command:
+    - --config.file=/etc/prometheus/agent-prometheus-contabo.yml
+    container_name: quantmind-prometheus-agent-contabo
+    depends_on:
+    - hmm-inference-api
+    - hmm-scheduler
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    environment:
+    - GRAFANA_PROMETHEUS_URL=${GRAFANA_PROMETHEUS_URL}
+    - GRAFANA_INSTANCE_ID=${GRAFANA_INSTANCE_ID}
+    - GRAFANA_API_KEY=${GRAFANA_API_KEY}
+    healthcheck:
+      interval: 30s
+      retries: 3
+      test:
+      - CMD
+      - wget
+      - -q
+      - --spider
+      - http://localhost:9090/-/healthy
+      timeout: 10s
+    image: prom/prometheus:latest
+    labels:
+    - com.docker.compose.project=quantmindx
+    - service=prometheus-agent-contabo
+    networks:
+    - quantmind-network
+    ports:
+    - 9099:9090
+    restart: unless-stopped
+    volumes:
+    - ./docker/prometheus/agent-prometheus-contabo.yml:/etc/prometheus/agent-prometheus-contabo.yml:ro
+    - prometheus-wal:/prometheus/wal
+  promtail:
+    command:
+    - -config.file=/etc/promtail/config.yml
+    - -config.expand-env=true
+    container_name: quantmind-promtail
+    deploy:
+      resources:
+        limits:
+          memory: 100M
+    environment:
+    - GRAFANA_LOKI_URL=${GRAFANA_LOKI_URL}
+    - GRAFANA_INSTANCE_ID=${GRAFANA_INSTANCE_ID}
+    - GRAFANA_API_KEY=${GRAFANA_API_KEY}
+    - HOSTNAME=contabo-vps
+    healthcheck:
+      interval: 30s
+      retries: 3
+      test:
+      - CMD
+      - wget
+      - -q
+      - --spider
+      - http://localhost:9080/ready
+      timeout: 10s
+    image: grafana/promtail:latest
+    labels:
+    - com.docker.compose.project=quantmindx
+    - service=promtail
+    networks:
+    - quantmind-network
+    restart: unless-stopped
+    volumes:
+    - ./docker/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+    - ./logs:/app/logs:ro
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+version: '3.8'
 volumes:
   prometheus-wal:
     driver: local
