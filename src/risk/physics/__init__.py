@@ -13,11 +13,18 @@ from .ising_sensor import IsingRegimeSensor
 from .chaos_sensor import ChaosSensor
 from .correlation_sensor import CorrelationSensor
 
+try:
+    from .hmm_sensor import HMMRegimeSensor
+except ImportError:
+    HMMRegimeSensor = None
+
 __all__ = [
     "IsingRegimeSensor",
     "ChaosSensor",
     "CorrelationSensor",
 ]
+if HMMRegimeSensor is not None:
+    __all__.append('HMMRegimeSensor')
 
 # Version
 __version__ = "1.0.0"
