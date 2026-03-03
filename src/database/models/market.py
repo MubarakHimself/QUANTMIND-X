@@ -5,7 +5,7 @@ Contains models for market data, subscriptions, opportunities, and strategy fold
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Index, Text, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Index, Text, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
 from ..models.base import Base, TradingMode
 
@@ -113,7 +113,7 @@ class StrategyFolder(Base):
     trd_enhanced_path = Column(String(500), nullable=True)
     ea_vanilla_path = Column(String(500), nullable=True)
     ea_enhanced_path = Column(String(500), nullable=True)
-    preferred_conditions = Column(String, nullable=True)  # JSON string
+    preferred_conditions = Column(JSON, nullable=True)
     status = Column(String(50), nullable=False, default='draft', index=True)  # draft, backtested, approved, deployed
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
@@ -156,8 +156,8 @@ class SharedAsset(Base):
     language = Column(String(20), nullable=False, default='mql5')
     file_path = Column(String(500), nullable=False)
     description = Column(Text, nullable=True)
-    parameters = Column(String, nullable=True)  # JSON string
-    dependencies = Column(String, nullable=True)  # JSON string
+    parameters = Column(JSON, nullable=True)
+    dependencies = Column(JSON, nullable=True)
     version = Column(String(20), nullable=False, default='1.0')
     is_active = Column(Boolean, nullable=False, default=True, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
@@ -202,8 +202,8 @@ class MarketOpportunity(Base):
     session = Column(String(20), nullable=True)
     setup = Column(String(100), nullable=True)
     confidence = Column(Float, default=0.0)
-    recommended_bots = Column(String, nullable=True)  # JSON string
-    opportunity_metadata = Column(String, nullable=True)  # JSON string
+    recommended_bots = Column(JSON, nullable=True)
+    opportunity_metadata = Column(JSON, nullable=True)
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     expires_at = Column(DateTime, nullable=True)
     status = Column(String(20), default='active', index=True)

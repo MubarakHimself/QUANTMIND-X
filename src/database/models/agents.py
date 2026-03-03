@@ -5,7 +5,7 @@ Contains models for agent task tracking.
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, DateTime, Index
+from sqlalchemy import Column, Integer, String, DateTime, JSON, Index
 from ..models.base import Base
 
 
@@ -27,7 +27,7 @@ class AgentTasks(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     agent_type = Column(String(50), nullable=False, index=True)
     task_type = Column(String(100), nullable=False, index=True)
-    task_data = Column(String, nullable=False)  # JSON string
+    task_data = Column(JSON, nullable=False)
     status = Column(String(20), server_default='pending', nullable=False, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     completed_at = Column(DateTime, nullable=True)

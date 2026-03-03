@@ -5,7 +5,7 @@ Contains models for HMM model metadata, shadow logs, deployments, and sync statu
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Index, UniqueConstraint, Text
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Index, UniqueConstraint, Text, JSON
 from sqlalchemy.orm import relationship
 from ..models.base import Base
 
@@ -45,8 +45,8 @@ class HMMModel(Base):
     timeframe = Column(String(10), nullable=True, index=True)
     n_states = Column(Integer, nullable=False, default=4)
     log_likelihood = Column(Float, nullable=True)
-    state_distribution = Column(String, nullable=True)  # JSON string
-    transition_matrix = Column(String, nullable=True)  # JSON string
+    state_distribution = Column(JSON, nullable=True)
+    transition_matrix = Column(JSON, nullable=True)
     training_samples = Column(Integer, nullable=False, default=0)
     training_date = Column(DateTime, nullable=True)
     checksum = Column(String(64), nullable=True)
@@ -130,7 +130,7 @@ class HMMShadowLog(Base):
     hmm_confidence = Column(Float, nullable=False, default=0.0)
     agreement = Column(Boolean, nullable=False, default=False)
     decision_source = Column(String(20), nullable=False, default='ising')  # 'ising', 'hmm', 'weighted'
-    market_context = Column(String, nullable=True)  # JSON string
+    market_context = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationship
@@ -195,7 +195,7 @@ class HMMDeployment(Base):
     transition_date = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     approved_by = Column(String(100), nullable=True)
     approval_token = Column(String(64), nullable=True)
-    performance_metrics = Column(String, nullable=True)  # JSON string
+    performance_metrics = Column(JSON, nullable=True)
     rollback_count = Column(Integer, nullable=False, default=0)
     is_active = Column(Boolean, nullable=False, default=True, index=True)
     notes = Column(Text, nullable=True)

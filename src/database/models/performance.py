@@ -5,7 +5,7 @@ Contains models for strategy performance, paper trading, house money state, and 
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Index, Enum, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Index, Enum, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
 from ..models.base import Base, TradingMode
 
@@ -31,7 +31,7 @@ class StrategyPerformance(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     strategy_name = Column(String(200), nullable=False, index=True)
-    backtest_results = Column(String, nullable=False)  # JSON string
+    backtest_results = Column(JSON, nullable=False)
     kelly_score = Column(Float, nullable=False, index=True)
     sharpe_ratio = Column(Float, nullable=False)
     max_drawdown = Column(Float, nullable=False)
@@ -92,7 +92,7 @@ class PaperTradingPerformance(Base):
     validation_status = Column(String(20), nullable=False, default='pending', index=True)
     days_validated = Column(Integer, nullable=False, default=0)
     meets_criteria = Column(Boolean, nullable=False, default=False)
-    extra_data = Column(String, nullable=True)  # For additional metrics (JSON string)
+    extra_data = Column(JSON, nullable=True)
     mode = Column(Enum(TradingMode), nullable=False, default=TradingMode.DEMO, index=True)
 
     __table_args__ = (
@@ -189,7 +189,7 @@ class StrategyFamilyState(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     family = Column(String(20), nullable=False, unique=True, index=True)
-    failed_bots = Column(String, nullable=False, default='[]')  # JSON string
+    failed_bots = Column(JSON, nullable=False, default=list)
     total_pnl = Column(Float, nullable=False, default=0.0)
     initial_capital = Column(Float, nullable=False, default=10000.0)
     is_quarantined = Column(Boolean, nullable=False, default=False, index=True)

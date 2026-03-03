@@ -5,7 +5,7 @@ Contains models for bot management including circuit breakers, cloning, manifest
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Index, Enum, Text, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Index, Enum, Text, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
 from ..models.base import Base, TradingMode
 
@@ -73,7 +73,7 @@ class BotCloneHistory(Base):
     clone_bot_id = Column(String(100), nullable=False, index=True)
     original_symbol = Column(String(20), nullable=False)
     clone_symbol = Column(String(20), nullable=False)
-    performance_at_clone = Column(String, nullable=False)  # JSON string
+    performance_at_clone = Column(JSON, nullable=False)
     allocation_strategy = Column(String(50), nullable=False)  # 'adaptive' or 'equal'
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -155,12 +155,12 @@ class ImportedEA(Base):
     version = Column(String(50), nullable=True)
     checksum = Column(String(64), nullable=False)
     status = Column(String(20), nullable=False, default='new', index=True)  # new, updated, unchanged, error
-    input_parameters = Column(String, nullable=True)  # JSON string
+    input_parameters = Column(JSON, nullable=True)
     strategy_type = Column(String(100), nullable=True)
     timeframe = Column(String(20), nullable=True)
-    symbols = Column(String, nullable=True)  # JSON string
+    symbols = Column(JSON, nullable=True)
     lines_of_code = Column(Integer, nullable=True)
-    ea_metadata = Column(String, nullable=True)  # JSON string
+    ea_metadata = Column(JSON, nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
@@ -240,7 +240,7 @@ class BotManifest(Base):
     target_sharpe = Column(Float, nullable=True)
     trading_mode = Column(Enum(TradingMode), nullable=False, default=TradingMode.DEMO, index=True)
     status = Column(String(20), nullable=False, default='active', index=True)
-    bot_metadata = Column('metadata', String, nullable=True)  # JSON string
+    bot_metadata = Column('metadata', JSON, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -303,7 +303,7 @@ class BotLifecycleLog(Base):
     reason = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     triggered_by = Column(String(50), default='system')
-    performance_stats = Column(String, nullable=True)  # JSON string
+    performance_stats = Column(JSON, nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 

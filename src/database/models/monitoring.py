@@ -5,7 +5,7 @@ Contains models for alerts, webhooks, and system monitoring.
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Index, Text
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Index, Text, JSON
 from ..models.base import Base
 
 
@@ -37,7 +37,7 @@ class AlertHistory(Base):
     threshold_pct = Column(Float, nullable=False)
     triggered_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     source = Column(String(50), nullable=False, index=True)
-    alert_metadata = Column(String, nullable=True)  # JSON string
+    alert_metadata = Column(JSON, nullable=True)
     is_active = Column(Boolean, nullable=False, default=True, index=True)
     cleared_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
@@ -75,7 +75,7 @@ class WebhookLog(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     source_ip = Column(String(50), nullable=False, index=True)
-    alert_payload = Column(String, nullable=False)  # JSON string
+    alert_payload = Column(JSON, nullable=False)
     signature_valid = Column(Boolean, nullable=False, default=False)
     bot_triggered = Column(Boolean, nullable=False, default=False, index=True)
     order_id = Column(String(100), nullable=True)

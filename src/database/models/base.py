@@ -7,7 +7,7 @@ Contains the SQLAlchemy Base, enums, and session utilities.
 from datetime import datetime, timezone
 from enum import Enum as PyEnum
 
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Enum
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Enum, JSON
 from sqlalchemy.orm import declarative_base, Session
 from typing import Generator
 

@@ -5,7 +5,7 @@ Contains models for prop firm accounts, snapshots, broker registry, and loss tra
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, UniqueConstraint, Index, Enum
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, UniqueConstraint, Index, Enum, JSON
 from sqlalchemy.orm import relationship
 from ..models.base import Base, TradingMode
 
@@ -82,6 +82,9 @@ class DailySnapshot(Base):
     # Relationship to account
     prop_account = relationship("PropFirmAccount", back_populates="daily_snapshots")
 
+    # Backward compatibility alias
+    account = property(lambda self: self.prop_account)
+
     # Unique constraint to prevent duplicate snapshots per account per day
     __table_args__ = (
         UniqueConstraint('account_id', 'date', name='uq_account_date'),
@@ -123,8 +126,8 @@ class BrokerRegistry(Base):
     lot_step = Column(Float, nullable=False, default=0.01)
     min_lot = Column(Float, nullable=False, default=0.01)
     max_lot = Column(Float, nullable=False, default=100.0)
-    pip_values = Column(String, nullable=False, default='{}')  # {"EURUSD": 10.0, "XAUUSD": 1.0}
-    preference_tags = Column(String, nullable=False, default='[]')  # ["RAW_ECN", "LOW_SPREAD"]
+    pip_values = Column(JSON, nullable=False, default=dict)
+    preference_tags = Column(JSON, nullable=False, default=list)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 

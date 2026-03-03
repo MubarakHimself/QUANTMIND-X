@@ -5,7 +5,7 @@ Contains models for trade proposals, crypto trades, trade journals, and risk tie
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Index, Enum, Text
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Index, Enum, Text, JSON
 from sqlalchemy.orm import relationship
 from ..models.base import Base, TradingMode
 
@@ -125,7 +125,7 @@ class CryptoTrade(Base):
     mode = Column(Enum(TradingMode), nullable=False, default=TradingMode.LIVE, index=True)
     open_timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     close_timestamp = Column(DateTime, nullable=True)
-    trade_metadata = Column(String, nullable=True)  # Fees, slippage, shadow stops, etc. (stored as JSON string)
+    trade_metadata = Column(JSON, nullable=True)
 
     __table_args__ = (
         Index('idx_crypto_trades_broker_symbol', 'broker_id', 'symbol'),
