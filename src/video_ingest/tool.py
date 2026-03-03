@@ -199,12 +199,11 @@ class VideoIngestTool:
         # Wait for rate limit
         rate_limiter.acquire()
 
-        # Build Qwen command - pass video file for vision processing
+        # Build Qwen command - include video path in prompt
         cmd = [
             "qwen",
-            "-m", "qwen3-vl-8b",  # Use latest Qwen3-VL model
-            "-p", f"Analyze this video: {prompt}",
-            str(video_path),  # Pass video file
+            "-m", "qwen3-vl-235b-a22b-thinking",
+            "-p", f"Analyze this video file: {video_path}\n\n{prompt}",
             "-y"  # yolo mode
         ]
 
