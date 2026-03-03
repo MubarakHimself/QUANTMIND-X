@@ -51,11 +51,13 @@ class FloorManager:
             "trend", "support", "resistance", "forecast",
             "research", "strategy", "backtest", "develop", "create",
             "alpha", "factor", "optimize", "validate", "test",
+            # Video ingest related
+            "video", "trading idea", "timeframe", "entry", "exit",
         ],
         Department.DEVELOPMENT: [
             "develop", "build", "ea", "expert advisor", "bot",
-            "pinescript", "mql5", "python", "code", "implement",
-            "script", "automate", "algorithm",
+            "pinescript", "mql5", "mq5", "python", "code", "implement",
+            "script", "automate", "algorithm", "expert",
         ],
         Department.RISK: [
             "risk", "position size", "drawdown", "var", "exposure",

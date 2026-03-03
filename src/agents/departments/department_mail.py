@@ -21,6 +21,12 @@ class MessageType(str, Enum):
     RESULT = "result"
     ERROR = "error"
     DISPATCH = "dispatch"  # Cross-department task dispatch
+    # Workflow message types
+    STRATEGY_DISPATCH = "strategy_dispatch"  # Video → Research
+    TRD_GENERATED = "trd_generated"          # Research → Dev
+    CODE_READY = "code_ready"                 # Dev → Risk
+    RISK_CLEARED = "risk_cleared"             # Risk → Execution
+    BACKTEST_REQUEST = "backtest_request"     # Any → Research
 
 
 class Priority(str, Enum):

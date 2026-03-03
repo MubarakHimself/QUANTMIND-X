@@ -22,13 +22,18 @@ logger = logging.getLogger(__name__)
 
 class WorkflowStage(str, Enum):
     """Stages in the QuantMind workflow."""
-    NPRD_PROCESSING = "nprd_processing"
-    ANALYST = "analyst"
+    VIDEO_INGEST = "video_ingest"
+    RESEARCH = "research"
     TRD_GENERATION = "trd_generation"
-    QUANTCODE = "quantcode"
+    DEVELOPMENT = "development"
     COMPILATION = "compilation"
     BACKTEST = "backtest"
     VALIDATION = "validation"
+    EA_LIFECYCLE = "ea_lifecycle"
+    # Legacy stages (for backwards compatibility)
+    NPRD_PROCESSING = "nprd_processing"
+    ANALYST = "analyst"
+    QUANTCODE = "quantcode"
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -168,7 +173,111 @@ class WorkflowOrchestrator:
         self.work_dir.mkdir(parents=True, exist_ok=True)
         
         logger.info(f"WorkflowOrchestrator initialized with work_dir={work_dir}")
-    
+
+    async def submit_video_ingest_task(
+        self,
+        video_url: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Submit a video ingest task to the workflow.
+
+        Args:
+            video_url: URL of the video to ingest
+            metadata: Optional metadata for the workflow
+
+        Returns:
+            Workflow ID
+        """
+        logger.info(f"Submitting video ingest task: {video_url}")
+
+        # Add to task queue
+        task = {
+            "type": "video_ingest",
+            "video_url": video_url,
+            "metadata": metadata or {}
+        }
+        await self._task_queue.put(task)
+
+        # Start workflow
+        workflow_id = await self.start_video_ingest_workflow(video_url, metadata)
+
+        return workflow_id
+
+    async def start_video_ingest_workflow(
+        self,
+        video_url: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Start a new workflow from video ingest.
+
+        Args:
+            video_url: URL of the video
+            metadata: Optional metadata for the workflow
+
+        Returns:
+            Workflow ID
+        """
+        # Generate workflow ID
+        workflow_id = f"wf_video_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+
+        # Create workflow
+        workflow = Workflow(
+            workflow_id=workflow_id,
+            status=WorkflowStatus.PENDING,
+            created_at=datetime.now().isoformat(),
+            updated_at=datetime.now().isoformat(),
+            input_file=video_url,
+            metadata=metadata or {}
+        )
+
+        # Initialize workflow steps
+        workflow.steps = {
+            "video_ingest": WorkflowStep(
+                stage=WorkflowStage.VIDEO_INGEST,
+                status=WorkflowStatus.PENDING
+            ),
+            "research": WorkflowStep(
+                stage=WorkflowStage.RESEARCH,
+                status=WorkflowStatus.PENDING
+            ),
+            "trd_generation": WorkflowStep(
+                stage=WorkflowStage.TRD_GENERATION,
+                status=WorkflowStatus.PENDING
+            ),
+            "development": WorkflowStep(
+                stage=WorkflowStage.DEVELOPMENT,
+                status=WorkflowStatus.PENDING
+            ),
+            "compilation": WorkflowStep(
+                stage=WorkflowStage.COMPILATION,
+                status=WorkflowStatus.PENDING
+            ),
+            "backtest": WorkflowStep(
+                stage=WorkflowStage.BACKTEST,
+                status=WorkflowStatus.PENDING
+            ),
+            "validation": WorkflowStep(
+                stage=WorkflowStage.VALIDATION,
+                status=WorkflowStatus.PENDING
+            ),
+            "ea_lifecycle": WorkflowStep(
+                stage=WorkflowStage.EA_LIFECYCLE,
+                status=WorkflowStatus.PENDING
+            ),
+        }
+
+        # Add to workflows
+        self.workflows[workflow_id] = workflow
+
+        # Save workflow
+        await self._save_workflow(workflow)
+
+        logger.info(f"Started video ingest workflow {workflow_id} for {video_url}")
+
+        return workflow_id
+
     async def submit_nprd_task(self, nprd_file: Path, metadata: Optional[Dict[str, Any]] = None) -> str:
         """
         Submit a new NPRD task from the NPRD watcher.

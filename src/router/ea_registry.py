@@ -6,7 +6,7 @@ Supports demo/live mode distinction with virtual balance tracking for demo EAs.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from enum import Enum
 import logging
 
@@ -233,7 +233,7 @@ class EARegistry:
     def count(self) -> Dict[str, int]:
         """
         Count EAs by mode.
-        
+
         Returns:
             Dictionary with counts by mode
         """
@@ -242,6 +242,59 @@ class EARegistry:
             'demo': len(self.get_demo_eas()),
             'live': len(self.get_live_eas())
         }
+
+    def add_tag(self, ea_id: str, tag: str) -> bool:
+        """
+        Add a tag to an EA.
+
+        Args:
+            ea_id: EA identifier
+            tag: Tag to add
+
+        Returns:
+            True if tag was added
+        """
+        ea = self._eas.get(ea_id)
+        if ea:
+            if tag not in ea.tags:
+                ea.tags.append(tag)
+                logger.info(f"Added tag '{tag}' to EA {ea_id}")
+            return True
+        return False
+
+    def remove_tag(self, ea_id: str, tag: str) -> bool:
+        """
+        Remove a tag from an EA.
+
+        Args:
+            ea_id: EA identifier
+            tag: Tag to remove
+
+        Returns:
+            True if tag was removed
+        """
+        ea = self._eas.get(ea_id)
+        if ea and ea.tags:
+            if tag in ea.tags:
+                ea.tags.remove(tag)
+                logger.info(f"Removed tag '{tag}' from EA {ea_id}")
+                return True
+        return False
+
+    def get_by_tag(self, tag: str) -> List[Dict[str, Any]]:
+        """
+        Get all EAs with a specific tag.
+
+        Args:
+            tag: Tag to filter by
+
+        Returns:
+            List of EA dictionaries with the tag
+        """
+        return [
+            {"ea_id": ea.ea_id, "name": ea.name, "tags": ea.tags}
+            for ea in self._eas.values() if ea.tags and tag in ea.tags
+        ]
 
 
 # Global registry instance
