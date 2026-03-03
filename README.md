@@ -132,7 +132,25 @@ DATABASE_URL=sqlite:///data/quantmind.db
 - `/api/mcp` - MCP server management
 - `/api/agents` - Agent management
 - `/api/floor-manager` - Floor manager control
+- `/api/tool-calls` - Tool call logging and monitoring
 - `/health` - Health check
+
+---
+
+## New Features (Latest)
+
+### Tool Call Monitoring
+- `GET /api/tool-calls/logs` - Query tool call logs with filters
+- `GET /api/tool-calls/terminal` - Terminal-formatted output
+- `GET /api/tool-calls/summary` - Statistics and metrics
+- `GET /api/tool-calls/agents` - List unique agents
+- `GET /api/tool-calls/tools` - List unique tools
+
+### UI Enhancements
+- Connection settings tab (Redis, ZMQ, MT5)
+- Security settings tab with Generate Key functionality
+- Database connection type selector
+- Prop Firm preset selector (FTMO, The5ers, FundingPips)
 
 ---
 
