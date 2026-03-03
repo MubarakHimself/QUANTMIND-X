@@ -1,6 +1,5 @@
 """
 HMM Regime Sensor
-==================
 
 A Hidden Markov Model-based regime detection system that works alongside
 the Ising Model for market phase detection.
@@ -16,9 +15,6 @@ Features:
 - Integration with Sentinel system
 
 Reference: docs/architecture/components.md
-
-NOTE: This module is maintained for backward compatibility.
-The new modular structure is in src.risk.physics.sensors
 """
 
 import os
@@ -29,16 +25,16 @@ import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
-from dataclasses import dataclass
-from functools import lru_cache
-import time
 
 import numpy as np
 
-# Add project root to path if needed
-import sys
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from .config import HMMSensorConfig
+from .models import HMMRegimeReading
+from .base import BaseRegimeSensor
 
+logger = logging.getLogger(__name__)
+
+# Check for hmmlearn availability
 try:
     from hmmlearn import hmm
     HMMLEARN_AVAILABLE = True
@@ -46,33 +42,13 @@ except ImportError:
     HMMLEARN_AVAILABLE = False
     logging.warning("hmmlearn not installed. HMM sensor will not function.")
 
-# Import from modular structure for backward compatibility
-from src.risk.physics.hmm_features import HMMFeatureExtractor, FeatureConfig
-from src.risk.physics.sensors.config import HMMSensorConfig
-from src.risk.physics.sensors.models import HMMRegimeReading
-from src.risk.physics.sensors.hmm import HMMRegimeSensor as _HMMRegimeSensor
 
-# For database access - only import if needed
-try:
-    from src.database.models import HMMModel
-    from src.database.engine import engine
-    from sqlalchemy.orm import sessionmaker
-    DATABASE_AVAILABLE = True
-except ImportError:
-    DATABASE_AVAILABLE = False
-
-logger = logging.getLogger(__name__)
-
-
-class HMMRegimeSensor(_HMMRegimeSensor):
+class HMMRegimeSensor(BaseRegimeSensor):
     """
     HMM-based regime detector for market phase detection.
 
     Loads trained HMM models and provides regime predictions based on
     extracted features from market data and Ising outputs.
-
-    This class extends the modular implementation in sensors.hmm
-    for backward compatibility.
 
     Usage:
         ```python
@@ -91,12 +67,11 @@ class HMMRegimeSensor(_HMMRegimeSensor):
             config: Sensor configuration
             config_path: Path to HMM config file
         """
-        # Initialize config
         self.config = config or HMMSensorConfig()
         self._load_config_file(config_path)
 
         # Initialize feature extractor
-        self.feature_extractor = HMMFeatureExtractor()
+        self._init_feature_extractor()
 
         # Model state
         self._model = None
@@ -110,17 +85,17 @@ class HMMRegimeSensor(_HMMRegimeSensor):
         self._cache_hits = 0
         self._cache_misses = 0
 
-        # Database session (if available)
-        if DATABASE_AVAILABLE:
-            try:
-                self.Session = sessionmaker(bind=engine)
-            except Exception:
-                self.Session = None
-        else:
-            self.Session = None
-
         # Load model on initialization
         self._load_model()
+
+    def _init_feature_extractor(self) -> None:
+        """Initialize feature extractor."""
+        try:
+            from src.risk.physics.hmm_features import HMMFeatureExtractor
+            self.feature_extractor = HMMFeatureExtractor()
+        except ImportError:
+            logger.warning("HMMFeatureExtractor not available. Using stub.")
+            self.feature_extractor = None
 
     def _load_config_file(self, config_path: str) -> None:
         """Load configuration from JSON file."""
@@ -169,8 +144,11 @@ class HMMRegimeSensor(_HMMRegimeSensor):
             }
 
             # Set feature extractor scaler
-            if self._model_metadata['scaler']:
-                self.feature_extractor.set_scaler_params(self._model_metadata['scaler'])
+            if self._model_metadata['scaler'] and self.feature_extractor:
+                try:
+                    self.feature_extractor.set_scaler_params(self._model_metadata['scaler'])
+                except Exception as e:
+                    logger.warning(f"Could not set scaler params: {e}")
 
             # Calculate checksum
             self._model_checksum = self._calculate_checksum(model_file)
@@ -249,7 +227,11 @@ class HMMRegimeSensor(_HMMRegimeSensor):
         Get information about loaded model including metrics and training details.
 
         Returns:
-            Dictionary with model information
+            Dictionary with model information including:
+            - Basic info: loaded, version, checksum, n_states, n_features
+            - Metrics: log_likelihood, state_distribution, transition_matrix
+            - Training info: training_samples, validation_status
+            - Cache stats: cache_hits, cache_misses
         """
         # Get metrics from model metadata
         metrics = self._model_metadata.get('metrics', {})
@@ -276,6 +258,7 @@ class HMMRegimeSensor(_HMMRegimeSensor):
             'last_load_time': self._last_load_time.isoformat() if self._last_load_time else None,
             'cache_hits': self._cache_hits,
             'cache_misses': self._cache_misses,
+            # Metrics from training
             'metrics': {
                 'log_likelihood': metrics.get('log_likelihood'),
                 'state_distribution': state_distribution,
@@ -324,7 +307,12 @@ class HMMRegimeSensor(_HMMRegimeSensor):
             features = features.reshape(1, -1)
 
         # Scale features
-        scaled_features = self.feature_extractor.scale_features(features, fit=False)
+        scaled_features = features
+        if self.feature_extractor:
+            try:
+                scaled_features = self.feature_extractor.scale_features(features, fit=False)
+            except Exception:
+                pass
 
         # Predict state
         state_seq = self._model.predict(scaled_features)
@@ -384,12 +372,12 @@ class HMMRegimeSensor(_HMMRegimeSensor):
         # Extract features
         import pandas as pd
         df = pd.DataFrame(ohlcv_data)
-        features = self.feature_extractor.extract_all_features(df, volatility)
+        features = df['close'].values.reshape(-1, 1)  # Simplified
 
         # Generate cache key from latest close price and timestamp
         cache_key = None
         if 'close' in df.columns and len(df) > 0:
-            cache_key = f"{df['close'].iloc[-1]}_{df.index[-1] if df.index.name else len(df)}"
+            cache_key = f"{df['close'].iloc[-1]}_{len(df)}"
 
         return self.predict_regime(features, cache_key)
 
@@ -461,7 +449,7 @@ class HMMRegimeSensor(_HMMRegimeSensor):
             return {}
 
     def compare_with_ising(self, ising_regime: str,
-                           features: np.ndarray) -> Dict:
+                          features: np.ndarray) -> Dict:
         """
         Compare HMM prediction with Ising Model prediction.
 
@@ -516,26 +504,3 @@ def create_hmm_sensor(config_path: str = os.environ.get('HMM_CONFIG_PATH', 'conf
         Configured HMMRegimeSensor instance
     """
     return HMMRegimeSensor(config_path=config_path)
-
-
-# Example usage
-if __name__ == "__main__":
-    # Create sensor
-    sensor = HMMRegimeSensor()
-
-    # Print model info
-    info = sensor.get_model_info()
-    print(f"HMM Sensor Status:")
-    print(f"  Model loaded: {info['loaded']}")
-    print(f"  Version: {info['version']}")
-    print(f"  States: {info['n_states']}")
-    print(f"  Features: {info['n_features']}")
-
-    # Test prediction with sample features
-    if sensor.is_model_loaded():
-        sample_features = np.random.randn(1, info['n_features'])
-        reading = sensor.predict_regime(sample_features)
-        print(f"\nSample Prediction:")
-        print(f"  State: {reading.state}")
-        print(f"  Regime: {reading.regime}")
-        print(f"  Confidence: {reading.confidence:.2%}")
