@@ -122,3 +122,62 @@ class VideoIngestTool:
         if caption_files:
             return caption_files[0]
         return None
+
+    def calculate_chunks(self, duration_seconds: int) -> List[Dict]:
+        """
+        Calculate video chunks based on duration.
+        Qwen3-VL-8B can handle ~256K tokens, ~1 hour of video well.
+
+        Chunking strategy:
+        - < 10 min: 1 chunk (whole video)
+        - 10-30 min: 2 chunks (~15 min each)
+        - 30-60 min: 3 chunks (~20 min each)
+        - 1-2 hours: 4 chunks (~30 min each)
+        - 2-4 hours: 6 chunks (~40 min each)
+        - > 4 hours: 8 chunks (~60 min each, max)
+        """
+        if duration_seconds < 600:  # < 10 min
+            return [{"start": 0, "end": duration_seconds, "label": "full"}]
+
+        # Calculate optimal chunk count and size
+        if duration_seconds < 1800:  # 10-30 min
+            chunk_count = 2
+        elif duration_seconds < 3600:  # 30-60 min
+            chunk_count = 3
+        elif duration_seconds < 7200:  # 1-2 hours
+            chunk_count = 4
+        elif duration_seconds < 14400:  # 2-4 hours
+            chunk_count = 6
+        else:  # > 4 hours
+            chunk_count = 8
+
+        # Divide duration evenly among chunks
+        chunk_duration = duration_seconds // chunk_count
+
+        chunks = []
+        for i in range(chunk_count):
+            start = i * chunk_duration
+            # Last chunk ends at duration, others at their chunk boundary
+            end = duration_seconds if i == chunk_count - 1 else (i + 1) * chunk_duration
+            chunks.append({
+                "start": start,
+                "end": end,
+                "label": f"part_{i+1}"
+            })
+
+        return chunks
+
+    def extract_chunk(self, video_path: Path, start_sec: int, end_sec: int, output_path: Path) -> Path:
+        """Extract a chunk of video using ffmpeg."""
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(video_path),
+            "-ss", str(start_sec),
+            "-to", str(end_sec),
+            "-c", "copy",
+            str(output_path)
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode != 0:
+            raise RuntimeError(f"Failed to extract chunk: {result.stderr}")
+        return output_path
