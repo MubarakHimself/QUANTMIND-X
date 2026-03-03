@@ -56,3 +56,13 @@ def get_settings() -> Settings:
     if _settings is None:
         _settings = Settings()
     return _settings
+
+
+def get_database_url() -> str:
+    """Get database URL from environment or default."""
+    return get_settings().database_url
+
+
+def get_redis_url() -> str:
+    """Get Redis URL from environment or default."""
+    return get_settings().redis_url

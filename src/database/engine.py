@@ -8,17 +8,30 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.pool import StaticPool
+from src.config import get_database_url
 
-# Database path
-DB_PATH = os.path.join(os.path.dirname(__file__), '../../data/db/quantmind.db')
-DB_ABSOLUTE_PATH = os.path.abspath(DB_PATH)
+# Get database URL from config (supports environment variable override)
+database_url = get_database_url()
 
-# Ensure data directory exists
-os.makedirs(os.path.dirname(DB_ABSOLUTE_PATH), exist_ok=True)
+# If using SQLite, handle file path
+if database_url.startswith('sqlite'):
+    # Extract path from sqlite:/// URI
+    db_path = database_url.replace('sqlite:///', '')
+    if not db_path.startswith('/'):
+        # Relative path - make it relative to project root
+        DB_ABSOLUTE_PATH = os.path.abspath(db_path)
+    else:
+        DB_ABSOLUTE_PATH = db_path
+    # Ensure data directory exists
+    os.makedirs(os.path.dirname(DB_ABSOLUTE_PATH), exist_ok=True)
+    engine_url = f'sqlite:///{DB_ABSOLUTE_PATH}'
+else:
+    # Use as-is for PostgreSQL, MySQL, etc.
+    engine_url = database_url
 
 # Create engine with SQLite-specific optimizations
 engine = create_engine(
-    f'sqlite:///{DB_ABSOLUTE_PATH}',
+    engine_url,
     connect_args={
         'check_same_thread': False,  # Allow multi-threaded access
     },
