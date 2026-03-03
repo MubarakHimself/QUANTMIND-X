@@ -5,6 +5,7 @@ FastAPI router combining all paper trading endpoints.
 """
 
 import logging
+import os
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
