@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     mt5_server: str = ""
 
     # Security
-    secret_key: str = "your-secret-key-change-in-production"
+    secret_key: str = ""  # Must be set via SECRET_KEY env var
 
     # External APIs
     anthropic_api_key: Optional[str] = None
