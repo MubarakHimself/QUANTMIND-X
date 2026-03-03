@@ -682,6 +682,13 @@
       document.removeEventListener('keydown', handleGlobalEscape);
     }
   });
+
+  // Generate New Key handler for SECRET_KEY
+  async function generateNewKey() {
+    const newKey = crypto.randomUUID();
+    await navigator.clipboard.writeText(newKey);
+    alert('New key generated and copied! Set SECRET_KEY env var with this value.');
+  }
 </script>
 
 <div class="settings-overlay" class:visible={settingsVisible} on:click={() => hide()}>
@@ -793,6 +800,10 @@
               <AlertCircle size={16} />
               <span>Your API keys are stored locally and encrypted. Never share them with anyone.</span>
             </div>
+
+            <button class="btn btn-secondary" on:click={generateNewKey}>
+              Generate New Key
+            </button>
 
             <div class="keys-list">
               {#each apiKeys as key}
