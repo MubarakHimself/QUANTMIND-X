@@ -45,7 +45,7 @@ class TimelineClip:
 class TimelineOutput:
     """
     Complete timeline output from NPRD processing.
-    
+
     Contains metadata about the video and an array of timeline clips.
     """
     video_url: str
@@ -55,7 +55,11 @@ class TimelineOutput:
     model_provider: str  # "gemini" or "qwen"
     version: str = "1.0.0"
     timeline: List[TimelineClip] = field(default_factory=list)
-    
+
+    def __len__(self) -> int:
+        """Return number of timeline clips."""
+        return len(self.timeline)
+
     def to_json(self) -> str:
         """Convert to JSON string."""
         data = {

@@ -242,38 +242,33 @@ class GeminiCLIProvider(ModelProvider):
     def _build_command(self, frames: List[Path], audio: Path, prompt: str) -> List[str]:
         """
         Build Gemini CLI command with YOLO mode.
-        
+
         Args:
             frames: List of frame paths
             audio: Audio file path
             prompt: Analysis prompt
-            
+
         Returns:
             Command as list of strings
         """
-        cmd = ["gemini", "run"]
-        
-        # Add YOLO mode flag if enabled
+        cmd = ["gemini"]
+
+        # Add YOLO mode flag if enabled (auto-approve all actions)
         if self.yolo_mode:
-            cmd.append("--yolo")
-        
-        # Add API key if provided
-        if self.api_key:
-            cmd.extend(["--api-key", self.api_key])
-        
-        # Add prompt
-        cmd.append(prompt)
-        
-        # Add audio file
-        cmd.extend(["-f", str(audio)])
-        
-        # Add frame files
-        for frame in frames:
-            cmd.extend(["-f", str(frame)])
-        
+            cmd.append("--approval-mode")
+            cmd.append("yolo")
+
         # Request JSON output
-        cmd.extend(["--format", "json"])
-        
+        cmd.append("--output-format")
+        cmd.append("json")
+
+        # Add prompt in headless mode
+        cmd.append("--prompt")
+        # Build combined prompt with file references
+        file_refs = f"Audio file: {audio}\n" + "\n".join([f"Frame: {f}" for f in frames])
+        full_prompt = f"{prompt}\n\n{file_refs}"
+        cmd.append(full_prompt)
+
         return cmd
     
     def _execute_command(self, cmd: List[str]) -> str:
@@ -1406,32 +1401,26 @@ class QwenCodeCLIProvider(ModelProvider):
         Returns:
             Command as list of strings
         """
-        cmd = ["qwen-code", "run"]
-        
-        # Add headless mode flag if enabled
+        cmd = ["qwen"]
+
+        # Add YOLO mode flag if enabled
         if self.headless:
-            cmd.append("--headless")
-        
-        # Add API key if provided
-        if self.api_key:
-            cmd.extend(["--api-key", self.api_key])
-        
+            cmd.append("--approval-mode")
+            cmd.append("yolo")
+
+        # Request JSON output
+        cmd.append("--output-format")
+        cmd.append("json")
+
         # Add model
         cmd.extend(["--model", self.model])
-        
-        # Add prompt
-        cmd.append(prompt)
-        
-        # Add audio file
-        cmd.extend(["-f", str(audio)])
-        
-        # Add frame files
-        for frame in frames:
-            cmd.extend(["-f", str(frame)])
-        
-        # Request JSON output
-        cmd.extend(["--format", "json"])
-        
+
+        # Add prompt (use positional for headless)
+        # Build combined prompt with file references
+        file_refs = f"Audio file: {audio}\n" + "\n".join([f"Frame: {f}" for f in frames])
+        full_prompt = f"{prompt}\n\n{file_refs}"
+        cmd.append(full_prompt)
+
         return cmd
     
     def _execute_command(self, cmd: List[str]) -> str:
@@ -1462,44 +1451,56 @@ class QwenCodeCLIProvider(ModelProvider):
     def _parse_output(self, output: str, frames: List[Path]) -> TimelineOutput:
         """
         Parse Qwen Code CLI JSON output into TimelineOutput.
-        
+
         Args:
-            output: JSON output from Qwen Code CLI
+            output: JSON output from Qwen Code CLI (may be JSONL format)
             frames: List of frame paths (for reference)
-            
+
         Returns:
             TimelineOutput object
-            
+
         Raises:
             json.JSONDecodeError: If output is not valid JSON
             KeyError: If required fields are missing
         """
-        data = json.loads(output)
-        
+        # Handle JSONL format (list of JSON objects)
+        try:
+            data_list = json.loads(output)
+            if isinstance(data_list, list):
+                # Find the result message in the JSONL
+                for item in data_list:
+                    if item.get("type") == "result":
+                        data = {"text": item.get("result", ""), "response": item}
+                        break
+                else:
+                    data = {"text": str(data_list)}
+            else:
+                data = data_list
+        except json.JSONDecodeError:
+            # If not JSON, treat as plain text
+            data = {"text": output}
+
         # Extract timeline clips from Qwen response
         clips = []
-        
-        # Qwen Code CLI may return different formats, handle common cases
-        if "timeline" in data:
-            timeline_data = data["timeline"]
-        elif "clips" in data:
-            timeline_data = data["clips"]
-        elif "segments" in data:
-            timeline_data = data["segments"]
-        else:
-            # If no structured timeline, create clips from frames
-            timeline_data = self._create_clips_from_frames(data, frames)
-        
-        # Parse clips
-        for i, clip_data in enumerate(timeline_data):
-            clip = self._parse_clip(clip_data, i + 1, frames)
+
+        # Qwen Code CLI returns conversational text, not structured timeline
+        # Create a simple clip from the response
+        if frames:
+            clip = TimelineClip(
+                clip_id=1,
+                timestamp_start="00:00:00",
+                timestamp_end=f"00:{len(frames) * 30 // 60:02d}:{(len(frames) * 30) % 60:02d}",
+                transcript=data.get("text", data.get("response", "No content")),
+                visual_description=f"Analyzed {len(frames)} frames from video",
+                frame_path=str(frames[0]) if frames else ""
+            )
             clips.append(clip)
-        
+
         # Create TimelineOutput
         return TimelineOutput(
-            video_url=data.get("video_url", "unknown"),
-            title=data.get("title", "Untitled"),
-            duration_seconds=len(frames) * 30,  # Estimate from frame count
+            video_url="unknown",
+            title="Video Analysis",
+            duration_seconds=len(frames) * 30 if frames else 0,
             processed_at=datetime.now().isoformat(),
             model_provider="qwen-code-cli",
             timeline=clips

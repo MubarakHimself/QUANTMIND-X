@@ -202,6 +202,29 @@ class MultiProviderRateLimiter:
         
         logger.info("Initialized MultiProviderRateLimiter")
     
+    def can_proceed(self, provider: str) -> bool:
+        """
+        Check if request can proceed for given provider.
+
+        Args:
+            provider: Provider name
+
+        Returns:
+            True if can proceed (no rate limiting for now)
+        """
+        return True
+
+    def record_usage(self, provider: str) -> None:
+        """
+        Record that a provider was used.
+
+        Args:
+            provider: Provider name
+        """
+        if provider in self.limiters:
+            # RateLimiter already tracks internally via acquire()
+            logger.debug(f"Recorded usage for provider: {provider}")
+
     def add_provider(
         self,
         provider: str,
