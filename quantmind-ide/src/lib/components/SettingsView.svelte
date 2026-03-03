@@ -11,6 +11,14 @@
   } from 'lucide-svelte';
   import ThemeSelector from './ThemeSelector.svelte';
 
+  // Prop Firm Presets
+  const PROP_FIRM_PRESETS = {
+    ftmo: { name: 'FTMO', maxRisk: 2, dailyLoss: 5, totalLoss: 10 },
+    the5ers: { name: 'The5ers', maxRisk: 2.5, dailyLoss: 6, totalLoss: 12 },
+    fundingpips: { name: 'FundingPips', maxRisk: 3, dailyLoss: 8, totalLoss: 15 },
+    custom: { name: 'Custom', maxRisk: 0, dailyLoss: 0, totalLoss: 0 }
+  };
+
   const dispatch = createEventDispatcher();
 
   // AGENTS.md content
@@ -70,7 +78,7 @@
   let showRawEditor = true;
 
   // Settings tabs
-  type SettingsTab = 'general' | 'api-keys' | 'mcp-servers' | 'agents' | 'risk' | 'database';
+  type SettingsTab = 'general' | 'api-keys' | 'mcp-servers' | 'agents' | 'risk' | 'database' | 'connection' | 'security';
   let activeTab: SettingsTab = 'general';
   let settingsVisible = false;
 
@@ -202,6 +210,7 @@
     dailyLossLimit: 5, // percentage
     maxDrawdown: 10, // percentage
     riskMode: 'dynamic' as 'fixed' | 'dynamic' | 'conservative',
+    propFirmPreset: 'custom' as 'ftmo' | 'the5ers' | 'fundingpips' | 'custom',
     balanceZones: {
       danger: 200,
       growth: 1000,
@@ -212,11 +221,28 @@
 
   // Database settings
   let dbSettings = {
+    connectionType: 'sqlite', // 'sqlite' | 'postgresql'
+    databaseUrl: '',
     sqlitePath: './data/quantmind.db',
     duckdbPath: './data/analytics.duckdb',
     autoBackup: true,
     backupInterval: 3600, // seconds
     maxBackups: 10
+  };
+
+  // Connection settings
+  let connectionSettings = {
+    redisUrl: 'redis://localhost:6379',
+    zmqEndpoint: 'tcp://localhost:5555',
+    mt5Login: '',
+    mt5Password: '',
+    mt5Server: ''
+  };
+
+  // Security settings
+  let securitySettings = {
+    secretKeyConfigured: false,
+    secretKeyPrefix: ''
   };
 
   async function loadAgentsMd() {
@@ -768,6 +794,22 @@
           <Database size={16} />
           <span>Database</span>
         </button>
+        <button
+          class="tab"
+          class:active={activeTab === 'connection'}
+          on:click={() => activeTab = 'connection'}
+        >
+          <Server size={16} />
+          <span>Connection</span>
+        </button>
+        <button
+          class="tab"
+          class:active={activeTab === 'security'}
+          on:click={() => activeTab = 'security'}
+        >
+          <Lock size={16} />
+          <span>Security</span>
+        </button>
       </div>
 
       <!-- Settings Panels -->
@@ -1289,6 +1331,37 @@ Configure your agent behavior here..."
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        {/if}
+
+        <!-- Connection Settings -->
+        {#if activeTab === 'connection'}
+          <div class="panel">
+            <h3>Connection Settings</h3>
+
+            <div class="setting-group">
+              <label>Redis URL</label>
+              <input type="text" bind:value={connectionSettings.redisUrl} class="text-input" />
+            </div>
+
+            <div class="setting-group">
+              <label>ZMQ Endpoint</label>
+              <input type="text" bind:value={connectionSettings.zmqEndpoint} class="text-input" />
+            </div>
+
+            <h4>MetaTrader 5</h4>
+            <div class="setting-group">
+              <label>Login</label>
+              <input type="number" bind:value={connectionSettings.mt5Login} class="text-input" />
+            </div>
+            <div class="setting-group">
+              <label>Password</label>
+              <input type="password" bind:value={connectionSettings.mt5Password} class="text-input" />
+            </div>
+            <div class="setting-group">
+              <label>Server</label>
+              <input type="text" bind:value={connectionSettings.mt5Server} class="text-input" />
             </div>
           </div>
         {/if}
