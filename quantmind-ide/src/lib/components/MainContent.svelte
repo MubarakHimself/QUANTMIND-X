@@ -1299,7 +1299,7 @@
                 class="toolbar-btn primary"
                 on:click={() => openSubPage("nprd-modal")}
               >
-                <Plus size={14} /> Process NPRD
+                <Plus size={14} /> Video Ingest
               </button>
             {:else if activeView === "backtest"}
               <button
@@ -1317,7 +1317,7 @@
           <div class="modal-overlay">
             <div class="modal">
               <div class="modal-header">
-                <h2>Process NPRD</h2>
+                <h2>Video Ingest</h2>
                 <button
                   on:click={() =>
                     navigationStore.navigateToBreadcrumb(
@@ -2025,7 +2025,7 @@
               on:keydown={(e) => e.key === "Enter" && openSubPage("nprd-modal")}
             >
               <Plus size={32} />
-              <span>Process New NPRD</span>
+              <span>Video Ingest</span>
             </div>
           </div>
 

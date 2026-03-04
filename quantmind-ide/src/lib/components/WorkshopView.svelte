@@ -43,16 +43,6 @@
   $: memoryError = $memoryStore.error;
 
   // Trading Floor state
-  let isRunning = false;
-  let demoInterval: number | null = null;
-  const departments = ['analysis', 'research', 'risk', 'execution', 'portfolio'];
-  const sampleTasks = [
-    { from: 'analysis', to: 'execution', type: 'dispatch', subject: 'EURUSD Signal: BUY' },
-    { from: 'research', to: 'analysis', type: 'result', subject: 'Backtest Complete' },
-    { from: 'risk', to: 'execution', type: 'question', subject: 'Position Size Query' },
-    { from: 'analysis', to: 'portfolio', type: 'dispatch', subject: 'Market Update' },
-    { from: 'execution', to: 'risk', type: 'status', subject: 'Order Filled' },
-  ];
   $: floorStats = $tradingFloorStore.floorStats || { totalTasks: 0, activeTasks: 0 };
   $: isConnected = $wsConnected || false;
 
@@ -63,7 +53,6 @@
   });
 
   onDestroy(() => {
-    stopDemo();
     disconnectTradingFloorWS();
   });
 
@@ -90,76 +79,6 @@
       };
       addSubAgent('floor-manager', agent);
     });
-  }
-
-  function startDemo() {
-    if (isRunning) return;
-    isRunning = true;
-    demoInterval = window.setInterval(() => runDemoStep(), 2000);
-  }
-
-  function stopDemo() {
-    isRunning = false;
-    if (demoInterval) {
-      clearInterval(demoInterval);
-      demoInterval = null;
-    }
-  }
-
-  let stepCount = 0;
-  function runDemoStep() {
-    stepCount++;
-    const agentStates: AgentState['status'][] = ['thinking', 'typing', 'reading', 'idle'];
-    const randomDept = departments[stepCount % departments.length];
-    const randomState = agentStates[stepCount % agentStates.length];
-
-    updateAgentState(`${randomDept}-head`, {
-      status: randomState,
-      speechBubble: randomState === 'thinking'
-        ? { text: 'Analyzing...', type: 'thinking', duration: 2000 }
-        : undefined,
-    });
-
-    if (stepCount % 3 === 0) {
-      const task = sampleTasks[stepCount % sampleTasks.length];
-      sendMail({
-        id: `mail-${Date.now()}`,
-        fromDept: task.from,
-        toDept: task.to,
-        type: task.type as 'dispatch' | 'result' | 'question' | 'status',
-        subject: task.subject,
-        startX: 0,
-        startY: 0,
-        progress: 0,
-        duration: 1500,
-      });
-    }
-
-    if (stepCount % 5 === 0) {
-      const dept = departments[stepCount % departments.length];
-      const workerTypes: Record<string, string> = {
-        analysis: 'market_analyst',
-        research: 'backtester',
-        risk: 'position_sizer',
-        execution: 'order_router',
-        portfolio: 'rebalancer',
-      };
-      const parentPos = getPositionForDept(dept);
-      const subAgent: AgentState = {
-        id: `${dept}-worker-${stepCount}`,
-        name: workerTypes[dept] || 'worker',
-        department: dept,
-        status: 'thinking',
-        position: {
-          x: parentPos.x + (Math.random() * 60 - 30),
-          y: parentPos.y + (Math.random() * 60 - 30),
-        },
-        target: null,
-        subAgents: [],
-        isExpanded: false,
-      };
-      addSubAgent(`${dept}-head`, subAgent);
-    }
   }
 
   function getPositionForDept(dept: string): { x: number; y: number } {
@@ -225,12 +144,6 @@
           <Users size={16} />
           <span>Department Flow</span>
           <div class="tf-controls">
-            <button class="tf-btn-sm" on:click={startDemo} disabled={isRunning}>
-              {isRunning ? 'Running...' : 'Demo'}
-            </button>
-            <button class="tf-btn-sm tf-btn-secondary" on:click={stopDemo} disabled={!isRunning}>
-              Stop
-            </button>
             <button class="tf-btn-sm tf-btn-outline" on:click={initializeTradingFloor}>
               Reset
             </button>

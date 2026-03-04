@@ -10,12 +10,15 @@ from typing import Dict, List, Optional
 
 
 class Department(str, Enum):
-    """Trading Floor Departments (Option B)."""
+    """Trading Floor Departments."""
     RESEARCH = "research"
     DEVELOPMENT = "development"
     TRADING = "trading"
     RISK = "risk"
     PORTFOLIO = "portfolio"
+    # Legacy aliases for UI compatibility
+    ANALYSIS = "analysis"
+    EXECUTION = "execution"
 
 
 def get_model_tier(department: Department) -> str:

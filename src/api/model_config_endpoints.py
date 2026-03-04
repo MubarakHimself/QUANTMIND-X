@@ -32,6 +32,7 @@ PROVIDER_MODELS: Dict[str, List[dict]] = {
         {"id": "MiniMax-M2", "name": "MiniMax M2", "tier": "haiku"},
     ],
     ProviderType.ZHIPU.value: [
+        {"id": "glm-5", "name": "GLM-5 (Premium)", "tier": "opus"},
         {"id": "glm-4-plus", "name": "GLM-4 Plus", "tier": "sonnet"},
         {"id": "glm-4-flash", "name": "GLM-4 Flash", "tier": "haiku"},
     ],

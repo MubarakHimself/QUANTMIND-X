@@ -153,7 +153,7 @@
           <button class="action-btn">
             <span class="icon">📹</span>
             <div class="action-text">
-              <span class="action-title">Process New NPRD</span>
+              <span class="action-title">Video Ingest</span>
               <span class="action-desc">Upload YouTube video</span>
             </div>
           </button>

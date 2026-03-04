@@ -400,6 +400,154 @@ async def get_trade_stats(mode: str = Query("all", description="Filter by mode (
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# Pydantic models for video strategies response
+class VideoStrategyResponse(BaseModel):
+    """Response model for video strategy."""
+    strategy_id: str
+    name: str
+    video_id: str
+    trd_file: str
+    config_file: str
+    created_at: str
+    tags: List[str]
+    symbols: List[str]
+    timeframes: List[str]
+    strategy_type: str
+    has_ea_code: bool
+    has_backtest_reports: bool
+
+
+# Video Strategies Endpoints
+@router.get("/video-strategies", response_model=List[VideoStrategyResponse])
+async def list_video_strategies():
+    """
+    List all processed video strategies from YouTube.
+
+    Returns:
+        List of video strategies with their TRD and metadata
+    """
+    from pathlib import Path
+    import json
+    import os
+
+    strategies_dir = Path("/home/mubarkahimself/Desktop/QUANTMINDX/src/strategies-yt")
+    strategies = []
+
+    if not strategies_dir.exists():
+        return strategies
+
+    for strategy_folder in strategies_dir.iterdir():
+        if not strategy_folder.is_dir():
+            continue
+
+        # Skip non-strategy directories
+        if strategy_folder.name.startswith('.') or strategy_folder.name == 'prompts':
+            continue
+
+        # Find TRD file
+        trd_file = None
+        config_file = None
+
+        for file in strategy_folder.iterdir():
+            if file.name.endswith('_TRD.md'):
+                trd_file = str(file)
+            elif file.name.endswith('_config.json'):
+                config_file = str(file)
+
+        if not trd_file:
+            continue
+
+        # Read config if available
+        config_data = {}
+        if config_file and Path(config_file).exists():
+            try:
+                with open(config_file, 'r') as f:
+                    config_data = json.load(f)
+            except Exception as e:
+                logger.warning(f"Failed to read config for {strategy_folder.name}: {e}")
+
+        # Check for EA code and backtest reports
+        ea_output_path = Path("/home/mubarkahimself/Desktop/QUANTMINDX/output/expert_advisors")
+        ea_code_name = config_data.get('ea_id', strategy_folder.name)
+        has_ea_code = False
+
+        if ea_output_path.exists():
+            for ea_file in ea_output_path.glob("*.mq5"):
+                if ea_code_name.lower() in ea_file.stem.lower():
+                    has_ea_code = True
+                    break
+
+        # Check for backtest reports
+        backtest_path = Path("/home/mubarkahimself/Desktop/QUANTMINDX/output/backtests")
+        has_backtest_reports = False
+        if backtest_path.exists():
+            for bt_file in backtest_path.rglob(f"*{ea_code_name}*"):
+                if bt_file.suffix in ['.html', '.xml', '.json']:
+                    has_backtest_reports = True
+                    break
+
+        # Extract video ID from folder name
+        video_id = strategy_folder.name.replace('strategy_from_', '')
+
+        strategies.append(VideoStrategyResponse(
+            strategy_id=strategy_folder.name,
+            name=config_data.get('name', strategy_folder.name.replace('_', ' ').title()),
+            video_id=video_id,
+            trd_file=trd_file,
+            config_file=config_file or "",
+            created_at=config_data.get('created_at', ''),
+            tags=config_data.get('tags', []),
+            symbols=config_data.get('symbols', {}).get('primary', []),
+            timeframes=config_data.get('symbols', {}).get('timeframes', []),
+            strategy_type=config_data.get('strategy', {}).get('type', 'UNKNOWN'),
+            has_ea_code=has_ea_code,
+            has_backtest_reports=has_backtest_reports
+        ))
+
+    # Sort by creation date (newest first)
+    strategies.sort(key=lambda x: x.created_at, reverse=True)
+
+    return strategies
+
+
+@router.get("/video-strategies/{strategy_id}/trd")
+async def get_strategy_trd(strategy_id: str):
+    """
+    Get TRD content for a video strategy.
+
+    Args:
+        strategy_id: Strategy identifier
+
+    Returns:
+        TRD content as markdown
+    """
+    from pathlib import Path
+
+    strategies_dir = Path("/home/mubarkahimself/Desktop/QUANTMINDX/src/strategies-yt")
+    strategy_folder = strategies_dir / strategy_id
+
+    if not strategy_folder.exists():
+        raise HTTPException(status_code=404, detail=f"Strategy not found: {strategy_id}")
+
+    # Find TRD file
+    trd_file = None
+    for file in strategy_folder.iterdir():
+        if file.name.endswith('_TRD.md'):
+            trd_file = file
+            break
+
+    if not trd_file or not trd_file.exists():
+        raise HTTPException(status_code=404, detail=f"TRD file not found for: {strategy_id}")
+
+    content = trd_file.read_text()
+
+    return {
+        "strategy_id": strategy_id,
+        "content": content,
+        "file_path": str(trd_file)
+    }
+
+
 # Health check endpoint
 @router.get("/demo-mode/health")
 async def demo_mode_health():

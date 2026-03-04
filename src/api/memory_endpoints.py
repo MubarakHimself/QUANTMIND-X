@@ -405,12 +405,42 @@ async def toggle_cron_job(job_id: str, enabled: bool):
 
 
 # =============================================================================
-# Memory ID Endpoints (MUST BE LAST - catch-all routes)
+# Department Memory Compatibility Routes (MUST BE BEFORE catch-all)
+# =============================================================================
+# These routes must come BEFORE the memory_id catch-all to take precedence
+
+# Valid department names
+_VALID_DEPARTMENTS = {"analysis", "research", "risk", "execution", "portfolio", "development", "trading", "floor_manager"}
+
+
+@router.get("/department/{department}")
+async def get_department_memory_forward(department: str) -> Dict[str, Any]:
+    """Forward to department memory endpoint."""
+    return await get_department_memory(department)
+
+
+@router.get("/department/{department}/stats")
+async def get_department_stats_forward(department: str) -> Dict[str, Any]:
+    """Forward to department stats endpoint."""
+    return await get_department_memory_stats(department)
+
+
+@router.get("/department/{department}/logs")
+async def get_department_logs_forward(department: str) -> Dict[str, Any]:
+    """Forward to department logs endpoint."""
+    return await get_daily_logs(department)
+
+
+# =============================================================================
+# Memory ID Endpoints (catch-all routes - MUST BE LAST)
 # =============================================================================
 
-@router.get("/{memory_id}", response_model=MemoryEntry)
+@router.get("/{memory_id}")
 async def get_memory(memory_id: str):
-    """Get a specific memory by ID."""
+    """Get a specific memory by ID or department memory."""
+    # Check if it's a department name first
+    if memory_id in _VALID_DEPARTMENTS:
+        return await get_department_memory(memory_id)
     if memory_id not in _memory_store:
         raise HTTPException(status_code=404, detail="Memory not found")
     return _memory_store[memory_id]
