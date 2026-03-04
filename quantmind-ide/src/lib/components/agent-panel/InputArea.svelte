@@ -380,6 +380,13 @@
 
   // Get short model name
   function getShortModelName(model: string): string {
+    // Handle GLM models (e.g., "glm-4-flash" -> "GLM-4", "glm-5" -> "GLM-5")
+    if (model.startsWith('glm-')) {
+      const glmPart = model.replace('glm-', 'GLM-');
+      // Keep "GLM-4-flash" or "GLM-5"
+      return glmPart;
+    }
+    // Handle other models with "-" (e.g., "claude-sonnet-4-20250514" -> "Claude Sonnet")
     const parts = model.split("-");
     if (parts.length > 2) {
       return parts.slice(0, 2).join("-");

@@ -546,7 +546,7 @@
         
         <!-- Model selector inside input -->
         <div class="model-selector" on:click={() => showModelDropdown = !showModelDropdown}>
-          <span class="selected-model">{selectedModel.split('-').slice(0, 2).join('-')}</span>
+          <span class="selected-model">{selectedModel.startsWith('glm-') ? selectedModel.replace('glm-', 'GLM-').toUpperCase() : selectedModel.split('-').slice(0, 2).join('-')}</span>
           <ChevronDown size={12} />
           
           {#if showModelDropdown}
