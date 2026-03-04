@@ -4,6 +4,7 @@ SDK Orchestrator for Claude Agent SDK
 Replaces ClaudeOrchestrator's subprocess spawning with direct SDK calls.
 Eliminates nested session error and enables true streaming.
 Supports multiple providers: Anthropic and Z.AI.
+Supports GLM thinking mode and caching.
 """
 
 import asyncio
@@ -19,9 +20,19 @@ from src.agents.sdk_config import (
     load_system_prompt,
     get_provider_config,
     get_model_for_tier,
+    get_thinking_config,
 )
 
 logger = logging.getLogger(__name__)
+
+# Thinking mode configuration for GLM models
+GLM_THINKING_MODES = {
+    "interleaved": "interleaved",
+    "preserved": "preserved",
+    "turn_level": "turn_level",
+    "enabled": "enabled",
+    "disabled": "disabled",
+}
 
 # Check if SDK is available
 SDK_AVAILABLE = False
@@ -40,14 +51,48 @@ class SDKOrchestrator:
     No subprocess spawning - uses in-process SDK calls.
     Supports both stateless queries and streaming.
     Supports multiple providers (Anthropic, Z.AI).
+    Supports GLM thinking mode and caching.
     """
 
-    def __init__(self):
-        """Initialize the SDK orchestrator."""
+    def __init__(
+        self,
+        thinking_mode: Optional[str] = None,
+        thinking_type: Optional[str] = None,
+        thinking: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Initialize the SDK orchestrator.
+
+        Args:
+            thinking_mode: Thinking mode for GLM models (interleaved, preserved, turn_level, enabled, disabled)
+            thinking_type: Legacy thinking type (enabled/disabled)
+            thinking: Custom thinking configuration dict
+        """
         self._client = None
         self._active_sessions: Dict[str, Any] = {}
         self._provider_config = get_provider_config()
-        logger.info(f"SDKOrchestrator initialized with provider: {self._provider_config['provider']}")
+
+        # GLM thinking configuration
+        # GLM-5 and GLM-4.7 have thinking enabled by default
+        # Modes: Interleaved, Preserved, Turn-level
+        # For preserved thinking, must return reasoning_content back to API
+        if thinking is not None:
+            self._thinking = thinking
+        else:
+            # Use environment config as default, with optional overrides
+            env_thinking = get_thinking_config()
+            provider = self._provider_config["provider"]
+
+            if provider == "zai":
+                self._thinking = {
+                    "type": thinking_type or env_thinking.get("type", "enabled"),
+                    "mode": thinking_mode or env_thinking.get("mode", "interleaved"),
+                    "clear_thinking": env_thinking.get("clear_thinking", False),
+                }
+            else:
+                self._thinking = {"type": "disabled"}
+
+        logger.info(f"SDKOrchestrator initialized with provider: {self._provider_config['provider']}, thinking: {self._thinking}")
 
     @property
     def client(self):
@@ -106,19 +151,33 @@ class SDKOrchestrator:
             # Get provider-aware model
             model = self.get_model("sonnet")  # Use sonnet tier by default
 
-            # Make API call
+            # Make API call with thinking support for GLM models
+            thinking_param = None
+            if self._provider_config.get("provider") == "zai" and self._thinking.get("type") != "disabled":
+                thinking_param = self._thinking
+
             response = self.client.messages.create(
                 model=model,
                 max_tokens=4096,
                 system=system_prompt[:100000] if system_prompt else None,  # Limit system prompt
                 messages=api_messages,
+                thinking=thinking_param,
             )
 
-            # Extract text content
+            # Extract text content and reasoning (for preserved thinking mode)
             output = ""
+            reasoning_content = ""
             for block in response.content:
                 if hasattr(block, 'text'):
                     output += block.text
+                # Extract reasoning content from thinking blocks
+                if hasattr(block, 'type') and block.type == 'thinking':
+                    reasoning_content += str(block.thinking) if hasattr(block, 'thinking') else ""
+
+            # Extract cache usage (cached_tokens in usage.prompt_tokens_details)
+            cached_tokens = 0
+            if hasattr(response.usage, 'prompt_tokens_details') and response.usage.prompt_tokens_details:
+                cached_tokens = getattr(response.usage.prompt_tokens_details, 'cached_tokens', 0) or 0
 
             return {
                 "status": "completed",
@@ -126,9 +185,16 @@ class SDKOrchestrator:
                 "agent_id": agent_id,
                 "model": model,
                 "provider": self._provider_config["provider"],
+                "thinking": {
+                    "enabled": thinking_param is not None,
+                    "mode": self._thinking.get("mode", "disabled") if thinking_param else "disabled",
+                    "reasoning_content": reasoning_content if reasoning_content else None,
+                },
                 "usage": {
                     "input_tokens": response.usage.input_tokens,
                     "output_tokens": response.usage.output_tokens,
+                    "cached_tokens": cached_tokens,
+                    "cache_discount": "50%" if cached_tokens > 0 else None,
                 },
                 "completed_at": datetime.utcnow().isoformat(),
             }
@@ -202,24 +268,46 @@ class SDKOrchestrator:
             # Get provider-aware model
             model = self.get_model("sonnet")  # Use sonnet tier by default
 
+            # Prepare thinking parameter for GLM models
+            thinking_param = None
+            if self._provider_config.get("provider") == "zai" and self._thinking.get("type") != "disabled":
+                thinking_param = self._thinking
+
             # Stream from API
             full_output = ""
+            full_reasoning = ""
             with self.client.messages.stream(
                 model=model,
                 max_tokens=4096,
                 system=system_prompt[:100000] if system_prompt else None,
                 messages=api_messages,
+                thinking=thinking_param,
             ) as stream:
-                for text in stream.text_stream:
-                    full_output += text
-                    yield {
-                        "type": "text",
-                        "delta": text,
-                        "agent_id": agent_id,
-                    }
+                for event in stream:
+                    # Handle text deltas
+                    if event.type == "content_block_delta":
+                        if event.delta.type == "text_delta":
+                            full_output += event.delta.text
+                            yield {
+                                "type": "text",
+                                "delta": event.delta.text,
+                                "agent_id": agent_id,
+                            }
+                        elif event.delta.type == "thinking_delta":
+                            full_reasoning += event.delta.thinking
+                            yield {
+                                "type": "thinking",
+                                "delta": event.delta.thinking,
+                                "agent_id": agent_id,
+                            }
 
                 # Get final message for usage stats
                 final_message = stream.get_final_message()
+
+            # Extract cache usage (cached_tokens in usage.prompt_tokens_details)
+            cached_tokens = 0
+            if hasattr(final_message.usage, 'prompt_tokens_details') and final_message.usage.prompt_tokens_details:
+                cached_tokens = getattr(final_message.usage.prompt_tokens_details, 'cached_tokens', 0) or 0
 
             yield {
                 "type": "completed",
@@ -227,9 +315,16 @@ class SDKOrchestrator:
                 "output": full_output,
                 "model": model,
                 "provider": self._provider_config["provider"],
+                "thinking": {
+                    "enabled": thinking_param is not None,
+                    "mode": self._thinking.get("mode", "disabled") if thinking_param else "disabled",
+                    "reasoning_content": full_reasoning if full_reasoning else None,
+                },
                 "usage": {
                     "input_tokens": final_message.usage.input_tokens,
                     "output_tokens": final_message.usage.output_tokens,
+                    "cached_tokens": cached_tokens,
+                    "cache_discount": "50%" if cached_tokens > 0 else None,
                 },
                 "timestamp": datetime.utcnow().isoformat(),
             }

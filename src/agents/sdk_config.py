@@ -95,10 +95,18 @@ def get_provider_config() -> Dict[str, str]:
     provider = os.getenv("LLM_PROVIDER", "zai").lower()
 
     if provider == "zai":
+        # Support both ZAI_API_KEY and ZHIPU_API_KEY for GLM
+        api_key = os.getenv("ZAI_API_KEY") or os.getenv("ZHIPU_API_KEY", "")
         return {
             "provider": "zai",
-            "api_key": os.getenv("ZAI_API_KEY", ""),
+            "api_key": api_key,
             "base_url": os.getenv("ZAI_BASE_URL", "https://api.z.ai/api/anthropic"),
+        }
+    elif provider == "zhipu":
+        return {
+            "provider": "zai",  # Zhipu uses Z.AI endpoint
+            "api_key": os.getenv("ZHIPU_API_KEY", ""),
+            "base_url": os.getenv("ZHIPU_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"),
         }
     else:
         return {
@@ -106,6 +114,23 @@ def get_provider_config() -> Dict[str, str]:
             "api_key": os.getenv("ANTHROPIC_API_KEY", ""),
             "base_url": None,  # Use default Anthropic URL
         }
+
+
+def get_thinking_config() -> Dict[str, Any]:
+    """
+    Get GLM thinking mode configuration from environment.
+
+    Returns:
+        Dictionary with thinking configuration
+    """
+    thinking_type = os.getenv("GLM_THINKING_TYPE", "enabled")
+    thinking_mode = os.getenv("GLM_THINKING_MODE", "interleaved")
+
+    return {
+        "type": thinking_type,
+        "mode": thinking_mode,
+        "clear_thinking": os.getenv("GLM_CLEAR_THINKING", "false").lower() == "true",
+    }
 
 
 def get_model_for_tier(tier: str = "sonnet") -> str:
