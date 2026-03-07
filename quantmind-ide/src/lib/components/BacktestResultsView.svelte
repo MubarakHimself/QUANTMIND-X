@@ -97,7 +97,15 @@
   // Forward Test State
   let forwardTestRunning = false;
   let forwardTestProgress = 0;
-  let forwardTestResults: any = null;
+  let forwardTestResults: {
+    sharpeRatio: number;
+    maxDrawdown: number;
+    winRate: number;
+    profitFactor: number;
+    totalTrades: number;
+  } | null = null;
+  let loadError: string | null = null;
+  let actionError: string | null = null;
 
   // Monte Carlo Settings
   let monteCarloSettings = {
@@ -130,14 +138,16 @@
 
   async function loadBacktestResults() {
     loading = true;
+    loadError = null;
+    actionError = null;
     try {
       results = await listBacktestResults();
       calculateAggregateStats();
     } catch (e) {
       console.error('Failed to load backtest results:', e);
-      // Use demo results when API is unavailable
-      results = demoResults;
+      results = [];
       calculateAggregateStats();
+      loadError = 'Failed to load backtest results from the backend.';
     } finally {
       loading = false;
     }
@@ -252,7 +262,18 @@
   }
 
   function exportResults(format: 'json' | 'csv' | 'pine') {
+    actionError = null;
     const currentResults = getTestTypeResults(activeTab);
+
+    if (currentResults.length === 0) {
+      actionError = 'No backtest results available to export for the selected view.';
+      return;
+    }
+
+    if (format === 'pine' && currentResults[0] == null) {
+      actionError = 'No backtest result available to convert into Pine Script.';
+      return;
+    }
 
     if (format === 'json') {
       const blob = new Blob([JSON.stringify(currentResults, null, 2)], {
@@ -348,29 +369,16 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
 
   // Forward Test
   async function runForwardTest() {
-    forwardTestRunning = true;
+    actionError = 'Forward testing is not available from this view yet. Trigger it from the backend workflow before displaying results here.';
+    forwardTestRunning = false;
     forwardTestProgress = 0;
-    
-    // Simulate forward test progress
-    const interval = setInterval(() => {
-      forwardTestProgress += 5;
-      if (forwardTestProgress >= 100) {
-        clearInterval(interval);
-        forwardTestRunning = false;
-        forwardTestResults = {
-          sharpeRatio: 1.92,
-          maxDrawdown: 0.12,
-          winRate: 0.62,
-          profitFactor: 1.85,
-          totalTrades: 45
-        };
-      }
-    }, 200);
+    forwardTestResults = null;
   }
 
   // Monte Carlo Simulation
   async function runMonteCarlo() {
     loading = true;
+    actionError = null;
     try {
       const data = await runMonteCarloSimulation({
         strategyId: filters.strategy,
@@ -381,7 +389,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
       activeTab = 'monte_carlo';
     } catch (e) {
       console.error('Monte Carlo simulation failed:', e);
-      results = [];
+      actionError = 'Monte Carlo simulation failed. Check backend availability and try again.';
     } finally {
       loading = false;
     }
@@ -423,8 +431,6 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
 
       if (returnsSeries.length < 10) {
         pboError = 'Insufficient data. Need at least 10 data points for PBO calculation.';
-        // Use mock data for demonstration
-        pboResults = generateMockPBOResults();
       } else {
         try {
           pboResults = await calculatePbo({
@@ -433,31 +439,17 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
             n_simulations: pboSettings.n_simulations
           });
         } catch {
-          pboError = 'PBO calculation failed. Using demo results.';
-          pboResults = generateMockPBOResults();
+          pboError = 'PBO calculation failed.';
         }
       }
 
       activeTab = 'pbo_analysis';
     } catch (e) {
       console.error('PBO analysis failed:', e);
-      pboError = 'PBO calculation failed. Using demo results.';
-      pboResults = generateMockPBOResults();
+      pboError = 'PBO calculation failed.';
     } finally {
       pboLoading = false;
     }
-  }
-
-  function generateMockPBOResults(): PBOResult {
-    return {
-      pbo: 0.18,
-      recommendation: 'ACCEPT',
-      reason: 'Low probability of overfitting - strategy appears robust',
-      first_half_return: 0.0525,
-      second_half_return: 0.0482,
-      return_drift: 0.0043,
-      confidence_interval: [-0.02, 0.12]
-    };
   }
 
   function getRecommendationColor(recommendation: string): string {
@@ -488,50 +480,6 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   function compareResults() {
     showModeComparison = true;
   }
-
-  // Demo results for when API is unavailable
-  const demoResults: BacktestResult[] = [
-    {
-      test_type: 'historical',
-      mode: 'MODE_C',
-      version: 'spiced',
-      sharpe_ratio: 1.85,
-      max_drawdown: 0.15,
-      total_trades: 156,
-      win_rate: 0.62,
-      profit_factor: 1.92,
-      status: 'PASS',
-      trades: [],
-      metadata: {
-        startDate: '2024-01-01',
-        endDate: '2024-12-31',
-        initialCapital: 10000,
-        finalCapital: 14250,
-        totalReturn: 0.425
-      }
-    },
-    {
-      test_type: 'monte_carlo',
-      mode: 'MODE_C',
-      version: 'spiced',
-      sharpe_ratio: 2.55,
-      max_drawdown: 0.10,
-      total_trades: 50000,
-      win_rate: 0.65,
-      profit_factor: 2.25,
-      status: 'PASS',
-      confidence: 0.95,
-      num_runs: 1000,
-      trades: [],
-      metadata: {
-        startDate: '2024-01-01',
-        endDate: '2024-12-31',
-        initialCapital: 10000,
-        finalCapital: 14950,
-        totalReturn: 0.495
-      }
-    }
-  ];
 
   $: currentResults = getTestTypeResults(activeTab);
   $: filteredTrades = currentResults.length > 0 ? currentResults[0].trades.filter(t => {
@@ -769,9 +717,22 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     {#if loading || pboLoading}
       <div class="loading-state">
         <div class="spinner"></div>
-        <p>{pboLoading ? 'Calculating PBO...' : 'Running backtest...'}</p>
+        <p>{pboLoading ? 'Calculating PBO...' : 'Loading backtest results...'}</p>
       </div>
-    {:else if activeTab === 'pbo_analysis'}
+    {:else}
+      {#if loadError}
+        <div class="pbo-error">
+          <AlertTriangle size={20} />
+          <p>{loadError}</p>
+        </div>
+      {/if}
+      {#if actionError}
+        <div class="pbo-error">
+          <AlertTriangle size={20} />
+          <p>{actionError}</p>
+        </div>
+      {/if}
+      {#if activeTab === 'pbo_analysis'}
       <!-- PBO Analysis Display -->
       {#if pboError}
         <div class="pbo-error">
@@ -1195,6 +1156,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
           </div>
         </div>
       {/if}
+    {/if}
     {/if}
   </div>
 
