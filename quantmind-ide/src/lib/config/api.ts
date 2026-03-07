@@ -12,6 +12,11 @@ export const API_CONFIG = {
   // Local development
   LOCAL_API_URL: import.meta.env.VITE_LOCAL_API_URL || 'http://localhost:8000',
 
+  // Direct backend origin without /api suffix
+  get DIRECT_API_URL() {
+    return this.API_URL;
+  },
+
   // Cloudzy production (for data access) - use env var override
   get CLOUDZY_API_URL() {
     return import.meta.env.VITE_CLOUDZY_API_URL || 'http://localhost:8000';

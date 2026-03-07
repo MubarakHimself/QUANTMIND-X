@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
+  import { API_CONFIG } from '$lib/config/api';
   import { 
     WebSocketClient, 
     createBacktestClient
@@ -7,7 +8,7 @@
   import type { WebSocketMessage } from '../ws-client';
   
   // Props
-  export let baseUrl: string = 'http://localhost:8000';
+  export let baseUrl: string = API_CONFIG.DIRECT_API_URL;
   export let strategyCode: string = '';
   export let strategyName: string = 'MyStrategy';
   

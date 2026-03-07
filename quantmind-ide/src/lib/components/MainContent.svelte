@@ -7,6 +7,7 @@
     fetchBacktestHistory,
     fetchBacktestTrades,
     fetchKnowledgeContent,
+    fetchAssetContent,
     fetchKnowledgeIndex,
     fetchRelatedKnowledge,
     fetchStrategiesIndex,
@@ -14,6 +15,10 @@
     fetchTradingStatus,
     uploadKnowledgeFile,
     uploadKnowledgeNote,
+    processVideoIngest,
+    controlTradingBot,
+    triggerTradingKillSwitch,
+    updateKnowledgeArticle,
   } from "$lib/services/mainContentApi";
   import {
     BookOpen,
@@ -657,24 +662,15 @@
 
     try {
       // Fetch content from API
-      const contentRes = await fetch(
-        `http://localhost:8000/api/knowledge/${encodeURIComponent(item.id || item.path)}/content`,
-      );
       let content = "";
 
-      if (contentRes.ok) {
-        const data = await contentRes.json();
+      try {
+        const data = await fetchKnowledgeContent(item.id || item.path);
         content = data.content || "";
-      } else {
-        // Try alternative endpoint for assets
+      } catch {
         try {
-          const assetRes = await fetch(
-            `http://localhost:8000/api/assets/${item.id}/content`,
-          );
-          if (assetRes.ok) {
-            const assetData = await assetRes.json();
-            content = assetData.content || "";
-          }
+          const assetData = await fetchAssetContent(item.id);
+          content = assetData.content || "";
         } catch {
           content = `// Could not load content for ${item.name}`;
         }
@@ -866,12 +862,10 @@
     if (!videoIngestUrl || !videoIngestName) return;
 
     try {
-      const res = await fetch("http://localhost:8000/api/videoIngest/process", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: videoIngestUrl, strategy_name: videoIngestName }),
+      const data = await processVideoIngest({
+        url: videoIngestUrl,
+        strategy_name: videoIngestName,
       });
-      const data = await res.json();
       videoIngestQueue = [
         ...videoIngestQueue,
         { id: data.job_id, name: videoIngestName, status: "processing", progress: 0 },
@@ -885,18 +879,14 @@
   }
 
   async function handleTagChange(botId: string, newTag: string) {
-    await fetch("http://localhost:8000/api/trading/bots/control", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        bot_id: botId,
-        action:
-          newTag === "quarantined"
-            ? "quarantine"
-            : newTag === "paused"
-              ? "pause"
-              : "resume",
-      }),
+    await controlTradingBot({
+      bot_id: botId,
+      action:
+        newTag === "quarantined"
+          ? "quarantine"
+          : newTag === "paused"
+            ? "pause"
+            : "resume",
     });
   }
 
@@ -906,7 +896,7 @@
         "⚠️ KILL SWITCH: This will stop ALL trading immediately. Are you sure?",
       )
     ) {
-      await fetch("http://localhost:8000/api/trading/kill", { method: "POST" });
+      await triggerTradingKillSwitch();
     }
   }
 
@@ -1193,22 +1183,10 @@
     if (!viewingArticle) return;
 
     try {
-      const res = await fetch(
-        `http://localhost:8000/api/knowledge/${viewingArticle.id}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: articleEditContent }),
-        },
-      );
-
-      if (res.ok) {
-        viewingArticle.content = articleEditContent;
-        editMode = false;
-        alert("Article saved successfully");
-      } else {
-        alert("Failed to save article");
-      }
+      await updateKnowledgeArticle(viewingArticle.id, articleEditContent);
+      viewingArticle.content = articleEditContent;
+      editMode = false;
+      alert("Article saved successfully");
     } catch (e) {
       alert("Failed to save: " + (e as Error).message);
     }
@@ -1488,7 +1466,7 @@
           <LiveTradingView />
         {:else if activeView === "paper-trading"}
           <!-- Paper Trading View -->
-          <PaperTradingPanel baseUrl="http://localhost:8000" />
+          <PaperTradingPanel />
         {:else if activeView === "router"}
           <!-- Strategy Router View -->
           <StrategyRouterView />

@@ -36,6 +36,10 @@ export function fetchKnowledgeContent(articleIdOrPath: string) {
   return fetchJson<{ content: string }>(`/knowledge/${encodeURIComponent(articleIdOrPath)}/content`);
 }
 
+export function fetchAssetContent(assetId: string) {
+  return fetchJson<{ content: string }>(`/assets/${encodeURIComponent(assetId)}/content`);
+}
+
 export function fetchRelatedKnowledge(articleId: string, limit = 5) {
   return fetchJson<any[]>(`/knowledge/related?id=${encodeURIComponent(articleId)}&limit=${limit}`);
 }
@@ -54,4 +58,34 @@ export function fetchTradingStatus() {
 
 export function fetchTradingBots() {
   return fetchJson<any[]>(`/trading/bots`);
+}
+
+export function processVideoIngest(payload: { url: string; strategy_name: string }) {
+  return fetchJson<{ job_id: string }>(`/videoIngest/process`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function controlTradingBot(payload: { bot_id: string; action: string }) {
+  return fetchJson<any>(`/trading/bots/control`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function triggerTradingKillSwitch() {
+  return fetchJson<any>(`/trading/kill`, {
+    method: "POST",
+  });
+}
+
+export function updateKnowledgeArticle(articleId: string, content: string) {
+  return fetchJson<any>(`/knowledge/${encodeURIComponent(articleId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
 }
