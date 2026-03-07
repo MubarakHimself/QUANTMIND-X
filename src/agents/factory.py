@@ -1,12 +1,13 @@
 """
-Agent Factory for Factory-Based Agent Creation
+Agent Factory for Factory-Based Agent Creation.
 
 Provides centralized agent creation with dependency injection,
-observability hooks, and ClaudeOrchestrator integration.
+observability hooks, and compatibility wrappers for older factory-driven
+callers.
 
-**Validates: Phase 1.4 - Agent Factory**
-
-DEPRECATED: LangGraph imports removed. Use ClaudeOrchestrator instead.
+Canonical runtime path: prefer the ClaudeOrchestrator-based stack for all new
+agent flows. This module is retained as a legacy compatibility layer while the
+remaining call sites are migrated.
 """
 
 import logging
@@ -170,7 +171,7 @@ class AgentFactory:
     Handles dependency resolution, graph building, and compilation.
     Now uses simple workflow wrappers instead of LangGraph.
 
-    DEPRECATED: Use ClaudeOrchestrator instead.
+    Legacy compatibility layer: prefer ClaudeOrchestrator for new code.
     """
 
     def __init__(self, container: Optional[DependencyContainer] = None):

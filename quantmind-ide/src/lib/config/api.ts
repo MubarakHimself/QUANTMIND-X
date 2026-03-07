@@ -10,7 +10,7 @@
 // API endpoint configuration
 export const API_CONFIG = {
   // Local development
-  LOCAL_API_URL: 'http://localhost:8000',
+  LOCAL_API_URL: import.meta.env.VITE_LOCAL_API_URL || 'http://localhost:8000',
 
   // Cloudzy production (for data access) - use env var override
   get CLOUDZY_API_URL() {

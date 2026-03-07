@@ -8,7 +8,7 @@
   import type { WebSocketMessage } from '../ws-client';
 
   // Props
-  export let baseUrl: string = 'http://localhost:8000';
+  export let baseUrl: string = '';
 
   // Types
   interface BacktestMetrics {

@@ -3,8 +3,12 @@ QuantMind Agent Skill System
 Defines the structure for modular capabilities (Skills) that can be attached to Agents.
 """
 
-from typing import List, Optional
-from langchain_core.tools import BaseTool
+from typing import Any, List, Optional
+
+try:
+    from langchain_core.tools import BaseTool
+except ImportError:  # pragma: no cover - optional legacy dependency
+    BaseTool = Any
 
 class AgentSkill:
     """

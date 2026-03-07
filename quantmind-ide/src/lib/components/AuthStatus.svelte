@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { settingsStore } from '$lib/stores/settingsStore';
+  import { postJson } from '$lib/services/componentApi';
   import { CheckCircle, XCircle, AlertCircle, Key, User, Wifi, WifiOff } from 'lucide-svelte';
 
   // Reactive state from settings store
@@ -90,12 +91,8 @@
 
   async function testGeminiConnection(): Promise<boolean> {
     try {
-      const response = await fetch('http://localhost:8000/api/ai/test-connection', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: 'google' })
-      });
-      return response.ok;
+      await postJson('/ai/test-connection', { provider: 'google' });
+      return true;
     } catch {
       return false;
     }
@@ -103,12 +100,8 @@
 
   async function testQwenConnection(): Promise<boolean> {
     try {
-      const response = await fetch('http://localhost:8000/api/ai/test-connection', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: 'qwen' })
-      });
-      return response.ok;
+      await postJson('/ai/test-connection', { provider: 'qwen' });
+      return true;
     } catch {
       return false;
     }
