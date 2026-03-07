@@ -151,8 +151,8 @@ scripts/articles/
 # ============================================================
 # BINARY & LARGE FILES
 # ============================================================
-# PDFs
-*.pdf
+# PDFs - Uncomment to ignore PDFs
+# *.pdf
 
 # Images
 *.png
@@ -164,21 +164,22 @@ scripts/articles/
 *.webp
 *.bmp
 
-# Fonts
-*.woff
-*.woff2
-*.ttf
-*.eot
-*.otf
+# Audio
+*.mp3
+*.wav
+*.ogg
+*.flac
+*.aac
+*.m4a
 
-# Archives
-*.zip
-*.tar
-*.tar.gz
-*.tgz
-*.gz
-*.rar
-*.7z
+# Video
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.wmv
+*.flv
+*.webm
 
 # ============================================================
 # BUILD OUTPUTS & GENERATED FILES
@@ -249,12 +250,6 @@ TASK_GROUP*.md
 # Docker dev summaries
 docker/**/DOCKER_SETUP_*.md
 
-# Keep documentation files
-!docs/
-!**/README.md
-!**/CLAUDE.md
-!**/ARCHITECTURE.md
-
 # ============================================================
 # COVERAGE & TEST REPORTS
 # ============================================================
@@ -283,4 +278,6 @@ pytestdebug.log
 !README.md
 !LICENSE
 !CONTRIBUTING.md
-!docs/
+
+# Exclude docs directory from GitHub pushes
+docs/
