@@ -11,6 +11,22 @@
   } from 'lucide-svelte';
   import ThemeSelector from './ThemeSelector.svelte';
   import {
+    createSettingKey,
+    deleteSettingKey,
+    listSettingKeys,
+    createMcpServer,
+    updateMcpServer,
+    deleteMcpServer,
+    listMcpServers,
+    getAgentsMarkdown,
+    saveAgentsMarkdown,
+    getGeneralSettings,
+    saveGeneralSettings,
+    getRiskSettings,
+    saveRiskSettings,
+    getDatabaseSettings,
+  } from '$lib/services/settingsApi';
+  import {
     ApiKeysPanel,
     McpServersPanel,
     AgentsPanel,
@@ -260,20 +276,10 @@
     };
 
     try {
-      const res = await fetch('http://localhost:8000/api/settings/keys', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(apiKey)
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        apiKeys = [...apiKeys, data];
-        newApiKey = { name: '', key: '', service: 'openai' };
-        apiKeyModal = false;
-      } else {
-        throw new Error('Failed to add API key');
-      }
+      const data = await createSettingKey(apiKey);
+      apiKeys = [...apiKeys, data];
+      newApiKey = { name: '', key: '', service: 'openai' };
+      apiKeyModal = false;
     } catch (e) {
       console.error('Failed to add API key:', e);
     }
@@ -283,9 +289,7 @@
     apiKeys = apiKeys.filter(k => k.id !== id);
 
     try {
-      await fetch(`http://localhost:8000/api/settings/keys/${id}`, {
-        method: 'DELETE'
-      });
+      await deleteSettingKey(id);
     } catch (e) {
       console.error('Failed to remove API key:', e);
     }
@@ -306,20 +310,10 @@
     };
 
     try {
-      const res = await fetch('http://localhost:8000/api/settings/mcp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(server)
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        mcpServers = [...mcpServers, data];
-        newMcpServer = { name: '', command: '', args: '', description: '' };
-        mcpModalOpen = false;
-      } else {
-        throw new Error('Failed to add MCP server');
-      }
+      const data = await createMcpServer(server);
+      mcpServers = [...mcpServers, data];
+      newMcpServer = { name: '', command: '', args: '', description: '' };
+      mcpModalOpen = false;
     } catch (e) {
       console.error('Failed to add MCP server:', e);
     }
@@ -332,12 +326,7 @@
     const newStatus = server.status === 'running' ? 'stopped' : 'running';
 
     try {
-      await fetch(`http://localhost:8000/api/settings/mcp/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      });
-
+      await updateMcpServer(id, { status: newStatus });
       server.status = newStatus;
     } catch (e) {
       console.error('Failed to toggle MCP server:', e);
@@ -348,9 +337,7 @@
     mcpServers = mcpServers.filter(s => s.id !== id);
 
     try {
-      await fetch(`http://localhost:8000/api/settings/mcp/${id}`, {
-        method: 'DELETE'
-      });
+      await deleteMcpServer(id);
     } catch (e) {
       console.error('Failed to remove MCP server:', e);
     }
@@ -359,11 +346,8 @@
   // Handlers for Agents
   async function loadAgentsMd() {
     try {
-      const res = await fetch('http://localhost:8000/api/settings/agents-md');
-      if (res.ok) {
-        const data = await res.json();
-        agentsMdContent = data.content || '';
-      }
+      const data = await getAgentsMarkdown();
+      agentsMdContent = data.content || '';
     } catch (e) {
       console.error('Failed to load AGENTS.md:', e);
       agentsMdContent = '# Agent Configuration\n\nConfigure your agent behavior here.';
@@ -373,18 +357,9 @@
   async function saveAgentsMd() {
     agentsMdLoading = true;
     try {
-      const res = await fetch('http://localhost:8000/api/settings/agents-md', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: agentsMdContent })
-      });
-
-      if (res.ok) {
-        agentsMdSaved = true;
-        setTimeout(() => agentsMdSaved = false, 2000);
-      } else {
-        console.error('Failed to save AGENTS.md');
-      }
+      await saveAgentsMarkdown(agentsMdContent);
+      agentsMdSaved = true;
+      setTimeout(() => agentsMdSaved = false, 2000);
     } catch (e) {
       console.error('Failed to save AGENTS.md:', e);
     } finally {
@@ -524,33 +499,19 @@
 
   async function loadSettings() {
     try {
-      const generalRes = await fetch('http://localhost:8000/api/settings/general');
-      if (generalRes.ok) {
-        const data = await generalRes.json();
-        generalSettings = { ...generalSettings, ...data };
-      }
+      const [generalData, keysData, mcpData, riskData, dbData] = await Promise.all([
+        getGeneralSettings(),
+        listSettingKeys(),
+        listMcpServers(),
+        getRiskSettings(),
+        getDatabaseSettings(),
+      ]);
 
-      const keysRes = await fetch('http://localhost:8000/api/settings/keys');
-      if (keysRes.ok) {
-        apiKeys = await keysRes.json();
-      }
-
-      const mcpRes = await fetch('http://localhost:8000/api/settings/mcp');
-      if (mcpRes.ok) {
-        mcpServers = await mcpRes.json();
-      }
-
-      const riskRes = await fetch('http://localhost:8000/api/settings/risk');
-      if (riskRes.ok) {
-        const data = await riskRes.json();
-        riskSettings = { ...riskSettings, ...data };
-      }
-
-      const dbRes = await fetch('http://localhost:8000/api/settings/database');
-      if (dbRes.ok) {
-        const data = await dbRes.json();
-        dbSettings = { ...dbSettings, ...data };
-      }
+      generalSettings = { ...generalSettings, ...generalData };
+      apiKeys = keysData;
+      mcpServers = mcpData;
+      riskSettings = { ...riskSettings, ...riskData };
+      dbSettings = { ...dbSettings, ...dbData };
 
       // Load model config
       const modelRes = await fetch('/api/agent-config/models');
@@ -573,16 +534,8 @@
   async function saveSettings() {
     try {
       await Promise.all([
-        fetch('http://localhost:8000/api/settings/general', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(generalSettings)
-        }),
-        fetch('http://localhost:8000/api/settings/risk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(riskSettings)
-        })
+        saveGeneralSettings(generalSettings),
+        saveRiskSettings(riskSettings)
       ]);
 
       dispatch('settingsSaved');

@@ -9,6 +9,11 @@
     Search, ChevronLeft, ChevronRight as ChevronRightIcon, TrendingUp as TrendingUpIcon,
     HelpCircle, GitBranch
   } from 'lucide-svelte';
+  import {
+    listBacktestResults,
+    runMonteCarloSimulation,
+    calculatePbo,
+  } from '$lib/services/backtestResultsApi';
 
   const dispatch = createEventDispatcher();
 
@@ -126,15 +131,8 @@
   async function loadBacktestResults() {
     loading = true;
     try {
-      const res = await fetch('http://localhost:8000/api/v1/backtest/results');
-      if (res.ok) {
-        results = await res.json();
-        calculateAggregateStats();
-      } else {
-        // Use demo results when API returns error
-        results = demoResults;
-        calculateAggregateStats();
-      }
+      results = await listBacktestResults();
+      calculateAggregateStats();
     } catch (e) {
       console.error('Failed to load backtest results:', e);
       // Use demo results when API is unavailable
@@ -374,20 +372,13 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   async function runMonteCarlo() {
     loading = true;
     try {
-      const res = await fetch('http://localhost:8000/api/v1/backtest/monte-carlo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          strategyId: filters.strategy,
-          ...monteCarloSettings
-        })
+      const data = await runMonteCarloSimulation({
+        strategyId: filters.strategy,
+        ...monteCarloSettings
       });
-      if (res.ok) {
-        const data = await res.json();
-        results = [...results, data];
-        calculateAggregateStats();
-        activeTab = 'monte_carlo';
-      }
+      results = [...results, data];
+      calculateAggregateStats();
+      activeTab = 'monte_carlo';
     } catch (e) {
       console.error('Monte Carlo simulation failed:', e);
       results = [];
@@ -435,19 +426,13 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
         // Use mock data for demonstration
         pboResults = generateMockPBOResults();
       } else {
-        const res = await fetch('http://localhost:8000/api/v1/backtest/pbo/calculate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        try {
+          pboResults = await calculatePbo({
             returns_series: returnsSeries,
             n_blocks: pboSettings.n_blocks,
             n_simulations: pboSettings.n_simulations
-          })
-        });
-
-        if (res.ok) {
-          pboResults = await res.json();
-        } else {
+          });
+        } catch {
           pboError = 'PBO calculation failed. Using demo results.';
           pboResults = generateMockPBOResults();
         }
