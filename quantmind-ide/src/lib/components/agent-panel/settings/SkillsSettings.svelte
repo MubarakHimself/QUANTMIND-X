@@ -1,49 +1,150 @@
 <script lang="ts">
-  import { Bot, Code, Wand2, Sparkles, ToggleLeft, ToggleRight } from 'lucide-svelte';
+  import { Bot, Code, Wand2, Sparkles, ToggleLeft, ToggleRight, Play, Loader2, CheckCircle, XCircle, Filter } from 'lucide-svelte';
   import { settingsStore } from '../../../stores/settingsStore';
   import type { AgentType, Skill } from '../../../stores/settingsStore';
-  
+  import { departmentList, DEPARTMENTS, type DepartmentId } from '../../../stores/departmentChatStore';
+  import { onMount } from 'svelte';
+
   // State
-  let selectedAgent: AgentType = 'copilot';
-  
-  // Agent configuration
+  let selectedAgent: AgentType = 'research';
+  let selectedDepartment: DepartmentId | 'all' = 'all';
+  let backendSkills: any[] = [];
+  let isLoadingBackend = false;
+  let executingSkill: string | null = null;
+  let executionResults: Record<string, any> = {};
+
+  // Agent configuration - using department-based agents
   const agents: Array<{ id: AgentType; name: string; icon: any }> = [
-    { id: 'copilot', name: 'Copilot', icon: Bot },
-    { id: 'quantcode', name: 'QuantCode', icon: Code },
-    { id: 'analyst', name: 'Analyst', icon: Wand2 }
+    { id: 'research', name: 'Research', icon: Bot },
+    { id: 'development', name: 'Development', icon: Code },
+    { id: 'trading', name: 'Trading', icon: Wand2 },
+    { id: 'risk', name: 'Risk', icon: Sparkles },
+    { id: 'portfolio', name: 'Portfolio', icon: Bot }
   ];
-  
-  // Reactive state
-  $: currentSkills = $settingsStore.skills[selectedAgent]?.skills || [];
-  $: coreSkills = currentSkills.filter(s => s.category === 'core');
-  $: advancedSkills = currentSkills.filter(s => s.category === 'advanced');
-  $: customSkills = currentSkills.filter(s => s.category === 'custom');
-  
+
+  // Department filter options
+  const departmentFilters: Array<{ id: DepartmentId | 'all'; name: string; color: string }> = [
+    { id: 'all', name: 'All Departments', color: '#6b7280' },
+    ...departmentList.map(d => ({ id: d.id, name: d.name, color: d.color }))
+  ];
+
+  // Load backend skills on mount
+  onMount(async () => {
+    await loadBackendSkills();
+  });
+
+  // Load skills from backend
+  async function loadBackendSkills() {
+    isLoadingBackend = true;
+    try {
+      const res = await fetch('http://localhost:8000/api/settings/skills');
+      if (res.ok) {
+        backendSkills = await res.json();
+      }
+    } catch (e) {
+      console.error('Failed to load backend skills:', e);
+    } finally {
+      isLoadingBackend = false;
+    }
+  }
+
+  // Reactive state - merge backend skills department info with settings store skills
+  $: currentSkills = (() => {
+    const storeSkills = $settingsStore.skills[selectedAgent]?.skills || [];
+    return storeSkills.map(skill => {
+      const backendSkill = backendSkills.find((b: any) => b.id === skill.id);
+      return {
+        ...skill,
+        departments: backendSkill?.departments || skill.departments || []
+      };
+    });
+  })();
+  $: filteredByDepartment = selectedDepartment === 'all'
+    ? currentSkills
+    : currentSkills.filter(s => !s.departments || s.departments.length === 0 || s.departments.includes(selectedDepartment));
+  $: coreSkills = filteredByDepartment.filter(s => s.category === 'core');
+  $: advancedSkills = filteredByDepartment.filter(s => s.category === 'advanced');
+  $: customSkills = filteredByDepartment.filter(s => s.category === 'custom');
+
+  // Get department info for badges
+  function getDepartmentInfo(deptId: string) {
+    return DEPARTMENTS[deptId as DepartmentId] || { name: deptId, color: '#6b7280' };
+  }
+
   // Toggle skill
   function toggleSkill(skillId: string) {
     settingsStore.toggleSkill(selectedAgent, skillId);
   }
-  
+
   // Toggle all skills in a category
   function toggleCategory(category: 'core' | 'advanced' | 'custom', enabled: boolean) {
     const skillsToUpdate = currentSkills.filter(s => s.category === category);
-    const updatedSkills = currentSkills.map(s => 
+    const updatedSkills = currentSkills.map(s =>
       s.category === category ? { ...s, enabled } : s
     );
     settingsStore.updateAgentSkills(selectedAgent, updatedSkills);
   }
-  
+
   // Check if all skills in category are enabled
   function isCategoryFullyEnabled(category: string): boolean {
     const skills = currentSkills.filter(s => s.category === category);
     return skills.length > 0 && skills.every(s => s.enabled);
   }
-  
+
   // Get enabled count
   function getEnabledCount(category: string): string {
     const skills = currentSkills.filter(s => s.category === category);
     const enabled = skills.filter(s => s.enabled).length;
     return `${enabled}/${skills.length}`;
+  }
+
+  // Execute a skill via backend API
+  async function executeSkill(skillId: string) {
+    if (executingSkill) return;
+
+    executingSkill = skillId;
+    executionResults[skillId] = null;
+
+    try {
+      // Get default parameters from backend skill info
+      let params = {};
+      const backendSkill = backendSkills.find((s: any) => s.id === skillId);
+      if (backendSkill?.parameters?.properties) {
+        // Use default values for required params
+        for (const [key, prop] of Object.entries(backendSkill.parameters.properties as Record<string, any>)) {
+          if (prop.default !== undefined) {
+            (params as any)[key] = prop.default;
+          }
+        }
+      }
+
+      const res = await fetch(`http://localhost:8000/api/settings/skills/${skillId}/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ params, context: {} })
+      });
+
+      if (res.ok) {
+        executionResults[skillId] = await res.json();
+      } else {
+        executionResults[skillId] = { success: false, error: 'Execution failed' };
+      }
+    } catch (e) {
+      console.error('Skill execution error:', e);
+      executionResults[skillId] = { success: false, error: String(e) };
+    } finally {
+      executingSkill = null;
+    }
+  }
+
+  // Get execution result for a skill
+  function getExecutionResult(skillId: string) {
+    return executionResults[skillId];
+  }
+
+  // Check if a skill has a backend implementation
+  function hasBackendSkill(skillId: string): boolean {
+    return backendSkills.some((s: any) => s.id === skillId);
   }
 </script>
 
@@ -54,7 +155,7 @@
   <!-- Agent Selector -->
   <div class="agent-selector">
     {#each agents as agent}
-      <button 
+      <button
         class="agent-chip"
         class:active={selectedAgent === agent.id}
         on:click={() => selectedAgent = agent.id}
@@ -63,6 +164,22 @@
         {agent.name}
       </button>
     {/each}
+  </div>
+
+  <!-- Department Filter -->
+  <div class="department-filter">
+    <div class="filter-label">
+      <Filter size={14} />
+      <span>Filter by Department</span>
+    </div>
+    <select
+      class="department-select"
+      bind:value={selectedDepartment}
+    >
+      {#each departmentFilters as dept}
+        <option value={dept.id}>{dept.name}</option>
+      {/each}
+    </select>
   </div>
   
   <!-- Skills List -->
@@ -94,17 +211,59 @@
           {#each coreSkills as skill (skill.id)}
             <div class="skill-item" class:enabled={skill.enabled}>
               <div class="skill-info">
-                <span class="skill-name">{skill.name}</span>
+                <div class="skill-header">
+                  <span class="skill-name">{skill.name}</span>
+                  {#if skill.departments && skill.departments.length > 0}
+                    <div class="department-badges">
+                      {#each skill.departments.slice(0, 3) as deptId}
+                        {@const dept = getDepartmentInfo(deptId)}
+                        <span class="department-badge" style="background-color: {dept.color}20; color: {dept.color}; border-color: {dept.color}40;">
+                          {dept.name}
+                        </span>
+                      {/each}
+                      {#if skill.departments.length > 3}
+                        <span class="department-badge more">+{skill.departments.length - 3}</span>
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
                 <span class="skill-description">{skill.description}</span>
+                {#if getExecutionResult(skill.id)}
+                  <div class="execution-result" class:success={getExecutionResult(skill.id)?.success} class:error={!getExecutionResult(skill.id)?.success}>
+                    {#if getExecutionResult(skill.id)?.success}
+                      <CheckCircle size={12} />
+                      <span>Executed in {getExecutionResult(skill.id)?.execution_time_ms?.toFixed(2)}ms</span>
+                    {:else}
+                      <XCircle size={12} />
+                      <span>{getExecutionResult(skill.id)?.error || 'Execution failed'}</span>
+                    {/if}
+                  </div>
+                {/if}
               </div>
-              <label class="toggle">
-                <input 
-                  type="checkbox" 
-                  checked={skill.enabled}
-                  on:change={() => toggleSkill(skill.id)}
-                />
-                <span class="toggle-slider"></span>
-              </label>
+              <div class="skill-actions">
+                {#if hasBackendSkill(skill.id)}
+                  <button
+                    class="run-btn"
+                    title="Execute skill"
+                    disabled={executingSkill === skill.id}
+                    on:click={() => executeSkill(skill.id)}
+                  >
+                    {#if executingSkill === skill.id}
+                      <Loader2 size={14} class="spin" />
+                    {:else}
+                      <Play size={14} />
+                    {/if}
+                  </button>
+                {/if}
+                <label class="toggle">
+                  <input
+                    type="checkbox"
+                    checked={skill.enabled}
+                    on:change={() => toggleSkill(skill.id)}
+                  />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
             </div>
           {/each}
         </div>
@@ -138,17 +297,59 @@
           {#each advancedSkills as skill (skill.id)}
             <div class="skill-item" class:enabled={skill.enabled}>
               <div class="skill-info">
-                <span class="skill-name">{skill.name}</span>
+                <div class="skill-header">
+                  <span class="skill-name">{skill.name}</span>
+                  {#if skill.departments && skill.departments.length > 0}
+                    <div class="department-badges">
+                      {#each skill.departments.slice(0, 3) as deptId}
+                        {@const dept = getDepartmentInfo(deptId)}
+                        <span class="department-badge" style="background-color: {dept.color}20; color: {dept.color}; border-color: {dept.color}40;">
+                          {dept.name}
+                        </span>
+                      {/each}
+                      {#if skill.departments.length > 3}
+                        <span class="department-badge more">+{skill.departments.length - 3}</span>
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
                 <span class="skill-description">{skill.description}</span>
+                {#if getExecutionResult(skill.id)}
+                  <div class="execution-result" class:success={getExecutionResult(skill.id)?.success} class:error={!getExecutionResult(skill.id)?.success}>
+                    {#if getExecutionResult(skill.id)?.success}
+                      <CheckCircle size={12} />
+                      <span>Executed in {getExecutionResult(skill.id)?.execution_time_ms?.toFixed(2)}ms</span>
+                    {:else}
+                      <XCircle size={12} />
+                      <span>{getExecutionResult(skill.id)?.error || 'Execution failed'}</span>
+                    {/if}
+                  </div>
+                {/if}
               </div>
-              <label class="toggle">
-                <input 
-                  type="checkbox" 
-                  checked={skill.enabled}
-                  on:change={() => toggleSkill(skill.id)}
-                />
-                <span class="toggle-slider"></span>
-              </label>
+              <div class="skill-actions">
+                {#if hasBackendSkill(skill.id)}
+                  <button
+                    class="run-btn"
+                    title="Execute skill"
+                    disabled={executingSkill === skill.id}
+                    on:click={() => executeSkill(skill.id)}
+                  >
+                    {#if executingSkill === skill.id}
+                      <Loader2 size={14} class="spin" />
+                    {:else}
+                      <Play size={14} />
+                    {/if}
+                  </button>
+                {/if}
+                <label class="toggle">
+                  <input
+                    type="checkbox"
+                    checked={skill.enabled}
+                    on:change={() => toggleSkill(skill.id)}
+                  />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
             </div>
           {/each}
         </div>
@@ -182,17 +383,59 @@
           {#each customSkills as skill (skill.id)}
             <div class="skill-item" class:enabled={skill.enabled}>
               <div class="skill-info">
-                <span class="skill-name">{skill.name}</span>
+                <div class="skill-header">
+                  <span class="skill-name">{skill.name}</span>
+                  {#if skill.departments && skill.departments.length > 0}
+                    <div class="department-badges">
+                      {#each skill.departments.slice(0, 3) as deptId}
+                        {@const dept = getDepartmentInfo(deptId)}
+                        <span class="department-badge" style="background-color: {dept.color}20; color: {dept.color}; border-color: {dept.color}40;">
+                          {dept.name}
+                        </span>
+                      {/each}
+                      {#if skill.departments.length > 3}
+                        <span class="department-badge more">+{skill.departments.length - 3}</span>
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
                 <span class="skill-description">{skill.description}</span>
+                {#if getExecutionResult(skill.id)}
+                  <div class="execution-result" class:success={getExecutionResult(skill.id)?.success} class:error={!getExecutionResult(skill.id)?.success}>
+                    {#if getExecutionResult(skill.id)?.success}
+                      <CheckCircle size={12} />
+                      <span>Executed in {getExecutionResult(skill.id)?.execution_time_ms?.toFixed(2)}ms</span>
+                    {:else}
+                      <XCircle size={12} />
+                      <span>{getExecutionResult(skill.id)?.error || 'Execution failed'}</span>
+                    {/if}
+                  </div>
+                {/if}
               </div>
-              <label class="toggle">
-                <input 
-                  type="checkbox" 
-                  checked={skill.enabled}
-                  on:change={() => toggleSkill(skill.id)}
-                />
-                <span class="toggle-slider"></span>
-              </label>
+              <div class="skill-actions">
+                {#if hasBackendSkill(skill.id)}
+                  <button
+                    class="run-btn"
+                    title="Execute skill"
+                    disabled={executingSkill === skill.id}
+                    on:click={() => executeSkill(skill.id)}
+                  >
+                    {#if executingSkill === skill.id}
+                      <Loader2 size={14} class="spin" />
+                    {:else}
+                      <Play size={14} />
+                    {/if}
+                  </button>
+                {/if}
+                <label class="toggle">
+                  <input
+                    type="checkbox"
+                    checked={skill.enabled}
+                    on:change={() => toggleSkill(skill.id)}
+                  />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
             </div>
           {/each}
         </div>
@@ -267,6 +510,40 @@
   .agent-chip.active {
     background: var(--accent-primary);
     color: var(--bg-primary);
+  }
+
+  /* Department Filter */
+  .department-filter {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border-radius: 6px;
+  }
+
+  .filter-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .department-select {
+    flex: 1;
+    padding: 6px 10px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .department-select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
   }
   
   /* Skills List */
@@ -370,7 +647,101 @@
     font-size: 11px;
     color: var(--text-muted);
   }
-  
+
+  /* Skill Header with Department Badges */
+  .skill-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .department-badges {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .department-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 6px;
+    font-size: 9px;
+    font-weight: 500;
+    border-radius: 4px;
+    border: 1px solid;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .department-badge.more {
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+    border-color: var(--border-subtle);
+  }
+
+  /* Skill Actions */
+  .skill-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Run Button */
+  .run-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: var(--accent-primary);
+    border: none;
+    border-radius: 6px;
+    color: var(--bg-primary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .run-btn:hover:not(:disabled) {
+    background: var(--accent-secondary);
+    transform: scale(1.05);
+  }
+
+  .run-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .run-btn :global(.spin) {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  /* Execution Result */
+  .execution-result {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+  }
+
+  .execution-result.success {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+  }
+
+  .execution-result.error {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+  }
+
   /* Toggle Switch */
   .toggle {
     position: relative;

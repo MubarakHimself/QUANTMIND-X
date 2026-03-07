@@ -1,6 +1,16 @@
 // Settings Types - Shared type definitions for settings
 export type AgentType = 'copilot' | 'quantcode' | 'analyst';
 
+export type ModelProvider = 'anthropic' | 'zhipu' | 'minimax' | 'openai' | 'openrouter' | 'deepseek';
+
+export interface ModelConfig {
+  provider: ModelProvider;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  availableModels: Array<{ id: string; name: string; tier: string }>;
+}
+
 export interface GeneralSettings {
   theme: 'dark' | 'light' | 'system';
   fontSize: 'small' | 'medium' | 'large';
@@ -50,6 +60,7 @@ export interface Skill {
   category: 'core' | 'advanced' | 'custom';
   enabled: boolean;
   icon?: string;
+  departments?: string[];
 }
 
 export interface AgentSkills {
@@ -121,6 +132,7 @@ export interface SettingsStoreState {
   memories: MemoryConfig;
   workflows: Workflow[];
   permissions: Record<AgentType, AgentPermissions>;
+  modelConfig: ModelConfig;
   isLoading: boolean;
   isDirty: boolean;
   error: string | null;

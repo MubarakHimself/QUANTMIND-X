@@ -1,10 +1,10 @@
 """
 Workflow Orchestrator for QuantMind Pipeline.
 
-This module orchestrates the complete NPRD → Analyst → QuantCode → Backtest pipeline,
+This module orchestrates the complete VideoIngest → Analyst → QuantCode → Backtest pipeline,
 managing workflow state, progress tracking, and error handling.
 
-Wires NPRD/TRD watchers to submit real tasks and uses actual agent graphs and MCP calls.
+Wires VideoIngest/TRD watchers to submit real tasks and uses actual agent graphs and MCP calls.
 """
 
 import asyncio
@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 import uuid
+
+from ..agents.session.checkpoint import GitCheckpointManager, get_checkpoint_manager
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +32,9 @@ class WorkflowStage(str, Enum):
     BACKTEST = "backtest"
     VALIDATION = "validation"
     EA_LIFECYCLE = "ea_lifecycle"
+    APPROVAL = "approval"
     # Legacy stages (for backwards compatibility)
-    NPRD_PROCESSING = "nprd_processing"
+    VIDEO_INGEST_PROCESSING = "video_ingest_processing"
     ANALYST = "analyst"
     QUANTCODE = "quantcode"
     COMPLETED = "completed"
@@ -43,6 +46,7 @@ class WorkflowStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
     PAUSED = "paused"
+    AWAITING_APPROVAL = "awaiting_approval"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -66,7 +70,7 @@ class Workflow:
     """
     Represents a complete QuantMind workflow.
     
-    Tracks the state and progress of the NPRD → Analyst → QuantCode → Backtest pipeline.
+    Tracks the state and progress of the VideoIngest → Analyst → QuantCode → Backtest pipeline.
     """
     workflow_id: str
     status: WorkflowStatus
@@ -119,12 +123,12 @@ class WorkflowOrchestrator:
     """
     Orchestrates the complete QuantMind workflow pipeline.
     
-    Manages the NPRD → Analyst → QuantCode → Backtest pipeline with:
+    Manages the VideoIngest → Analyst → QuantCode → Backtest pipeline with:
     - State tracking and persistence
     - Error handling and retry logic
     - Progress monitoring
     - Callback notifications
-    - Integration with NPRD/TRD watchers
+    - Integration with VideoIngest/TRD watchers
     - Real agent graph and MCP calls
     
     Usage:
@@ -132,7 +136,7 @@ class WorkflowOrchestrator:
         
         # Start a new workflow
         workflow_id = await orchestrator.start_workflow(
-            nprd_file=Path("workspaces/nprd/outputs/video_001.json")
+            video_ingest_file=Path("workspaces/video_ingest/outputs/video_001.json")
         )
         
         # Check status
@@ -165,13 +169,19 @@ class WorkflowOrchestrator:
         
         # Active workflows
         self._active: set = set()
-        
-        # Task queue for NPRD/TRD watcher submissions
+
+        # Pause/resume events for workflows
+        self._pause_events: Dict[str, asyncio.Event] = {}
+
+        # Task queue for VideoIngest/TRD watcher submissions
         self._task_queue: asyncio.Queue = asyncio.Queue()
-        
+
+        # Git-based checkpoint manager for long-running agents
+        self.checkpoint_manager: GitCheckpointManager = get_checkpoint_manager()
+
         # Ensure work directory exists
         self.work_dir.mkdir(parents=True, exist_ok=True)
-        
+
         logger.info(f"WorkflowOrchestrator initialized with work_dir={work_dir}")
 
     async def submit_video_ingest_task(
@@ -278,31 +288,31 @@ class WorkflowOrchestrator:
 
         return workflow_id
 
-    async def submit_nprd_task(self, nprd_file: Path, metadata: Optional[Dict[str, Any]] = None) -> str:
+    async def submit_video_ingest_task(self, video_ingest_file: Path, metadata: Optional[Dict[str, Any]] = None) -> str:
         """
-        Submit a new NPRD task from the NPRD watcher.
+        Submit a new VideoIngest task from the VideoIngest watcher.
         
-        This method is called by the NPRD watcher when a new NPRD file is detected.
+        This method is called by the VideoIngest watcher when a new VideoIngest file is detected.
         
         Args:
-            nprd_file: Path to the NPRD JSON file
+            video_ingest_file: Path to the VideoIngest JSON file
             metadata: Optional metadata for the workflow
             
         Returns:
             Workflow ID
         """
-        logger.info(f"Submitting NPRD task from watcher: {nprd_file}")
+        logger.info(f"Submitting VideoIngest task from watcher: {video_ingest_file}")
         
         # Add to task queue
         task = {
-            "type": "nprd",
-            "file": nprd_file,
+            "type": "video_ingest",
+            "file": video_ingest_file,
             "metadata": metadata or {}
         }
         await self._task_queue.put(task)
         
         # Start workflow
-        workflow_id = await self.start_workflow(nprd_file, metadata)
+        workflow_id = await self.start_workflow(video_ingest_file, metadata)
         
         return workflow_id
     
@@ -311,7 +321,7 @@ class WorkflowOrchestrator:
         Submit a new TRD task from the TRD watcher.
         
         This method is called by the TRD watcher when a new TRD file is detected.
-        Skips the NPRD and Analyst stages and starts from QuantCode.
+        Skips the VideoIngest and Analyst stages and starts from QuantCode.
         
         Args:
             trd_file: Path to the TRD markdown file
@@ -375,14 +385,14 @@ class WorkflowOrchestrator:
     
     async def start_workflow(
         self,
-        nprd_file: Path,
+        video_ingest_file: Path,
         metadata: Optional[Dict[str, Any]] = None
     ) -> str:
         """
-        Start a new workflow from an NPRD file.
+        Start a new workflow from an VideoIngest file.
         
         Args:
-            nprd_file: Path to NPRD JSON file
+            video_ingest_file: Path to VideoIngest JSON file
             metadata: Optional metadata for the workflow
             
         Returns:
@@ -397,14 +407,14 @@ class WorkflowOrchestrator:
             status=WorkflowStatus.PENDING,
             created_at=datetime.now().isoformat(),
             updated_at=datetime.now().isoformat(),
-            input_file=str(nprd_file),
+            input_file=str(video_ingest_file),
             metadata=metadata or {}
         )
         
         # Initialize workflow steps
         workflow.steps = {
-            "nprd_processing": WorkflowStep(
-                stage=WorkflowStage.NPRD_PROCESSING,
+            "video_ingest_processing": WorkflowStep(
+                stage=WorkflowStage.VIDEO_INGEST_PROCESSING,
                 status=WorkflowStatus.PENDING
             ),
             "analyst": WorkflowStep(
@@ -442,14 +452,14 @@ class WorkflowOrchestrator:
         # Start execution
         asyncio.create_task(self._execute_workflow(workflow_id))
         
-        logger.info(f"Started workflow {workflow_id} for {nprd_file}")
+        logger.info(f"Started workflow {workflow_id} for {video_ingest_file}")
         
         return workflow_id
     
     async def _execute_workflow(self, workflow_id: str) -> None:
         """
         Execute a workflow through all stages.
-        
+
         Args:
             workflow_id: Workflow to execute
         """
@@ -457,54 +467,118 @@ class WorkflowOrchestrator:
         if not workflow:
             logger.error(f"Workflow {workflow_id} not found")
             return
-        
+
         # Check concurrency limit
         while len(self._active) >= self.max_concurrent:
             await asyncio.sleep(1)
-        
+
         self._active.add(workflow_id)
         workflow.status = WorkflowStatus.RUNNING
         workflow.updated_at = datetime.now().isoformat()
-        
+
+        # Define all stages for checkpoint tracking
+        pending_stages = [
+            "video_ingest_processing",
+            "analyst",
+            "trd_generation",
+            "quantcode",
+            "compilation",
+            "backtest",
+            "validation",
+        ]
+
+        # Start git-based checkpoint tracking
+        await self.checkpoint_manager.start_workflow(workflow_id, pending_stages)
+
         try:
-            # Stage 1: NPRD Processing
-            await self._execute_step(workflow, "nprd_processing", self._process_nprd)
-            
+            # Stage 1: VideoIngest Processing
+            await self._execute_step(workflow, "video_ingest_processing", self._process_nprd)
+
             # Stage 2: Analyst
             await self._execute_step(workflow, "analyst", self._run_analyst)
-            
+
             # Stage 3: TRD Generation
             await self._execute_step(workflow, "trd_generation", self._generate_trd)
-            
+
+            # Approval Gate: Before QuantCode (Strategy Approval)
+            gate_id = await self._request_approval(
+                workflow,
+                from_stage="trd_generation",
+                to_stage="quantcode",
+                gate_type="stage_transition",
+                reason="Approve strategy before code generation"
+            )
+            if gate_id:
+                approved = await self._wait_for_approval(workflow, gate_id, timeout=3600)
+                if not approved:
+                    logger.info(f"Workflow {workflow_id} rejected at strategy approval gate")
+                    return
+
             # Stage 4: QuantCode
             await self._execute_step(workflow, "quantcode", self._run_quantcode)
-            
+
             # Stage 5: Compilation
             await self._execute_step(workflow, "compilation", self._compile_code)
-            
+
             # Stage 6: Backtest
             await self._execute_step(workflow, "backtest", self._run_backtest)
-            
+
+            # Approval Gate: Before Validation (Backtest Results Approval)
+            gate_id = await self._request_approval(
+                workflow,
+                from_stage="backtest",
+                to_stage="validation",
+                gate_type="stage_transition",
+                reason="Approve backtest results before validation"
+            )
+            if gate_id:
+                approved = await self._wait_for_approval(workflow, gate_id, timeout=3600)
+                if not approved:
+                    logger.info(f"Workflow {workflow_id} rejected at backtest approval gate")
+                    return
+
             # Stage 7: Validation
             await self._execute_step(workflow, "validation", self._validate_results)
-            
+
+            # Approval Gate: Before Deployment (Final Approval)
+            validation_results = workflow.metadata.get("validation_results", {})
+            if validation_results.get("ready_for_deployment"):
+                gate_id = await self._request_approval(
+                    workflow,
+                    from_stage="validation",
+                    to_stage="deployment",
+                    gate_type="deployment",
+                    reason="Final approval before EA deployment"
+                )
+                if gate_id:
+                    approved = await self._wait_for_approval(workflow, gate_id, timeout=3600)
+                    if not approved:
+                        logger.info(f"Workflow {workflow_id} rejected at deployment approval gate")
+                        return
+
             # Mark as completed
             workflow.status = WorkflowStatus.COMPLETED
             workflow.updated_at = datetime.now().isoformat()
-            
+
+            # End git-based checkpoint tracking (success)
+            await self.checkpoint_manager.end_workflow(status="completed")
+
             logger.info(f"Workflow {workflow_id} completed successfully")
-            
+
         except Exception as e:
             workflow.status = WorkflowStatus.FAILED
             workflow.error = str(e)
             workflow.updated_at = datetime.now().isoformat()
-            
+
+            # End git-based checkpoint tracking (failed)
+            await self.checkpoint_manager.end_workflow(status="failed")
+
             logger.error(f"Workflow {workflow_id} failed: {e}")
-        
+
         finally:
             self._active.discard(workflow_id)
             self._save_workflow(workflow)
-            
+
             # Notify progress
             if self.on_progress:
                 self.on_progress(
@@ -516,7 +590,7 @@ class WorkflowOrchestrator:
     async def _execute_trd_workflow(self, workflow_id: str) -> None:
         """
         Execute a TRD workflow starting from QuantCode stage.
-        
+
         Args:
             workflow_id: Workflow to execute
         """
@@ -524,45 +598,62 @@ class WorkflowOrchestrator:
         if not workflow:
             logger.error(f"Workflow {workflow_id} not found")
             return
-        
+
         # Check concurrency limit
         while len(self._active) >= self.max_concurrent:
             await asyncio.sleep(1)
-        
+
         self._active.add(workflow_id)
         workflow.status = WorkflowStatus.RUNNING
         workflow.updated_at = datetime.now().isoformat()
-        
+
+        # Define TRD workflow stages for checkpoint tracking
+        pending_stages = [
+            "quantcode",
+            "compilation",
+            "backtest",
+            "validation",
+        ]
+
+        # Start git-based checkpoint tracking
+        await self.checkpoint_manager.start_workflow(workflow_id, pending_stages)
+
         try:
             # Stage 1: QuantCode
             await self._execute_step(workflow, "quantcode", self._run_quantcode)
-            
+
             # Stage 2: Compilation
             await self._execute_step(workflow, "compilation", self._compile_code)
-            
+
             # Stage 3: Backtest
             await self._execute_step(workflow, "backtest", self._run_backtest)
-            
+
             # Stage 4: Validation
             await self._execute_step(workflow, "validation", self._validate_results)
-            
+
             # Mark as completed
             workflow.status = WorkflowStatus.COMPLETED
             workflow.updated_at = datetime.now().isoformat()
-            
+
+            # End git-based checkpoint tracking (success)
+            await self.checkpoint_manager.end_workflow(status="completed")
+
             logger.info(f"TRD Workflow {workflow_id} completed successfully")
-            
+
         except Exception as e:
             workflow.status = WorkflowStatus.FAILED
             workflow.error = str(e)
             workflow.updated_at = datetime.now().isoformat()
-            
+
+            # End git-based checkpoint tracking (failed)
+            await self.checkpoint_manager.end_workflow(status="failed")
+
             logger.error(f"TRD Workflow {workflow_id} failed: {e}")
-        
+
         finally:
             self._active.discard(workflow_id)
             self._save_workflow(workflow)
-            
+
             # Notify progress
             if self.on_progress:
                 self.on_progress(
@@ -570,7 +661,45 @@ class WorkflowOrchestrator:
                     workflow.get_progress(),
                     "completed" if workflow.status == WorkflowStatus.COMPLETED else "failed"
                 )
-    
+
+    async def _wait_for_resume(self, workflow_id: str) -> None:
+        """
+        Wait for a paused workflow to be resumed.
+
+        Args:
+            workflow_id: The workflow ID to check
+        """
+        workflow = self._workflows.get(workflow_id)
+        if not workflow:
+            return
+
+        # If workflow is paused, wait for resume
+        if workflow.status == WorkflowStatus.PAUSED:
+            # Create event if not exists and wait
+            if workflow_id not in self._pause_events:
+                self._pause_events[workflow_id] = asyncio.Event()
+
+            event = self._pause_events[workflow_id]
+            event.clear()  # Clear any previous signals
+
+            # Wait for resume signal (with periodic check for cancellation)
+            while workflow.status == WorkflowStatus.PAUSED:
+                # Wait for 1 second or until resumed
+                try:
+                    await asyncio.wait_for(event.wait(), timeout=1.0)
+                    # Event was set, workflow should be resumed
+                    break
+                except asyncio.TimeoutError:
+                    # Check if workflow was cancelled or completed
+                    if workflow_id not in self._workflows:
+                        break
+                    workflow = self._workflows.get(workflow_id)
+                    if not workflow or workflow.status not in [
+                        WorkflowStatus.PAUSED,
+                        WorkflowStatus.RUNNING
+                    ]:
+                        break
+
     async def _execute_step(
         self,
         workflow: Workflow,
@@ -579,7 +708,7 @@ class WorkflowOrchestrator:
     ) -> None:
         """
         Execute a single workflow step with retry logic.
-        
+
         Args:
             workflow: Workflow being executed
             step_name: Name of the step
@@ -588,40 +717,49 @@ class WorkflowOrchestrator:
         step = workflow.steps.get(step_name)
         if not step:
             raise ValueError(f"Unknown step: {step_name}")
-        
+
+        # Check for pause and wait if needed
+        await self._wait_for_resume(workflow.workflow_id)
+
         step.status = WorkflowStatus.RUNNING
         step.started_at = datetime.now().isoformat()
         workflow.updated_at = datetime.now().isoformat()
-        
+
         # Notify progress
         if self.on_progress:
             self.on_progress(workflow.workflow_id, workflow.get_progress(), step_name)
-        
+
         # Execute with retries
         max_retries = step.max_retries
         last_error = None
-        
+
         for attempt in range(max_retries + 1):
             try:
                 result = await step_func(workflow, step)
-                
+
                 step.status = WorkflowStatus.COMPLETED
                 step.completed_at = datetime.now().isoformat()
                 step.output = result
                 workflow.updated_at = datetime.now().isoformat()
-                
+
                 self._save_workflow(workflow)
-                
+
+                # Git-based checkpoint after successful stage completion
+                await self.checkpoint_manager.checkpoint_stage(
+                    stage=step_name,
+                    result=result,
+                )
+
                 return
-                
+
             except Exception as e:
                 last_error = e
                 step.retry_count = attempt + 1
-                
+
                 logger.warning(
                     f"Step {step_name} failed (attempt {attempt + 1}/{max_retries + 1}): {e}"
                 )
-                
+
                 if attempt < max_retries:
                     # Wait before retry
                     await asyncio.sleep(2 ** attempt)  # Exponential backoff
@@ -630,8 +768,196 @@ class WorkflowOrchestrator:
                     step.status = WorkflowStatus.FAILED
                     step.error = str(e)
                     step.completed_at = datetime.now().isoformat()
-                    
+
+                    # Git-based checkpoint for failed stage
+                    await self.checkpoint_manager.checkpoint_stage(
+                        stage=step_name,
+                        error=str(e),
+                    )
+
                     raise Exception(f"Step {step_name} failed after {max_retries + 1} attempts: {e}")
+
+    # =========================================================================
+    # Approval Gate Methods
+    # =========================================================================
+
+    async def _request_approval(
+        self,
+        workflow: Workflow,
+        from_stage: str,
+        to_stage: str,
+        gate_type: str = "stage_transition",
+        reason: Optional[str] = None
+    ) -> str:
+        """
+        Request approval from the approval gate API.
+
+        Args:
+            workflow: Workflow requesting approval
+            from_stage: Current stage
+            to_stage: Next stage
+            gate_type: Type of approval gate
+            reason: Reason for the transition
+
+        Returns:
+            Gate ID if created successfully
+        """
+        try:
+            import aiohttp
+
+            # Prepare request payload
+            payload = {
+                "workflow_id": workflow.workflow_id,
+                "workflow_type": "video_ingest_to_ea",
+                "from_stage": from_stage,
+                "to_stage": to_stage,
+                "gate_type": gate_type,
+                "requester": "workflow_orchestrator",
+                "reason": reason or f"Transition from {from_stage} to {to_stage}",
+                "extra_data": {
+                    "workflow_id": workflow.workflow_id,
+                    "input_file": workflow.input_file
+                }
+            }
+
+            # Make API request
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "http://localhost:8000/api/approval-gates",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 201:
+                        data = await response.json()
+                        gate_id = data.get("gate_id")
+                        logger.info(f"Created approval gate {gate_id} for workflow {workflow.workflow_id}")
+                        return gate_id
+                    else:
+                        logger.warning(f"Failed to create approval gate: {response.status}")
+                        return None
+
+        except ImportError:
+            logger.warning("aiohttp not available, skipping approval gate creation")
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to request approval: {e}")
+            return None
+
+    async def _wait_for_approval(
+        self,
+        workflow: Workflow,
+        gate_id: str,
+        timeout: int = 3600
+    ) -> bool:
+        """
+        Wait for an approval gate to be approved or rejected.
+
+        Args:
+            workflow: Workflow waiting for approval
+            gate_id: ID of the approval gate
+            timeout: Maximum time to wait in seconds
+
+        Returns:
+            True if approved, False if rejected or timeout
+        """
+        import aiohttp
+
+        workflow.status = WorkflowStatus.AWAITING_APPROVAL
+        workflow.updated_at = datetime.now().isoformat()
+        self._save_workflow(workflow)
+
+        logger.info(f"Workflow {workflow.workflow_id} awaiting approval {gate_id}")
+
+        start_time = datetime.now()
+
+        while True:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        f"http://localhost:8000/api/approval-gates/{gate_id}",
+                        timeout=aiohttp.ClientTimeout(total=10)
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            status = data.get("status")
+
+                            if status == "approved":
+                                workflow.status = WorkflowStatus.RUNNING
+                                workflow.updated_at = datetime.now().isoformat()
+                                self._save_workflow(workflow)
+                                logger.info(f"Approval gate {gate_id} approved for workflow {workflow.workflow_id}")
+                                return True
+
+                            elif status == "rejected":
+                                workflow.status = WorkflowStatus.FAILED
+                                workflow.error = f"Approval rejected: {data.get('notes', 'No reason provided')}"
+                                workflow.updated_at = datetime.now().isoformat()
+                                self._save_workflow(workflow)
+                                logger.warning(f"Approval gate {gate_id} rejected for workflow {workflow.workflow_id}")
+                                return False
+
+                        # Check timeout
+                        elapsed = (datetime.now() - start_time).total_seconds()
+                        if elapsed > timeout:
+                            logger.warning(f"Approval timeout for gate {gate_id}")
+                            return False
+
+                        await asyncio.sleep(5)
+
+            except ImportError:
+                logger.warning("aiohttp not available, proceeding without approval")
+                return True
+            except Exception as e:
+                logger.warning(f"Error checking approval status: {e}")
+                await asyncio.sleep(5)
+
+    async def request_stage_approval(
+        self,
+        workflow_id: str,
+        from_stage: str,
+        to_stage: str,
+        gate_type: str = "stage_transition"
+    ) -> Optional[str]:
+        """
+        Request approval for a stage transition.
+
+        Args:
+            workflow_id: ID of the workflow
+            from_stage: Current stage
+            to_stage: Next stage
+            gate_type: Type of approval gate
+
+        Returns:
+            Gate ID if created successfully
+        """
+        workflow = self._workflows.get(workflow_id)
+        if not workflow:
+            return None
+
+        return await self._request_approval(workflow, from_stage, to_stage, gate_type)
+
+    async def check_and_wait_for_approval(
+        self,
+        workflow_id: str,
+        gate_id: str,
+        timeout: int = 3600
+    ) -> bool:
+        """
+        Check approval status and wait for approval.
+
+        Args:
+            workflow_id: ID of the workflow
+            gate_id: ID of the approval gate
+            timeout: Maximum time to wait
+
+        Returns:
+            True if approved, False otherwise
+        """
+        workflow = self._workflows.get(workflow_id)
+        if not workflow:
+            return False
+
+        return await self._wait_for_approval(workflow, gate_id, timeout)
     
     # =========================================================================
     # Step Implementation Methods - Real Agent and MCP Calls
@@ -642,27 +968,27 @@ class WorkflowOrchestrator:
         workflow: Workflow,
         step: WorkflowStep
     ) -> Dict[str, Any]:
-        """Process NPRD file and extract content."""
-        logger.info(f"Processing NPRD for workflow {workflow.workflow_id}")
+        """Process VideoIngest file and extract content."""
+        logger.info(f"Processing VideoIngest for workflow {workflow.workflow_id}")
         
-        nprd_file = Path(workflow.input_file)
-        if not nprd_file.exists():
-            raise FileNotFoundError(f"NPRD file not found: {nprd_file}")
+        video_ingest_file = Path(workflow.input_file)
+        if not video_ingest_file.exists():
+            raise FileNotFoundError(f"VideoIngest file not found: {video_ingest_file}")
         
-        # Load NPRD data
-        with open(nprd_file, 'r') as f:
-            nprd_data = json.load(f)
+        # Load VideoIngest data
+        with open(video_ingest_file, 'r') as f:
+            video_ingest_data = json.load(f)
         
         # Extract timeline clips
-        timeline = nprd_data.get("timeline", [])
+        timeline = video_ingest_data.get("timeline", [])
         
-        # Store NPRD data in workflow metadata for later stages
-        workflow.metadata["nprd_data"] = nprd_data
+        # Store VideoIngest data in workflow metadata for later stages
+        workflow.metadata["video_ingest_data"] = video_ingest_data
         
         return {
-            "nprd_file": str(nprd_file),
+            "video_ingest_file": str(video_ingest_file),
             "timeline_clips": len(timeline),
-            "duration_seconds": nprd_data.get("meta", {}).get("duration_seconds", 0)
+            "duration_seconds": video_ingest_data.get("meta", {}).get("duration_seconds", 0)
         }
     
     async def _run_analyst(
@@ -670,23 +996,23 @@ class WorkflowOrchestrator:
         workflow: Workflow,
         step: WorkflowStep
     ) -> Dict[str, Any]:
-        """Run Analyst agent to analyze NPRD content and generate TRD."""
+        """Run Analyst agent to analyze VideoIngest content and generate TRD."""
         logger.info(f"Running Analyst for workflow {workflow.workflow_id}")
         
-        nprd_data = workflow.metadata.get("nprd_data", {})
+        video_ingest_data = workflow.metadata.get("video_ingest_data", {})
         
         try:
             # Import and compile the analyst graph
             from src.agents.analyst_v2 import compile_analyst_graph
             from langchain_core.messages import HumanMessage
             
-            # Prepare NPRD content for the analyst
-            nprd_content = json.dumps(nprd_data, indent=2)
+            # Prepare VideoIngest content for the analyst
+            video_ingest_content = json.dumps(video_ingest_data, indent=2)
             
             # Compile and invoke the analyst graph
             analyst_graph = compile_analyst_graph()
             result = analyst_graph.invoke({
-                "messages": [HumanMessage(content=f"Analyze this NPRD and generate a Trading Requirements Document:\n\n{nprd_content}")]
+                "messages": [HumanMessage(content=f"Analyze this VideoIngest and generate a Trading Requirements Document:\n\n{video_ingest_content}")]
             })
             
             # Extract TRD from result
@@ -741,7 +1067,7 @@ class WorkflowOrchestrator:
         
         # Write vanilla TRD
         with open(vanilla_trd, 'w') as f:
-            f.write(trd_content or "# Trading Requirements Document\n\nGenerated from NPRD analysis.")
+            f.write(trd_content or "# Trading Requirements Document\n\nGenerated from VideoIngest analysis.")
         
         # Generate spiced TRD (enhanced version)
         spiced_content = trd_content or "# Trading Requirements Document (Enhanced)\n\n"
@@ -1080,9 +1406,71 @@ void OnTick()
         self._save_workflow(workflow)
         
         logger.info(f"Workflow {workflow_id} cancelled")
-        
+
         return True
-    
+
+    async def pause_workflow(self, workflow_id: str) -> bool:
+        """
+        Pause a running workflow.
+
+        Args:
+            workflow_id: Workflow to pause
+
+        Returns:
+            True if paused, False if not found or not running
+        """
+        workflow = self._workflows.get(workflow_id)
+        if not workflow:
+            return False
+
+        if workflow.status != WorkflowStatus.RUNNING:
+            return False
+
+        # Create pause event if not exists
+        if workflow_id not in self._pause_events:
+            self._pause_events[workflow_id] = asyncio.Event()
+
+        # Set status to paused
+        workflow.status = WorkflowStatus.PAUSED
+        workflow.updated_at = datetime.now().isoformat()
+
+        self._save_workflow(workflow)
+
+        logger.info(f"Workflow {workflow_id} paused")
+
+        return True
+
+    async def resume_workflow(self, workflow_id: str) -> bool:
+        """
+        Resume a paused workflow.
+
+        Args:
+            workflow_id: Workflow to resume
+
+        Returns:
+            True if resumed, False if not found or not paused
+        """
+        workflow = self._workflows.get(workflow_id)
+        if not workflow:
+            return False
+
+        if workflow.status != WorkflowStatus.PAUSED:
+            return False
+
+        # Set status back to running
+        workflow.status = WorkflowStatus.RUNNING
+        workflow.updated_at = datetime.now().isoformat()
+
+        # Signal the workflow to continue
+        if workflow_id in self._pause_events:
+            self._pause_events[workflow_id].set()
+
+        self._save_workflow(workflow)
+
+        logger.info(f"Workflow {workflow_id} resumed")
+
+        return True
+
     async def wait_for_completion(
         self,
         workflow_id: str,

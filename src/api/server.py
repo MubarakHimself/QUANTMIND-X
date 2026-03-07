@@ -55,24 +55,50 @@ try:
     from src.api.mcp_endpoints import router as mcp_router
     from src.api.agent_queue_endpoints import router as agent_queue_router
     from src.api.workflow_endpoints import router as workflow_router
+    from src.api.approval_gate import router as approval_gate_router
     from src.api.kill_switch_endpoints import router as kill_switch_router
     from src.api.hmm_endpoints import router as hmm_router
     from src.api.tradingview_endpoints import router as tradingview_router
     from src.api.github_endpoints import router as github_router
     from src.api.monte_carlo_ws import monte_carlo_ws_endpoint
     from src.api.metrics_endpoints import router as metrics_router
+    from src.api.agent_metrics import router as agent_metrics_router
     from src.api.health_endpoints import router as health_router
     from src.api.broker_endpoints import router as broker_router, broker_websocket
     from src.api.lifecycle_scanner_endpoints import router as lifecycle_scanner_router
     from src.api.agent_management_endpoints import router as agent_management_router
+    from src.api.agent_activity import router as agent_activity_router
     from src.api.version_endpoints import router as version_router
     from src.api.demo_mode_endpoints import router as demo_mode_router
     from src.api.claude_agent_endpoints import router as claude_agent_router
     from src.api.agent_tools import router as agent_tools_router
     from src.api.model_config_endpoints import router as model_router
-    from src.api.memory_endpoints import router as memory_router, dept_router as memory_dept_router
+    from src.api.memory_endpoints import (
+        router as memory_router,
+        dept_router as memory_dept_router,
+        unified_router as memory_unified_router,
+    )
+    from src.api.agent_session_endpoints import router as agent_session_router
+    from src.api.session_checkpoint_endpoints import router as checkpoint_router
     from src.api.trading_floor_endpoints import router as trading_floor_router
     from src.api.floor_manager_endpoints import router as floor_manager_router
+    from src.api.video_to_ea_endpoints import router as video_to_ea_router
+    from src.api.ide_knowledge import router as knowledge_router
+    from src.api.batch_endpoints import router as batch_router
+    from src.api.evaluation_endpoints import router as evaluation_router
+    from src.api.ide_files import router as files_router
+    from src.api.ide_mt5 import router as mt5_router
+    from src.api.tool_call_endpoints import router as tool_call_router
+    from src.api.ide_assets import router as assets_router
+    from src.api.ide_ea import router as ea_ide_router
+    from src.api.ide_strategies import router as strategies_router
+    from src.api.ide_timeframes import router as timeframes_router
+    from src.api.ide_video_ingest import router as video_ingest_ide_router
+    from src.api.ide_chat import router as chat_ide_router
+    from src.api.ide_backtest import router as backtest_router
+    from src.api.pdf_endpoints import router as pdf_router
+    from src.api.trading.routes import router as trading_router
+    from src.api.hmm_inference_server import router as hmm_inference_router
 except ImportError as e:
     logger.error(f"Import Error: {e}")
     # Fallback/Debug info
@@ -87,6 +113,14 @@ try:
     logger.info("Paper trading endpoints loaded")
 except ImportError as e:
     logger.warning(f"Paper trading endpoints not available (MT5 required): {e}")
+
+# Optional department mail endpoints (may have dependency issues)
+department_mail_router = None
+try:
+    from src.api.department_mail_endpoints import router as department_mail_router
+    logger.info("Department mail endpoints loaded")
+except ImportError as e:
+    logger.warning(f"Department mail endpoints not available: {e}")
 
 # Create main app
 app = create_ide_api_app()
@@ -149,9 +183,7 @@ async def prometheus_middleware(request: Request, call_next):
     return response
 
 
-# Include additional routers
-app.include_router(analytics_router)
-app.include_router(chat_router)
+# Include additional routers (note: chat_router and knowledge_router already included in create_ide_api_app)
 app.include_router(settings_router)
 app.include_router(trd_router)
 app.include_router(router_router)
@@ -162,15 +194,18 @@ if paper_trading_router:
 app.include_router(mcp_router)
 app.include_router(agent_queue_router)
 app.include_router(workflow_router)
+app.include_router(approval_gate_router)
 app.include_router(kill_switch_router)
 app.include_router(hmm_router)
 app.include_router(tradingview_router)
 app.include_router(github_router)
 app.include_router(metrics_router)
+app.include_router(agent_metrics_router)
 app.include_router(health_router)
 app.include_router(broker_router)
 app.include_router(lifecycle_scanner_router)
 app.include_router(agent_management_router)
+app.include_router(agent_activity_router)
 app.include_router(version_router)
 app.include_router(demo_mode_router)
 app.include_router(claude_agent_router)
@@ -178,11 +213,32 @@ app.include_router(agent_tools_router)
 app.include_router(model_router)
 app.include_router(memory_router)
 app.include_router(memory_dept_router)
+app.include_router(memory_unified_router)
+app.include_router(agent_session_router)
+app.include_router(checkpoint_router)
 app.include_router(trading_floor_router)
 app.include_router(floor_manager_router)
+app.include_router(video_to_ea_router)
+app.include_router(batch_router)
+app.include_router(evaluation_router)
+app.include_router(files_router)
+app.include_router(mt5_router)
+app.include_router(tool_call_router)
+app.include_router(assets_router)
+app.include_router(ea_ide_router)
+app.include_router(strategies_router)
+app.include_router(timeframes_router)
+app.include_router(video_ingest_ide_router)
+app.include_router(chat_ide_router)
+app.include_router(backtest_router)
+app.include_router(pdf_router)
+if department_mail_router:
+    app.include_router(department_mail_router)
+app.include_router(trading_router)
+app.include_router(hmm_inference_router)
 
 # Standardized error handlers
-from fastapi import HTTPException
+from fastapi import HTTPException, Query
 from fastapi.responses import JSONResponse
 
 @app.exception_handler(HTTPException)
@@ -298,7 +354,7 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"Could not start market scanner scheduler: {e}")
     
-    logger.info("Endpoints mounted: /api/ide, /api/chat, /api/analytics, /api/settings, /api/trd, /api/router, /api/journal, /api/sessions, /api/v1/backtest, /api/paper-trading, /api/mcp, /api/agents, /api/workflows, /api/kill-switch, /api/hmm, /api/metrics, /api/brokers, /api/eas, /api/virtual-accounts, /api/agent-tools, /health")
+    logger.info("Endpoints mounted: /api/ide, /api/chat, /api/analytics, /api/settings, /api/trd, /api/router, /api/journal, /api/sessions, /api/v1/backtest, /api/paper-trading, /api/mcp, /api/agents, /api/workflows, /api/kill-switch, /api/hmm, /api/metrics, /api/brokers, /api/eas, /api/virtual-accounts, /api/agent-tools, /api/batch, /health")
 
     # Start metrics WebSocket broadcast task
     try:
@@ -310,6 +366,15 @@ async def startup_event():
             logger.info("Metrics WebSocket broadcast task started")
     except Exception as e:
         logger.warning(f"Could not start metrics broadcast task: {e}")
+
+    # Initialize Agent Stream Handler for SSE
+    try:
+        from src.agents.streaming import init_stream_handler, get_stream_handler
+        stream_handler = asyncio.get_event_loop().run_until_complete(init_stream_handler())
+        app.state.stream_handler = stream_handler
+        logger.info("Agent stream handler initialized for SSE")
+    except Exception as e:
+        logger.warning(f"Could not initialize agent stream handler: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -333,6 +398,69 @@ async def shutdown_event():
         logger.info("Market scanner scheduler stopped")
     except Exception as e:
         logger.error(f"Error stopping market scanner scheduler: {e}")
+
+    # Stop Agent Stream Handler
+    try:
+        if hasattr(app.state, 'stream_handler'):
+            from src.agents.streaming import close_stream_handler
+            asyncio.get_event_loop().run_until_complete(close_stream_handler())
+            logger.info("Agent stream handler stopped")
+    except Exception as e:
+        logger.error(f"Error stopping agent stream handler: {e}")
+
+
+# =============================================================================
+# Agent SSE Streaming Endpoint
+# =============================================================================
+
+@app.get("/api/agents/stream")
+async def agent_stream_sse(
+    agent_id: str = Query(default=None, description="Filter by agent ID"),
+    task_id: str = Query(default=None, description="Filter by task ID"),
+    event_type: str = Query(default=None, description="Filter by event type(s), comma-separated")
+):
+    """
+    SSE endpoint for streaming agent events.
+
+    Query Parameters:
+    - agent_id: Optional filter by agent ID
+    - task_id: Optional filter by task ID
+    - event_type: Optional filter by event type (agent_started, tool_start, tool_complete, etc.)
+                     Can be comma-separated to filter multiple types
+
+    Returns:
+    SSE stream of agent events
+    """
+    from starlette.responses import StreamingResponse
+    from src.agents.streaming import get_stream_handler, AgentStreamEventType
+
+    handler = get_stream_handler()
+
+    # Parse event types if provided (support comma-separated)
+    event_types = None
+    if event_type:
+        try:
+            event_type_list = [et.strip() for et in event_type.split(",")]
+            event_types = [AgentStreamEventType(et) for et in event_type_list]
+        except ValueError as e:
+            logger.warning(f"Invalid event type in filter: {event_type}, {e}")
+            pass
+
+    # Create SSE response
+    async def event_generator():
+        async for event in handler.stream_sse(agent_id, task_id, event_types):
+            yield event.encode('utf-8')
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
