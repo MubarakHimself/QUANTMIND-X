@@ -11,6 +11,7 @@
     ArrowLeft,
   } from "lucide-svelte";
   import { navigationStore } from "../stores/navigationStore";
+  import { API_CONFIG } from "$lib/config/api";
 
   // Import extracted sub-components
   import {
@@ -21,7 +22,7 @@
   } from "./paper-trading";
 
   // Props
-  export let baseUrl: string = "http://localhost:8000";
+  export let baseUrl: string = API_CONFIG.DIRECT_API_URL;
 
   // Performance metrics interface
   interface PerformanceMetrics {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, onMount, tick } from 'svelte';
+  import { postJson, postText } from '$lib/services/componentApi';
   import { Bot, Code, Wand2, Settings, History, Server, X, ChevronLeft, ChevronRight, Send, Paperclip, Loader, Key, FileText, Slash, ChevronDown, Plus, Trash2, Eye, EyeOff, Edit3, Clock, List, FolderOpen } from 'lucide-svelte';
   
   const dispatch = createEventDispatcher();
@@ -154,11 +155,7 @@
   async function saveAgentMd() {
     // Save to agent.md file via backend
     try {
-      await fetch('http://localhost:8000/api/agents/' + activeAgent + '/system-prompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: agentMdContent })
-      });
+      await postText(`/agents/${activeAgent}/system-prompt`, { content: agentMdContent });
       editingAgentMd = false;
       showToast('Agent system prompt saved!');
     } catch (e) {
@@ -257,7 +254,7 @@
     await scrollToBottom();
     
     try {
-      const res = await fetch('http://localhost:8000/api/chat', {
+      const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

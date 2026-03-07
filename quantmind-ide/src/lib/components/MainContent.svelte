@@ -4,6 +4,23 @@
   import "highlight.js/styles/github-dark.css";
   import { API_CONFIG } from "../config/api";
   import {
+    fetchBacktestHistory,
+    fetchBacktestTrades,
+    fetchKnowledgeContent,
+    fetchAssetContent,
+    fetchKnowledgeIndex,
+    fetchRelatedKnowledge,
+    fetchStrategiesIndex,
+    fetchTradingBots,
+    fetchTradingStatus,
+    uploadKnowledgeFile,
+    uploadKnowledgeNote,
+    processVideoIngest,
+    controlTradingBot,
+    triggerTradingKillSwitch,
+    updateKnowledgeArticle,
+  } from "$lib/services/mainContentApi";
+  import {
     BookOpen,
     Boxes,
     Bot,
@@ -183,12 +200,7 @@
 
   async function loadBacktests() {
     try {
-      const res = await fetch(
-        "http://localhost:8000/api/analytics/backtests?limit=20",
-      );
-      if (res.ok) {
-        backtestHistory = await res.json();
-      }
+      backtestHistory = await fetchBacktestHistory(20);
     } catch (e) {
       console.error("Failed to load backtest history", e);
     }
@@ -196,11 +208,8 @@
 
   async function loadRunDetails(runId: string) {
     try {
-      const res = await fetch(
-        `http://localhost:8000/api/analytics/trades?run_id=${runId}`,
-      );
-      if (res.ok) {
-        const trades = await res.json();
+      const trades = await fetchBacktestTrades(runId);
+      if (trades) {
         // Set the selected run for MonteCarloVisualization
         selectedBacktestRun = backtestHistory.find(
           (r: any) => r.run_id === runId,
@@ -283,13 +292,7 @@
         );
 
         // Single unified endpoint
-        const res = await fetch(
-          "http://localhost:8000/api/ide/knowledge/upload",
-          {
-            method: "POST",
-            body: formData,
-          },
-        );
+        const res = await uploadKnowledgeFile(formData);
 
         uploadingFiles = uploadingFiles.map((f) =>
           f.name === file.name
@@ -360,13 +363,7 @@
       formData.append("content", uploadMetadata.content);
       formData.append("category", "notes");
 
-      const res = await fetch(
-        "http://localhost:8000/api/ide/knowledge/upload/note",
-        {
-          method: "POST",
-          body: formData,
-        },
-      );
+      const res = await uploadKnowledgeNote(formData);
 
       if (res.ok) {
         uploadingFiles = uploadingFiles.map((f) =>
@@ -407,24 +404,12 @@
 
     // Fetch article content from API
     try {
-      const contentRes = await fetch(
-        `http://localhost:8000/api/knowledge/${encodeURIComponent(article.id || article.path)}/content`,
-      );
-      if (contentRes.ok) {
-        const contentData = await contentRes.json();
-        viewingArticle = {
-          ...viewingArticle,
-          content: contentData.content,
-          loading: false,
-        };
-      } else {
-        viewingArticle = {
-          ...viewingArticle,
-          content: null,
-          loading: false,
-          error: "Content not available",
-        };
-      }
+      const contentData = await fetchKnowledgeContent(article.id || article.path);
+      viewingArticle = {
+        ...viewingArticle,
+        content: contentData.content,
+        loading: false,
+      };
     } catch (e) {
       console.error("Failed to load article content:", e);
       viewingArticle = {
@@ -437,12 +422,7 @@
 
     // Load related articles based on category/tags
     try {
-      const res = await fetch(
-        `http://localhost:8000/api/knowledge/related?id=${article.id}&limit=5`,
-      );
-      if (res.ok) {
-        relatedArticles = await res.json();
-      }
+      relatedArticles = await fetchRelatedKnowledge(article.id, 5);
     } catch (e) {
       console.error("Failed to load related articles:", e);
     }
@@ -508,9 +488,8 @@
   async function loadData() {
     try {
       // Load articles for Knowledge Hub
-      const articlesRes = await fetch("http://localhost:8000/api/knowledge");
-      if (articlesRes.ok) {
-        articles = await articlesRes.json();
+      articles = await fetchKnowledgeIndex();
+      if (articles) {
         console.log(
           "[MainContent] Loaded articles:",
           articles.length,
@@ -530,16 +509,13 @@
       }
 
       // Load strategies for EA Management
-      const strategiesRes = await fetch("http://localhost:8000/api/strategies");
-      if (strategiesRes.ok) strategies = await strategiesRes.json();
+      strategies = await fetchStrategiesIndex();
 
       // Load trading status
-      const statusRes = await fetch("http://localhost:8000/api/trading/status");
-      if (statusRes.ok) systemStatus = await statusRes.json();
+      systemStatus = await fetchTradingStatus();
 
       // Load bots
-      const botsRes = await fetch("http://localhost:8000/api/trading/bots");
-      if (botsRes.ok) bots = await botsRes.json();
+      bots = await fetchTradingBots();
     } catch (e) {
       console.error("Failed to load data:", e);
     }
@@ -686,24 +662,15 @@
 
     try {
       // Fetch content from API
-      const contentRes = await fetch(
-        `http://localhost:8000/api/knowledge/${encodeURIComponent(item.id || item.path)}/content`,
-      );
       let content = "";
 
-      if (contentRes.ok) {
-        const data = await contentRes.json();
+      try {
+        const data = await fetchKnowledgeContent(item.id || item.path);
         content = data.content || "";
-      } else {
-        // Try alternative endpoint for assets
+      } catch {
         try {
-          const assetRes = await fetch(
-            `http://localhost:8000/api/assets/${item.id}/content`,
-          );
-          if (assetRes.ok) {
-            const assetData = await assetRes.json();
-            content = assetData.content || "";
-          }
+          const assetData = await fetchAssetContent(item.id);
+          content = assetData.content || "";
         } catch {
           content = `// Could not load content for ${item.name}`;
         }
@@ -895,12 +862,10 @@
     if (!videoIngestUrl || !videoIngestName) return;
 
     try {
-      const res = await fetch("http://localhost:8000/api/videoIngest/process", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: videoIngestUrl, strategy_name: videoIngestName }),
+      const data = await processVideoIngest({
+        url: videoIngestUrl,
+        strategy_name: videoIngestName,
       });
-      const data = await res.json();
       videoIngestQueue = [
         ...videoIngestQueue,
         { id: data.job_id, name: videoIngestName, status: "processing", progress: 0 },
@@ -914,18 +879,14 @@
   }
 
   async function handleTagChange(botId: string, newTag: string) {
-    await fetch("http://localhost:8000/api/trading/bots/control", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        bot_id: botId,
-        action:
-          newTag === "quarantined"
-            ? "quarantine"
-            : newTag === "paused"
-              ? "pause"
-              : "resume",
-      }),
+    await controlTradingBot({
+      bot_id: botId,
+      action:
+        newTag === "quarantined"
+          ? "quarantine"
+          : newTag === "paused"
+            ? "pause"
+            : "resume",
     });
   }
 
@@ -935,7 +896,7 @@
         "⚠️ KILL SWITCH: This will stop ALL trading immediately. Are you sure?",
       )
     ) {
-      await fetch("http://localhost:8000/api/trading/kill", { method: "POST" });
+      await triggerTradingKillSwitch();
     }
   }
 
@@ -1222,22 +1183,10 @@
     if (!viewingArticle) return;
 
     try {
-      const res = await fetch(
-        `http://localhost:8000/api/knowledge/${viewingArticle.id}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: articleEditContent }),
-        },
-      );
-
-      if (res.ok) {
-        viewingArticle.content = articleEditContent;
-        editMode = false;
-        alert("Article saved successfully");
-      } else {
-        alert("Failed to save article");
-      }
+      await updateKnowledgeArticle(viewingArticle.id, articleEditContent);
+      viewingArticle.content = articleEditContent;
+      editMode = false;
+      alert("Article saved successfully");
     } catch (e) {
       alert("Failed to save: " + (e as Error).message);
     }
@@ -1517,7 +1466,7 @@
           <LiveTradingView />
         {:else if activeView === "paper-trading"}
           <!-- Paper Trading View -->
-          <PaperTradingPanel baseUrl="http://localhost:8000" />
+          <PaperTradingPanel />
         {:else if activeView === "router"}
           <!-- Strategy Router View -->
           <StrategyRouterView />

@@ -1,13 +1,7 @@
 """Security tests for configuration."""
-import pytest
-import sys
 import os
 
-# Add the worktree src to path
-WORKTREE_PATH = '/home/mubarkahimself/Desktop/QUANTMINDX/.claude/worktrees/codebase-optimization/src'
-sys.path.insert(0, WORKTREE_PATH)
-
-from config import Settings
+from src.config import Settings
 
 
 def test_no_default_secret():
@@ -33,5 +27,5 @@ def test_secret_key_defaults_to_empty():
     if 'SECRET_KEY' in os.environ:
         del os.environ['SECRET_KEY']
     settings = Settings()
-    assert settings.secret_key == "", \
-        "Secret key should default to empty string, not a placeholder"
+    assert settings.secret_key is None, \
+        "Secret key should default to None when not set"

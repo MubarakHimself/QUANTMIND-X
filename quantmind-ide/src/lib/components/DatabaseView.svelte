@@ -9,6 +9,18 @@
   import InsertRowModal from "./InsertRowModal.svelte";
   import EditRowModal from "./EditRowModal.svelte";
   import JsonPreviewModal from "./JsonPreviewModal.svelte";
+  import {
+    listDatabaseTables,
+    getDatabaseStats,
+    getDatabaseTable,
+    getDatabaseSchema,
+    runDatabaseQuery,
+    insertDatabaseRow,
+    updateDatabaseRow,
+    deleteDatabaseRows,
+    exportDatabaseTable,
+    importDatabaseTable,
+  } from "$lib/services/databaseApi";
 
   // ============================================================================
   // TYPE DEFINITIONS
@@ -89,6 +101,7 @@
   // Loading states
   let isLoading = false;
   let isQueryRunning = false;
+  let operationError = "";
 
   // Search/filter
   let searchQuery = "";
@@ -109,17 +122,16 @@
 
   async function loadTables() {
     isLoading = true;
+    operationError = "";
     try {
-      const res = await fetch("http://localhost:8000/api/database/tables");
-      if (res.ok) {
-        const data = await res.json();
-        tables = data.tables || [];
-        applyFilters();
-      } else {
-        console.error("Failed to load tables:", res.statusText);
-      }
+      const data = await listDatabaseTables();
+      tables = data.tables || [];
+      applyFilters();
     } catch (e) {
       console.error("Failed to load tables:", e);
+      tables = [];
+      filteredTables = [];
+      operationError = "Failed to load database tables.";
     } finally {
       isLoading = false;
     }
@@ -128,14 +140,11 @@
 
   async function loadDatabaseStats() {
     try {
-      const res = await fetch("http://localhost:8000/api/database/stats");
-      if (res.ok) {
-        dbStats = await res.json();
-      } else {
-        console.error("Failed to load database stats:", res.statusText);
-      }
+      dbStats = await getDatabaseStats();
     } catch (e) {
       console.error("Failed to load database stats:", e);
+      dbStats = null;
+      operationError = operationError || "Failed to load database statistics.";
     }
   }
 
@@ -159,14 +168,7 @@
     isLoading = true;
     try {
       const offset = (page - 1) * limit;
-      const res = await fetch(
-        `http://localhost:8000/api/database/table/${tableName}?limit=${limit}&offset=${offset}`,
-      );
-      if (res.ok) {
-        tableData = await res.json();
-      } else {
-        console.error("Failed to load table data:", res.statusText);
-      }
+      tableData = await getDatabaseTable(tableName, limit, offset);
     } catch (e) {
       console.error("Failed to load table data:", e);
     } finally {
@@ -176,16 +178,8 @@
 
   async function loadTableSchema(tableName: string) {
     try {
-      const res = await fetch(
-        `http://localhost:8000/api/database/schema/${tableName}`,
-      );
-      if (res.ok) {
-        const data = await res.json();
-        tableSchema = data.columns || [];
-      } else {
-        const table = tables.find((t) => t.name === tableName);
-        tableSchema = table?.columns || [];
-      }
+      const data = await getDatabaseSchema(tableName);
+      tableSchema = data.columns || [];
     } catch (e) {
       const table = tables.find((t) => t.name === tableName);
       tableSchema = table?.columns || [];
@@ -203,29 +197,10 @@
     const startTime = Date.now();
 
     try {
-      const res = await fetch("http://localhost:8000/api/database/query", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: queryInput }),
-      });
-
       const executionTime = Date.now() - startTime;
-
-      if (res.ok) {
-        queryResults = await res.json();
-        queryResults!.execution_time_ms = executionTime;
-        addToHistory(queryInput);
-      } else {
-        const error = await res.json();
-        queryResults = {
-          columns: [],
-          rows: [],
-          row_count: 0,
-          execution_time_ms: executionTime,
-          error: error.detail || "Query failed",
-        };
-        addToHistory(queryInput);
-      }
+      queryResults = await runDatabaseQuery(queryInput);
+      queryResults!.execution_time_ms = executionTime;
+      addToHistory(queryInput);
     } catch (e) {
       queryResults = {
         columns: [],
@@ -284,30 +259,13 @@
     if (!selectedTable) return;
 
     try {
-      const res = await fetch(
-        `http://localhost:8000/api/database/table/${selectedTable.name}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(newRowData),
-        },
-      );
-
-      if (res.ok) {
-        await loadTableData(selectedTable.name, currentPage);
-        insertModalOpen = false;
-      } else {
-        alert("Failed to insert row");
-      }
+      operationError = "";
+      await insertDatabaseRow(selectedTable.name, newRowData);
+      await loadTableData(selectedTable.name, currentPage);
+      insertModalOpen = false;
     } catch (e) {
       console.error("Failed to insert row:", e);
-      // For development, add locally
-      if (tableData) {
-        const newRow = { id: tableData.rows.length + 1, ...newRowData };
-        tableData.rows.push(newRow);
-        tableData.row_count++;
-      }
-      insertModalOpen = false;
+      operationError = "Failed to insert row.";
     }
   }
 
@@ -320,31 +278,13 @@
     if (!selectedTable || !editingRow) return;
 
     try {
-      const res = await fetch(
-        `http://localhost:8000/api/database/table/${selectedTable.name}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(editingRow),
-        },
-      );
-
-      if (res.ok) {
-        await loadTableData(selectedTable.name, currentPage);
-        editModalOpen = false;
-      } else {
-        alert("Failed to update row");
-      }
+      operationError = "";
+      await updateDatabaseRow(selectedTable.name, editingRow);
+      await loadTableData(selectedTable.name, currentPage);
+      editModalOpen = false;
     } catch (e) {
       console.error("Failed to update row:", e);
-      // For development, update locally
-      if (tableData) {
-        const index = tableData.rows.findIndex((r) => r.id === editingRow?.id);
-        if (index >= 0) {
-          tableData.rows[index] = editingRow;
-        }
-      }
-      editModalOpen = false;
+      operationError = "Failed to update row.";
     }
   }
 
@@ -354,31 +294,13 @@
     if (!confirm(`Delete ${selectedRows.size} row(s)?`)) return;
 
     try {
-      const res = await fetch(
-        `http://localhost:8000/api/database/table/${selectedTable.name}`,
-        {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids: Array.from(selectedRows) }),
-        },
-      );
-
-      if (res.ok) {
-        await loadTableData(selectedTable.name, currentPage);
-        selectedRows.clear();
-      } else {
-        alert("Failed to delete rows");
-      }
+      operationError = "";
+      await deleteDatabaseRows(selectedTable.name, Array.from(selectedRows));
+      await loadTableData(selectedTable.name, currentPage);
+      selectedRows.clear();
     } catch (e) {
       console.error("Failed to delete rows:", e);
-      // For development, remove locally
-      if (tableData) {
-        tableData.rows = tableData.rows.filter(
-          (r) => !selectedRows.has(String(r.id)),
-        );
-        tableData.row_count -= selectedRows.size;
-      }
-      selectedRows.clear();
+      operationError = "Failed to delete selected rows.";
     }
   }
 
@@ -386,21 +308,16 @@
     if (!selectedTable) return;
 
     try {
-      const res = await fetch(
-        `http://localhost:8000/api/database/export/${selectedTable.name}?format=${format}`,
-      );
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${selectedTable.name}.${format === "csv" ? "csv" : "json"}`;
-        a.click();
-        URL.revokeObjectURL(url);
-      }
+      const blob = await exportDatabaseTable(selectedTable.name, format);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${selectedTable.name}.${format === "csv" ? "csv" : "json"}`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (e) {
       console.error("Failed to export table:", e);
-      alert("Export failed");
+      operationError = "Failed to export table.";
     }
   }
 
@@ -411,23 +328,12 @@
     formData.append("file", file);
 
     try {
-      const res = await fetch(
-        `http://localhost:8000/api/database/import/${selectedTable.name}`,
-        {
-          method: "POST",
-          body: formData,
-        },
-      );
-
-      if (res.ok) {
-        await loadTableData(selectedTable.name, currentPage);
-        await loadTables(); // Update row counts
-      } else {
-        alert("Import failed");
-      }
+      await importDatabaseTable(selectedTable.name, formData);
+      await loadTableData(selectedTable.name, currentPage);
+      await loadTables(); // Update row counts
     } catch (e) {
       console.error("Failed to import table:", e);
-      alert("Import failed");
+      operationError = "Failed to import table.";
     }
   }
 
@@ -554,6 +460,10 @@
   <!-- Database Stats Banner -->
   <DatabaseStats stats={dbStats} />
 
+  {#if operationError}
+    <div class="operation-error">{operationError}</div>
+  {/if}
+
   <!-- Main Content -->
   <div class="db-content">
     <!-- Table List Sidebar -->
@@ -649,6 +559,16 @@
   }
 
   /* Main Content */
+  .operation-error {
+    margin: 12px 24px 0;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+    font-size: 13px;
+  }
+
   .db-content {
     flex: 1;
     display: flex;
