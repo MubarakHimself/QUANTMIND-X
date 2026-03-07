@@ -1,32 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import {
-    Database,
-    Table,
-    Search,
-    Filter,
-    Plus,
-    Edit,
-    Trash2,
-    Eye,
-    RefreshCw,
-    Download,
-    Upload,
-    Play,
-    FileText,
-    Code,
-    Hash,
-    Clock,
-    HardDrive,
-    ChevronRight,
-    ChevronDown,
-    X,
-    Check,
-    AlertCircle,
-    FileCode,
-    Terminal,
-    Settings as SettingsIcon,
-  } from "lucide-svelte";
+
+  import DatabaseHeader from "./DatabaseHeader.svelte";
+  import DatabaseStats from "./DatabaseStats.svelte";
+  import TableSidebar from "./TableSidebar.svelte";
+  import DataGrid from "./DataGrid.svelte";
+  import QueryEditor from "./QueryEditor.svelte";
+  import InsertRowModal from "./InsertRowModal.svelte";
+  import EditRowModal from "./EditRowModal.svelte";
+  import JsonPreviewModal from "./JsonPreviewModal.svelte";
 
   // ============================================================================
   // TYPE DEFINITIONS
@@ -564,742 +546,98 @@
 
 <div class="database-view">
   <!-- Header -->
-  <div class="db-header">
-    <div class="header-left">
-      <Database size={24} class="db-icon" />
-      <div>
-        <h2>Database Manager</h2>
-        <p>SQLite + DuckDB hybrid database with 15 tables</p>
-      </div>
-    </div>
-    <div class="header-actions">
-      <button class="btn" on:click={loadTables}>
-        <RefreshCw size={14} />
-        <span>Refresh</span>
-      </button>
-      <button class="btn" on:click={loadDatabaseStats}>
-        <HardDrive size={14} />
-        <span>Stats</span>
-      </button>
-    </div>
-  </div>
+  <DatabaseHeader
+    onRefresh={loadTables}
+    onLoadStats={loadDatabaseStats}
+  />
 
   <!-- Database Stats Banner -->
-  {#if dbStats}
-    <div class="stats-banner">
-      <div class="stat-item">
-        <Database size={14} />
-        <span class="label">Tables:</span>
-        <span class="value">{dbStats.table_count}</span>
-      </div>
-      <div class="stat-item">
-        <HardDrive size={14} />
-        <span class="label">Total Size:</span>
-        <span class="value">{formatBytes(dbStats.total_size_bytes)}</span>
-      </div>
-      <div class="stat-item">
-        <FileText size={14} />
-        <span class="label">SQLite:</span>
-        <span class="value path">{dbStats.sqlite_path}</span>
-      </div>
-      <div class="stat-item">
-        <Code size={14} />
-        <span class="label">DuckDB:</span>
-        <span class="value path">{dbStats.duckdb_path}</span>
-      </div>
-    </div>
-  {/if}
+  <DatabaseStats stats={dbStats} />
 
   <!-- Main Content -->
   <div class="db-content">
     <!-- Table List Sidebar -->
-    <div class="table-sidebar">
-      <div class="sidebar-header">
-        <h3>Tables</h3>
-        <div class="table-count">{filteredTables.length}</div>
-      </div>
-
-      <!-- Search -->
-      <div class="sidebar-search">
-        <Search size={12} />
-        <input
-          type="text"
-          placeholder="Search tables..."
-          bind:value={searchQuery}
-          on:input={applyFilters}
-        />
-      </div>
-
-      <!-- Filter -->
-      <div class="sidebar-filter">
-        <Filter size={12} />
-        <select bind:value={tableTypeFilter} on:change={applyFilters}>
-          <option value="all">All Tables</option>
-          <option value="existing">Existing</option>
-          <option value="new">New</option>
-        </select>
-      </div>
-
-      <!-- Table List -->
-      <div class="table-list">
-        {#if isLoading}
-          <div class="loading-state">
-            <RefreshCw size={20} class="spin" />
-            <span>Loading tables...</span>
-          </div>
-        {:else}
-          {#each filteredTables as table}
-            <div
-              class="table-item"
-              class:selected={selectedTable?.name === table.name}
-              class:new-table={table.is_new}
-              on:click={() => selectTable(table)}
-              on:keydown={(e) => e.key === "Enter" && selectTable(table)}
-              role="button"
-              tabindex="0"
-              aria-label="Select table {table.name}"
-            >
-              <div class="table-info">
-                <div class="table-name">
-                  <Table size={14} />
-                  <span>{table.name}</span>
-                </div>
-                <div class="table-meta">
-                  <span class="row-count"
-                    >{table.row_count.toLocaleString()} rows</span
-                  >
-                  <span class="table-size">{formatBytes(table.size_bytes)}</span
-                  >
-                </div>
-              </div>
-              <div
-                class="table-indicator"
-                class:new-table={table.is_new}
-                title={table.is_new ? "New table" : "Existing table"}
-              ></div>
-            </div>
-          {/each}
-
-          {#if filteredTables.length === 0}
-            <div class="empty-state">
-              <Database size={32} />
-              <p>No tables found</p>
-            </div>
-          {/if}
-        {/if}
-      </div>
-    </div>
+    <TableSidebar
+      {tables}
+      {filteredTables}
+      {selectedTable}
+      {isLoading}
+      searchQuery={searchQuery}
+      tableTypeFilter={tableTypeFilter}
+      onSelectTable={selectTable}
+      onSearchChange={applyFilters}
+      onFilterChange={applyFilters}
+    />
 
     <!-- Data Grid Area -->
     <div class="data-grid-area">
-      {#if selectedTable}
-        <!-- Table Header -->
-        <div class="grid-header">
-          <div class="header-left">
-            <Table size={16} />
-            <div>
-              <h3>{selectedTable.name}</h3>
-              <span class="table-badge" class:new-table={selectedTable.is_new}>
-                {selectedTable.is_new ? "NEW" : "EXISTING"}
-              </span>
-            </div>
-          </div>
-          <div class="header-actions">
-            <button
-              class="btn"
-              on:click={() => (showTableInfo = !showTableInfo)}
-              class:active={showTableInfo}
-            >
-              <FileText size={14} />
-              <span>Schema</span>
-            </button>
-            <button class="btn" on:click={() => exportTable("csv")}>
-              <FileText size={14} />
-              <span>Export CSV</span>
-            </button>
-            <button class="btn" on:click={() => exportTable("json")}>
-              <FileCode size={14} />
-              <span>Export JSON</span>
-            </button>
-            <label class="btn">
-              <Upload size={14} />
-              <span>Import</span>
-              <input
-                type="file"
-                accept=".csv,.json"
-                on:change={(e) => {
-                  const input = e.currentTarget;
-                  const file = input.files?.[0];
-                  if (file) importTable(file);
-                }}
-                hidden
-              />
-            </label>
-            <button class="btn" on:click={openInsertModal}>
-              <Plus size={14} />
-              <span>Insert</span>
-            </button>
-            <button
-              class="btn danger"
-              on:click={deleteSelectedRows}
-              disabled={selectedRows.size === 0}
-              class:disabled={selectedRows.size === 0}
-            >
-              <Trash2 size={14} />
-              <span>Delete ({selectedRows.size})</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Table Schema Panel -->
-        {#if showTableInfo}
-          <div class="schema-panel">
-            <h4>Table Schema</h4>
-            <div class="schema-grid">
-              {#each selectedTable.columns as column}
-                <div class="schema-column">
-                  <div class="column-header">
-                    <Hash size={12} />
-                    <span class="column-name">{column.name}</span>
-                    {#if column.primary_key}
-                      <span class="pk-badge">PK</span>
-                    {/if}
-                  </div>
-                  <div class="column-info">
-                    <span
-                      class="column-type"
-                      style="color: {getColumnTypeColor(column.type)}"
-                    >
-                      {column.type}
-                    </span>
-                    {#if column.nullable}
-                      <span class="nullable-badge">NULL</span>
-                    {:else}
-                      <span class="not-null-badge">NOT NULL</span>
-                    {/if}
-                  </div>
-                  {#if column.default_value !== undefined}
-                    <div class="column-default">
-                      <span class="label">Default:</span>
-                      <span class="value">{column.default_value}</span>
-                    </div>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-            <div class="schema-meta">
-              <span class="meta-item"
-                >Last updated: {formatTimestamp(
-                  selectedTable.last_updated,
-                )}</span
-              >
-              <span class="meta-item"
-                >Size: {formatBytes(selectedTable.size_bytes)}</span
-              >
-            </div>
-          </div>
-        {/if}
-
-        <!-- Data Grid -->
-        <div class="data-grid">
-          {#if isLoading}
-            <div class="loading-state">
-              <RefreshCw size={32} class="spin" />
-              <span>Loading data...</span>
-            </div>
-          {:else if tableData && tableData.rows.length > 0}
-            <!-- Grid Header -->
-            <div class="grid-header-row">
-              <div class="grid-cell checkbox-cell">
-                <input
-                  type="checkbox"
-                  checked={selectedRows.size === tableData.rows.length &&
-                    tableData.rows.length > 0}
-                  on:change={toggleAllRows}
-                />
-              </div>
-              {#each tableData.columns as column}
-                <div
-                  class="grid-cell header-cell {sortColumn === column
-                    ? 'sorted'
-                    : ''}"
-                  on:click={() => sortTable(column)}
-                  on:keydown={(e) => e.key === "Enter" && sortTable(column)}
-                  role="button"
-                  tabindex="0"
-                  aria-label="Sort by {column}"
-                >
-                  <span>{column}</span>
-                  {#if sortColumn === column}
-                    <span class:rotate={sortDirection === "desc"}>
-                      <ChevronDown size={12} />
-                    </span>
-                  {/if}
-                </div>
-              {/each}
-              <div class="grid-cell actions-cell"></div>
-            </div>
-
-            <!-- Grid Rows -->
-            <div class="grid-rows">
-              {#each getPaginatedRows() as row}
-                <div
-                  class="grid-row"
-                  class:selected={selectedRows.has(
-                    String(row.id || Object.values(row)[0]),
-                  )}
-                >
-                  <div class="grid-cell checkbox-cell">
-                    <input
-                      type="checkbox"
-                      checked={selectedRows.has(
-                        String(row.id || Object.values(row)[0]),
-                      )}
-                      on:change={() =>
-                        toggleRowSelection(
-                          String(row.id || Object.values(row)[0]),
-                        )}
-                    />
-                  </div>
-                  {#each tableData.columns as column}
-                    <div class="grid-cell data-cell">
-                      {#if isJsonColumn(row[column])}
-                        <span
-                          class="json-link"
-                          on:click={() => previewJson(row[column])}
-                          on:keydown={(e) =>
-                            e.key === "Enter" && previewJson(row[column])}
-                          role="button"
-                          tabindex="0"
-                          aria-label="View JSON data"
-                        >
-                          <Code size={10} />
-                          <span>View JSON</span>
-                        </span>
-                      {:else}
-                        <span class="cell-value" title={row[column]}>
-                          {row[column] !== null && row[column] !== undefined
-                            ? String(row[column]).slice(0, 50)
-                            : "<NULL>"}
-                        </span>
-                      {/if}
-                    </div>
-                  {/each}
-                  <div class="grid-cell actions-cell">
-                    <button
-                      class="icon-btn"
-                      on:click={() => openEditModal(row)}
-                      title="Edit row"
-                    >
-                      <Edit size={12} />
-                    </button>
-                    <button
-                      class="icon-btn danger"
-                      on:click={() => {
-                        if (confirm("Delete this row?")) {
-                          selectedRows = new Set([
-                            String(row.id || Object.values(row)[0]),
-                          ]);
-                          deleteSelectedRows();
-                        }
-                      }}
-                      title="Delete row"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                </div>
-              {/each}
-            </div>
-
-            <!-- Pagination -->
-            <div class="pagination">
-              <div class="pagination-info">
-                <span
-                  >Showing {(currentPage - 1) * rowsPerPage + 1} to {Math.min(
-                    currentPage * rowsPerPage,
-                    tableData.row_count,
-                  )} of {tableData.row_count} rows</span
-                >
-              </div>
-              <div class="pagination-controls">
-                <select
-                  bind:value={rowsPerPage}
-                  on:change={() =>
-                    selectedTable && loadTableData(selectedTable.name, 1)}
-                >
-                  <option value="25">25 per page</option>
-                  <option value="50">50 per page</option>
-                  <option value="100">100 per page</option>
-                </select>
-                <button
-                  class="page-btn"
-                  on:click={() => {
-                    if (currentPage > 1) {
-                      currentPage--;
-                      selectedTable &&
-                        loadTableData(selectedTable.name, currentPage);
-                    }
-                  }}
-                  disabled={currentPage === 1}
-                >
-                  Previous
-                </button>
-                <span class="page-info"
-                  >Page {currentPage} of {getTotalPages()}</span
-                >
-                <button
-                  class="page-btn"
-                  on:click={() => {
-                    if (currentPage < getTotalPages()) {
-                      currentPage++;
-                      selectedTable &&
-                        loadTableData(selectedTable.name, currentPage);
-                    }
-                  }}
-                  disabled={currentPage >= getTotalPages()}
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          {:else}
-            <div class="empty-state">
-              <Table size={48} />
-              <p>No data in this table</p>
-              <button class="btn primary" on:click={openInsertModal}>
-                <Plus size={14} />
-                <span>Insert First Row</span>
-              </button>
-            </div>
-          {/if}
-        </div>
-      {:else}
-        <div class="empty-state select-table">
-          <Database size={48} />
-          <h3>Select a Table</h3>
-          <p>Choose a table from the sidebar to view and edit its data</p>
-        </div>
-      {/if}
+      <DataGrid
+        {tableData}
+        {selectedTable}
+        {selectedRows}
+        {currentPage}
+        {rowsPerPage}
+        {sortColumn}
+        {sortDirection}
+        {isLoading}
+        {showTableInfo}
+        formatBytes={formatBytes}
+        formatTimestamp={formatTimestamp}
+        getColumnTypeColor={getColumnTypeColor}
+        {isJsonColumn}
+        {previewJson}
+        {toggleRowSelection}
+        {toggleAllRows}
+        {sortTable}
+        {getPaginatedRows}
+        {getTotalPages}
+        loadTableData={loadTableData}
+        {deleteSelectedRows}
+        {openInsertModal}
+        {openEditModal}
+        {exportTable}
+        {importTable}
+      />
     </div>
 
     <!-- Query Editor Panel -->
-    <div class="query-panel">
-      <div class="query-header">
-        <Terminal size={14} />
-        <h3>SQL Query Editor</h3>
-      </div>
-
-      <div class="query-editor">
-        <textarea
-          placeholder="Enter SQL query...
-Examples:
-  SELECT * FROM prop_firm_accounts LIMIT 10
-  SELECT COUNT(*) FROM trade_proposals WHERE status = 'active'
-  SELECT strategy_name, AVG(profit) FROM crypto_trades GROUP BY strategy_name"
-          bind:value={queryInput}
-          on:keydown={(e) => {
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              executeQuery();
-            }
-            if (e.key === "ArrowUp") {
-              e.preventDefault();
-              navigateHistory("up");
-            }
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              navigateHistory("down");
-            }
-          }}
-        ></textarea>
-      </div>
-
-      <div class="query-actions">
-        <div class="query-hint">
-          <span>Ctrl+Enter to run</span>
-          <span>Use ↑/↓ for history</span>
-        </div>
-        <button
-          class="btn primary"
-          on:click={executeQuery}
-          disabled={isQueryRunning || !queryInput.trim()}
-        >
-          {#if isQueryRunning}
-            <RefreshCw size={14} class="spin" />
-            <span>Running...</span>
-          {:else}
-            <Play size={14} />
-            <span>Run Query</span>
-          {/if}
-        </button>
-      </div>
-
-      <!-- Query History -->
-      {#if queryHistory.length > 0}
-        <div class="query-history">
-          <h4>Recent Queries</h4>
-          <div class="history-list">
-            {#each queryHistory.slice(0, 5) as query}
-              <div
-                class="history-item"
-                on:click={() => (queryInput = query)}
-                on:keydown={(e) => e.key === "Enter" && (queryInput = query)}
-                role="button"
-                tabindex="0"
-                aria-label="Use query: {query.slice(0, 30)}..."
-              >
-                <Code size={10} />
-                <span class="query-text">{query.slice(0, 60)}...</span>
-              </div>
-            {/each}
-          </div>
-        </div>
-      {/if}
-
-      <!-- Query Results -->
-      {#if queryResults}
-        <div class="query-results">
-          <div class="results-header">
-            <h4>Results</h4>
-            {#if queryResults.error}
-              <div class="error-message">
-                <AlertCircle size={12} />
-                <span>{queryResults.error}</span>
-              </div>
-            {:else}
-              <span class="results-stats">
-                {queryResults.row_count} rows in {queryResults.execution_time_ms.toFixed(
-                  2,
-                )}ms
-              </span>
-            {/if}
-          </div>
-
-          {#if queryResults.rows.length > 0}
-            <div class="results-grid">
-              <div class="results-header-row">
-                {#each queryResults.columns as column}
-                  <div class="results-cell header">{column}</div>
-                {/each}
-              </div>
-              {#each queryResults.rows.slice(0, 50) as row}
-                <div class="results-row">
-                  {#each queryResults.columns as column}
-                    <div class="results-cell">
-                      {#if isJsonColumn(row[column])}
-                        <span
-                          class="json-link"
-                          on:click={() => previewJson(row[column])}
-                          on:keydown={(e) =>
-                            e.key === "Enter" && previewJson(row[column])}
-                          role="button"
-                          tabindex="0"
-                          aria-label="View JSON data"
-                        >
-                          <Code size={8} />
-                          <span>JSON</span>
-                        </span>
-                      {:else}
-                        <span
-                          >{row[column] !== null
-                            ? String(row[column])
-                            : "<NULL>"}</span
-                        >
-                      {/if}
-                    </div>
-                  {/each}
-                </div>
-              {/each}
-            </div>
-          {:else if !queryResults.error}
-            <div class="empty-results">
-              <FileText size={24} />
-              <p>Query executed successfully but returned no rows</p>
-            </div>
-          {/if}
-        </div>
-      {/if}
-    </div>
+    <QueryEditor
+      bind:queryInput
+      {queryHistory}
+      {queryResults}
+      {isQueryRunning}
+      {executeQuery}
+      {navigateHistory}
+      {isJsonColumn}
+      {previewJson}
+    />
   </div>
 </div>
 
 <!-- Insert Modal -->
-{#if insertModalOpen && selectedTable}
-  <div
-    class="modal-overlay"
-    on:click|self={() => (insertModalOpen = false)}
-    role="button"
-    tabindex="0"
-    on:keydown={(e) => e.key === "Escape" && (insertModalOpen = false)}
-  >
-    <div class="modal">
-      <div class="modal-header">
-        <div>
-          <h3>Insert Row</h3>
-          <p class="modal-subtitle">{selectedTable.name}</p>
-        </div>
-        <button class="icon-btn" on:click={() => (insertModalOpen = false)}>
-          <X size={18} />
-        </button>
-      </div>
-
-      <div class="modal-content">
-        {#each selectedTable.columns as column}
-          {#if !column.primary_key}
-            <div class="form-group">
-              <label for="insert-{column.name}">
-                {column.name}
-                <span
-                  class="type-badge"
-                  style="color: {getColumnTypeColor(column.type)}"
-                  >{column.type}</span
-                >
-              </label>
-              {#if column.type.includes("INT") || column.type.includes("REAL")}
-                <input
-                  type="number"
-                  id="insert-{column.name}"
-                  bind:value={newRowData[column.name]}
-                  placeholder={column.name}
-                />
-              {:else if column.type.includes("TEXT")}
-                <textarea
-                  id="insert-{column.name}"
-                  bind:value={newRowData[column.name]}
-                  placeholder={column.name}
-                  rows="2"
-                ></textarea>
-              {:else}
-                <input
-                  type="text"
-                  id="insert-{column.name}"
-                  bind:value={newRowData[column.name]}
-                  placeholder={column.name}
-                />
-              {/if}
-            </div>
-          {/if}
-        {/each}
-
-        <div class="modal-actions">
-          <button class="btn" on:click={() => (insertModalOpen = false)}
-            >Cancel</button
-          >
-          <button class="btn primary" on:click={insertRow}>
-            <Plus size={14} />
-            <span>Insert Row</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-{/if}
+<InsertRowModal
+  bind:open={insertModalOpen}
+  {selectedTable}
+  bind:newRowData
+  {getColumnTypeColor}
+  {insertRow}
+/>
 
 <!-- Edit Modal -->
-{#if editModalOpen && editingRow}
-  <div
-    class="modal-overlay"
-    on:click|self={() => (editModalOpen = false)}
-    role="button"
-    tabindex="0"
-    on:keydown={(e) => e.key === "Escape" && (editModalOpen = false)}
-  >
-    <div class="modal">
-      <div class="modal-header">
-        <div>
-          <h3>Edit Row</h3>
-          <p class="modal-subtitle">
-            ID: {editingRow.id || editingRow[Object.keys(editingRow)[0]]}
-          </p>
-        </div>
-        <button class="icon-btn" on:click={() => (editModalOpen = false)}>
-          <X size={18} />
-        </button>
-      </div>
-
-      <div class="modal-content">
-        {#if selectedTable}
-          {#each selectedTable.columns as column}
-            <div class="form-group">
-              <label for="edit-{column.name}">
-                {column.name}
-                <span
-                  class="type-badge"
-                  style="color: {getColumnTypeColor(column.type)}"
-                  >{column.type}</span
-                >
-              </label>
-              {#if column.type.includes("INT") || column.type.includes("REAL")}
-                <input
-                  type="number"
-                  id="edit-{column.name}"
-                  bind:value={editingRow[column.name]}
-                />
-              {:else if column.type.includes("TEXT")}
-                <textarea
-                  id="edit-{column.name}"
-                  bind:value={editingRow[column.name]}
-                  rows="2"
-                ></textarea>
-              {:else}
-                <input
-                  type="text"
-                  id="edit-{column.name}"
-                  bind:value={editingRow[column.name]}
-                />
-              {/if}
-            </div>
-          {/each}
-        {/if}
-
-        <div class="modal-actions">
-          <button class="btn" on:click={() => (editModalOpen = false)}
-            >Cancel</button
-          >
-          <button class="btn primary" on:click={updateRow}>
-            <Check size={14} />
-            <span>Save Changes</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-{/if}
+<EditRowModal
+  bind:open={editModalOpen}
+  {editingRow}
+  {selectedTable}
+  {getColumnTypeColor}
+  {updateRow}
+  bind:jsonPreviewData
+/>
 
 <!-- JSON Preview Modal -->
-{#if jsonPreviewModalOpen}
-  <div
-    class="modal-overlay"
-    on:click|self={() => (jsonPreviewModalOpen = false)}
-    role="button"
-    tabindex="0"
-    on:keydown={(e) => e.key === "Escape" && (jsonPreviewModalOpen = false)}
-  >
-    <div class="modal large">
-      <div class="modal-header">
-        <div>
-          <h3>JSON Preview</h3>
-          <p class="modal-subtitle">View complex data structure</p>
-        </div>
-        <button
-          class="icon-btn"
-          on:click={() => (jsonPreviewModalOpen = false)}
-        >
-          <X size={18} />
-        </button>
-      </div>
-
-      <div class="modal-content">
-        <pre class="json-preview">{JSON.stringify(
-            jsonPreviewData,
-            null,
-            2,
-          )}</pre>
-      </div>
-    </div>
-  </div>
-{/if}
+<JsonPreviewModal
+  bind:open={jsonPreviewModalOpen}
+  jsonData={jsonPreviewData}
+/>
 
 <style>
   .database-view {
@@ -1310,236 +648,11 @@ Examples:
     overflow: hidden;
   }
 
-  /* Header */
-  .db-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 20px 24px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .header-left h2 {
-    margin: 0;
-    font-size: 18px;
-    color: var(--text-primary);
-  }
-
-  .header-left p {
-    margin: 2px 0 0;
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-
-  .header-actions {
-    display: flex;
-    gap: 8px;
-  }
-
-  .btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 6px;
-    color: var(--text-secondary);
-    font-size: 12px;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .btn:hover:not(.disabled) {
-    background: var(--bg-surface);
-  }
-
-  .btn.active {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
-    color: var(--bg-primary);
-  }
-
-  .btn.primary {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
-    color: var(--bg-primary);
-  }
-
-  .btn.primary:hover {
-    opacity: 0.9;
-  }
-
-  .btn.danger:hover:not(.disabled) {
-    background: rgba(239, 68, 68, 0.2);
-    border-color: #ef4444;
-    color: #ef4444;
-  }
-
-  .btn.disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  /* Stats Banner */
-  .stats-banner {
-    display: flex;
-    gap: 24px;
-    padding: 12px 24px;
-    background: var(--bg-tertiary);
-    border-bottom: 1px solid var(--border-subtle);
-    flex-wrap: wrap;
-  }
-
-  .stat-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    color: var(--text-secondary);
-  }
-
-  .stat-item .label {
-    color: var(--text-muted);
-  }
-
-  .stat-item .value {
-    color: var(--text-primary);
-    font-weight: 500;
-  }
-
-  .stat-item .value.path {
-    font-family: "JetBrains Mono", monospace;
-    font-size: 10px;
-  }
-
   /* Main Content */
   .db-content {
     flex: 1;
     display: flex;
     overflow: hidden;
-  }
-
-  /* Table Sidebar */
-  .table-sidebar {
-    width: 280px;
-    background: var(--bg-secondary);
-    border-right: 1px solid var(--border-subtle);
-    display: flex;
-    flex-direction: column;
-  }
-
-  .sidebar-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .sidebar-header h3 {
-    margin: 0;
-    font-size: 14px;
-    color: var(--text-primary);
-  }
-
-  .table-count {
-    padding: 2px 8px;
-    background: var(--bg-tertiary);
-    border-radius: 10px;
-    font-size: 11px;
-    color: var(--text-muted);
-  }
-
-  .sidebar-search,
-  .sidebar-filter {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .sidebar-search input,
-  .sidebar-filter select {
-    flex: 1;
-    background: var(--bg-tertiary);
-    border: none;
-    border-radius: 4px;
-    padding: 6px 10px;
-    font-size: 12px;
-    color: var(--text-primary);
-    outline: none;
-  }
-
-  .table-list {
-    flex: 1;
-    overflow-y: auto;
-  }
-
-  .table-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    cursor: pointer;
-    transition: background 0.15s;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .table-item:hover {
-    background: var(--bg-tertiary);
-  }
-
-  .table-item.selected {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
-  }
-
-  .table-item.selected .table-name,
-  .table-item.selected .table-meta {
-    color: var(--bg-primary);
-  }
-
-  .table-info {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .table-name {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-primary);
-    margin-bottom: 4px;
-  }
-
-  .table-meta {
-    display: flex;
-    gap: 8px;
-    font-size: 11px;
-    color: var(--text-muted);
-  }
-
-  .table-indicator {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--text-muted);
-    flex-shrink: 0;
-  }
-
-  .table-indicator.new-table {
-    background: var(--accent-success);
   }
 
   /* Data Grid Area */

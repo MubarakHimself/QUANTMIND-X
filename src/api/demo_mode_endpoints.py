@@ -11,6 +11,8 @@ from typing import List, Optional
 from pydantic import BaseModel
 import logging
 
+from src.api.pagination import PaginatedResponse, DEFAULT_LIMIT, DEFAULT_OFFSET, MAX_LIMIT
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["demo-mode"])
@@ -78,29 +80,43 @@ class TradeStatsResponse(BaseModel):
 
 
 # EA Management Endpoints
-@router.get("/eas", response_model=List[EAConfigResponse])
-async def list_eas(mode: Optional[str] = Query(None, description="Filter by mode (demo/live)")):
+@router.get("/eas", response_model=PaginatedResponse[EAConfigResponse])
+async def list_eas(
+    mode: Optional[str] = Query(None, description="Filter by mode (demo/live)"),
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="Maximum items to return"),
+    offset: int = Query(DEFAULT_OFFSET, ge=0, description="Number of items to skip")
+):
     """
-    List all registered EAs.
-    
+    List all registered EAs with pagination.
+
     Args:
         mode: Optional filter by trading mode
-        
+        limit: Maximum items to return
+        offset: Number of items to skip
+
     Returns:
-        List of EA configurations
+        Paginated list of EA configurations
     """
     from src.router.ea_registry import get_ea_registry
-    
+
     registry = get_ea_registry()
-    
+
     if mode:
         from src.router.ea_registry import EAMode
         ea_mode = EAMode.DEMO if mode == "demo" else EAMode.LIVE
         eas = registry.get_by_mode(ea_mode)
     else:
         eas = registry.list_all()
-    
-    return [EAConfigResponse(**ea.to_dict()) for ea in eas]
+
+    items = [EAConfigResponse(**ea.to_dict()) for ea in eas]
+    total = len(items)
+    paginated_items = items[offset:offset + limit]
+    return PaginatedResponse.create(
+        items=paginated_items,
+        total=total,
+        limit=limit,
+        offset=offset
+    )
 
 
 @router.get("/eas/modes")
@@ -280,20 +296,31 @@ async def unregister_ea(ea_id: str):
 
 
 # Virtual Account Endpoints
-@router.get("/virtual-accounts", response_model=List[VirtualAccountResponse])
-async def list_virtual_accounts():
+@router.get("/virtual-accounts", response_model=PaginatedResponse[VirtualAccountResponse])
+async def list_virtual_accounts(
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="Maximum items to return"),
+    offset: int = Query(DEFAULT_OFFSET, ge=0, description="Number of items to skip")
+):
     """
-    List all virtual accounts.
-    
+    List all virtual accounts with pagination.
+
     Returns:
-        List of virtual account states
+        Paginated list of virtual account states
     """
     from src.router.virtual_balance import get_virtual_balance_manager
-    
+
     manager = get_virtual_balance_manager()
     summary = manager.get_summary()
-    
-    return [VirtualAccountResponse(**acc) for acc in summary["accounts"]]
+
+    items = [VirtualAccountResponse(**acc) for acc in summary["accounts"]]
+    total = len(items)
+    paginated_items = items[offset:offset + limit]
+    return PaginatedResponse.create(
+        items=paginated_items,
+        total=total,
+        limit=limit,
+        offset=offset
+    )
 
 
 @router.get("/virtual-accounts/{ea_id}", response_model=VirtualAccountResponse)

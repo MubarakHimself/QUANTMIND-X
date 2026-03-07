@@ -17,7 +17,9 @@ export type {
   WorkflowStep,
   Workflow,
   AgentPermissions,
-  SettingsStoreState
+  SettingsStoreState,
+  ModelProvider,
+  ModelConfig
 } from './settingsTypes';
 
 // Import types for internal use
@@ -32,7 +34,9 @@ import type {
   MemoryConfig,
   Workflow,
   AgentPermissions,
-  SettingsStoreState
+  SettingsStoreState,
+  ModelProvider,
+  ModelConfig
 } from './settingsTypes';
 
 // Default settings
@@ -86,6 +90,19 @@ const defaultSkills: AgentSkills = {
   lastUpdated: new Date()
 };
 
+// Default model config
+const defaultModelConfig: ModelConfig = {
+  provider: 'anthropic',
+  baseUrl: '',
+  apiKey: '',
+  model: 'claude-sonnet-4-20250514',
+  availableModels: [
+    { id: 'claude-opus-4-20250514', name: 'Claude Opus 4', tier: 'opus' },
+    { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', tier: 'sonnet' },
+    { id: 'claude-haiku-3-20240307', name: 'Claude Haiku 3.5', tier: 'haiku' }
+  ]
+};
+
 // Initial state
 const initialState: SettingsStoreState = {
   general: defaultGeneralSettings,
@@ -104,6 +121,7 @@ const initialState: SettingsStoreState = {
     quantcode: { ...defaultPermissions },
     analyst: { ...defaultPermissions }
   },
+  modelConfig: defaultModelConfig,
   isLoading: false,
   isDirty: false,
   error: null
@@ -269,6 +287,34 @@ function createSettingsStore() {
         memories: { ...state.memories, ...updates },
         isDirty: true
       }));
+    },
+
+    // Update model config
+    updateModelConfig(updates: Partial<ModelConfig>) {
+      update(state => ({
+        ...state,
+        modelConfig: { ...state.modelConfig, ...updates },
+        isDirty: true
+      }));
+    },
+
+    // Load available models from backend
+    async loadAvailableModels() {
+      try {
+        const res = await fetch('/api/agent-config/available-models');
+        if (res.ok) {
+          const data = await res.json();
+          update(state => ({
+            ...state,
+            modelConfig: {
+              ...state.modelConfig,
+              availableModels: Object.values(data.providers || {}).flatMap((p: any) => p.models || [])
+            }
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to load available models:', error);
+      }
     },
 
     // Add workflow

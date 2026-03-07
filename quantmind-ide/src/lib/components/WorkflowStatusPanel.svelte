@@ -35,7 +35,7 @@
 
   // Stage display info
   const stageInfo: Record<string, { label: string; icon: string; description: string }> = {
-    nprd_processing: { label: 'NPRD Processing', icon: '📹', description: 'Processing video content' },
+    video_ingest_processing: { label: 'Video Ingest Processing', icon: '📹', description: 'Processing video content' },
     analyst: { label: 'Analyst', icon: '🔍', description: 'Analyzing strategy requirements' },
     trd_generation: { label: 'TRD Generation', icon: '📝', description: 'Creating Trading Requirements Document' },
     quantcode: { label: 'QuantCode', icon: '💻', description: 'Generating MQL5 code' },
@@ -205,7 +205,7 @@
           <div class="empty-state">
             <span class="empty-icon">📋</span>
             <p>No active workflows</p>
-            <p class="hint">Upload an NPRD video to start a new workflow</p>
+            <p class="hint">Upload an Video Ingest video to start a new workflow</p>
           </div>
         {:else}
           <div class="workflow-cards">

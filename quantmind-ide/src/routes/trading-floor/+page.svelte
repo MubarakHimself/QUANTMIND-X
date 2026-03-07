@@ -21,15 +21,15 @@
   let demoInterval: number | null = null;
 
   // Sample departments
-  const departments = ['analysis', 'research', 'risk', 'execution', 'portfolio'];
+  const departments = ['development', 'research', 'risk', 'trading', 'portfolio'];
 
   // Sample tasks
   const sampleTasks = [
-    { from: 'analysis', to: 'execution', type: 'dispatch', subject: 'EURUSD Signal: BUY' },
-    { from: 'research', to: 'analysis', type: 'result', subject: 'Backtest Complete' },
-    { from: 'risk', to: 'execution', type: 'question', subject: 'Position Size Query' },
-    { from: 'analysis', to: 'portfolio', type: 'dispatch', subject: 'Market Update' },
-    { from: 'execution', to: 'risk', type: 'status', subject: 'Order Filled' },
+    { from: 'development', to: 'trading', type: 'dispatch', subject: 'EURUSD Signal: BUY' },
+    { from: 'research', to: 'development', type: 'result', subject: 'Backtest Complete' },
+    { from: 'risk', to: 'trading', type: 'question', subject: 'Position Size Query' },
+    { from: 'development', to: 'portfolio', type: 'dispatch', subject: 'Market Update' },
+    { from: 'trading', to: 'risk', type: 'status', subject: 'Order Filled' },
   ];
 
   onMount(() => {
@@ -51,10 +51,10 @@
 
     // Add department heads
     const positions = {
-      analysis: { x: 170, y: 130 },
+      development: { x: 170, y: 130 },
       research: { x: 370, y: 130 },
       risk: { x: 570, y: 130 },
-      execution: { x: 270, y: 300 },
+      trading: { x: 270, y: 300 },
       portfolio: { x: 470, y: 300 },
     };
 
@@ -126,10 +126,10 @@
     if (stepCount % 5 === 0) {
       const dept = departments[stepCount % departments.length];
       const workerTypes = {
-        analysis: 'market_analyst',
+        development: 'market_analyst',
         research: 'backtester',
         risk: 'position_sizer',
-        execution: 'order_router',
+        trading: 'order_router',
         portfolio: 'rebalancer',
       };
 
@@ -154,10 +154,10 @@
 
   function getPositionForDept(dept: string): { x: number; y: number } {
     const positions: Record<string, { x: number; y: number }> = {
-      analysis: { x: 170, y: 130 },
+      development: { x: 170, y: 130 },
       research: { x: 370, y: 130 },
       risk: { x: 570, y: 130 },
-      execution: { x: 270, y: 300 },
+      trading: { x: 270, y: 300 },
       portfolio: { x: 470, y: 300 },
     };
     return positions[dept] || { x: 300, y: 200 };

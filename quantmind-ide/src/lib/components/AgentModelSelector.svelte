@@ -41,11 +41,27 @@
 
   onMount(async () => {
     try {
-      const response = await fetch(`${API_BASE}/agent-config/available-models`);
+      const url = `${API_BASE}/agent-config/available-models`;
+      console.log('[AgentModelSelector] Fetching models from:', url);
+
+      const response = await fetch(url);
+
       if (!response.ok) {
-        throw new Error('Failed to fetch models');
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error(`Expected JSON but got ${contentType}`);
+      }
+
       const data = await response.json();
+      console.log('[AgentModelSelector] Response data:', data);
+
+      if (!data || !data.providers) {
+        console.warn('[AgentModelSelector] No providers in response, using fallback');
+        throw new Error('Invalid response format: missing providers');
+      }
 
       // Group models by provider
       const groups: ProviderGroup[] = [];
@@ -61,6 +77,7 @@
       }
 
       providerGroups = groups;
+      console.log('[AgentModelSelector] Provider groups:', providerGroups);
 
       // Set selected model to first available or default
       const allModels = providerGroups.flatMap(g => g.models);

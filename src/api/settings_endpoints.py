@@ -9,8 +9,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import json
+import logging
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -215,32 +218,62 @@ async def update_agent_settings(settings: AgentSettings):
 
 # Skills
 @router.get("/skills")
-async def get_agent_skills():
-    """Get all agent skills."""
-    # Mock skills data - in production, this would come from the agent system
-    return [
-        {
-            "id": "sk-1",
-            "name": "Generate TRD",
-            "agent": "analyst",
-            "enabled": True,
-            "description": "Generate Technical Requirements Document from NPRD"
-        },
-        {
-            "id": "sk-2",
-            "name": "Generate EA",
-            "agent": "quantcode",
-            "enabled": True,
-            "description": "Generate MQL5 Expert Advisor code from TRD"
-        },
-        {
-            "id": "sk-3",
-            "name": "Run Backtest",
-            "agent": "quantcode",
-            "enabled": True,
-            "description": "Execute backtest with specified parameters"
-        }
-    ]
+async def get_agent_skills(department: Optional[str] = None):
+    """Get all agent skills, optionally filtered by department."""
+    # Import and initialize skill manager with built-in skills
+    try:
+        from src.agents.skills import get_skill_manager, register_builtin_skills
+        skill_manager = get_skill_manager()
+        # Register built-in skills if not already registered
+        if not skill_manager.list_skills():
+            register_builtin_skills(skill_manager)
+
+        # Get all registered skills, optionally filtered by department
+        if department:
+            skill_names = skill_manager.get_skills_by_department(department)
+        else:
+            skill_names = skill_manager.list_skills()
+
+        skills = []
+        for name in skill_names:
+            info = skill_manager.get_skill_info(name)
+            skills.append({
+                "id": name,
+                "name": info.get("name", name),
+                "agent": "copilot",  # Default agent
+                "enabled": True,
+                "description": info.get("description", ""),
+                "category": info.get("category", "general"),
+                "departments": info.get("departments", []),
+                "parameters": info.get("parameters", {}),
+            })
+        return skills
+    except Exception as e:
+        # Fallback to mock skills if skill manager fails
+        logger.warning(f"Failed to load skills from manager: {e}")
+        return [
+            {
+                "id": "sk-1",
+                "name": "Generate TRD",
+                "agent": "analyst",
+                "enabled": True,
+                "description": "Generate Technical Requirements Document from VideoIngest"
+            },
+            {
+                "id": "sk-2",
+                "name": "Generate EA",
+                "agent": "quantcode",
+                "enabled": True,
+                "description": "Generate MQL5 Expert Advisor code from TRD"
+            },
+            {
+                "id": "sk-3",
+                "name": "Run Backtest",
+                "agent": "quantcode",
+                "enabled": True,
+                "description": "Execute backtest with specified parameters"
+            }
+        ]
 
 class SkillToggleRequest(BaseModel):
     enabled: bool
@@ -262,6 +295,66 @@ async def toggle_agent_skill(skill_id: str, request: SkillToggleRequest):
     current["skills"] = skills
     save_settings(current)
     return {"success": True, "enabled": request.enabled}
+
+
+class SkillExecutionRequest(BaseModel):
+    """Request model for skill execution."""
+    params: Optional[Dict[str, Any]] = {}
+    context: Optional[Dict[str, Any]] = {}
+
+
+@router.post("/skills/{skill_id}/execute")
+async def execute_skill(skill_id: str, request: SkillExecutionRequest):
+    """Execute a specific skill with given parameters."""
+    try:
+        from src.agents.skills import get_skill_manager, register_builtin_skills
+        skill_manager = get_skill_manager()
+
+        # Register built-in skills if not already registered
+        if not skill_manager.list_skills():
+            register_builtin_skills(skill_manager)
+
+        # Execute the skill
+        result = skill_manager.execute(
+            name=skill_id,
+            params=request.params or {},
+            context=request.context or {}
+        )
+
+        return {
+            "success": result.success,
+            "skill_name": result.skill_name,
+            "data": result.data,
+            "error": result.error,
+            "execution_time_ms": result.execution_time_ms,
+        }
+    except Exception as e:
+        logger.exception(f"Skill execution failed for {skill_id}")
+        return {
+            "success": False,
+            "skill_name": skill_id,
+            "data": None,
+            "error": str(e),
+            "execution_time_ms": 0.0,
+        }
+
+
+@router.get("/skills/{skill_id}/info")
+async def get_skill_info(skill_id: str):
+    """Get detailed information about a specific skill."""
+    try:
+        from src.agents.skills import get_skill_manager, register_builtin_skills
+        skill_manager = get_skill_manager()
+
+        # Register built-in skills if not already registered
+        if not skill_manager.list_skills():
+            register_builtin_skills(skill_manager)
+
+        info = skill_manager.get_skill_info(skill_id)
+        return {"success": True, "skill": info}
+    except Exception as e:
+        logger.warning(f"Failed to get skill info for {skill_id}: {e}")
+        return {"success": False, "error": str(e)}
 
 # Risk Settings
 @router.get("/risk")

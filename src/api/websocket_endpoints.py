@@ -33,11 +33,13 @@ except ImportError:
 
 class ConnectionManager:
     """Manages WebSocket connections with topic pooling (Phase 4.3)."""
-    
-    def __init__(self):
+
+    def __init__(self, heartbeat_interval: int = 30):
         self.active_connections: Set[WebSocket] = set()  # type: ignore
         self.subscriptions: Dict[str, Set[WebSocket]] = {}  # type: ignore[valid-type]
         self._topic_cache: Dict[str, List[WebSocket]] = {}  # Cache for faster lookup  # type: ignore[valid-type]
+        self._heartbeat_interval = heartbeat_interval  # seconds
+        self._heartbeat_task: Optional[asyncio.Task] = None
     
     async def connect(self, websocket: WebSocket):  # type: ignore
         """Accept new WebSocket connection."""
@@ -96,9 +98,39 @@ class ConnectionManager:
         for conn in disconnected:
             self.disconnect(conn)
 
+    async def _send_heartbeat(self):
+        """Send periodic ping to all active connections."""
+        while True:
+            await asyncio.sleep(self._heartbeat_interval)
+            disconnected = []
+            for websocket in list(self.active_connections):
+                try:
+                    await websocket.send_json({
+                        "type": "ping",
+                        "timestamp": asyncio.get_event_loop().time()
+                    })
+                except Exception as e:
+                    logger.warning(f"Heartbeat failed for client: {e}")
+                    disconnected.append(websocket)
+
+            for ws in disconnected:
+                self.disconnect(ws)
+
+    def start_heartbeat(self):
+        """Start the heartbeat task."""
+        if self._heartbeat_task is None or self._heartbeat_task.done():
+            self._heartbeat_task = asyncio.create_task(self._send_heartbeat())
+            logger.info("WebSocket heartbeat started")
+
+    def stop_heartbeat(self):
+        """Stop the heartbeat task."""
+        if self._heartbeat_task and not self._heartbeat_task.done():
+            self._heartbeat_task.cancel()
+            logger.info("WebSocket heartbeat stopped")
+
 
 # Global connection manager
-manager = ConnectionManager()
+manager = ConnectionManager(heartbeat_interval=30)
 
 
 # Chart streaming state
@@ -108,16 +140,21 @@ _chart_subscriptions: Dict[str, set] = {}
 def create_websocket_endpoints(app):
     """
     Add WebSocket endpoints to FastAPI app.
-    
+
     Usage:
         from src.api.websocket_endpoints import create_websocket_endpoints
         app = FastAPI()
         create_websocket_endpoints(app)
     """
+    global manager
+
     if not FASTAPI_AVAILABLE:
         logger.warning("FastAPI not available, skipping WebSocket endpoints")
         return
-    
+
+    # Start heartbeat
+    manager.start_heartbeat()
+
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):  # type: ignore
         """
@@ -147,6 +184,11 @@ def create_websocket_endpoints(app):
                 # Handle ping/pong for connection keep-alive
                 elif message.get("action") == "ping":
                     await websocket.send_json({"type": "pong"})
+
+                # Handle server-initiated ping responses (client responding to our ping)
+                elif message.get("type") == "pong":
+                    # Client responded to our server-initiated ping - connection is alive
+                    logger.debug(f"Received pong from client")
                     
         except WebSocketDisconnect:
             manager.disconnect(websocket)
@@ -682,7 +724,7 @@ async def broadcast_market_opportunity(
     if timestamp is None:
         from datetime import datetime, timezone
         timestamp = datetime.now(timezone.utc).isoformat()
-    
+
     await manager.broadcast({
         "type": "market_opportunity",
         "alert": {
@@ -696,6 +738,52 @@ async def broadcast_market_opportunity(
         },
         "timestamp": timestamp
     }, topic="market_scanner")
+
+
+async def broadcast_approval_gate(
+    gate_id: str,
+    workflow_id: str,
+    action: str,  # "created", "approved", "rejected"
+    from_stage: str,
+    to_stage: str,
+    gate_type: str = "stage_transition",
+    approver: Optional[str] = None,
+    notes: Optional[str] = None,
+    timestamp: Optional[str] = None
+):
+    """
+    Broadcast approval gate events to connected WebSocket clients.
+
+    Args:
+        gate_id: ID of the approval gate
+        workflow_id: ID of the workflow
+        action: Action type - "created", "approved", or "rejected"
+        from_stage: Current workflow stage
+        to_stage: Next workflow stage
+        gate_type: Type of approval gate
+        approver: User who approved/rejected (for approved/rejected actions)
+        notes: Notes from approver (for approved/rejected actions)
+        timestamp: ISO timestamp (optional, will be generated if not provided)
+    """
+    if timestamp is None:
+        from datetime import datetime, timezone
+        timestamp = datetime.now(timezone.utc).isoformat()
+
+    await manager.broadcast({
+        "type": "approval_gate",
+        "action": action,
+        "gate": {
+            "gate_id": gate_id,
+            "workflow_id": workflow_id,
+            "from_stage": from_stage,
+            "to_stage": to_stage,
+            "gate_type": gate_type,
+            "approver": approver,
+            "notes": notes,
+            "timestamp": timestamp
+        },
+        "timestamp": timestamp
+    }, topic="approvals")
 
 
 __all__ = [
@@ -717,5 +805,6 @@ __all__ = [
     'broadcast_chart_update',
     'broadcast_lifecycle_event',
     'broadcast_market_opportunity',
+    'broadcast_approval_gate',
     'manager'
 ]

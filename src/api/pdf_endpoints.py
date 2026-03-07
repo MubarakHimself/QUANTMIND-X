@@ -22,6 +22,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, File, HTTPException, UploadFile, Query, BackgroundTasks
 from pydantic import BaseModel, Field
 
+from src.api.pagination import PaginatedResponse, DEFAULT_LIMIT, DEFAULT_OFFSET, MAX_LIMIT
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/pdf", tags=["pdf"])
@@ -435,26 +437,30 @@ async def get_indexing_status(job_id: str) -> IndexingStatusResponse:
     )
 
 
-@router.get("/documents", response_model=PDFListResponse)
+@router.get("/documents", response_model=PaginatedResponse[PDFDocument])
 async def list_documents(
-    namespace: Optional[str] = Query(None, description="Filter by namespace")
-) -> PDFListResponse:
+    namespace: Optional[str] = Query(None, description="Filter by namespace"),
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="Maximum items to return"),
+    offset: int = Query(DEFAULT_OFFSET, ge=0, description="Number of items to skip")
+) -> PaginatedResponse[PDFDocument]:
     """
-    List all indexed PDF documents.
-    
+    List all indexed PDF documents with pagination.
+
     Args:
         namespace: Optional namespace filter
-        
+        limit: Maximum items to return
+        offset: Number of items to skip
+
     Returns:
-        PDFListResponse with list of documents
+        PaginatedResponse with list of documents
     """
     documents = _list_all_documents()
-    
+
     filtered_docs = []
     for doc in documents:
         if namespace and doc.get("namespace") != namespace:
             continue
-        
+
         filtered_docs.append(PDFDocument(
             id=doc["id"],
             filename=doc["filename"],
@@ -464,11 +470,15 @@ async def list_documents(
             indexed_at=doc["indexed_at"],
             status=doc["status"]
         ))
-    
-    return PDFListResponse(
-        documents=filtered_docs,
-        total=len(filtered_docs),
-        namespace=namespace
+
+    total = len(filtered_docs)
+    paginated_docs = filtered_docs[offset:offset + limit]
+
+    return PaginatedResponse.create(
+        items=paginated_docs,
+        total=total,
+        limit=limit,
+        offset=offset
     )
 
 

@@ -7,7 +7,7 @@ Contains models for prop firm accounts, snapshots, broker registry, and loss tra
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, UniqueConstraint, Index, Enum, JSON
 from sqlalchemy.orm import relationship
-from ..models.base import Base, TradingMode
+from ..models.base import Base, TradingMode, AccountType
 
 
 class PropFirmAccount(Base):
@@ -38,6 +38,7 @@ class PropFirmAccount(Base):
     min_trading_days = Column(Integer, nullable=False, default=5)
     risk_mode = Column(String(20), nullable=False, default='growth', index=True)  # V8: 'growth', 'scaling', 'guardian'
     mode = Column(Enum(TradingMode), nullable=False, default=TradingMode.LIVE, index=True)
+    account_type = Column(Enum(AccountType), nullable=False, default=AccountType.PROP_FIRM, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 

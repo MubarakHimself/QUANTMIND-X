@@ -9,12 +9,14 @@ and systemic risk. Each sensor implements a different theoretical framework:
 - CorrelationSensor: Random Matrix Theory for systemic risk detection
 """
 
-from .ising_sensor import IsingRegimeSensor
+from .ising_sensor import IsingRegimeSensor, IsingSensorConfig, IsingSystem
 from .chaos_sensor import ChaosSensor
 from .correlation_sensor import CorrelationSensor
 
 __all__ = [
     "IsingRegimeSensor",
+    "IsingSensorConfig",
+    "IsingSystem",
     "ChaosSensor",
     "CorrelationSensor",
 ]

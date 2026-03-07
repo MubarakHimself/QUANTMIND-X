@@ -1,29 +1,10 @@
 """
 Memory Management Module
 
-Provides LangMem integration for semantic, episodic, and procedural memory.
+Provides native memory management for semantic, episodic, and procedural memory.
+LangMem has been removed in favor of native implementations.
 """
 
-from .langmem_integration import (
-    SemanticMemory,
-    EpisodicMemory,
-    ProceduralMemory,
-    ReflectionExecutor,
-    create_manage_memory_tool,
-    create_search_memory_tool,
-    Triple,
-    Episode,
-    Instruction
-)
-
 __all__ = [
-    'SemanticMemory',
-    'EpisodicMemory',
-    'ProceduralMemory',
-    'ReflectionExecutor',
-    'create_manage_memory_tool',
-    'create_search_memory_tool',
-    'Triple',
-    'Episode',
-    'Instruction'
+    # Memory components can be imported directly from their modules
 ]

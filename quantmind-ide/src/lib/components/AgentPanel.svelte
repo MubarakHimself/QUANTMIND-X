@@ -112,7 +112,7 @@
   let agentMessages: Record<string, Array<{role: string, content: string}>> = {
     copilot: [{ role: 'assistant', content: "Hello! I'm the QuantMind Copilot. I can help analyze strategies, run backtests, and manage bots." }],
     quantcode: [{ role: 'assistant', content: "I'm QuantCode. I can help write MQ5 code, debug EAs, and optimize parameters." }],
-    analyst: [{ role: 'assistant', content: "I'm the Analyst. I analyze NPRD outputs and help interpret trading patterns." }]
+    analyst: [{ role: 'assistant', content: "I'm the Analyst. I analyze VideoIngest outputs and help interpret trading patterns." }]
   };
   
   // Per-agent chat history (saved conversations)
@@ -199,7 +199,7 @@
     const greetings: Record<string, string> = {
       copilot: "Hello! I'm the QuantMind Copilot. I can help analyze strategies, run backtests, and manage bots.",
       quantcode: "I'm QuantCode. I can help write MQ5 code, debug EAs, and optimize parameters.",
-      analyst: "I'm the Analyst. I analyze NPRD outputs and help interpret trading patterns."
+      analyst: "I'm the Analyst. I analyze VideoIngest outputs and help interpret trading patterns."
     };
     return greetings[agentId] || 'Hello! How can I help?';
   }

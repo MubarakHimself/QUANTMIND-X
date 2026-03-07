@@ -40,7 +40,7 @@ class StrategyFolder(BaseModel):
     name: str
     status: StrategyStatus = StrategyStatus.PENDING
     created_at: str
-    has_nprd: bool = False
+    has_video_ingest: bool = False
     has_trd: bool = False
     has_ea: bool = False
     has_backtest: bool = False
@@ -51,7 +51,7 @@ class StrategyDetail(BaseModel):
     name: str
     status: StrategyStatus
     created_at: str
-    nprd: Optional[Dict[str, Any]] = None
+    video_ingest: Optional[Dict[str, Any]] = None
     trd: Optional[Dict[str, Any]] = None
     ea: Optional[Dict[str, Any]] = None
     backtests: List[Dict[str, Any]] = []

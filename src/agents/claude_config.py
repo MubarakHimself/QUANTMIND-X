@@ -116,7 +116,7 @@ AGENT_CONFIGS: Dict[str, ClaudeAgentConfig] = {
         workspace=WORKSPACES_DIR / "analyst",
         system_prompt_path=WORKSPACES_DIR / "analyst" / "context" / "CLAUDE.md",
         mcp_config_path=MCP_CONFIG_DIR / "analyst-mcp.json",
-        timeout_seconds=600,  # 10 minutes for complex NPRD analysis
+        timeout_seconds=600,  # 10 minutes for complex Video Ingest analysis
         max_retries=3,
         env_vars={
             "AGENT_ROLE": "analyst",

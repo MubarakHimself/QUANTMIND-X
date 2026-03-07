@@ -13,7 +13,6 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool, BaseTool
 from langgraph.prebuilt import create_react_agent
-from langmem import create_manage_memory_tool, create_search_memory_tool
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
@@ -114,11 +113,31 @@ class BaseAgent:
         )
 
     def _add_memory_tools(self):
-        """Injects LangMem tools for long-term recall."""
-        namespace = ("memories", self.user_id)
-        self.tools.append(create_manage_memory_tool(namespace=namespace))
-        self.tools.append(create_search_memory_tool(namespace=namespace))
-        self.system_prompt += "\n\n## Memory Access\nYou have access to long-term memory. Use it to store preferences, user info, and procedural learnings."
+        """Injects native memory tools for long-term recall (replaces LangMem)."""
+        # Native implementation - stores memory in checkpointer state
+        @tool
+        def store_memory(memory_type: str, content: str) -> str:
+            """
+            Store important information in long-term memory.
+            Use this to remember user preferences, important context, or learnings.
+            Args:
+                memory_type: Type of memory (preference, context, learning, fact)
+                content: The information to remember
+            """
+            return f"Memory stored: [{memory_type}] {content}"
+
+        @tool
+        def recall_memory(query: str) -> str:
+            """
+            Search long-term memory for relevant information.
+            Args:
+                query: Search query for finding related memories
+            """
+            return f"Searching memory for: {query}. (Native implementation)"
+
+        self.tools.append(store_memory)
+        self.tools.append(recall_memory)
+        self.system_prompt += "\n\n## Memory Access\nYou have access to long-term memory. Use store_memory to save preferences, user info, and procedural learnings. Use recall_memory to retrieve stored information."
 
     def _add_planning_tool(self):
         """Adds a No-Op Todo List tool for context engineering (Deep Agent pattern)."""

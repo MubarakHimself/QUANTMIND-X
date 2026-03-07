@@ -36,8 +36,50 @@ export const recentEvents = writable<TradingFloorEvent[]>([]);
 // WebSocket connection
 let ws: WebSocket | null = null;
 let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 5;
+const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_DELAY = 3000;
+const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+const PONG_TIMEOUT = 10000; // 10 seconds
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let pongTimeout: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Start heartbeat to keep connection alive
+ */
+function startHeartbeat() {
+  stopHeartbeat();
+
+  heartbeatTimer = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ action: 'ping' }));
+
+      if (pongTimeout) {
+        clearTimeout(pongTimeout);
+      }
+
+      pongTimeout = setTimeout(() => {
+        console.warn('[TradingFloorWS] No pong received, connection may be dead');
+        if (ws) {
+          ws.close(1000, 'Heartbeat timeout');
+        }
+      }, PONG_TIMEOUT);
+    }
+  }, HEARTBEAT_INTERVAL);
+}
+
+/**
+ * Stop heartbeat timer
+ */
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+  if (pongTimeout) {
+    clearTimeout(pongTimeout);
+    pongTimeout = null;
+  }
+}
 
 /**
  * Connect to Trading Floor WebSocket
@@ -58,6 +100,7 @@ export function connectTradingFloorWS(url?: string) {
       wsConnected.set(true);
       wsError.set(null);
       reconnectAttempts = 0;
+      startHeartbeat();
 
       // Subscribe to trading-floor topic
       ws?.send(JSON.stringify({
@@ -69,6 +112,22 @@ export function connectTradingFloorWS(url?: string) {
     ws.onmessage = (event) => {
       try {
         const message: TradingFloorWSMessage = JSON.parse(event.data);
+
+        // Handle pong response
+        if (message.type === 'pong') {
+          if (pongTimeout) {
+            clearTimeout(pongTimeout);
+            pongTimeout = null;
+          }
+          return;
+        }
+
+        // Handle server-initiated ping - respond with pong
+        if (message.type === 'ping') {
+          ws?.send(JSON.stringify({ action: 'pong' }));
+          return;
+        }
+
         handleTradingFloorEvent(message.event);
       } catch (e) {
         console.error('[TradingFloorWS] Parse error:', e);
@@ -83,6 +142,7 @@ export function connectTradingFloorWS(url?: string) {
     ws.onclose = () => {
       console.log('[TradingFloorWS] Disconnected');
       wsConnected.set(false);
+      stopHeartbeat();
       ws = null;
 
       // Attempt reconnect
@@ -102,6 +162,7 @@ export function connectTradingFloorWS(url?: string) {
  * Disconnect WebSocket
  */
 export function disconnectTradingFloorWS() {
+  stopHeartbeat();
   if (ws) {
     ws.close();
     ws = null;

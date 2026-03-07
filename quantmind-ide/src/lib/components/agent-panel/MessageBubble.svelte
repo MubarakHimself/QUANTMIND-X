@@ -86,6 +86,20 @@
     }
     return `${Math.round(message.latency)}ms`;
   }
+
+  // Check if this is a skill result message
+  function isSkillResult(): boolean {
+    return message.metadata?.type === 'skill_result';
+  }
+
+  // Get skill info for display
+  function getSkillInfo(): { name: string; time: string } | null {
+    if (!isSkillResult()) return null;
+    const skillName = message.metadata?.skillName || message.metadata?.skillId || 'Unknown Skill';
+    const execTime = message.metadata?.executionTime;
+    const timeStr = execTime ? `${Math.round(execTime)}ms` : null;
+    return { name: skillName, time: timeStr || '' };
+  }
 </script>
 
 <div
@@ -124,16 +138,28 @@
     </div>
 
     <!-- Footer with metadata -->
-    {#if message.role === "assistant" && (message.tokenCount || message.latency)}
+    {#if message.role === "assistant" && (message.tokenCount || message.latency || isSkillResult())}
       <div class="message-footer">
-        {#if getTokenDisplay()}
-          <span class="metadata">{getTokenDisplay()}</span>
-        {/if}
-        {#if getLatencyDisplay()}
-          <span class="metadata">{getLatencyDisplay()}</span>
-        {/if}
-        {#if message.model}
-          <span class="metadata model">{message.model}</span>
+        <!-- Skill result badge -->
+        {#if isSkillResult()}
+          {@const skillInfo = getSkillInfo()}
+          <span class="metadata skill-badge">
+            <span class="skill-icon">&#9889;</span>
+            {skillInfo?.name}
+            {#if skillInfo?.time}
+              <span class="skill-time">({skillInfo.time})</span>
+            {/if}
+          </span>
+        {:else}
+          {#if getTokenDisplay()}
+            <span class="metadata">{getTokenDisplay()}</span>
+          {/if}
+          {#if getLatencyDisplay()}
+            <span class="metadata">{getLatencyDisplay()}</span>
+          {/if}
+          {#if message.model}
+            <span class="metadata model">{message.model}</span>
+          {/if}
         {/if}
       </div>
     {/if}
@@ -317,6 +343,26 @@
     background: var(--bg-secondary);
     padding: 2px 6px;
     border-radius: 4px;
+  }
+
+  .skill-badge {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(107, 200, 230, 0.15);
+    color: var(--accent-secondary);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+  }
+
+  .skill-icon {
+    font-size: 10px;
+  }
+
+  .skill-time {
+    color: var(--text-muted);
+    margin-left: 2px;
   }
 
   /* Actions */

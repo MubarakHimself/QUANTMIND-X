@@ -2,6 +2,7 @@
   import { createEventDispatcher, onMount, afterUpdate } from "svelte";
   import hljs from "highlight.js";
   import "highlight.js/styles/github-dark.css";
+  import { API_CONFIG } from "../config/api";
   import {
     BookOpen,
     Boxes,
@@ -53,6 +54,8 @@
     DollarSign,
     Server,
     Wrench,
+    Layers,
+    Github,
   } from "lucide-svelte";
   import CodeEditor from "./CodeEditor.svelte";
   import MonacoEditor from "./MonacoEditor.svelte";
@@ -75,6 +78,19 @@
   import PaperTradingPanel from "./PaperTradingPanel.svelte";
   import GitHubEASync from "./GitHubEASync.svelte";
   import { navigationStore } from "../stores/navigationStore";
+
+  import VideoIngestModal from "./VideoIngestModal.svelte";
+  import RunBacktestModal from "./RunBacktestModal.svelte";
+  import UploadModal from "./UploadModal.svelte";
+  import DatabasePage from "./DatabasePage.svelte";
+  import BotsPage from "./BotsPage.svelte";
+  import EAView from "./EAView.svelte";
+  import AssetsView from "./AssetsView.svelte";
+  import KnowledgeView from "./KnowledgeView.svelte";
+    import WorkflowPanel from "./WorkflowPanel.svelte";
+  import WorkflowBuilder from "./WorkflowBuilder.svelte";
+  import TabBar from "./TabBar.svelte";
+  import BatchProcessingPanel from "./BatchProcessingPanel.svelte";
 
   const dispatch = createEventDispatcher();
 
@@ -99,10 +115,10 @@
   let editContent = "";
   let searchQuery = "";
 
-  // NPRD modal state
-  let nprdUrl = "";
-  let nprdName = "";
-  let nprdQueue: Array<{
+  // VideoIngest modal state
+  let videoIngestUrl = "";
+  let videoIngestName = "";
+  let videoIngestQueue: Array<{
     id: string;
     name: string;
     status: string;
@@ -127,6 +143,7 @@
     content: "",
   };
   let viewingArticle: any = null; // For article viewer modal
+
   let relatedArticles: Array<any> = []; // Related articles for the viewer
 
   // Article editor state
@@ -148,12 +165,13 @@
   let selectedBacktestRun: any = null;
 
 
-  // Load backtests when view activates
+  // Load backtests and strategies when view activates
   $: if (
     $navigationStore.currentView === "backtest" &&
     !$navigationStore.subPage
   ) {
     loadBacktests();
+    loadStrategies();
   }
 
   // Subscribe to navigation store
@@ -531,6 +549,11 @@
   // Removed duplicate views: backtest-results, shared-assets, kill-switch, database-view, news
   // These are now accessible as sub-pages within their parent sections
   const viewConfig: Record<string, any> = {
+    plans: {
+      title: "Implementation Plans",
+      icon: FileText,
+      description: "View and browse implementation plan documents",
+    },
     workshop: {
       title: "QuantMind Workshop",
       icon: Wrench,
@@ -562,7 +585,12 @@
     ea: {
       title: "EA Management",
       icon: Bot,
-      description: "Strategy folders with NPRD, TRD, EA code, and backtests",
+      description: "Strategy folders with VideoIngest, TRD, EA code, and backtests",
+    },
+    "github-ea": {
+      title: "GitHub EA Library",
+      icon: Github,
+      description: "Sync and manage EAs from GitHub repositories",
     },
     backtest: {
       title: "Backtests",
@@ -601,6 +629,11 @@
       title: "System Monitoring",
       icon: Activity,
       description: "Real-time system metrics, alerts, and resource monitoring",
+    },
+    batch: {
+      title: "Batch Processing",
+      icon: Layers,
+      description: "Submit and monitor batch processing tasks",
     },
     brokers: {
       title: "Broker Management",
@@ -858,25 +891,25 @@
     editContent = "";
   }
 
-  async function submitNPRD(): Promise<void> {
-    if (!nprdUrl || !nprdName) return;
+  async function submitVideoIngest(): Promise<void> {
+    if (!videoIngestUrl || !videoIngestName) return;
 
     try {
-      const res = await fetch("http://localhost:8000/api/nprd/process", {
+      const res = await fetch("http://localhost:8000/api/videoIngest/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: nprdUrl, strategy_name: nprdName }),
+        body: JSON.stringify({ url: videoIngestUrl, strategy_name: videoIngestName }),
       });
       const data = await res.json();
-      nprdQueue = [
-        ...nprdQueue,
-        { id: data.job_id, name: nprdName, status: "processing", progress: 0 },
+      videoIngestQueue = [
+        ...videoIngestQueue,
+        { id: data.job_id, name: videoIngestName, status: "processing", progress: 0 },
       ];
-      nprdUrl = "";
-      nprdName = "";
+      videoIngestUrl = "";
+      videoIngestName = "";
       navigationStore.navigateToBreadcrumb(breadcrumbs.length - 1);
     } catch (e) {
-      console.error("NPRD submit failed:", e);
+      console.error("VideoIngest submit failed:", e);
     }
   }
 
@@ -908,32 +941,135 @@
 
   // Backtest State
   let backtestRunning = false;
-  let backtestConfig = { strategy: "ict-v2", period: "1M", monteCarlo: true };
+  let backtestConfig = {
+    strategy: "ict-v2",
+    period: "1M",
+    monteCarlo: true,
+    variant: "spiced",
+    symbol: "EURUSD",
+    timeframe: "H1"
+  };
   let backtestResults: any = null;
+  let backtestStrategies: Array<{id: string, name: string}> = [];
+
+  // Calculate date range from period
+  function getDateRange(period: string): { start_date: string; end_date: string } {
+    const endDate = new Date();
+    const startDate = new Date();
+
+    switch (period) {
+      case "1M":
+        startDate.setMonth(startDate.getMonth() - 1);
+        break;
+      case "3M":
+        startDate.setMonth(startDate.getMonth() - 3);
+        break;
+      case "6M":
+        startDate.setMonth(startDate.getMonth() - 6);
+        break;
+      case "1Y":
+        startDate.setFullYear(startDate.getFullYear() - 1);
+        break;
+      case "all":
+        startDate.setFullYear(startDate.getFullYear() - 5);
+        break;
+      default:
+        startDate.setMonth(startDate.getMonth() - 1);
+    }
+
+    return {
+      start_date: startDate.toISOString().split('T')[0],
+      end_date: endDate.toISOString().split('T')[0]
+    };
+  }
+
+  // Load available strategies from API
+  async function loadStrategies() {
+    try {
+      const res = await fetch(`${API_CONFIG.API_URL}/api/v1/eas/list?limit=100`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.items) {
+          backtestStrategies = data.items.map((ea: any) => ({
+            id: ea.id || ea.strategy_id,
+            name: ea.name || ea.strategy_name
+          }));
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load strategies", e);
+    }
+  }
 
   async function runBacktest() {
     backtestRunning = true;
-    // Simulate backend delay
-    setTimeout(() => {
+    const dates = getDateRange(backtestConfig.period);
+
+    try {
+      const response = await fetch(`${API_CONFIG.API_URL}/api/v1/backtest/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: backtestConfig.symbol,
+          timeframe: backtestConfig.timeframe,
+          variant: backtestConfig.variant,
+          start_date: dates.start_date,
+          end_date: dates.end_date,
+          strategy_code: null,
+          enable_ws_streaming: true
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Poll for results
+        pollBacktestResults(data.backtest_id);
+      } else {
+        console.error("Backtest failed to start");
+        backtestRunning = false;
+      }
+    } catch (e) {
+      console.error("Failed to run backtest", e);
       backtestRunning = false;
-      navigationStore.navigateToBreadcrumb(breadcrumbs.length - 1);
+    }
+  }
 
-      // Navigate to Monte Carlo view
-      navigationStore.navigateToSubPage("montecarlo", "Monte Carlo");
+  async function pollBacktestResults(backtestId: string) {
+    const maxAttempts = 60;
+    let attempts = 0;
 
-      // Update data with "fresh" results
-      backtestResults = {
-        returns: Array.from(
-          { length: 1000 },
-          () => (Math.random() - 0.45 + Math.random() * 0.1) * 50,
-        ),
-        confidence: 12.5 + Math.random() * 2,
-        worstCase: -18.2 + Math.random() * 2,
-        bestCase: 42.8 + Math.random() * 5,
-        median: 15.2,
-        mean: 14.8,
-      };
-    }, 2500);
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_CONFIG.API_URL}/api/v1/backtest/status/${backtestId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'completed') {
+            // Get the actual results
+            const resultsRes = await fetch(`${API_CONFIG.API_URL}/api/v1/backtest/results/${backtestId}`);
+            if (resultsRes.ok) {
+              backtestResults = await resultsRes.json();
+            }
+            backtestRunning = false;
+            navigationStore.navigateToSubPage("montecarlo", "Monte Carlo");
+            loadBacktests(); // Refresh history
+          } else if (data.status === 'error') {
+            backtestRunning = false;
+            console.error("Backtest error");
+          } else if (attempts < maxAttempts) {
+            attempts++;
+            setTimeout(poll, 2000);
+          } else {
+            backtestRunning = false;
+            console.error("Backtest timeout");
+          }
+        }
+      } catch (e) {
+        console.error("Poll error", e);
+        backtestRunning = false;
+      }
+    };
+
+    setTimeout(poll, 2000);
   }
 
   // Watch for view changes to reset navigation
@@ -1147,42 +1283,16 @@
 </script>
 
 <main class="main-content">
-  <!-- Tab bar -->
-  <div class="tab-bar">
-    <button
-      class="tab"
-      class:active={!activeTabId || activeTabId === ""}
-      on:click={() => {
-        activeTabId = "";
-        resetNavigation();
-      }}
-    >
-      <svelte:component
-        this={viewConfig[activeView]?.icon || BookOpen}
-        size={14}
-      />
-      <span>{viewConfig[activeView]?.title || "Explorer"}</span>
-    </button>
-
-    {#each openFiles as file}
-      <div
-        class="tab"
-        class:active={activeTabId === file.id}
-        role="button"
-        tabindex="0"
-        on:click={() => (activeTabId = file.id)}
-        on:keydown={(e) => e.key === 'Enter' && (activeTabId = file.id)}
-      >
-        <File size={14} />
-        <span>{file.name}</span>
-        <button
-          class="tab-close"
-          on:click|stopPropagation={() => dispatch("closeTab", file.id)}
-          >×</button
-        >
-      </div>
-    {/each}
-  </div>
+  <!-- Tab bar - extracted to component -->
+  <TabBar
+    {openFiles}
+    {activeTabId}
+    {activeView}
+    {viewConfig}
+    on:tabClick={(e) => activeTabId = e.detail.fileId}
+    on:closeTab
+    on:resetNavigation={resetNavigation}
+  />
 
   <div class="content-area">
     {#if activeTabId && openFiles.find((f) => f.id === activeTabId)}
@@ -1265,6 +1375,7 @@
           </div>
 
           <div class="view-toolbar">
+            {#if activeView === "database-view"}
             <div class="search-box">
               <Search size={14} />
               <input
@@ -1285,6 +1396,7 @@
                 ><List size={14} /></button
               >
             </div>
+            {/if}
             <button class="toolbar-btn" on:click={loadData}
               ><RefreshCw size={14} /></button
             >
@@ -1297,7 +1409,7 @@
             {:else if activeView === "ea"}
               <button
                 class="toolbar-btn primary"
-                on:click={() => openSubPage("nprd-modal")}
+                on:click={() => openSubPage("videoIngest-modal")}
               >
                 <Plus size={14} /> Video Ingest
               </button>
@@ -1313,458 +1425,60 @@
         </div>
 
         <!-- Sub-pages / Modals -->
-        {#if subPage === "nprd-modal"}
-          <div class="modal-overlay">
-            <div class="modal">
-              <div class="modal-header">
-                <h2>Video Ingest</h2>
-                <button
-                  on:click={() =>
-                    navigationStore.navigateToBreadcrumb(
-                      breadcrumbs.length - 1,
-                    )}><X size={20} /></button
-                >
-              </div>
-              <div class="modal-body">
-                <div class="form-group">
-                  <label for="nprd-url">YouTube URL or Playlist</label>
-                  <input
-                    id="nprd-url"
-                    type="text"
-                    placeholder="https://youtube.com/watch?v=..."
-                    bind:value={nprdUrl}
-                  />
-                </div>
-                <div class="form-group">
-                  <label for="nprd-name">Strategy Name</label>
-                  <input
-                    id="nprd-name"
-                    type="text"
-                    placeholder="ICT Scalper v3"
-                    bind:value={nprdName}
-                  />
-                </div>
-                {#if nprdQueue.length > 0}
-                  <div class="queue-section">
-                    <h4>Processing Queue</h4>
-                    {#each nprdQueue as job}
-                      <div class="queue-item">
-                        <span>{job.name}</span>
-                        <span
-                          class="status"
-                          style="color: {getStatusColor(job.status)}"
-                          >{job.status}</span
-                        >
-                        <div class="progress-bar">
-                          <div style="width: {job.progress}%"></div>
-                        </div>
-                      </div>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
-              <div class="modal-footer">
-                <button
-                  class="btn secondary"
-                  on:click={() =>
-                    navigationStore.navigateToBreadcrumb(
-                      breadcrumbs.length - 1,
-                    )}>Cancel</button
-                >
-                <button class="btn primary" on:click={submitNPRD}
-                  >Start Processing</button
-                >
-              </div>
-            </div>
-          </div>
+        {#if subPage === "videoIngest-modal"}
+          <VideoIngestModal
+            {videoIngestUrl}
+            {videoIngestName}
+            {videoIngestQueue}
+            isOpen={true}
+            on:close={() => navigationStore.navigateToBreadcrumb(breadcrumbs.length - 1)}
+            on:submit={(e) => {
+              videoIngestUrl = e.detail.url;
+              videoIngestName = e.detail.name;
+              submitVideoIngest();
+            }}
+          />
         {/if}
 
         {#if subPage === "run-backtest"}
-          <div
-            class="modal-overlay"
-            on:click|self={() =>
-              navigationStore.navigateToBreadcrumb(breadcrumbs.length - 1)}
-            role="button"
-            tabindex="0"
-            on:keydown={(e) =>
-              e.key === "Enter" &&
-              navigationStore.navigateToBreadcrumb(breadcrumbs.length - 1)}
-          >
-            <div class="modal">
-              <div class="modal-header">
-                <h2><Play size={20} /> Run Backtest</h2>
-                <button
-                  on:click={() =>
-                    navigationStore.navigateToBreadcrumb(
-                      breadcrumbs.length - 1,
-                    )}><X size={20} /></button
-                >
-              </div>
-              <div class="modal-body">
-                <div class="form-group">
-                  <label for="bt-strategy">Strategy</label>
-                  <select id="bt-strategy" bind:value={backtestConfig.strategy}>
-                    <option value="" disabled selected>No strategies available</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label for="bt-period">Time Period</label>
-                  <select id="bt-period" bind:value={backtestConfig.period}>
-                    <option value="1M">Last Month</option>
-                    <option value="3M">Last 3 Months</option>
-                    <option value="6M">Last 6 Months</option>
-                    <option value="1Y">Last Year</option>
-                    <option value="all">Max Available</option>
-                  </select>
-                </div>
-                <div class="form-group checkbox">
-                  <input
-                    type="checkbox"
-                    id="mc-sim"
-                    bind:checked={backtestConfig.monteCarlo}
-                  />
-                  <label for="mc-sim"
-                    >Run Monte Carlo Simulation (1000 runs)</label
-                  >
-                </div>
-
-                {#if backtestRunning}
-                  <div class="progress-section">
-                    <div class="spinner-row">
-                      <Loader size={16} class="spinning" />
-                      <span>Running simulation...</span>
-                    </div>
-                  </div>
-                {/if}
-              </div>
-              <div class="modal-footer">
-                <button
-                  class="btn secondary"
-                  on:click={() =>
-                    navigationStore.navigateToBreadcrumb(
-                      breadcrumbs.length - 1,
-                    )}
-                  disabled={backtestRunning}>Cancel</button
-                >
-                <button
-                  class="btn primary"
-                  on:click={runBacktest}
-                  disabled={backtestRunning}
-                >
-                  {#if backtestRunning}Running...{:else}Start Backtest{/if}
-                </button>
-              </div>
-            </div>
-          </div>
+          <RunBacktestModal
+            isOpen={true}
+            isRunning={backtestRunning}
+            config={backtestConfig}
+            on:close={() => navigationStore.navigateToBreadcrumb(breadcrumbs.length - 1)}
+            on:run={(e) => {
+              backtestConfig = e.detail.config;
+              runBacktest();
+            }}
+          />
         {/if}
 
         {#if uploadModalOpen}
-          <div
-            class="modal-overlay"
-            on:click|self={() => (uploadModalOpen = false)}
-            role="button"
-            tabindex="0"
-            on:keydown={(e) => e.key === "Enter" && (uploadModalOpen = false)}
-          >
-            <div class="modal upload-modal">
-              <div class="modal-header">
-                <h2><Upload size={20} /> Upload to Knowledge Hub</h2>
-                <button on:click={() => (uploadModalOpen = false)}
-                  ><X size={20} /></button
-                >
-              </div>
-              <div class="modal-body">
-                <!-- Upload Type Selector -->
-                <div class="form-group">
-                  <label for="upload-type-selector">Upload Type</label>
-                  <div
-                    id="upload-type-selector"
-                    class="upload-type-selector"
-                    role="radiogroup"
-                  >
-                    <label
-                      class="type-option"
-                      class:selected={uploadType === "article"}
-                    >
-                      <input
-                        type="radio"
-                        bind:group={uploadType}
-                        value="article"
-                      />
-                      <div class="type-content">
-                        <FileText size={20} />
-                        <div>
-                          <span class="type-name">Article</span>
-                          <span class="type-desc"
-                            >Blog posts, research papers, tutorials</span
-                          >
-                        </div>
-                      </div>
-                    </label>
-                    <label
-                      class="type-option"
-                      class:selected={uploadType === "book"}
-                    >
-                      <input
-                        type="radio"
-                        bind:group={uploadType}
-                        value="book"
-                      />
-                      <div class="type-content">
-                        <Library size={20} />
-                        <div>
-                          <span class="type-name">Book (PDF)</span>
-                          <span class="type-desc"
-                            >PDF indexing with LangMem</span
-                          >
-                        </div>
-                      </div>
-                    </label>
-                    <label
-                      class="type-option"
-                      class:selected={uploadType === "note"}
-                    >
-                      <input
-                        type="radio"
-                        bind:group={uploadType}
-                        value="note"
-                      />
-                      <div class="type-content">
-                        <FileText size={20} />
-                        <div>
-                          <span class="type-name">Note</span>
-                          <span class="type-desc"
-                            >Quick notes without indexing</span
-                          >
-                        </div>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-
-                <!-- Dynamic form fields based on type -->
-                {#if uploadType === "book"}
-                  <div class="metadata-fields book-fields">
-                    <div class="form-group">
-                      <label for="book-title"
-                        >Title <span class="optional">(optional)</span></label
-                      >
-                      <input
-                        type="text"
-                        id="book-title"
-                        placeholder="Book title"
-                        bind:value={uploadMetadata.title}
-                      />
-                    </div>
-                    <div class="form-group">
-                      <label for="book-author"
-                        >Author <span class="optional">(optional)</span></label
-                      >
-                      <input
-                        type="text"
-                        id="book-author"
-                        placeholder="Author name"
-                        bind:value={uploadMetadata.author}
-                      />
-                    </div>
-                    <div class="form-group">
-                      <label for="book-category"
-                        >Category <span class="optional">(optional)</span
-                        ></label
-                      >
-                      <select
-                        id="book-category"
-                        bind:value={uploadMetadata.category}
-                      >
-                        <option value="">Select category...</option>
-                        <option value="trading">Trading</option>
-                        <option value="programming">Programming</option>
-                        <option value="mathematics">Mathematics</option>
-                        <option value="economics">Economics</option>
-                        <option value="psychology">Psychology</option>
-                        <option value="other">Other</option>
-                      </select>
-                    </div>
-                  </div>
-                {:else if uploadType === "article"}
-                  <div class="metadata-fields article-fields">
-                    <div class="form-group">
-                      <label for="article-title"
-                        >Title <span class="optional">(optional)</span></label
-                      >
-                      <input
-                        id="article-title"
-                        type="text"
-                        placeholder="Article title"
-                        bind:value={uploadMetadata.title}
-                      />
-                    </div>
-                    <div class="form-group">
-                      <label for="article-author"
-                        >Author <span class="optional">(optional)</span></label
-                      >
-                      <input
-                        id="article-author"
-                        type="text"
-                        placeholder="Author name"
-                        bind:value={uploadMetadata.author}
-                      />
-                    </div>
-                    <div class="form-group">
-                      <label for="article-url"
-                        >Source URL <span class="optional">(optional)</span
-                        ></label
-                      >
-                      <input
-                        id="article-url"
-                        type="url"
-                        placeholder="https://..."
-                        bind:value={uploadMetadata.url}
-                      />
-                    </div>
-                    <div class="form-group">
-                      <label for="article-category"
-                        >Category <span class="optional">(optional)</span
-                        ></label
-                      >
-                      <select
-                        id="article-category"
-                        bind:value={uploadMetadata.category}
-                      >
-                        <option value="">Select category...</option>
-                        <option value="trading-strategies"
-                          >Trading Strategies</option
-                        >
-                        <option value="technical-analysis"
-                          >Technical Analysis</option
-                        >
-                        <option value="risk-management">Risk Management</option>
-                        <option value="programming">Programming</option>
-                        <option value="market-research">Market Research</option>
-                        <option value="other">Other</option>
-                      </select>
-                    </div>
-                  </div>
-                {:else if uploadType === "note"}
-                  <div class="metadata-fields note-fields">
-                    <div class="form-group">
-                      <label for="note-title">Title *</label>
-                      <input
-                        id="note-title"
-                        type="text"
-                        placeholder="Note title"
-                        bind:value={uploadMetadata.title}
-                        required
-                      />
-                    </div>
-                    <div class="form-group">
-                      <label>Content *</label>
-                      <textarea
-                        class="note-content"
-                        placeholder="Write your note here... (Markdown supported)"
-                        bind:value={uploadMetadata.content}
-                        rows="6"
-                      ></textarea>
-                    </div>
-                  </div>
-                {/if}
-
-                <!-- File upload area (not for notes) -->
-                {#if uploadType !== "note"}
-                  <div
-                    class="upload-dropzone"
-                    class:drag-over={uploadDragOver}
-                    on:dragover|preventDefault={() => (uploadDragOver = true)}
-                    on:dragleave={() => (uploadDragOver = false)}
-                    on:drop={handleDrop}
-                  >
-                    <Upload size={40} />
-                    <p>
-                      Drag & drop {uploadType === "book"
-                        ? "PDF files"
-                        : "files"} here
-                    </p>
-                    <span>or</span>
-                    <label class="file-input-label">
-                      <input
-                        type="file"
-                        multiple
-                        accept={uploadType === "book"
-                          ? ".pdf"
-                          : ".pdf,.md,.txt,.csv,.json,.html"}
-                        on:change={(e) =>
-                          handleFileUpload(e.currentTarget.files)}
-                      />
-                      Browse Files
-                    </label>
-                    <p class="hint">
-                      Supports: {uploadType === "book"
-                        ? "PDF (will be indexed)"
-                        : "PDF, Markdown, TXT, CSV, JSON, HTML"}
-                    </p>
-                  </div>
-                {:else}
-                  <div class="note-actions">
-                    <button class="btn primary" on:click={handleNoteSubmit}>
-                      <Save size={14} /> Save Note
-                    </button>
-                  </div>
-                {/if}
-
-                <!-- Upload progress -->
-                {#if uploadingFiles.length > 0}
-                  <div class="upload-progress-list">
-                    <h4>Uploading Files</h4>
-                    {#each uploadingFiles as file}
-                      <div
-                        class="upload-item"
-                        class:done={file.status === "done"}
-                        class:error={file.status === "error"}
-                      >
-                        <File size={14} />
-                        <span class="filename">{file.name}</span>
-                        <span
-                          class="status-badge"
-                          class:uploading={file.status === "uploading"}
-                          class:done={file.status === "done"}
-                          class:error={file.status === "error"}
-                        >
-                          {file.status === "uploading"
-                            ? `Uploading... ${file.progress}%`
-                            : file.status === "done"
-                              ? "Done"
-                              : file.status === "error"
-                                ? "Failed"
-                                : "Pending"}
-                        </span>
-                        {#if file.status === "uploading"}
-                          <div class="progress-bar">
-                            <div style="width: {file.progress}%"></div>
-                          </div>
-                        {/if}
-                      </div>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
-              <div class="modal-footer">
-                <button
-                  class="btn secondary"
-                  on:click={() => {
-                    uploadModalOpen = false;
-                    uploadingFiles = [];
-                    uploadMetadata = {
-                      title: "",
-                      author: "",
-                      category: "",
-                      url: "",
-                      content: "",
-                    };
-                  }}>Close</button
-                >
-              </div>
-            </div>
-          </div>
+          <UploadModal
+            isOpen={uploadModalOpen}
+            {uploadType}
+            dragOver={uploadDragOver}
+            metadata={uploadMetadata}
+            uploadingFiles={uploadingFiles}
+            on:close={() => {
+              uploadModalOpen = false;
+              uploadingFiles = [];
+              uploadMetadata = {
+                title: "",
+                author: "",
+                category: "",
+                url: "",
+                content: "",
+              };
+            }}
+            on:fileSelect={(e) => handleFileUpload(e.detail.files)}
+            on:drop={(e) => handleDrop(e.detail.files)}
+            on:dragOver={(e) => (uploadDragOver = e.detail.value)}
+            on:noteSubmit={(e) => {
+              uploadMetadata = e.detail.metadata;
+              handleNoteSubmit();
+            }}
+          />
         {/if}
 
         {#if viewingArticle}
@@ -1790,114 +1504,12 @@
         {/if}
 
         {#if subPage === "database"}
-          <!-- Database Visualization Page -->
-          <div class="database-page">
-            <h2><Database size={20} /> Database Visualization</h2>
-            <div class="db-stats">
-              <div class="db-stat">
-                <span class="label">Total Records</span><span class="value"
-                  >12,450</span
-                >
-              </div>
-              <div class="db-stat">
-                <span class="label">Strategies</span><span class="value">8</span
-                >
-              </div>
-              <div class="db-stat">
-                <span class="label">Trades</span><span class="value">1,234</span
-                >
-              </div>
-              <div class="db-stat">
-                <span class="label">Last Sync</span><span class="value"
-                  >2 min ago</span
-                >
-              </div>
-            </div>
-            <div class="db-tables">
-              <div class="table-card">
-                <h4>strategies</h4>
-                <table>
-                  <thead
-                    ><tr
-                      ><th>id</th><th>name</th><th>status</th><th>created</th
-                      ></tr
-                    ></thead
-                  >
-                  <tbody>
-                    <tr
-                      ><td>1</td><td>ICT Scalper v2</td><td>primal</td><td
-                        >2025-01-15</td
-                      ></tr
-                    >
-                    <tr
-                      ><td>2</td><td>SMC Reversal</td><td>ready</td><td
-                        >2025-02-01</td
-                      ></tr
-                    >
-                  </tbody>
-                </table>
-              </div>
-              <div class="table-card">
-                <h4>trades</h4>
-                <table>
-                  <thead
-                    ><tr><th>id</th><th>symbol</th><th>type</th><th>pnl</th></tr
-                    ></thead
-                  >
-                  <tbody>
-                    <tr
-                      ><td>1024</td><td>EURUSD</td><td>BUY</td><td
-                        class="positive">+45.20</td
-                      ></tr
-                    >
-                    <tr
-                      ><td>1023</td><td>GBPUSD</td><td>SELL</td><td
-                        class="negative">-12.50</td
-                      ></tr
-                    >
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+          <DatabasePage />
         {:else if subPage === "bots-page"}
-          <!-- All Bots Internal Page -->
-          <div class="bots-page">
-            <h2>Active Bots</h2>
-            <div class="bot-cards">
-              {#each bots.length > 0 ? bots : [{ id: "ict-eu", name: "ICT_Scalper @EURUSD", state: "primal", symbol: "EURUSD" }, { id: "ict-gb", name: "ICT_Scalper @GBPUSD", state: "primal", symbol: "GBPUSD" }] as bot}
-                <div class="bot-detail-card">
-                  <div
-                    class="bot-status-indicator"
-                    style="background: {getStatusColor(bot.state)}"
-                  ></div>
-                  <div class="bot-main">
-                    <h4>{bot.name}</h4>
-                    <p>{bot.symbol}</p>
-                  </div>
-                  <select
-                    class="tag-select"
-                    on:change={(e) =>
-                      handleTagChange(bot.id, e.currentTarget.value)}
-                  >
-                    <option value="primal" selected={bot.state === "primal"}
-                      >Primal</option
-                    >
-                    <option value="ready" selected={bot.state === "ready"}
-                      >Ready</option
-                    >
-                    <option value="paused" selected={bot.state === "paused"}
-                      >Paused</option
-                    >
-                    <option
-                      value="quarantined"
-                      selected={bot.state === "quarantined"}>Quarantine</option
-                    >
-                  </select>
-                </div>
-              {/each}
-            </div>
-          </div>
+          <BotsPage
+            {bots}
+            on:tagChange={(e) => handleTagChange(e.detail.botId, e.detail.newTag)}
+          />
         {/if}
 
         {#if activeView === "live"}
@@ -1912,6 +1524,9 @@
         {:else if activeView === "monitoring"}
           <!-- System Monitoring Dashboard -->
           <MonitoringDashboard />
+        {:else if activeView === "batch"}
+          <!-- Batch Processing Panel -->
+          <BatchProcessingPanel />
         {:else if activeView === "brokers"}
           <!-- Broker Management -->
           <BrokerManagement />
@@ -1933,181 +1548,32 @@
         {:else if activeView === "news"}
           <!-- News View -->
           <NewsView />
+        {:else if activeView === "workflow"}
+          <!-- Workflow Panel -->
+          <WorkflowPanel />
+        {:else if activeView === "workflow-builder"}
+          <!-- Workflow Builder -->
+          <WorkflowBuilder />
         {:else if activeView === "workshop"}
           <!-- QuantMind Workshop -->
           <div class="workshop-container">
             <WorkshopView />
           </div>
         {:else if activeView === "assets"}
-          <!-- Shared Assets with Database tab -->
-          <div class="tab-nav">
-            {#each viewConfig.assets.tabs as tab}
-              <button
-                class="tab-item"
-                class:active={currentFolder === tab.id ||
-                  (!currentFolder && tab.id === "indicators")}
-                on:click={() =>
-                  tab.isPage
-                    ? openSubPage("database")
-                    : (currentFolder = tab.id)}
-              >
-                <svelte:component this={tab.icon} size={14} />
-                {tab.name}
-              </button>
-            {/each}
-          </div>
-
-          <div class="asset-view">
-            {#if !currentFolder}
-              <div class="asset-grid">
-                {#each assetTabs as tab}
-                  <div
-                    class="folder-item"
-                    role="button"
-                    tabindex="0"
-                    on:click={() => (currentFolder = tab.id)}
-                    on:keydown={(e) =>
-                      e.key === "Enter" && (currentFolder = tab.id)}
-                  >
-                    <Folder size={40} class="text-accent" />
-                    <span>{tab.name}</span>
-                  </div>
-                {/each}
-                <div
-                  class="folder-item"
-                  role="button"
-                  tabindex="0"
-                  on:click={() => openSubPage("database")}
-                  on:keydown={(e) =>
-                    e.key === "Enter" && openSubPage("database")}
-                >
-                  <Database size={40} class="text-accent" />
-                  <span>Database</span>
-                </div>
-              </div>
-            {:else}
-              <!-- File List for Selected Folder -->
-              <div class="file-list">
-                <div class="list-header">
-                  <button
-                    class="back-link"
-                    on:click={() => (currentFolder = null)}
-                  >
-                    <ArrowLeft size={14} /> Back to Assets
-                  </button>
-                  <h4>
-                    {currentAssetTabName}
-                  </h4>
-                </div>
-
-                <div class="folder-grid">
-                  <p class="empty-msg">No files found in {currentFolder}</p>
-                </div>
-              </div>
-            {/if}
-          </div>
+          <!-- Shared Assets View -->
+          <AssetsView
+            {currentFolder}
+            {assetTabs}
+            on:openSubPage={(e) => openSubPage(e.detail)}
+          />
         {:else if activeView === "ea"}
-          <!-- EA Management Card View -->
-          {#if nprdQueue.length > 0}
-            <div class="queue-banner">
-              <Clock size={14} />
-              {nprdQueue.length} NPRD job(s) in progress
-            </div>
-          {/if}
-
-          <div class="ea-cards" class:list-view={viewMode === "list"}>
-            <p class="empty-msg">No strategies available</p>
-            <div
-              class="ea-card add-new"
-              role="button"
-              tabindex="0"
-              on:click={() => openSubPage("nprd-modal")}
-              on:keydown={(e) => e.key === "Enter" && openSubPage("nprd-modal")}
-            >
-              <Plus size={32} />
-              <span>Video Ingest</span>
-            </div>
-          </div>
-
-          {#if currentFolder}
-            <!-- Inside a strategy folder - Windows Explorer style -->
-            <div class="folder-contents">
-              <!-- Breadcrumb navigation -->
-              <div class="folder-breadcrumb">
-                <button
-                  class="breadcrumb-btn"
-                  on:click={() => (currentFolder = "")}
-                >
-                  <Home size={14} />
-                  <span>EA Management</span>
-                </button>
-                <ChevronRight size={12} class="breadcrumb-separator" />
-                <span class="breadcrumb-current">{currentFolder}</span>
-              </div>
-
-              <div class="folder-grid">
-                {#if currentFolder === "nprd"}
-                  <!-- NPRD Output files -->
-                  <p class="empty-msg">No NPRD files found</p>
-                {:else if currentFolder === "trd"}
-                  <!-- TRD files -->
-                  <p class="empty-msg">No TRD files found</p>
-                {:else if currentFolder === "ea"}
-                  <!-- EA Code files -->
-                  <p class="empty-msg">No EA files found</p>
-                {:else if currentFolder === "backtest"}
-                  <!-- Backtest Report files -->
-                  <p class="empty-msg">No backtest files found</p>
-                {:else}
-                  <!-- Default subfolders -->
-                  <div
-                    class="folder-item"
-                    role="button"
-                    tabindex="0"
-                    on:click={() => (currentFolder = "nprd")}
-                    on:keydown={(e) =>
-                      e.key === "Enter" && (currentFolder = "nprd")}
-                  >
-                    <Folder size={40} color="#f59e0b" />
-                    <span>NPRD Output</span>
-                  </div>
-                  <div
-                    class="folder-item"
-                    role="button"
-                    tabindex="0"
-                    on:click={() => (currentFolder = "trd")}
-                    on:keydown={(e) =>
-                      e.key === "Enter" && (currentFolder = "trd")}
-                  >
-                    <Folder size={40} color="#3b82f6" />
-                    <span>TRD</span>
-                  </div>
-                  <div
-                    class="folder-item"
-                    role="button"
-                    tabindex="0"
-                    on:click={() => (currentFolder = "ea")}
-                    on:keydown={(e) =>
-                      e.key === "Enter" && (currentFolder = "ea")}
-                  >
-                    <Folder size={40} color="#10b981" />
-                    <span>EA Code</span>
-                  </div>
-                  <div
-                    class="folder-item"
-                    role="button"
-                    tabindex="0"
-                    on:click={() => (currentFolder = "backtest")}
-                    on:keydown={(e) =>
-                      e.key === "Enter" && (currentFolder = "backtest")}
-                  >
-                    <Folder size={40} color="#8b5cf6" />
-                    <span>Backtest Reports</span>
-                  </div>
-                {/if}
-              </div>
-            </div>
-          {/if}
+          <!-- EA Management View -->
+          <EAView
+            {videoIngestQueue}
+            currentFolder={currentFolder ?? undefined}
+            {viewMode}
+            on:openSubPage={(e) => openSubPage(e.detail)}
+          />
         {:else if activeView === "backtest"}
           <!-- Backtest Results with Monte Carlo -->
           <div class="backtest-view">
@@ -2140,13 +1606,6 @@
               >
                 <TrendingUp size={14} /> Walk-Forward
               </button>
-              <button
-                class="backtest-tab"
-                class:active={currentFolder === "paper-trading"}
-                on:click={() => (currentFolder = "paper-trading")}
-              >
-                <DollarSign size={14} /> Paper Trading
-              </button>
             </div>
 
             {#if currentFolder === "run"}
@@ -2161,25 +1620,47 @@
                         id="backtest-strategy"
                         bind:value={backtestConfig.strategy}
                       >
-                        <option value="" disabled selected>No strategies available</option>
+                        {#if backtestStrategies.length > 0}
+                          {#each backtestStrategies as strategy}
+                            <option value={strategy.id}>{strategy.name}</option>
+                          {/each}
+                        {:else}
+                          <option value="ict-v2">ICT V2</option>
+                          <option value="smc-basic">SMC Basic</option>
+                          <option value="ma-crossover">MA Crossover</option>
+                        {/if}
                       </select>
                     </div>
                     <div class="form-group">
                       <label for="backtest-symbol">Symbol</label>
-                      <select id="backtest-symbol">
+                      <select id="backtest-symbol" bind:value={backtestConfig.symbol}>
                         <option value="EURUSD">EURUSD</option>
                         <option value="GBPUSD">GBPUSD</option>
                         <option value="USDJPY">USDJPY</option>
                         <option value="XAUUSD">XAUUSD</option>
+                        <option value="BTCUSD">BTCUSD</option>
+                        <option value="NAS100">NAS100</option>
                       </select>
                     </div>
                     <div class="form-group">
                       <label for="backtest-timeframe">Timeframe</label>
-                      <select id="backtest-timeframe">
+                      <select id="backtest-timeframe" bind:value={backtestConfig.timeframe}>
+                        <option value="M1">M1</option>
                         <option value="M5">M5</option>
                         <option value="M15">M15</option>
+                        <option value="M30">M30</option>
                         <option value="H1">H1</option>
                         <option value="H4">H4</option>
+                        <option value="D1">D1</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label for="backtest-mode">Backtest Mode</label>
+                      <select id="backtest-mode" bind:value={backtestConfig.variant}>
+                        <option value="vanilla">Vanilla (Basic)</option>
+                        <option value="spiced">Spiced (Regime Filter)</option>
+                        <option value="vanilla_full">Vanilla + Walk-Forward</option>
+                        <option value="spiced_full">Spiced + Walk-Forward</option>
                       </select>
                     </div>
                     <div class="form-group">
@@ -2408,176 +1889,20 @@
                   </div>
                 </div>
               </div>
-            {:else if currentFolder === "paper-trading"}
-              <!-- Paper Trading Panel -->
-              <PaperTradingPanel baseUrl="http://localhost:8000" />
             {/if}
           </div>
         {:else if activeView === "knowledge"}
-          <div class="knowledge-view">
-            <!-- Knowledge Hub with Category Sidebar -->
-            {#if !currentFolder}
-              <div class="knowledge-hub-layout">
-                <!-- Category Sidebar -->
-                <div class="category-sidebar">
-                  <h3>Categories</h3>
-                  <button
-                    class="category-btn"
-                    class:active={selectedCategory === "all"}
-                    on:click={() => (selectedCategory = "all")}
-                  >
-                    <Folder size={16} />
-                    <span>All Articles</span>
-                    <span class="count">{articles.length}</span>
-                  </button>
-
-                  {#each Object.entries(categoryTree) as [key, cat]}
-                    <button
-                      class="category-btn"
-                      class:active={selectedCategory === key}
-                      on:click={() => (selectedCategory = key)}
-                    >
-                      <FolderOpen size={16} />
-                      <span>{cat.label}</span>
-                      <span class="count">{cat.count}</span>
-                    </button>
-                  {/each}
-                </div>
-
-                <!-- Articles List -->
-                <div class="articles-main">
-                  <div class="articles-header">
-                    <h3>
-                      {selectedCategory === "all"
-                        ? "All Articles"
-                        : getCategoryLabel(selectedCategory)}
-                    </h3>
-                    <span class="article-count"
-                      >{filteredArticles.length} articles</span
-                    >
-                  </div>
-
-                  <div class="articles-grid">
-                    {#if filteredArticles.length === 0}
-                      <div class="empty-state">
-                        <Newspaper size={48} />
-                        <p>No articles found in this category</p>
-                        <span class="hint"
-                          >Try selecting a different category or check if the
-                          backend is running</span
-                        >
-                      </div>
-                    {:else}
-                      {#each filteredArticles as article}
-                        <div class="article-card">
-                          <div class="article-icon">
-                            <Newspaper size={20} />
-                          </div>
-                          <div class="article-info">
-                            <h4>{article.name}</h4>
-                            <div class="article-meta">
-                              <span
-                                class="category-tag"
-                                class:expert-advisors={article.category?.includes(
-                                  "expert_advisors",
-                                )}
-                                class:integration={article.category?.includes(
-                                  "integration",
-                                )}
-                                class:trading={article.category?.includes(
-                                  "trading",
-                                )}
-                                class:trading-systems={article.category?.includes(
-                                  "trading-systems",
-                                )}
-                              >
-                                {article.category
-                                  ?.split("/")[1]
-                                  ?.replace("_", " ")
-                                  .toUpperCase() || "GENERAL"}
-                              </span>
-                            </div>
-                          </div>
-                          <div class="article-actions">
-                            <button
-                              class="btn-icon"
-                              on:click={() => openArticleViewer(article)}
-                              title="View Article"
-                            >
-                              <FileText size={14} />
-                            </button>
-                            <button
-                              class="btn-icon"
-                              on:click={() => openInEditor(article)}
-                              title="Open in Editor"
-                            >
-                              <Edit3 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      {/each}
-                    {/if}
-                  </div>
-                </div>
-              </div>
-            {:else}
-              <!-- Legacy Categories View -->
-              <div class="category-cards">
-                {#each viewConfig.knowledge.categories as cat}
-                  <div
-                    class="category-card"
-                    on:click={() => navigateTo(cat.id, cat.name)}
-                    role="button"
-                    tabindex="0"
-                    on:keydown={(e) =>
-                      e.key === "Enter" && navigateTo(cat.id, cat.name)}
-                  >
-                    <Folder size={40} />
-                    <span class="cat-name">{cat.name}</span>
-                    <span class="cat-count">{cat.count} items</span>
-                  </div>
-                {/each}
-              </div>
-
-              <div class="recent-section">
-                <h3>Recent Articles</h3>
-                <div class="recent-articles">
-                  {#each articles.slice(0, 5) as article}
-                    <div
-                      class="recent-article-card"
-                      on:click={() => openArticleViewer(article)}
-                      role="button"
-                      tabindex="0"
-                      on:keydown={(e) =>
-                        e.key === "Enter" && openArticleViewer(article)}
-                    >
-                      <div class="recent-article-icon">
-                        {#if article.type === "book"}
-                          <Library size={18} />
-                        {:else if article.type === "note"}
-                          <FileText size={18} />
-                        {:else}
-                          <Newspaper size={18} />
-                        {/if}
-                      </div>
-                      <div class="recent-article-info">
-                        <h6>{article.title || article.name}</h6>
-                        <div class="recent-article-meta">
-                          {#if article.author}<span>{article.author}</span>{/if}
-                          {#if article.date}<span
-                              >{new Date(
-                                article.date,
-                              ).toLocaleDateString()}</span
-                            >{/if}
-                        </div>
-                      </div>
-                      <ChevronRight size={14} class="recent-article-arrow" />
-                    </div>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-          </div>
+          <KnowledgeView
+            {articles}
+            {filteredArticles}
+            {currentFolder}
+            {selectedCategory}
+            {categoryTree}
+            categories={viewConfig.knowledge.categories}
+            on:openArticleViewer={(e) => openArticleViewer(e.detail)}
+            on:openInEditor={(e) => openInEditor(e.detail)}
+            on:navigateTo={(e) => navigateTo(e.detail.folderId, e.detail.folderName)}
+          />
         {:else if activeView === "editor"}
           <!-- Editor Workspace -->
           <div class="editor-workspace">
@@ -3310,57 +2635,6 @@
   }
   .table-card .negative {
     color: #ef4444;
-  }
-
-  /* Bots page */
-  .bots-page h2 {
-    margin: 0 0 20px;
-    color: var(--text-primary);
-  }
-  .bot-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 12px;
-  }
-  .bot-detail-card {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 4px;
-    transition: all 0.1s ease;
-  }
-  .bot-detail-card:hover {
-    background: var(--bg-tertiary);
-    border-color: var(--accent-primary);
-  }
-  .bot-status-indicator {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-  }
-  .bot-main {
-    flex: 1;
-  }
-  .bot-main h4 {
-    margin: 0;
-    font-size: 13px;
-    color: var(--text-primary);
-  }
-  .bot-main p {
-    margin: 4px 0 0;
-    font-size: 11px;
-    color: var(--text-muted);
-  }
-  .tag-select {
-    padding: 4px 8px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 4px;
-    color: var(--text-primary);
-    font-size: 11px;
   }
 
   /* Article list - removed unused selectors */

@@ -5,11 +5,15 @@ Manages bot-level performance tracking and automatic quarantine.
 Prevents catastrophic losses from malfunctioning strategies.
 
 **Validates: Task Group 7.4 - BotCircuitBreaker table and manager**
+**Configurable Loss Thresholds:**
+- Personal Book: 5 consecutive losses
+- Prop Firm Book: 3 consecutive losses (tighter)
 """
 
 import logging
 from typing import Optional, Tuple, List, Dict, Any
 from datetime import datetime, date, timezone
+from enum import Enum
 
 from src.database.db_manager import DBManager
 from src.database.models import BotCircuitBreaker
@@ -18,25 +22,47 @@ from src.router.fee_monitor import FeeMonitor
 logger = logging.getLogger(__name__)
 
 
+class AccountBook(str, Enum):
+    """Account book type for determining loss thresholds."""
+    PERSONAL = "personal"
+    PROP_FIRM = "prop_firm"
+
+
+# Default thresholds by book type
+LOSS_THRESHOLDS = {
+    AccountBook.PERSONAL: 5,      # Keep existing
+    AccountBook.PROP_FIRM: 3,     # Tighter for prop firms
+}
+DEFAULT_DAILY_TRADE_LIMIT = 20
+
+
 class BotCircuitBreakerManager:
     """
     Manager for Bot Circuit Breaker operations.
 
-    Implements automatic quarantine on:
-    - 5 consecutive losses
-    - Daily trade limit exceeded (default 20 trades)
+    Implements automatic quarantine based on configurable thresholds by book type:
+    - Personal Book: 5 consecutive losses
+    - Prop Firm Book: 3 consecutive losses (tighter)
+    - Daily trade limit: 20 trades (configurable)
 
     Usage:
         manager = BotCircuitBreakerManager()
         allowed, reason = manager.check_allowed("my_bot")
         manager.record_trade("my_bot", is_loss=False)
+
+        # Or with account book type:
+        manager = BotCircuitBreakerManager(account_book=AccountBook.PROP_FIRM)
+        manager.record_trade("prop_bot", is_loss=True)  # Triggers at 3 losses
     """
 
-    # Quarantine thresholds
-    MAX_CONSECUTIVE_LOSSES = 5
-    DEFAULT_DAILY_TRADE_LIMIT = 20
-
-    def __init__(self, db_manager: Optional[DBManager] = None, account_id: Optional[str] = None, account_balance: Optional[float] = None):
+    def __init__(
+        self,
+        db_manager: Optional[DBManager] = None,
+        account_id: Optional[str] = None,
+        account_balance: Optional[float] = None,
+        account_book: Optional[AccountBook] = None,
+        account_book_str: Optional[str] = None
+    ):
         """
         Initialize BotCircuitBreaker manager.
 
@@ -44,15 +70,39 @@ class BotCircuitBreakerManager:
             db_manager: Optional DBManager instance (creates instance if not provided)
             account_id: Real account identifier for fee tracking
             account_balance: Current account balance for fee calculations
+            account_book: Account book type as AccountBook enum (PERSONAL or PROP_FIRM)
+            account_book_str: Account book type as string ("personal" or "prop_firm")
         """
         self.db = db_manager or DBManager()
         # Use provided account_id and balance, or fall back to defaults
         self.account_id = account_id or "quantmindx_default"
         self.account_balance = account_balance or 1000.0
+
+        # Handle both enum and string inputs
+        if account_book is not None:
+            self.account_book = account_book
+        elif account_book_str is not None:
+            self.account_book = AccountBook(account_book_str)
+        else:
+            self.account_book = AccountBook.PERSONAL
+
+        # Set threshold based on book type
+        self.max_consecutive_losses = LOSS_THRESHOLDS.get(
+            self.account_book,
+            LOSS_THRESHOLDS[AccountBook.PERSONAL]
+        )
+        self.default_daily_trade_limit = DEFAULT_DAILY_TRADE_LIMIT
+
         self.fee_monitor = FeeMonitor(
             account_id=self.account_id,
             db_manager=self.db,
             account_balance=self.account_balance
+        )
+
+        logger.info(
+            f"BotCircuitBreakerManager initialized: "
+            f"account_book={self.account_book.value}, "
+            f"max_consecutive_losses={self.max_consecutive_losses}"
         )
 
     def get_or_create_state(self, bot_id: str) -> BotCircuitBreaker:
@@ -106,8 +156,8 @@ class BotCircuitBreakerManager:
             return False, reason
 
         # Check daily trade limit - use int() to handle SQLAlchemy Column type
-        if int(state.daily_trade_count) >= self.DEFAULT_DAILY_TRADE_LIMIT:  # type: ignore[arg-type]
-            return False, f"Daily trade limit reached ({int(state.daily_trade_count)}/{self.DEFAULT_DAILY_TRADE_LIMIT})"  # type: ignore[arg-type]
+        if int(state.daily_trade_count) >= self.default_daily_trade_limit:  # type: ignore[arg-type]
+            return False, f"Daily trade limit reached ({int(state.daily_trade_count)}/{self.default_daily_trade_limit})"  # type: ignore[arg-type]
 
         return True, None
 
@@ -171,16 +221,16 @@ class BotCircuitBreakerManager:
             state.is_quarantined = True  # type: ignore[assignment]
 
         # Check quarantine triggers
-        if int(state.consecutive_losses) >= self.MAX_CONSECUTIVE_LOSSES:  # type: ignore[arg-type]
+        if int(state.consecutive_losses) >= self.max_consecutive_losses:  # type: ignore[arg-type]
             self.quarantine_bot(
                 bot_id,
-                reason=f"{int(state.consecutive_losses)} consecutive losses"  # type: ignore[arg-type]
+                reason=f"{int(state.consecutive_losses)} consecutive losses (threshold: {self.max_consecutive_losses})"  # type: ignore[arg-type]
             )
             state.is_quarantined = True  # type: ignore[assignment]
-        elif int(state.daily_trade_count) > self.DEFAULT_DAILY_TRADE_LIMIT:  # type: ignore[arg-type]
+        elif int(state.daily_trade_count) > self.default_daily_trade_limit:  # type: ignore[arg-type]
             self.quarantine_bot(
                 bot_id,
-                reason=f"Daily trade limit exceeded ({int(state.daily_trade_count)}/{self.DEFAULT_DAILY_TRADE_LIMIT})"  # type: ignore[arg-type]
+                reason=f"Daily trade limit exceeded ({int(state.daily_trade_count)}/{self.default_daily_trade_limit})"  # type: ignore[arg-type]
             )
             state.is_quarantined = True  # type: ignore[assignment]
 
@@ -393,7 +443,7 @@ class BotCircuitBreakerManager:
     def update_account_id(self, new_account_id: str) -> None:
         """
         Update the account ID used for fee tracking.
-        
+
         Args:
             new_account_id: New account identifier
         """
@@ -405,3 +455,44 @@ class BotCircuitBreakerManager:
             account_balance=self.account_balance
         )
         logger.info(f"Updated account ID to {new_account_id} for fee monitoring")
+
+    def update_account_book(self, account_book: AccountBook) -> None:
+        """
+        Update the account book type and adjust loss threshold accordingly.
+
+        Args:
+            account_book: New account book type (PERSONAL or PROP_FIRM)
+        """
+        old_threshold = self.max_consecutive_losses
+        self.account_book = account_book
+        self.max_consecutive_losses = LOSS_THRESHOLDS.get(
+            account_book,
+            LOSS_THRESHOLDS[AccountBook.PERSONAL]
+        )
+        logger.info(
+            f"Updated account_book to {account_book.value}: "
+            f"loss threshold {old_threshold} -> {self.max_consecutive_losses}"
+        )
+
+
+def get_loss_threshold(account_book: AccountBook) -> int:
+    """
+    Get the configured loss threshold for a given account book type.
+
+    Args:
+        account_book: The account book type
+
+    Returns:
+        Number of consecutive losses before quarantine
+    """
+    return LOSS_THRESHOLDS.get(account_book, LOSS_THRESHOLDS[AccountBook.PERSONAL])
+
+
+def get_threshold_config() -> Dict[str, int]:
+    """
+    Get the complete threshold configuration.
+
+    Returns:
+        Dictionary mapping book types to their loss thresholds
+    """
+    return {book.value: threshold for book, threshold in LOSS_THRESHOLDS.items()}

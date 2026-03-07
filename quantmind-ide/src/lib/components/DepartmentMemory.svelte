@@ -34,16 +34,16 @@
 
   // Department enum
   const DEPARTMENTS = [
-    { id: 'analysis', name: 'Analysis', color: '#3b82f6' },
+    { id: 'development', name: 'Development', color: '#3b82f6' },
     { id: 'research', name: 'Research', color: '#8b5cf6' },
     { id: 'risk', name: 'Risk', color: '#ef4444' },
-    { id: 'execution', name: 'Execution', color: '#f97316' },
+    { id: 'trading', name: 'Trading', color: '#f97316' },
     { id: 'portfolio', name: 'Portfolio', color: '#10b981' },
     { id: 'floor_manager', name: 'Floor Manager', color: '#06b6d4' }
   ];
 
   // State
-  let selectedDepartment = 'analysis';
+  let selectedDepartment = 'development';
   let memories: MemoryEntry[] = [];
   let dailyLogs: DailyLog[] = [];
   let stats: MemoryStats | null = null;

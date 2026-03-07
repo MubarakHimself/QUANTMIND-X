@@ -12,9 +12,11 @@
     AlertCircle,
   } from "lucide-svelte";
   import SlashCommandPalette from "./SlashCommandPalette.svelte";
+  import SkillMentionPalette from "./SkillMentionPalette.svelte";
   import { chatStore, activeContext } from "../../stores/chatStore";
   import type { AgentType } from "../../stores/chatStore";
   import commandHandler from "../../services/commandHandler";
+  import skillChatService from "../../services/skillChatService";
 
   // Props
   export let agent: AgentType;
@@ -27,6 +29,8 @@
   let showModelDropdown = false;
   let showSlashCommands = false;
   let slashCommandFilter = "";
+  let showSkillMentions = false;
+  let skillMentionFilter = "";
   let isLoading = false;
 
   // Command feedback state
@@ -85,14 +89,34 @@
   function handleInput() {
     autoResize();
 
-    // Check for slash command trigger
-    if (message === "/") {
+    // Check for skill mention trigger (@)
+    const lastAtIndex = message.lastIndexOf('@');
+    const hasSpaceAfterAt = lastAtIndex >= 0 && (lastAtIndex === message.length - 1 || message[lastAtIndex + 1] === ' ');
+    const isInMiddleOfText = lastAtIndex > 0 && message[lastAtIndex - 1] !== ' ' && message[lastAtIndex - 1] !== '\n';
+
+    // Show skill mentions if @ is typed at the start or after a newline/space
+    // But not if it's in the middle of a word (e.g., email)
+    if (message === "@") {
+      showSkillMentions = true;
+      skillMentionFilter = "";
+      showSlashCommands = false;
+    } else if (message.startsWith("@") && lastAtIndex === 0) {
+      // @ at start of message
+      showSkillMentions = true;
+      skillMentionFilter = skillChatService.extractSkillFilter(message);
+      showSlashCommands = false;
+    } else if (message.startsWith("/") && !showSlashCommands) {
+      // Check for slash command trigger
+      showSkillMentions = false;
       showSlashCommands = true;
-      slashCommandFilter = "";
+      slashCommandFilter = message.slice(1);
     } else if (message.startsWith("/")) {
+      // Already showing slash commands, update filter
       showSlashCommands = true;
       slashCommandFilter = message.slice(1);
     } else {
+      // Not a skill mention or command
+      showSkillMentions = false;
       showSlashCommands = false;
     }
   }
@@ -105,9 +129,10 @@
       sendMessage();
     }
 
-    // Close slash commands on Escape
+    // Close palettes on Escape
     if (e.key === "Escape") {
       showSlashCommands = false;
+      showSkillMentions = false;
     }
 
     // Navigate slash commands with arrow keys
@@ -115,6 +140,66 @@
       e.preventDefault();
       // Navigation handled in SlashCommandPalette
     }
+
+    // Navigate skill mentions with arrow keys
+    if (showSkillMentions && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      e.preventDefault();
+      // Navigation handled in SkillMentionPalette
+    }
+  }
+
+  // Handle skill mention selection
+  async function handleSkillSelect(event: CustomEvent<string>) {
+    const skillMention = event.detail;
+
+    // Replace the @filter with the selected skill mention
+    const lastAtIndex = message.lastIndexOf('@');
+    if (lastAtIndex >= 0) {
+      // Find where the skill mention starts (beginning of word or after space)
+      let startIndex = lastAtIndex;
+      while (startIndex > 0 && message[startIndex - 1] !== ' ' && message[startIndex - 1] !== '\n') {
+        startIndex--;
+      }
+      message = message.slice(0, startIndex) + skillMention + " ";
+    } else {
+      message = skillMention + " ";
+    }
+
+    showSkillMentions = false;
+    autoResize();
+    textareaElement?.focus();
+  }
+
+  // Process skill invocations in message and execute them
+  async function processSkillInvocations(userMessage: string): Promise<string> {
+    if (!skillChatService.hasSkillInvocations(userMessage)) {
+      return userMessage;
+    }
+
+    const skillContext = {
+      agentType: agent,
+      agent
+    };
+
+    const result = await skillChatService.processMessageSkills(userMessage, skillContext);
+
+    // Add skill results as assistant messages
+    for (const { result: skillResult } of result.results) {
+      chatStore.addMessage({
+        role: "assistant",
+        content: skillResult.content,
+        metadata: skillResult.metadata
+      });
+
+      // Show feedback for skill execution
+      if (skillResult.success) {
+        showCommandFeedback("success", `Executed skill: ${skillResult.metadata.skillName}`);
+      } else {
+        showCommandFeedback("error", `Skill failed: ${skillResult.metadata.skillName}`);
+      }
+    }
+
+    return result.messageWithoutSkills;
   }
 
   // Show command feedback with auto-dismiss
@@ -307,6 +392,7 @@
     const userMessage = message.trim();
     message = "";
     showSlashCommands = false;
+    showSkillMentions = false;
     autoResize();
 
     // Check if the message is a slash command
@@ -321,11 +407,22 @@
       chatStore.createChat(state.activeAgent);
     }
 
-    // Add user message to store
-    chatStore.addMessage({
-      role: "user",
-      content: userMessage,
-    });
+    // Process skill invocations first
+    const processedMessage = await processSkillInvocations(userMessage);
+
+    // If there were skill invocations and the message is now empty after processing,
+    // don't send to agent (skill results already added)
+    if (!processedMessage.trim() && skillChatService.hasSkillInvocations(userMessage)) {
+      return;
+    }
+
+    // Add user message to store (only if there's remaining content)
+    if (processedMessage.trim()) {
+      chatStore.addMessage({
+        role: "user",
+        content: processedMessage,
+      });
+    }
 
     isLoading = true;
 
@@ -334,7 +431,7 @@
       // The parent (AgentPanel) will handle the actual agent invocation
       // and add the assistant response to the chat
       dispatch("send", {
-        message: userMessage,
+        message: processedMessage || userMessage,
         model: selectedModel,
         provider: selectedProvider,
         context,
@@ -354,6 +451,7 @@
   async function handleCommandSelect(command: string) {
     message = "";
     showSlashCommands = false;
+    showSkillMentions = false;
     autoResize();
     textareaElement?.focus();
 
@@ -482,7 +580,7 @@
       bind:this={textareaElement}
       on:input={handleInput}
       on:keydown={handleKeydown}
-      placeholder="Message {agent}... (/ for commands)"
+      placeholder="Message {agent}... (/ for commands, @ for skills)"
       rows="1"
       aria-label="Message input"
       disabled={isLoading}
@@ -494,6 +592,16 @@
         filter={slashCommandFilter}
         on:select={(e) => handleCommandSelect(e.detail)}
         on:close={() => (showSlashCommands = false)}
+      />
+    {/if}
+
+    <!-- Skill Mention Palette -->
+    {#if showSkillMentions}
+      <SkillMentionPalette
+        {agent}
+        filter={skillMentionFilter}
+        on:select={handleSkillSelect}
+        on:close={() => (showSkillMentions = false)}
       />
     {/if}
 

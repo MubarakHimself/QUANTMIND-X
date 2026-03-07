@@ -16,6 +16,8 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 import random
 
+from src.api.pagination import PaginatedResponse, DEFAULT_LIMIT, DEFAULT_OFFSET, MAX_LIMIT
+
 router = APIRouter(prefix="/api/router", tags=["router"])
 
 # Global router instance (set by server.py on startup)
@@ -188,17 +190,39 @@ async def get_market_state() -> Dict[str, Any]:
     """Get current market state including regime and symbols."""
     return get_mock_market_state()
 
-@router.get("/bots")
-async def get_bot_signals() -> List[BotSignal]:
-    """Get current bot signals."""
-    bots = get_mock_bots()
-    return [BotSignal(**bot) for bot in bots]
+@router.get("/bots", response_model=PaginatedResponse[BotSignal])
+async def get_bot_signals(
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="Maximum items to return"),
+    offset: int = Query(DEFAULT_OFFSET, ge=0, description="Number of items to skip")
+) -> PaginatedResponse[BotSignal]:
+    """Get current bot signals with pagination."""
+    all_bots = [BotSignal(**bot) for bot in get_mock_bots()]
+    total = len(all_bots)
+    paginated = all_bots[offset:offset + limit]
 
-@router.get("/auctions")
-async def get_auction_queue() -> List[Auction]:
-    """Get current auction queue."""
-    auctions = get_mock_auctions()
-    return [Auction(**auction) for auction in auctions]
+    return PaginatedResponse.create(
+        items=paginated,
+        total=total,
+        limit=limit,
+        offset=offset
+    )
+
+@router.get("/auctions", response_model=PaginatedResponse[Auction])
+async def get_auction_queue(
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="Maximum items to return"),
+    offset: int = Query(DEFAULT_OFFSET, ge=0, description="Number of items to skip")
+) -> PaginatedResponse[Auction]:
+    """Get current auction queue with pagination."""
+    all_auctions = [Auction(**auction) for auction in get_mock_auctions()]
+    total = len(all_auctions)
+    paginated = all_auctions[offset:offset + limit]
+
+    return PaginatedResponse.create(
+        items=paginated,
+        total=total,
+        limit=limit,
+        offset=offset
+    )
 
 @router.post("/auction")
 async def run_auction() -> Dict[str, Any]:

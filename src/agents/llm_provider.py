@@ -54,7 +54,7 @@ AGENT_MODELS: Dict[str, ModelConfig] = {
     "quantcode": ModelConfig(
         model_id="claude-sonnet-4-20250514",
         provider=ProviderType.ANTHROPIC,
-        fallback_model="glm-4-plus",
+        fallback_model="glm-4",
         fallback_provider=ProviderType.ZHIPU,
         temperature=0.0,
     ),

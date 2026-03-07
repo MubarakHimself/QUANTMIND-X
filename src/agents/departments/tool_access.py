@@ -36,6 +36,9 @@ TOOL_ACCESS: Dict[str, Dict[str, Set[ToolPermission]]] = {
         "broker_tools": {ToolPermission.READ},      # READ-ONLY
         "strategy_extraction": {ToolPermission.READ, ToolPermission.WRITE},
         "video_ingest": {ToolPermission.READ, ToolPermission.WRITE},  # Video processing
+        "gemini_cli": {ToolPermission.READ, ToolPermission.WRITE},  # Gemini CLI research
+        "prop_firm_research": {ToolPermission.READ, ToolPermission.WRITE},  # Prop firm research
+        "task_list": {ToolPermission.READ, ToolPermission.WRITE},  # Task list management
         "mail": {ToolPermission.READ, ToolPermission.WRITE},
     },
     # DEVELOPMENT: EA/Bot building (Python, PineScript, MQL5)
@@ -52,6 +55,9 @@ TOOL_ACCESS: Dict[str, Dict[str, Set[ToolPermission]]] = {
         "broker_tools": {ToolPermission.READ},       # READ-ONLY
         "strategy_extraction": {ToolPermission.READ, ToolPermission.WRITE},
         "video_ingest": {ToolPermission.READ, ToolPermission.WRITE},  # Video processing
+        "gemini_cli": {ToolPermission.READ, ToolPermission.WRITE},  # Gemini CLI research
+        "prop_firm_research": {ToolPermission.READ},  # Prop firm research (READ)
+        "task_list": {ToolPermission.READ, ToolPermission.WRITE},  # Task list management
         "mail": {ToolPermission.READ, ToolPermission.WRITE},
     },
     # TRADING: Order execution (READ-ONLY for broker)
@@ -62,6 +68,9 @@ TOOL_ACCESS: Dict[str, Dict[str, Set[ToolPermission]]] = {
         "broker_tools": {ToolPermission.READ},       # READ-ONLY (no placing orders)
         "strategy_router": {ToolPermission.READ},     # READ-ONLY
         "risk_tools": {ToolPermission.READ},         # READ-ONLY
+        "prop_firm_research": {ToolPermission.READ},  # Prop firm research (READ)
+        "task_list": {ToolPermission.READ, ToolPermission.WRITE},  # Task list management
+        "shared_assets": {ToolPermission.READ},      # Shared assets (READ)
         "mail": {ToolPermission.READ, ToolPermission.WRITE},
     },
     # RISK: Risk management (READ-ONLY)
@@ -72,6 +81,9 @@ TOOL_ACCESS: Dict[str, Dict[str, Set[ToolPermission]]] = {
         "risk_tools": {ToolPermission.READ},          # READ-ONLY (no setting limits)
         "strategy_router": {ToolPermission.READ},      # READ-ONLY
         "broker_tools": {ToolPermission.READ},        # READ-ONLY
+        "prop_firm_research": {ToolPermission.READ},   # Prop firm research (READ)
+        "task_list": {ToolPermission.READ, ToolPermission.WRITE},  # Task list management
+        "shared_assets": {ToolPermission.READ},       # Shared assets (READ)
         "mail": {ToolPermission.READ, ToolPermission.WRITE},
     },
     # PORTFOLIO: Allocation
@@ -83,6 +95,9 @@ TOOL_ACCESS: Dict[str, Dict[str, Set[ToolPermission]]] = {
         "risk_tools": {ToolPermission.READ},           # READ-ONLY
         "broker_tools": {ToolPermission.READ},         # READ-ONLY
         "strategy_extraction": {ToolPermission.READ},
+        "prop_firm_research": {ToolPermission.READ},   # Prop firm research (READ)
+        "task_list": {ToolPermission.READ, ToolPermission.WRITE},  # Task list management
+        "shared_assets": {ToolPermission.READ, ToolPermission.WRITE},  # Shared assets
         "mail": {ToolPermission.READ, ToolPermission.WRITE},
     },
     # FLOOR MANAGER: Cross-department coordination
@@ -93,6 +108,10 @@ TOOL_ACCESS: Dict[str, Dict[str, Set[ToolPermission]]] = {
         "strategy_router": {ToolPermission.READ},
         "risk_tools": {ToolPermission.READ},
         "broker_tools": {ToolPermission.READ},
+        "gemini_cli": {ToolPermission.READ, ToolPermission.WRITE},  # Gemini CLI research
+        "prop_firm_research": {ToolPermission.READ, ToolPermission.WRITE},  # Prop firm research
+        "task_list": {ToolPermission.READ, ToolPermission.WRITE},  # Task list management
+        "shared_assets": {ToolPermission.READ, ToolPermission.WRITE},  # Shared assets
         "mail": {ToolPermission.READ, ToolPermission.WRITE},
     },
 }

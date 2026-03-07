@@ -10,7 +10,7 @@ import { writable, derived, get } from 'svelte/store';
 const API_BASE = 'http://localhost:8000/api';
 
 // Types
-export type MessageType = 'dispatch' | 'result' | 'question' | 'status' | 'error';
+export type MessageType = 'dispatch' | 'result' | 'question' | 'status' | 'error' | 'approval_request' | 'approval_approved' | 'approval_rejected';
 
 export type Priority = 'low' | 'normal' | 'high' | 'urgent';
 
@@ -27,6 +27,11 @@ export type DepartmentMailMessage = {
   priority: Priority;
   timestamp: string;
   read: boolean;
+  // Approval-related fields
+  gate_id?: string;
+  workflow_id?: string;
+  from_stage?: string;
+  to_stage?: string;
 };
 
 export type DelegationRequest = {
@@ -50,19 +55,19 @@ export type DelegationResponse = {
 
 // Available departments for delegation
 export const DEPARTMENTS = [
-  { id: 'analysis', name: 'Analysis', description: 'Market analysis and signals', color: '#3b82f6' },
+  { id: 'development', name: 'Development', description: 'Market analysis and signals', color: '#3b82f6' },
   { id: 'research', name: 'Research', description: 'Strategy development and backtesting', color: '#8b5cf6' },
   { id: 'risk', name: 'Risk', description: 'Position sizing and risk management', color: '#ef4444' },
-  { id: 'execution', name: 'Execution', description: 'Order execution and routing', color: '#f97316' },
+  { id: 'trading', name: 'Trading', description: 'Order execution and routing', color: '#f97316' },
   { id: 'portfolio', name: 'Portfolio', description: 'Portfolio management and allocation', color: '#10b981' },
 ] as const;
 
 // Department colors for UI
 export const DEPARTMENT_COLORS: Record<string, string> = {
-  analysis: '#3b82f6',
+  development: '#3b82f6',
   research: '#8b5cf6',
   risk: '#ef4444',
-  execution: '#f97316',
+  trading: '#f97316',
   portfolio: '#10b981',
 };
 
@@ -296,7 +301,7 @@ export async function fetchAllInbox(): Promise<void> {
   error.set(null);
 
   try {
-    const departments: Department[] = ['analysis', 'research', 'risk', 'execution', 'portfolio'];
+    const departments: Department[] = ['development', 'research', 'risk', 'trading', 'portfolio'];
     for (const dept of departments) {
       await fetchDepartmentMail(dept);
     }

@@ -69,6 +69,18 @@ class TradingMode(Enum):
     LIVE = "live"
 
 
+class AccountBook(Enum):
+    """
+    Account book type for the bot.
+
+    Used to distinguish between:
+    - PERSONAL: Trader's own capital
+    - PROP_FIRM: Prop firm account (requires prop_firm_name)
+    """
+    PERSONAL = "PERSONAL"
+    PROP_FIRM = "PROP_FIRM"
+
+
 @dataclass
 class ModePerformanceStats:
     """
@@ -359,6 +371,11 @@ class BotManifest:
     demo_stats: Optional[ModePerformanceStats] = None  # Deprecated: use paper_stats instead
     live_stats: Optional[ModePerformanceStats] = None
     mode_start_date: Optional[datetime] = None  # When current mode started
+
+    # Account book type for routing decisions
+    account_book_type: AccountBook = AccountBook.PERSONAL
+    prop_firm_name: Optional[str] = None  # Required if account_book_type is PROP_FIRM
+    max_drawdown_pct: Optional[float] = None  # Max drawdown percentage (e.g., 10.0 for 10%)
     
     # Source tracking for imported EAs
     source_type: Optional[str] = None  # 'imported_ea', 'native', etc.
@@ -395,6 +412,10 @@ class BotManifest:
             # Source tracking for imported EAs
             "source_type": self.source_type,
             "source_path": self.source_path,
+            # Account book type
+            "account_book_type": self.account_book_type.value,
+            "prop_firm_name": self.prop_firm_name,
+            "max_drawdown_pct": self.max_drawdown_pct,
         }
         # Add preferred_conditions if present
         if self.preferred_conditions is not None:
@@ -475,6 +496,10 @@ class BotManifest:
             # Source tracking for imported EAs
             source_type=data.get("source_type"),
             source_path=data.get("source_path"),
+            # Account book type
+            account_book_type=AccountBook(data.get("account_book_type", "PERSONAL")),
+            prop_firm_name=data.get("prop_firm_name"),
+            max_drawdown_pct=data.get("max_drawdown_pct"),
         )
     
     def is_compatible_with_account(self, account_type: str) -> bool:

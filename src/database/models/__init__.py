@@ -9,7 +9,7 @@ Import directly from here: from src.database.models import PropFirmAccount
 """
 
 # Base utilities
-from .base import Base, TradingMode, get_db_session
+from .base import Base, TradingMode, AccountType, get_db_session
 
 # Account models
 from .account import (
@@ -47,6 +47,8 @@ from .bots import (
 
 # Agent models
 from .agents import AgentTasks
+from .agent_session import AgentSession
+from .session_checkpoint import SessionCheckpoint
 
 # HMM models
 from .hmm import (
@@ -71,6 +73,9 @@ from .monitoring import (
     WebhookLog,
 )
 
+# Activity models
+from .activity import ActivityEvent
+
 # Session factory (import from engine package)
 from sqlalchemy.orm import sessionmaker
 from src.database import engine
@@ -82,6 +87,7 @@ __all__ = [
     # Base
     'Base',
     'TradingMode',
+    'AccountType',
     'get_db_session',
     'SessionLocal',
 
@@ -113,6 +119,8 @@ __all__ = [
 
     # Agents
     'AgentTasks',
+    'AgentSession',
+    'SessionCheckpoint',
 
     # HMM
     'HMMModel',
@@ -130,4 +138,7 @@ __all__ = [
     # Monitoring
     'AlertHistory',
     'WebhookLog',
+
+    # Activity
+    'ActivityEvent',
 ]

@@ -150,11 +150,11 @@
       type: "folder",
       status: s.status,
       children: [
-        ...(s.has_nprd
+        ...(s.has_video_ingest
           ? [
               {
-                id: `${s.id}/nprd`,
-                name: "NPRD Output",
+                id: `${s.id}/video_ingest`,
+                name: "Video Ingest Output",
                 type: "folder",
                 children: [],
               },
@@ -207,7 +207,7 @@
     if (item.type === "folder") {
       // Check if this is a top-level strategy folder (in EA view)
       // Top-level strategy IDs don't contain '/' (e.g., 'ict-scalper', 'smc-reversal')
-      // Nested folders have '/' (e.g., 'ict-scalper/nprd', 'ict-scalper/trd')
+      // Nested folders have '/' (e.g., 'ict-scalper/video_ingest', 'ict-scalper/trd')
       const isTopLevelStrategy = activeView === "ea" && !item.id.includes("/");
 
       if (isTopLevelStrategy) {
@@ -223,7 +223,7 @@
         toggleFolder(item.id);
 
         // Build breadcrumb path for nested folders
-        // For nested folders like 'ict-scalper/nprd', we need the parent path
+        // For nested folders like 'ict-scalper/video_ingest', we need the parent path
         const parentPath = getParentPath(item.id);
 
         // Navigate to update breadcrumbs with full path context

@@ -619,3 +619,80 @@ export async function listHooksForStore(): Promise<{ hooks: StoreHook[] }> {
     hooks: result.hooks.map(toStoreHook)
   };
 }
+
+// =============================================================================
+// Agent Memory Integration (AgentDB-style with SQLite backend)
+// =============================================================================
+
+/**
+ * Store a memory entry with explicit namespace (for AgentMemory backend)
+ * This provides direct integration with the AgentMemory SQLite backend
+ */
+export async function storeAgentMemory(
+  key: string,
+  value: string,
+  namespace: string = "default",
+  tags: string[] = [],
+  metadata: Record<string, unknown> = {}
+): Promise<MemoryEntry> {
+  return apiFetch<MemoryEntry>('/memory/add', {
+    method: 'POST',
+    body: JSON.stringify({
+      content: value,
+      source: namespace,
+      agent_id: null,
+      metadata: { key, tags, ...metadata }
+    })
+  });
+}
+
+/**
+ * Retrieve a specific memory by key from AgentMemory backend
+ */
+export async function retrieveAgentMemory(
+  key: string,
+  namespace: string = "default"
+): Promise<MemoryEntry | null> {
+  try {
+    const result = await apiFetch<MemoryEntry>(`/memory/${key}`);
+    return result;
+  } catch (error) {
+    // Return null if not found
+    return null;
+  }
+}
+
+/**
+ * Search memories with advanced options
+ */
+export async function searchAgentMemory(
+  query: string,
+  namespace?: string,
+  limit: number = 10
+): Promise<MemorySearchResponse> {
+  return apiFetch<MemorySearchResponse>('/memory/search', {
+    method: 'POST',
+    body: JSON.stringify({
+      query,
+      limit,
+      source: namespace,
+      agent_id: null,
+      min_relevance: 0.0,
+      use_temporal_decay: true
+    })
+  });
+}
+
+/**
+ * Clear all memories from a specific namespace
+ */
+export async function clearNamespaceMemories(namespace: string): Promise<StatusResponse> {
+  return clearMemories(namespace);
+}
+
+/**
+ * Get memory statistics with detailed breakdown
+ */
+export async function getDetailedMemoryStats(): Promise<MemoryStats> {
+  return getMemoryStats();
+}

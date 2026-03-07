@@ -1,12 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { createEventDispatcher } from 'svelte';
-  import { AlertTriangle, CheckCircle, Power, Activity, Bot, TrendingUp, Wifi, WifiOff } from 'lucide-svelte';
-  
+  import { AlertTriangle, CheckCircle, Power, Activity, Bot, TrendingUp, Wifi, WifiOff, Workflow } from 'lucide-svelte';
+  import { pendingCount, approvalStore } from '$lib/stores/approvalStore';
+  import ApprovalPanel from './ApprovalPanel.svelte';
+
   const dispatch = createEventDispatcher();
-  
+
   const API_BASE = 'http://localhost:8000/api';
-  
+
   let connected = false;
   let regime = 'Unknown';
   let kelly = 0.0;
@@ -14,12 +16,18 @@
   let pnlToday = 0.0;
   let killSwitchActive = false;
   let loading = true;
-  
+  let showApprovalPanel = false;
+
   onMount(() => {
     fetchStatus();
     // Poll every 5 seconds
     const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
+    // Start approval polling
+    approvalStore.startPolling(10000);
+    return () => {
+      clearInterval(interval);
+      approvalStore.stopPolling();
+    };
   });
   
   async function fetchStatus() {
@@ -37,11 +45,11 @@
       }
     } catch (e) {
       connected = false;
-      // Use demo values when backend not available
-      regime = 'Trending';
-      kelly = 0.85;
-      activeBots = 3;
-      pnlToday = 12.50;
+      // Use default values when backend not available
+      regime = 'Unknown';
+      kelly = 0;
+      activeBots = 0;
+      pnlToday = 0;
     } finally {
       loading = false;
     }
@@ -100,6 +108,25 @@
   </div>
   
   <div class="right-section">
+    <!-- Approval Gates Button -->
+    <div class="approval-wrapper">
+      <button
+        class="status-item approval-btn"
+        class:has-approvals={$pendingCount > 0}
+        on:click={() => showApprovalPanel = !showApprovalPanel}
+        title="Workflow Approvals"
+      >
+        <Workflow size={12} />
+        <span>Approvals</span>
+        {#if $pendingCount > 0}
+          <span class="approval-badge">{$pendingCount}</span>
+        {/if}
+      </button>
+      {#if showApprovalPanel}
+        <ApprovalPanel />
+      {/if}
+    </div>
+
     <button class="status-item bots" on:click={openLiveTrading}>
       <Bot size={12} />
       <span>Active: {activeBots}</span>
@@ -109,8 +136,8 @@
       <span>P&L: {formatPnL(pnlToday)}</span>
     </div>
     
-    <div class="status-item nprd">
-      <span>NPRD: Gemini CLI</span>
+    <div class="status-item video-ingest">
+      <span>Video Ingest: Gemini CLI</span>
     </div>
     
     <button
@@ -189,7 +216,36 @@
   .bots:hover {
     background: rgba(0, 0, 0, 0.25);
   }
-  
+
+  .approval-wrapper {
+    position: relative;
+  }
+
+  .approval-btn {
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.15);
+  }
+
+  .approval-btn:hover {
+    background: rgba(0, 0, 0, 0.25);
+  }
+
+  .approval-btn.has-approvals {
+    background: rgba(245, 158, 11, 0.3);
+    color: #fef3c7;
+  }
+
+  .approval-badge {
+    background: #f59e0b;
+    color: #000;
+    padding: 1px 5px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-left: 4px;
+  }
+
   .pnl {
     font-weight: 600;
   }

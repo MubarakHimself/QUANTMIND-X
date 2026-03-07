@@ -56,14 +56,14 @@ PIDS+=($!)
 sleep 1
 echo -e "${GREEN}✅ Socket Server started (PID: ${PIDS[-1]})${NC}"
 
-# Start NPRD Server (if exists)
+# Start VideoIngest Server (if exists)
 if [[ -f "server/nprd_server.js" ]]; then
-    echo -e "${BLUE}Starting NPRD Server...${NC}"
+    echo -e "${BLUE}Starting VideoIngest Server...${NC}"
     cd server && node nprd_server.js > ../data/logs/nprd_server.log 2>&1 &
     PIDS+=($!)
     cd ..
     sleep 1
-    echo -e "${GREEN}✅ NPRD Server started (PID: ${PIDS[-1]})${NC}"
+    echo -e "${GREEN}✅ VideoIngest Server started (PID: ${PIDS[-1]})${NC}"
 fi
 
 # Start LangGraph Dev Server
@@ -87,7 +87,7 @@ echo -e "${GREEN}  All services running!${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════════${NC}"
 echo ""
 echo -e "  ${BLUE}Socket Server:${NC}   tcp://*:5555"
-echo -e "  ${BLUE}NPRD Server:${NC}     http://localhost:3000"
+echo -e "  ${BLUE}VideoIngest Server:${NC}     http://localhost:3000"
 echo -e "  ${BLUE}LangGraph API:${NC}   http://localhost:2024"
 echo -e "  ${BLUE}Backend API:${NC}     http://localhost:8000"
 echo -e "  ${BLUE}LangGraph UI:${NC}    https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024"

@@ -1,11 +1,11 @@
 version: '3.8'
 
 services:
-  nprd-engine:
+  video-ingest-engine:
     build:
       context: ../
       dockerfile: server/Dockerfile
-    container_name: nprd-engine
+    container_name: video-ingest-engine
     ports:
       - "3000:3000"
     environment:
@@ -20,9 +20,9 @@ services:
       - ${HOME}/.qwen:/root/.qwen
       
       # Optional: Persist downloaded data for debugging
-      - ./tmp_downloads:/app/tmp/nprd_data
+      - ./tmp_downloads:/app/tmp/video_ingest_data
       
       # Mount the Knowledge Hub to save outputs
-      - ../docs/knowledge/nprd_outputs:/app/docs/knowledge/nprd_outputs
+      - ../docs/knowledge/video_ingest_outputs:/app/docs/knowledge/video_ingest_outputs
 
     restart: unless-stopped

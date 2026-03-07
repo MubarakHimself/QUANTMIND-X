@@ -12,22 +12,143 @@
     Wifi,
     WifiOff,
     ExternalLink,
+    Copy,
+    Trash2,
+    Palette,
+    Wrench,
+    RefreshCw,
   } from "lucide-svelte";
 
+  // Terminal color theme
+  type TerminalTheme = 'default' | 'solarized' | 'dracula' | 'nord';
+  let terminalTheme: TerminalTheme = 'nord';
+
+  const themes: Record<TerminalTheme, {
+    bg: string;
+    fg: string;
+    prompt: string;
+    input: string;
+    output: string;
+    error: string;
+    success: string;
+    warning: string;
+    info: string;
+  }> = {
+    default: {
+      bg: 'var(--bg-tertiary)',
+      fg: 'var(--text-secondary)',
+      prompt: 'var(--accent-primary)',
+      input: 'var(--accent-primary)',
+      output: 'var(--text-secondary)',
+      error: '#ef4444',
+      success: '#10b981',
+      warning: '#f59e0b',
+      info: '#3b82f6',
+    },
+    solarized: {
+      bg: '#002b36',
+      fg: '#839496',
+      prompt: '#b58900',
+      input: '#268bd2',
+      output: '#839496',
+      error: '#dc322f',
+      success: '#859900',
+      warning: '#b58900',
+      info: '#268bd2',
+    },
+    dracula: {
+      bg: '#282a36',
+      fg: '#f8f8f2',
+      prompt: '#ff79c6',
+      input: '#8be9fd',
+      output: '#f8f8f2',
+      error: '#ff5555',
+      success: '#50fa7b',
+      warning: '#f1fa8c',
+      info: '#8be9fd',
+    },
+    nord: {
+      bg: '#2e3440',
+      fg: '#d8dee9',
+      prompt: '#88c0d0',
+      input: '#81a1c1',
+      output: '#d8dee9',
+      error: '#bf616a',
+      success: '#a3be8c',
+      warning: '#ebcb8b',
+      info: '#5e81ac',
+    },
+  };
+
+  $: currentTheme = themes[terminalTheme];
+
   let activeTab = "output";  // Default to output, not terminal
-  let isExpanded = true;
+  let isExpanded = false;
   let terminalInput = "";
+  let showThemePicker = false;
+
+  // Tool call logging state
+  let toolCalls: Array<{
+    id: string;
+    timestamp: string;
+    agent_id: string;
+    agent_type: string;
+    tool_name: string;
+    args: Record<string, unknown>;
+    result?: string;
+    duration_ms?: number;
+    success: boolean;
+    error?: string;
+  }> = [];
+  let toolCallsLoading = false;
+  let toolCallsError: string | null = null;
+
+  // Fetch tool call logs from API
+  async function fetchToolCalls(limit: number = 50) {
+    toolCallsLoading = true;
+    toolCallsError = null;
+    try {
+      const response = await fetch(`/api/tool-calls/logs?limit=${limit}`);
+      const data = await response.json();
+      if (data.logs) {
+        toolCalls = data.logs;
+      }
+    } catch (e) {
+      toolCallsError = e instanceof Error ? e.message : 'Failed to fetch tool calls';
+    } finally {
+      toolCallsLoading = false;
+    }
+  }
+
+  // Format tool call for terminal display
+  function formatToolCall(call: typeof toolCalls[0]): string {
+    const ts = new Date(call.timestamp).toLocaleTimeString('en-US', { hour12: false });
+    const status = call.success ? 'OK' : 'ERR';
+    const duration = call.duration_ms ? ` [${call.duration_ms.toFixed(1)}ms]` : '';
+    const argsStr = JSON.stringify(call.args);
+    const truncatedArgs = argsStr.length > 40 ? argsStr.slice(0, 37) + '...' : argsStr;
+    return `[${ts}] ${call.agent_id.padEnd(15)} ${call.tool_name.padEnd(25)} ${status}${duration} ${truncatedArgs}`;
+  }
+
   let terminalHistory: Array<{
-    type: "input" | "output" | "error";
+    type: "input" | "output" | "error" | "success" | "warning" | "info";
     content: string;
+    timestamp?: string;
   }> = [
-    { type: "output", content: "QuantMind Terminal v1.0.0" },
-    { type: "output", content: 'Type "help" for available commands' },
-    { type: "output", content: "" },
+    { type: "info", content: "QuantMind Terminal v1.0.0", timestamp: getTimestamp() },
+    { type: "info", content: 'Type "help" for available commands', timestamp: getTimestamp() },
+    { type: "output", content: "", timestamp: getTimestamp() },
   ];
+
+  function getTimestamp(): string {
+    return new Date().toLocaleTimeString('en-US', { hour12: false });
+  }
 
   let mt5Status = "disconnected";
   let mt5Path = "/opt/MetaTrader5/terminal64";
+
+  // Connection error state
+  let mt5Error: string | null = null;
 
   let logs: Array<{ type: string; message: string; time: string }> = [
     {
@@ -47,64 +168,117 @@
     },
   ];
 
-  let errors: Array<{ message: string; file?: string; line?: number }> = [];
+  let errors: Array<{ message: string; file?: string; line?: number; timestamp?: string }> = [];
 
   const tabs = [
     { id: "terminal", label: "Terminal", icon: Terminal },
     { id: "mt5", label: "MT5 Sync", icon: Activity },
     { id: "errors", label: "Errors", icon: AlertCircle, count: errors.length },
+    { id: "tool_calls", label: "Tool Calls", icon: Wrench },
     { id: "output", label: "Output", icon: FileText },
   ];
 
-  const terminalCommands: Record<string, () => string> = {
-    help: () => `Available commands:
-  status    - Show system status
-  bots      - List active bots
-  kill      - Trigger kill switch (requires confirmation)
-  regime    - Show current market regime
-  kelly     - Show Kelly factor
-  nprd      - List NPRD processing queue
-  clear     - Clear terminal`,
-    status: () => `System Status: OK
-  Active Bots: 3
-  Kelly Factor: 0.85
-  Market Regime: Trending
-  MT5 Status: ${mt5Status}`,
-    bots: () => `Active Bots:
-  1. ICT_Scalper @EURUSD - primal (+$450.25)
-  2. ICT_Scalper @GBPUSD - primal (+$320.10)
-  3. SMC_Rev @USDJPY - ready (+$480.15)`,
-    regime: () => "Current Regime: TRENDING (High Volatility)",
-    kelly: () => "Kelly Factor: 0.85 (Normal allocation)",
-    nprd: () => "NPRD Queue: Empty",
-    kill: () =>
-      "⚠️ Kill switch not triggered from terminal. Use the UI button.",
+  // Auto-fetch tool calls when tab is activated
+  $: if (activeTab === "tool_calls" && toolCalls.length === 0) {
+    fetchToolCalls(50);
+  }
+
+  // Enhanced terminal commands with better output
+  const terminalCommands: Record<string, () => { type: string; content: string }> = {
+    help: () => ({ type: 'output', content: `
+Available Commands:
+  status       Show system status
+  bots         List active trading bots
+  regime       Show current market regime
+  kelly        Show Kelly criterion settings
+  video-ingest List VideoIngest queue
+  theme        Change terminal theme
+  clear        Clear terminal
+  copy         Copy last output to clipboard
+  logs [n]     Show last n log entries (default: 10)
+` }),
+    status: () => ({ type: 'output', content: `
+System Status:
+  [OK]   Backend API: Connected
+  [OK]   Kelly Router: Initialized (k=0.85)
+  [OK]   Database: Connected
+  [----] MT5: ${mt5Status === 'connected' ? 'Connected' : 'Disconnected'}
+` }),
+    bots: () => ({ type: 'output', content: `
+Active Trading Bots:
+  #1  ICT_Scalper  @EURUSD  primal   +$450.25
+  #2  ICT_Scalper  @GBPUSD  primal   +$320.10
+  #3  SMC_Rev      @USDJPY  ready    +$480.15
+` }),
+    regime: () => ({ type: 'output', content: `
+Market Regime: TRENDING
+  Volatility: HIGH
+  Trend: BULLISH
+  Confidence: 85%
+` }),
+    kelly: () => ({ type: 'output', content: `
+Kelly Criterion Settings:
+  Fraction: 0.85
+  Max Drawdown: 20%
+  Position Sizing: Dynamic
+` }),
+    video_ingest: () => ({ type: 'output', content: `
+VideoIngest Queue:
+  Status: Empty
+  Processing: 0
+  Completed: 0
+  Failed: 0
+` }),
+    theme: () => {
+      const themeNames = Object.keys(themes) as TerminalTheme[];
+      const currentIndex = themeNames.indexOf(terminalTheme);
+      const nextTheme = themeNames[(currentIndex + 1) % themeNames.length];
+      terminalTheme = nextTheme;
+      return { type: 'success', content: `Theme changed to: ${nextTheme.toUpperCase()}` };
+    },
     clear: () => {
       terminalHistory = [];
-      return "";
+      return { type: 'info', content: 'Terminal cleared' };
+    },
+    copy: () => {
+      const lastOutput = terminalHistory.filter(h => h.type !== 'input').pop()?.content || '';
+      navigator.clipboard.writeText(lastOutput);
+      return { type: 'success', content: 'Copied to clipboard' };
+    },
+    logs: (args: string) => {
+      const count = parseInt(args) || 10;
+      const recentLogs = logs.slice(-count).map(l => `[${l.time}] ${l.type.toUpperCase()}: ${l.message}`).join('\n');
+      return { type: 'output', content: recentLogs || 'No logs available' };
     },
   };
 
   function handleTerminalInput(e: KeyboardEvent) {
     if (e.key === "Enter" && terminalInput.trim()) {
-      const cmd = terminalInput.trim().toLowerCase();
+      const input = terminalInput.trim();
+      const parts = input.toLowerCase().split(/\s+/);
+      const cmd = parts[0];
+      const args = parts.slice(1).join(' ');
+
       terminalHistory = [
         ...terminalHistory,
-        { type: "input", content: `$ ${terminalInput}` },
+        { type: "input", content: `$ ${terminalInput}`, timestamp: getTimestamp() },
       ];
 
       if (terminalCommands[cmd]) {
-        const output = terminalCommands[cmd]();
-        if (output) {
-          terminalHistory = [
-            ...terminalHistory,
-            { type: "output", content: output },
-          ];
-        }
+        const result = terminalCommands[cmd](args);
+        terminalHistory = [
+          ...terminalHistory,
+          { type: result.type as any, content: result.content, timestamp: getTimestamp() },
+        ];
+      } else if (cmd === 'kill') {
+        terminalHistory = [
+          ...terminalHistory,
+          { type: "warning", content: "⚠️ Kill switch not triggered from terminal. Use the UI button.", timestamp: getTimestamp() },
+        ];
       } else {
         terminalHistory = [
           ...terminalHistory,
-          { type: "error", content: `Command not found: ${cmd}` },
+          { type: "error", content: `Command not found: ${cmd}. Type "help" for available commands.`, timestamp: getTimestamp() },
         ];
       }
 
@@ -118,7 +292,16 @@
     }
   }
 
+  function clearTerminal() {
+    terminalHistory = [];
+    terminalHistory = [
+      { type: "info", content: "Terminal cleared", timestamp: getTimestamp() },
+      { type: "output", content: "", timestamp: getTimestamp() },
+    ];
+  }
+
   async function connectMT5() {
+    mt5Error = null;
     mt5Status = "connecting";
     logs = [
       ...logs,
@@ -168,6 +351,27 @@
       },
     ];
   }
+
+  function toggleThemePicker() {
+    showThemePicker = !showThemePicker;
+  }
+
+  function selectTheme(theme: TerminalTheme) {
+    terminalTheme = theme;
+    showThemePicker = false;
+  }
+
+  function getTypeColor(type: string): string {
+    switch (type) {
+      case 'input': return currentTheme.input;
+      case 'output': return currentTheme.output;
+      case 'error': return currentTheme.error;
+      case 'success': return currentTheme.success;
+      case 'warning': return currentTheme.warning;
+      case 'info': return currentTheme.info;
+      default: return currentTheme.fg;
+    }
+  }
 </script>
 
 <div class="bottom-panel" class:expanded={isExpanded}>
@@ -198,19 +402,51 @@
   {#if isExpanded}
     <div class="panel-content">
       {#if activeTab === "terminal"}
-        <div class="terminal">
+        <div class="terminal" style="--term-bg: {currentTheme.bg}; --term-fg: {currentTheme.fg}">
+          <div class="terminal-toolbar">
+            <div class="terminal-tabs">
+              <span class="terminal-tab active">bash</span>
+            </div>
+            <div class="terminal-actions">
+              <button class="term-btn" on:click={clearTerminal} title="Clear terminal">
+                <Trash2 size={12} />
+              </button>
+              <button class="term-btn" on:click={toggleThemePicker} title="Change theme">
+                <Palette size={12} />
+              </button>
+            </div>
+            {#if showThemePicker}
+              <div class="theme-picker">
+                {#each Object.keys(themes) as theme}
+                  <button
+                    class="theme-option"
+                    class:active={terminalTheme === theme}
+                    on:click={() => selectTheme(theme as TerminalTheme)}
+                  >
+                    {theme}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
           <div class="terminal-scroll">
             {#each terminalHistory as line}
-              <div class="term-line {line.type}">{line.content}</div>
+              <div class="term-line" style="color: {getTypeColor(line.type)}">
+                {#if line.timestamp}
+                  <span class="term-timestamp">[{line.timestamp}]</span>
+                {/if}
+                <span class="term-content">{line.content}</span>
+              </div>
             {/each}
           </div>
           <div class="terminal-input">
-            <span class="prompt">$</span>
+            <span class="prompt" style="color: {currentTheme.prompt}">$</span>
             <input
               type="text"
               bind:value={terminalInput}
               on:keydown={handleTerminalInput}
               placeholder="Enter command..."
+              style="color: {currentTheme.fg}"
             />
           </div>
         </div>
@@ -290,6 +526,54 @@
               </div>
             {/each}
           {/if}
+        </div>
+      {:else if activeTab === "tool_calls"}
+        <div class="tool-calls-panel">
+          <div class="tool-calls-toolbar">
+            <button class="tool-btn" on:click={() => fetchToolCalls(50)} title="Refresh tool calls">
+              <RefreshCw size={12} />
+            </button>
+            <span class="tool-calls-count">{toolCalls.length} calls</span>
+          </div>
+          <div class="tool-calls-scroll">
+            {#if toolCallsLoading}
+              <div class="tool-calls-loading">
+                <RefreshCw size={16} class="spin" />
+                <span>Loading tool calls...</span>
+              </div>
+            {:else if toolCallsError}
+              <div class="tool-calls-error">
+                <AlertCircle size={14} />
+                <span>{toolCallsError}</span>
+              </div>
+            {:else if toolCalls.length === 0}
+              <div class="tool-calls-empty">
+                <Wrench size={24} />
+                <span>No tool calls recorded</span>
+              </div>
+            {:else}
+              <div class="tool-calls-header">
+                <span class="tc-time">TIME</span>
+                <span class="tc-agent">AGENT</span>
+                <span class="tc-tool">TOOL</span>
+                <span class="tc-status">STATUS</span>
+                <span class="tc-duration">DURATION</span>
+              </div>
+              {#each toolCalls as call}
+                <div class="tool-call-line" class:error={!call.success}>
+                  <span class="tc-time">{new Date(call.timestamp).toLocaleTimeString('en-US', { hour12: false })}</span>
+                  <span class="tc-agent" title={call.agent_id}>{call.agent_id.slice(0, 12)}</span>
+                  <span class="tc-tool" title={call.tool_name}>{call.tool_name.slice(0, 20)}</span>
+                  <span class="tc-status" class:success={call.success} class:failed={!call.success}>
+                    {call.success ? 'OK' : 'ERR'}
+                  </span>
+                  <span class="tc-duration">
+                    {call.duration_ms ? `${call.duration_ms.toFixed(1)}ms` : '-'}
+                  </span>
+                </div>
+              {/each}
+            {/if}
+          </div>
         </div>
       {:else if activeTab === "output"}
         <div class="logs-panel">
@@ -376,26 +660,106 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+    background: var(--term-bg, var(--bg-tertiary));
+  }
+  .terminal-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid var(--border-subtle);
+    position: relative;
+  }
+  .terminal-tabs {
+    display: flex;
+    gap: 4px;
+  }
+  .terminal-tab {
+    padding: 4px 12px;
+    font-size: 11px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px 4px 0 0;
+    color: var(--term-fg, var(--text-secondary));
+    opacity: 0.7;
+  }
+  .terminal-tab.active {
+    background: rgba(255, 255, 255, 0.1);
+    opacity: 1;
+  }
+  .terminal-actions {
+    display: flex;
+    gap: 4px;
+  }
+  .term-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .term-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+  }
+  .theme-picker {
+    position: absolute;
+    top: 100%;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+    padding: 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    z-index: 10;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+  .theme-option {
+    padding: 4px 10px;
+    font-size: 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    text-transform: capitalize;
+  }
+  .theme-option:hover {
+    border-color: var(--accent-primary);
+  }
+  .theme-option.active {
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+    border-color: var(--accent-primary);
   }
   .terminal-scroll {
     flex: 1;
     overflow-y: auto;
     padding: 8px 12px;
-    font-family: "JetBrains Mono", monospace;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
     font-size: 12px;
+    line-height: 1.5;
   }
   .term-line {
     line-height: 1.6;
     white-space: pre-wrap;
+    display: flex;
+    gap: 8px;
   }
-  .term-line.input {
-    color: var(--accent-primary);
+  .term-timestamp {
+    color: var(--text-muted);
+    font-size: 10px;
+    opacity: 0.6;
+    flex-shrink: 0;
   }
-  .term-line.output {
-    color: var(--text-secondary);
-  }
-  .term-line.error {
-    color: #ef4444;
+  .term-content {
+    flex: 1;
   }
   .terminal-input {
     display: flex;
@@ -403,20 +767,23 @@
     gap: 8px;
     padding: 8px 12px;
     border-top: 1px solid var(--border-subtle);
-    background: var(--bg-tertiary);
+    background: rgba(0, 0, 0, 0.2);
   }
   .prompt {
-    color: var(--accent-primary);
-    font-family: "JetBrains Mono", monospace;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-weight: bold;
   }
   .terminal-input input {
     flex: 1;
     background: transparent;
     border: none;
-    color: var(--text-primary);
-    font-family: "JetBrains Mono", monospace;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
     font-size: 12px;
     outline: none;
+  }
+  .terminal-input input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.5;
   }
 
   /* MT5 Sync */
@@ -536,6 +903,114 @@
   }
   .error-loc {
     font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  /* Tool Calls */
+  .tool-calls-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: var(--term-bg, var(--bg-tertiary));
+  }
+  .tool-calls-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .tool-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .tool-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+  }
+  .tool-calls-count {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .tool-calls-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 8px;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 11px;
+  }
+  .tool-calls-loading,
+  .tool-calls-error,
+  .tool-calls-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 24px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+  .tool-calls-error {
+    color: #ef4444;
+  }
+  .tool-calls-header {
+    display: grid;
+    grid-template-columns: 70px 90px 140px 50px 70px;
+    gap: 4px;
+    padding: 4px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: 4px;
+  }
+  .tool-call-line {
+    display: grid;
+    grid-template-columns: 70px 90px 140px 50px 70px;
+    gap: 4px;
+    padding: 3px 8px;
+    color: var(--term-fg, var(--text-secondary));
+    border-radius: 2px;
+  }
+  .tool-call-line:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .tool-call-line.error {
+    color: #ef4444;
+  }
+  .tc-time {
+    color: var(--text-muted);
+  }
+  .tc-agent {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tc-tool {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tc-status {
+    font-weight: 600;
+  }
+  .tc-status.success {
+    color: #10b981;
+  }
+  .tc-status.failed {
+    color: #ef4444;
+  }
+  .tc-duration {
     color: var(--text-muted);
   }
 

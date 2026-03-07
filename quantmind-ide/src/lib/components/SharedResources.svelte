@@ -85,10 +85,10 @@
 
   function getDeptColor(dept: string) {
     const colors: Record<string, string> = {
-      'analysis': '#3b82f6',
+      'development': '#3b82f6',
       'research': '#8b5cf6',
       'risk': '#ef4444',
-      'execution': '#f97316',
+      'trading': '#f97316',
       'portfolio': '#10b981'
     };
     return colors[dept] || '#6b7280';

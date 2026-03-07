@@ -42,7 +42,7 @@ export interface StrategyFolder {
     name: string;
     status: 'pending' | 'processing' | 'ready' | 'primal' | 'quarantined';
     created_at: string;
-    has_nprd: boolean;
+    has_video_ingest: boolean;
     has_trd: boolean;
     has_ea: boolean;
     has_backtest: boolean;
@@ -53,7 +53,7 @@ export interface StrategyDetail {
     name: string;
     status: string;
     created_at: string;
-    nprd?: { files: string[]; metadata?: any };
+    video_ingest?: { files: string[]; metadata?: any };
     trd?: { files: string[] };
     ea?: { files: string[] };
     backtests: Array<{ name: string; path: string; mode: string }>;
@@ -160,25 +160,25 @@ export async function getKnowledgeContent(itemId: string): Promise<{ content: st
 }
 
 // =============================================================================
-// NPRD Processing Endpoints
+// VideoIngest Processing Endpoints
 // =============================================================================
 
-export interface NPRDJob {
+export interface VideoIngestJob {
     job_id: string;
     status: string;
     strategy_folder: string;
     progress?: number;
 }
 
-export async function processNPRD(url: string, strategyName: string): Promise<NPRDJob> {
-    return apiFetch('/nprd/process', {
+export async function processVideoIngest(url: string, strategyName: string): Promise<VideoIngestJob> {
+    return apiFetch('/video-ingest/process', {
         method: 'POST',
         body: JSON.stringify({ url, strategy_name: strategyName })
     });
 }
 
-export async function getNPRDJobStatus(jobId: string): Promise<NPRDJob> {
-    return apiFetch(`/nprd/jobs/${jobId}`);
+export async function getVideoIngestJobStatus(jobId: string): Promise<VideoIngestJob> {
+    return apiFetch(`/video-ingest/jobs/${jobId}`);
 }
 
 // =============================================================================

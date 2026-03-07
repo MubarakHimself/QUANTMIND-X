@@ -25,6 +25,7 @@ from backtesting.mode_runner import (
 )
 from backtesting.walk_forward import WalkForwardOptimizer, WalkForwardResult
 from backtesting.monte_carlo import MonteCarloSimulator, MonteCarloResult
+from backtesting.pbo_calculator import PBOCalculator
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,11 @@ class BacktestComparison:
     overfitting_score: float = 0.0
     robustness_score: float = 0.0
 
+    # PBO (Probability of Backtest Overfitting)
+    pbo: float = 0.5
+    pbo_recommendation: str = ""
+    pbo_confidence_interval: tuple = (0.0, 0.0)
+
     # Comparison analysis
     regime_impact: float = 0.0
     walk_forward_validation: float = 0.0
@@ -66,6 +72,9 @@ class BacktestComparison:
             'overfitting_detected': self.overfitting_detected,
             'overfitting_score': self.overfitting_score,
             'robustness_score': self.robustness_score,
+            'pbo': self.pbo,
+            'pbo_recommendation': self.pbo_recommendation,
+            'pbo_confidence_interval': self.pbo_confidence_interval,
             'regime_impact': self.regime_impact,
             'walk_forward_validation': self.walk_forward_validation,
             'recommendation': self.recommendation,
@@ -92,7 +101,10 @@ class FullBacktestPipeline:
         commission: float = 0.001,
         slippage: float = 0.0,
         run_monte_carlo: bool = True,
-        mc_simulations: int = 1000
+        mc_simulations: int = 1000,
+        run_pbo: bool = True,
+        pbo_blocks: int = 5,
+        pbo_simulations: int = 100
     ):
         """Initialize full backtest pipeline.
 
@@ -102,12 +114,24 @@ class FullBacktestPipeline:
             slippage: Slippage in price points
             run_monte_carlo: Whether to run Monte Carlo simulations
             mc_simulations: Number of Monte Carlo simulations
+            run_pbo: Whether to run PBO calculation
+            pbo_blocks: Number of blocks for PBO calculation
+            pbo_simulations: Number of simulations for PBO
         """
         self.initial_cash = initial_cash
         self.commission = commission
         self.slippage = slippage
         self.run_monte_carlo = run_monte_carlo
         self.mc_simulations = mc_simulations
+        self.run_pbo = run_pbo
+        self.pbo_blocks = pbo_blocks
+        self.pbo_simulations = pbo_simulations
+
+        # Initialize PBO calculator
+        self._pbo_calculator = PBOCalculator(
+            n_blocks=pbo_blocks,
+            n_simulations=pbo_simulations
+        )
 
         logger.info("FullBacktestPipeline initialized")
 
@@ -286,6 +310,10 @@ class FullBacktestPipeline:
             else:
                 comparison.overfitting_score = 0.0
 
+        # Calculate PBO (Probability of Backtest Overfitting)
+        if self.run_pbo:
+            self._calculate_pbo(comparison)
+
         # Calculate walk-forward validation
         if comparison.vanilla_full_result:
             comparison.walk_forward_validation = comparison.vanilla_full_result.return_pct
@@ -306,6 +334,10 @@ class FullBacktestPipeline:
         if comparison.vanilla_mc_result:
             scores.append(1.0 if comparison.vanilla_mc_result.confidence_interval_5th > 0 else 0.0)
 
+        # 4. PBO score: lower PBO is better
+        if self.run_pbo and comparison.pbo is not None:
+            scores.append(1.0 - comparison.pbo)
+
         comparison.robustness_score = np.mean(scores) if scores else 0.0
 
         # Generate recommendation
@@ -318,6 +350,66 @@ class FullBacktestPipeline:
         else:
             comparison.recommendation = "Do Not Deploy: Strategy lacks robustness, likely overfitted"
             comparison.risk_level = "High"
+
+        # Adjust recommendation based on PBO
+        if self.run_pbo and comparison.pbo > 0.5:
+            comparison.recommendation += " (High PBO detected)"
+            comparison.risk_level = "High"
+
+    def _calculate_pbo(self, comparison: BacktestComparison):
+        """Calculate PBO from backtest results.
+
+        Args:
+            comparison: Comparison result with backtest data
+        """
+        try:
+            # Extract returns from trade history if available
+            returns = []
+
+            if comparison.vanilla_result and comparison.vanilla_result.trade_history:
+                for trade in comparison.vanilla_result.trade_history:
+                    if isinstance(trade, dict) and 'profit' in trade:
+                        returns.append(trade['profit'])
+                    elif hasattr(trade, 'profit'):
+                        returns.append(trade.profit)
+
+            # If no trade history, try equity curve
+            if not returns and comparison.vanilla_result and comparison.vanilla_result.equity_curve:
+                equity = comparison.vanilla_result.equity_curve
+                if isinstance(equity, list) and len(equity) > 1:
+                    returns = [equity[i+1] - equity[i] for i in range(len(equity)-1)]
+
+            # Fallback: use return percentage if available
+            if not returns and comparison.vanilla_result:
+                # Create synthetic returns from total return
+                total_return = comparison.vanilla_result.return_pct / 100
+                if comparison.vanilla_result.trades > 0:
+                    avg_return = total_return / comparison.vanilla_result.trades
+                    returns = [avg_return] * comparison.vanilla_result.trades
+
+            if len(returns) >= 20:
+                # Evaluate robustness using PBO calculator
+                pbo_result = self._pbo_calculator.evaluate_strategy_robustness(returns)
+
+                comparison.pbo = pbo_result.get('pbo', 0.5)
+                comparison.pbo_recommendation = pbo_result.get('recommendation', 'UNKNOWN')
+                comparison.pbo_confidence_interval = pbo_result.get('confidence_interval', (0.0, 0.0))
+
+                # Update overfitting detection based on PBO
+                if comparison.pbo > 0.5:
+                    comparison.overfitting_detected = True
+                    comparison.overfitting_score = max(comparison.overfitting_score, comparison.pbo)
+
+                logger.info(f"PBO Calculation: {comparison.pbo:.3f} - {comparison.pbo_recommendation}")
+            else:
+                logger.warning(f"Insufficient trade data for PBO calculation: {len(returns)} trades")
+                comparison.pbo = 0.5
+                comparison.pbo_recommendation = "INSUFFICIENT_DATA"
+
+        except Exception as e:
+            logger.error(f"Error calculating PBO: {e}")
+            comparison.pbo = 0.5
+            comparison.pbo_recommendation = "ERROR"
 
         if comparison.overfitting_detected:
             comparison.recommendation += " (Overfitting Detected)"

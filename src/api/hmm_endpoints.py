@@ -10,6 +10,7 @@ and shadow log retrieval.
 import os
 import json
 import logging
+import asyncio
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
@@ -19,6 +20,9 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/hmm", tags=["hmm"])
+
+# In-memory storage for training jobs (would be database-backed in production)
+training_jobs: Dict[str, Dict[str, Any]] = {}
 
 
 # =============================================================================
@@ -74,6 +78,20 @@ class HMMStatusResponse(BaseModel):
     sync_status: Optional[str]
 
 
+class ModelMetricsResponse(BaseModel):
+    """Model metrics response."""
+    symbol: str
+    timeframe: str
+    version: str
+    n_states: int
+    log_likelihood: Optional[float]
+    state_distribution: Optional[Dict[str, float]]
+    transition_matrix: Optional[List[List[float]]]
+    training_samples: int
+    training_date: Optional[str]
+    validation_status: str
+
+
 class ShadowLogResponse(BaseModel):
     """Shadow log entry response."""
     id: int
@@ -89,18 +107,33 @@ class ShadowLogResponse(BaseModel):
     decision_source: str
 
 
-class ModelMetricsResponse(BaseModel):
-    """Model metrics response."""
-    symbol: Optional[str]
-    timeframe: Optional[str]
-    version: str
-    n_states: int
-    log_likelihood: Optional[float]
-    state_distribution: Optional[Dict[str, float]]
-    transition_matrix: Optional[List[List[float]]]
-    training_samples: int
-    training_date: Optional[str]
-    validation_status: str
+class TrainingRequest(BaseModel):
+    """Request to trigger HMM training."""
+    symbol: Optional[str] = Field(None, description="Specific symbol to train (null for universal)")
+    timeframe: Optional[str] = Field(None, description="Timeframe for symbol-specific model")
+    model_type: str = Field("universal", description="Model type: universal, per_symbol, per_symbol_timeframe")
+    n_states: int = Field(4, description="Number of hidden states")
+    force_retrain: bool = Field(False, description="Force retrain even if model exists")
+
+
+class TrainingResponse(BaseModel):
+    """Response from training trigger."""
+    success: bool
+    message: str
+    job_id: str
+    status_url: str
+    warning: Optional[str] = None
+
+
+class TrainingStatusResponse(BaseModel):
+    """Training job status response."""
+    job_id: str
+    status: str  # pending, in_progress, completed, failed
+    progress: float
+    message: str
+    started_at: Optional[str]
+    completed_at: Optional[str]
+    model_version: Optional[str]
 
 
 # =============================================================================
@@ -588,37 +621,527 @@ async def list_available_models():
     }
 
 
-@router.post("/train")
-async def trigger_training(background_tasks: BackgroundTasks):
+@router.post("/train", response_model=TrainingResponse)
+async def trigger_training(request: TrainingRequest, background_tasks: BackgroundTasks):
     """
     Manually trigger HMM training on Contabo.
 
-    Training runs on the training server (Contabo).
+    Training runs on the training server (Contabo) via SSH.
     Returns job ID for status tracking.
     """
-    # This would typically call a training job API on Contabo
-    # For now, return a placeholder response
+    import subprocess
+    import socket
 
-    job_id = f"train_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    # Get Contabo configuration from environment
+    contabo_host = os.getenv("CONTABO_HOST")
+    contabo_user = os.getenv("CONTABO_USER")
+    contabo_ssh_key_path = os.getenv("CONTABO_SSH_KEY_PATH", "/root/.ssh/contabo_id_rsa")
 
-    return {
-        "success": True,
-        "message": "Training job submitted",
-        "job_id": job_id,
-        "status_url": f"/api/hmm/train/{job_id}/status"
-    }
+    # Generate job ID
+    job_id = f"hmm_train_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-
-@router.get("/train/{job_id}/status")
-async def get_training_status(job_id: str):
-    """Get status of a training job."""
-    # Placeholder - would check actual training job status
-    return {
+    # Initialize job status
+    job_status = {
         "job_id": job_id,
         "status": "pending",
         "progress": 0,
-        "message": "Training job not found or not implemented"
+        "message": "Training job queued",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "completed_at": None,
+        "model_version": None,
+        "symbol": request.symbol,
+        "timeframe": request.timeframe,
+        "model_type": request.model_type
     }
+    training_jobs[job_id] = job_status
+
+    # Check if Contabo is configured
+    if not contabo_host or not contabo_user:
+        logger.warning("Contabo not configured - training will run locally as fallback")
+        job_status["message"] = "Contabo not configured - running training locally"
+        # Fall back to local training
+        background_tasks.add_task(run_local_training, job_id, request)
+        return TrainingResponse(
+            success=True,
+            message=job_status["message"],
+            job_id=job_id,
+            status_url=f"/api/hmm/train/{job_id}/status",
+            warning="Contabo not configured - training locally"
+        )
+
+    # Validate SSH key exists
+    if not os.path.exists(contabo_ssh_key_path):
+        logger.warning(f"SSH key not found at {contabo_ssh_key_path} - training will run locally as fallback")
+        job_status["message"] = f"SSH key not found - running training locally"
+        background_tasks.add_task(run_local_training, job_id, request)
+        return TrainingResponse(
+            success=True,
+            message=job_status["message"],
+            job_id=job_id,
+            status_url=f"/api/hmm/train/{job_id}/status",
+            warning=f"SSH key not found at {contabo_ssh_key_path} - training locally"
+        )
+
+    # Build SSH command with timeout and proper error handling
+    ssh_cmd = [
+        "ssh",
+        "-i", contabo_ssh_key_path,
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "BatchMode=yes",
+        "-o", "ConnectTimeout=30",        # Connection timeout
+        "-o", "ServerAliveInterval=60",   # Keepalive to detect dead connections
+        "-o", "ServerAliveCountMax=3",    # Max keepalive failures before disconnect
+        f"{contabo_user}@{contabo_host}"
+    ]
+
+    # Build training script arguments - use train_hmm.py which accepts these parameters
+    # Map model_type to level: universal -> universal, per_symbol -> per_symbol, per_symbol_timeframe -> per_symbol_timeframe
+    level_map = {
+        "universal": "universal",
+        "per_symbol": "per_symbol",
+        "per_symbol_timeframe": "per_symbol_timeframe"
+    }
+    level = level_map.get(request.model_type, "universal")
+
+    script_args = ["python", "scripts/train_hmm.py", "--level", level]
+    if request.symbol:
+        script_args.extend(["--symbol", request.symbol])
+    if request.timeframe:
+        script_args.extend(["--timeframe", request.timeframe])
+    if request.force_retrain:
+        script_args.append("--validate")  # Force re-validation by adding validate flag
+
+    full_cmd = ssh_cmd + ["cd /opt/quantmindx && " + " ".join(script_args)]
+
+    # Start training in background with timeout
+    ssh_timeout = 60  # 60 seconds for SSH to connect and start remote command
+
+    try:
+        # Test SSH connection first before starting remote command
+        logger.info(f"Testing SSH connection to {contabo_user}@{contabo_host}...")
+        test_conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        test_conn.settimeout(30)
+        try:
+            # Try to resolve hostname first
+            contabo_port = 22  # Default SSH port
+            test_conn.connect((contabo_host, contabo_port))
+            logger.info(f"SSH connection to {contabo_host}:{contabo_port} successful")
+        except socket.gaierror as e:
+            logger.error(f"DNS resolution failed for {contabo_host}: {e}")
+            job_status["status"] = "failed"
+            job_status["message"] = f"DNS resolution failed for Contabo host: {str(e)}"
+            return TrainingResponse(
+                success=False,
+                message=job_status["message"],
+                job_id=job_id,
+                status_url=f"/api/hmm/train/{job_id}/status"
+            )
+        except socket.timeout:
+            logger.error(f"Connection timeout to {contabo_host}:{contabo_port}")
+            job_status["status"] = "failed"
+            job_status["message"] = f"Connection timeout to Contabo server"
+            return TrainingResponse(
+                success=False,
+                message=job_status["message"],
+                job_id=job_id,
+                status_url=f"/api/hmm/train/{job_id}/status"
+            )
+        except ConnectionRefusedError:
+            logger.error(f"Connection refused to {contabo_host}:{contabo_port}")
+            job_status["status"] = "failed"
+            job_status["message"] = "SSH connection refused - Contabo server may be down"
+            return TrainingResponse(
+                success=False,
+                message=job_status["message"],
+                job_id=job_id,
+                status_url=f"/api/hmm/train/{job_id}/status"
+            )
+        except Exception as e:
+            logger.error(f"Connection error to {contabo_host}:{contabo_port}: {e}")
+            job_status["status"] = "failed"
+            job_status["message"] = f"SSH connection error: {str(e)}"
+            return TrainingResponse(
+                success=False,
+                message=job_status["message"],
+                job_id=job_id,
+                status_url=f"/api/hmm/train/{job_id}/status"
+            )
+        finally:
+            test_conn.close()
+
+        # Now execute the SSH command with timeout
+        logger.info(f"Starting training job {job_id} on Contabo: {' '.join(full_cmd)}")
+
+        # Use subprocess.run with timeout for the SSH connection/command start
+        # Note: The remote training continues after SSH disconnects
+        process = subprocess.Popen(
+            full_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True
+        )
+
+        # Wait for SSH to complete (with timeout) - this ensures the remote command started
+        try:
+            stdout, stderr = process.communicate(timeout=ssh_timeout)
+
+            if process.returncode != 0:
+                error_msg = stderr.decode('utf-8', errors='replace') if stderr else "Unknown SSH error"
+                logger.error(f"SSH command failed with code {process.returncode}: {error_msg}")
+
+                # Check for specific error types
+                if "Permission denied" in error_msg:
+                    job_status["status"] = "failed"
+                    job_status["message"] = "SSH authentication failed - check SSH key"
+                elif "Connection refused" in error_msg:
+                    job_status["status"] = "failed"
+                    job_status["message"] = "SSH connection refused - Contabo server may be down"
+                elif "Connection timed out" in error_msg:
+                    job_status["status"] = "failed"
+                    job_status["message"] = "SSH connection timed out"
+                elif "No route to host" in error_msg:
+                    job_status["status"] = "failed"
+                    job_status["message"] = "No route to Contabo server"
+                else:
+                    job_status["status"] = "failed"
+                    job_status["message"] = f"SSH command failed: {error_msg[:100]}"
+
+                return TrainingResponse(
+                    success=False,
+                    message=job_status["message"],
+                    job_id=job_id,
+                    status_url=f"/api/hmm/train/{job_id}/status"
+                )
+
+            logger.info(f"Training job {job_id} started successfully on Contabo")
+
+        except subprocess.TimeoutExpired:
+            # Timeout is expected - the SSH session completed but remote process is still running
+            # This is the desired behavior - remote training continues in background
+            logger.info(f"SSH session completed, remote training continues in background for job {job_id}")
+
+        job_status["status"] = "in_progress"
+        job_status["message"] = "Training started on Contabo"
+        logger.info(f"Training job {job_id} started on Contabo")
+
+        # Broadcast training start via WebSocket
+        try:
+            asyncio_run(broadcast_hmm_training_status(job_status))
+        except Exception as e:
+            logger.debug(f"WebSocket broadcast skipped: {e}")
+
+    except Exception as e:
+        logger.error(f"Failed to start training job: {e}")
+        job_status["status"] = "failed"
+        job_status["message"] = f"Failed to start training: {str(e)}"
+        return TrainingResponse(
+            success=False,
+            message=job_status["message"],
+            job_id=job_id,
+            status_url=f"/api/hmm/train/{job_id}/status"
+        )
+
+    return TrainingResponse(
+        success=True,
+        message=job_status["message"],
+        job_id=job_id,
+        status_url=f"/api/hmm/train/{job_id}/status"
+    )
+
+
+async def run_local_training(job_id: str, request: TrainingRequest):
+    """Run training locally as fallback when Contabo is not available."""
+    import subprocess
+
+    job_status = training_jobs.get(job_id)
+    if not job_status:
+        return
+
+    try:
+        job_status["status"] = "in_progress"
+        job_status["message"] = "Running local training..."
+
+        # Build local training command
+        cmd = [
+            "python", "scripts/train_hmm.py",
+            "--model-type", request.model_type,
+            "--n-states", str(request.n_states)
+        ]
+        if request.symbol:
+            cmd.extend(["--symbol", request.symbol])
+        if request.timeframe:
+            cmd.extend(["--timeframe", request.timeframe])
+        if request.force_retrain:
+            cmd.append("--force")
+
+        # Run training
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=3600  # 1 hour timeout
+        )
+
+        if result.returncode == 0:
+            job_status["status"] = "completed"
+            job_status["message"] = "Training completed successfully"
+            # Try to extract model version from output
+            for line in result.stdout.split('\n'):
+                if "version" in line.lower():
+                    job_status["model_version"] = line.strip()
+                    break
+        else:
+            job_status["status"] = "failed"
+            job_status["message"] = f"Training failed: {result.stderr[:200]}"
+
+    except subprocess.TimeoutExpired:
+        job_status["status"] = "failed"
+        job_status["message"] = "Training timed out after 1 hour"
+    except Exception as e:
+        job_status["status"] = "failed"
+        job_status["message"] = f"Training error: {str(e)}"
+    finally:
+        job_status["completed_at"] = datetime.now(timezone.utc).isoformat()
+
+        # Broadcast completion via WebSocket
+        try:
+            asyncio_run(broadcast_hmm_training_status(job_status))
+        except Exception:
+            pass
+
+
+@router.get("/train/{job_id}/status", response_model=TrainingStatusResponse)
+async def get_training_status(job_id: str):
+    """Get status of a training job."""
+    job_status = training_jobs.get(job_id)
+
+    if not job_status:
+        return TrainingStatusResponse(
+            job_id=job_id,
+            status="not_found",
+            progress=0,
+            message="Training job not found",
+            started_at=None,
+            completed_at=None,
+            model_version=None
+        )
+
+    return TrainingStatusResponse(
+        job_id=job_status["job_id"],
+        status=job_status["status"],
+        progress=job_status.get("progress", 0),
+        message=job_status["message"],
+        started_at=job_status.get("started_at"),
+        completed_at=job_status.get("completed_at"),
+        model_version=job_status.get("model_version")
+    )
+
+
+@router.get("/train")
+async def list_training_jobs(limit: int = Query(10, ge=1, le=100)):
+    """List recent training jobs."""
+    jobs = list(training_jobs.values())
+    # Sort by started_at descending
+    jobs.sort(key=lambda x: x.get("started_at", ""), reverse=True)
+    return {
+        "jobs": jobs[:limit],
+        "total": len(jobs)
+    }
+
+
+async def broadcast_hmm_training_status(job_status: Dict[str, Any]):
+    """Broadcast training status via WebSocket."""
+    try:
+        from src.api.websocket_endpoints import broadcast_message
+        await broadcast_message(
+            message_type="hmm_training_status",
+            data=job_status
+        )
+    except Exception as e:
+        logger.debug(f"Failed to broadcast training status: {e}")
+
+
+def asyncio_run(coro):
+    """Run async coroutine in sync context."""
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(coro)
+        else:
+            loop.run_until_complete(coro)
+    except RuntimeError:
+        import asyncio
+        asyncio.run(coro)
+
+
+# =============================================================================
+# SSH Connection Test Endpoint
+# =============================================================================
+
+class SSHTestResponse(BaseModel):
+    """Response from SSH connectivity test."""
+    success: bool
+    message: str
+    details: Optional[Dict[str, Any]] = None
+
+
+@router.get("/ssh-test", response_model=SSHTestResponse)
+async def test_ssh_connection():
+    """
+    Test SSH connection to Contabo training server.
+
+    Performs DNS resolution, TCP connection, and SSH authentication tests.
+    Returns detailed status of each step.
+    """
+    import socket
+    import subprocess
+
+    # Get Contabo configuration from environment
+    contabo_host = os.getenv("CONTABO_HOST")
+    contabo_user = os.getenv("CONTABO_USER")
+    contabo_ssh_key_path = os.getenv("CONTABO_SSH_KEY_PATH", "/root/.ssh/contabo_id_rsa")
+
+    details = {}
+
+    # Step 1: Check environment variables
+    if not contabo_host:
+        return SSHTestResponse(
+            success=False,
+            message="CONTABO_HOST environment variable not set",
+            details={"configured": False}
+        )
+    if not contabo_user:
+        return SSHTestResponse(
+            success=False,
+            message="CONTABO_USER environment variable not set",
+            details={"configured": False}
+        )
+
+    details["host"] = contabo_host
+    details["user"] = contabo_user
+    details["ssh_key_path"] = contabo_ssh_key_path
+
+    # Step 2: Check SSH key exists
+    if not os.path.exists(contabo_ssh_key_path):
+        return SSHTestResponse(
+            success=False,
+            message=f"SSH key not found at {contabo_ssh_key_path}",
+            details=details
+        )
+
+    details["ssh_key_exists"] = True
+
+    # Step 3: DNS resolution test
+    try:
+        socket.setdefaulttimeout(10)
+        socket.gethostbyname(contabo_host)
+        details["dns_resolved"] = True
+    except socket.gaierror as e:
+        return SSHTestResponse(
+            success=False,
+            message=f"DNS resolution failed for {contabo_host}: {str(e)}",
+            details=details
+        )
+    except Exception as e:
+        return SSHTestResponse(
+            success=False,
+            message=f"DNS resolution error: {str(e)}",
+            details=details
+        )
+
+    # Step 4: TCP connection test (SSH port)
+    try:
+        test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        test_sock.settimeout(30)
+        test_sock.connect((contabo_host, 22))
+        test_sock.close()
+        details["tcp_port_open"] = True
+    except socket.timeout:
+        return SSHTestResponse(
+            success=False,
+            message=f"Connection timeout to {contabo_host}:22",
+            details=details
+        )
+    except ConnectionRefusedError:
+        return SSHTestResponse(
+            success=False,
+            message=f"Connection refused to {contabo_host}:22 - SSH service may not be running",
+            details=details
+        )
+    except Exception as e:
+        return SSHTestResponse(
+            success=False,
+            message=f"TCP connection error: {str(e)}",
+            details=details
+        )
+
+    # Step 5: SSH authentication test
+    ssh_cmd = [
+        "ssh",
+        "-i", contabo_ssh_key_path,
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "BatchMode=yes",
+        "-o", "ConnectTimeout=30",
+        "-o", "ServerAliveInterval=10",
+        "-o", "ServerAliveCountMax=2",
+        f"{contabo_user}@{contabo_host}",
+        "echo 'SSH connection successful'"
+    ]
+
+    try:
+        result = subprocess.run(
+            ssh_cmd,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+
+        if result.returncode == 0:
+            details["ssh_auth"] = True
+            details["ssh_output"] = result.stdout.strip()
+            return SSHTestResponse(
+                success=True,
+                message=f"SSH connection to {contabo_host} successful",
+                details=details
+            )
+        else:
+            error_msg = result.stderr.strip() if result.stderr else "Unknown error"
+            details["ssh_auth"] = False
+            details["ssh_error"] = error_msg
+
+            # Provide more helpful error messages
+            if "Permission denied" in error_msg:
+                return SSHTestResponse(
+                    success=False,
+                    message="SSH authentication failed - check SSH key and user permissions",
+                    details=details
+                )
+            elif "Connection refused" in error_msg:
+                return SSHTestResponse(
+                    success=False,
+                    message="SSH connection refused - Contabo SSH service may be down",
+                    details=details
+                )
+            else:
+                return SSHTestResponse(
+                    success=False,
+                    message=f"SSH command failed: {error_msg[:100]}",
+                    details=details
+                )
+
+    except subprocess.TimeoutExpired:
+        return SSHTestResponse(
+            success=False,
+            message="SSH connection timed out after 60 seconds",
+            details=details
+        )
+    except Exception as e:
+        return SSHTestResponse(
+            success=False,
+            message=f"SSH test error: {str(e)}",
+            details=details
+        )
 
 
 # =============================================================================

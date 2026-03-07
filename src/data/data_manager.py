@@ -10,6 +10,7 @@ This module implements a comprehensive data management system with:
 - Cache metadata tracking (last_update, data_quality, source)
 - Multi-timeframe support (M1, M5, M15, M30, H1, H4, D1, W1, MN1)
 - CSV upload and conversion to Parquet
+- Dukascopy forex data fetching
 
 Reuses patterns from: src/backtesting/mt5_engine.py (MQL5Timeframe, MT5 integration)
 """
@@ -42,6 +43,16 @@ except ImportError:
     pq = None
     logging.warning("PyArrow not available. Parquet caching disabled.")
 
+# Import Dukascopy fetcher
+try:
+    from src.data.dukascopy_fetcher import DukascopyFetcher, MockDukascopyFetcher, DukascopyConfig
+    DUKASCOPY_AVAILABLE = True
+except ImportError:
+    DUKASCOPY_AVAILABLE = False
+    DukascopyFetcher = None
+    MockDukascopyFetcher = None
+    logging.warning("Dukascopy fetcher not available.")
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,6 +64,7 @@ class DataSource(Enum):
     """Data source enumeration for tracking where data originated."""
     MT5 = "mt5"
     API = "api"
+    DUKASCOPY = "dukascopy"
     CACHE = "cache"
     UPLOAD = "upload"
 
@@ -264,6 +276,8 @@ class DataManager:
         cache_dir: Optional[Path] = None,
         enable_mt5: bool = True,
         enable_api: bool = True,
+        enable_dukascopy: bool = True,
+        use_mock_dukascopy: bool = False,
         api_base_url: str = None,
         mt5_login: Optional[int] = None,
         mt5_password: Optional[str] = None,
@@ -275,6 +289,8 @@ class DataManager:
             cache_dir: Directory for Parquet cache (default: ./data/historical)
             enable_mt5: Enable MT5 data fetching
             enable_api: Enable API data fetching
+            enable_dukascopy: Enable Dukascopy forex data fetching
+            use_mock_dukascopy: Use mock data for Dukascopy (testing)
             api_base_url: Base URL for API data source
             mt5_login: MT5 account login
             mt5_password: MT5 account password
@@ -287,11 +303,30 @@ class DataManager:
         # Data source configuration
         self.enable_mt5 = enable_mt5 and MT5_AVAILABLE
         self.enable_api = enable_api
+        self.enable_dukascopy = enable_dukascopy and DUKASCOPY_AVAILABLE
+        self.use_mock_dukascopy = use_mock_dukascopy
         self.api_base_url = api_base_url
 
         # MT5 connection
         self._mt5 = mt5 if MT5_AVAILABLE else None
         self._mt5_connected = False
+
+        # Initialize Dukascopy fetcher
+        self._dukascopy_fetcher = None
+        if self.enable_dukascopy:
+            try:
+                if use_mock_dukascopy:
+                    self._dukascopy_fetcher = MockDukascopyFetcher(
+                        DukascopyConfig(cache_dir=self.cache_dir / "dukascopy")
+                    )
+                    logger.info("Using mock Dukascopy fetcher")
+                else:
+                    self._dukascopy_fetcher = DukascopyFetcher(
+                        DukascopyConfig(cache_dir=self.cache_dir / "dukascopy")
+                    )
+                    logger.info("Dukascopy fetcher initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Dukascopy fetcher: {e}")
 
         # Initialize MT5 if credentials provided
         if self.enable_mt5 and mt5_login and mt5_password and mt5_server:
@@ -425,6 +460,44 @@ class DataManager:
         # - Binance (for crypto)
         # - Custom data APIs
         return None
+
+    def _fetch_from_dukascopy(self, symbol: str, timeframe: int, count: int) -> Optional[pd.DataFrame]:
+        """Fetch data from Dukascopy forex API.
+
+        Args:
+            symbol: Trading symbol (e.g., "EURUSD")
+            timeframe: MQL5 timeframe constant
+            count: Number of bars to retrieve
+
+        Returns:
+            DataFrame with OHLCV data or None
+        """
+        if not self.enable_dukascopy or not self._dukascopy_fetcher:
+            return None
+
+        # Convert MQL5 timeframe to Dukascopy format
+        tf_str = MQL5Timeframe.to_string(timeframe).lower().replace("m", "min").replace("h", "hr").replace("d1", "daily")
+
+        # Map to Dukascopy timeframes
+        tf_mapping = {
+            "M1": "1min", "M5": "5min", "M15": "15min", "M30": "30min",
+            "H1": "1hr", "H4": "4hr", "D1": "daily"
+        }
+        dukascopy_tf = tf_mapping.get(MQL5Timeframe.to_string(timeframe), "1hr")
+
+        try:
+            result = self._dukascopy_fetcher.fetch(symbol, dukascopy_tf, count=count)
+
+            if result.success and result.data is not None:
+                logger.info(f"Dukascopy: Fetched {len(result.data)} bars for {symbol}")
+                return result.data
+            else:
+                logger.debug(f"Dukascopy fetch failed: {result.message}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Dukascopy fetch error: {e}")
+            return None
 
     # -------------------------------------------------------------------------
     # Cache Operations
@@ -591,7 +664,7 @@ class DataManager:
         return result
 
     # -------------------------------------------------------------------------
-    # Data Fetching (Hybrid: MT5 -> API -> Cache)
+    # Data Fetching (Hybrid: MT5 -> Dukascopy -> API -> Cache)
     # -------------------------------------------------------------------------
 
     def fetch_data(
@@ -601,11 +674,13 @@ class DataManager:
         count: int = 1000,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
-        refresh: bool = False
+        refresh: bool = False,
+        prefer_dukascopy: bool = False
     ) -> pd.DataFrame:
         """Fetch OHLCV data using hybrid fallback chain.
 
-        Fetching order: MT5 -> API -> Cache
+        Fetching order: MT5 -> Dukascopy -> API -> Cache
+        Or (if prefer_dukascopy=True): Dukascopy -> MT5 -> API -> Cache
 
         Args:
             symbol: Trading symbol (e.g., "EURUSD")
@@ -614,6 +689,7 @@ class DataManager:
             start_date: Start date for data range
             end_date: End date for data range
             refresh: Force refresh from live sources
+            prefer_dukascopy: Prefer Dukascopy over MT5 for forex pairs
 
         Returns:
             DataFrame with OHLCV data
@@ -634,21 +710,29 @@ class DataManager:
                     logger.debug(f"Using cached data for {symbol} {MQL5Timeframe.to_string(timeframe)}")
                     return cached.tail(count)
 
-        # Try MT5
-        if self.enable_mt5:
-            data = self._fetch_from_mt5(symbol, timeframe, count)
-            if data is not None and len(data) > 0:
-                # Save to cache
-                self._save_to_cache(symbol, timeframe, data, DataSource.MT5)
-                return data
+        # Determine fetch order based on prefer_dukascopy
+        sources = []
+        if prefer_dukascopy:
+            sources = [
+                ("dukascopy", self.enable_dukascopy, self._fetch_from_dukascopy, DataSource.DUKASCOPY),
+                ("mt5", self.enable_mt5, self._fetch_from_mt5, DataSource.MT5),
+                ("api", self.enable_api, self._fetch_from_api, DataSource.API),
+            ]
+        else:
+            sources = [
+                ("mt5", self.enable_mt5, self._fetch_from_mt5, DataSource.MT5),
+                ("dukascopy", self.enable_dukascopy, self._fetch_from_dukascopy, DataSource.DUKASCOPY),
+                ("api", self.enable_api, self._fetch_from_api, DataSource.API),
+            ]
 
-        # Try API
-        if self.enable_api:
-            data = self._fetch_from_api(symbol, timeframe, count)
-            if data is not None and len(data) > 0:
-                # Save to cache
-                self._save_to_cache(symbol, timeframe, data, DataSource.API)
-                return data
+        # Try each source in order
+        for name, enabled, fetch_func, data_source in sources:
+            if enabled:
+                data = fetch_func(symbol, timeframe, count)
+                if data is not None and len(data) > 0:
+                    # Save to cache
+                    self._save_to_cache(symbol, timeframe, data, data_source)
+                    return data
 
         # Return cached data as last resort
         cached = self.get_cached_data(symbol, timeframe)
@@ -893,6 +977,14 @@ class DataManager:
                 "total_bars": sum(meta.total_bars for meta in tf_dict.values())
             }
 
+        # Get Dukascopy cache status
+        dukascopy_status = {}
+        if self._dukascopy_fetcher:
+            try:
+                dukascopy_status = self._dukascopy_fetcher.get_cache_status()
+            except Exception:
+                pass
+
         return {
             "cache_dir": str(self.cache_dir),
             "total_symbols": total_symbols,
@@ -904,6 +996,8 @@ class DataManager:
             "mt5_enabled": self.enable_mt5,
             "mt5_connected": self._mt5_connected,
             "api_enabled": self.enable_api,
+            "dukascopy_enabled": self.enable_dukascopy,
+            "dukascopy_status": dukascopy_status,
             "parquet_available": PARQUET_AVAILABLE
         }
 

@@ -1,0 +1,63 @@
+# Dependencies
+node_modules
+npm-debug.log
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Git
+.git
+.gitignore
+
+# IDEs
+.vscode
+.idea
+*.swp
+*.swo
+
+# Logs and data
+logs
+data
+*.log
+
+# Build artifacts
+dist
+build
+*.egg-info
+
+# Documentation
+docs/_build
+docs/.git
+*.md
+
+# Cache
+.cache
+.pytest_cache
+.mypy_cache
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large media
+*.mp4
+*.avi
+*.mov
+*.zip
+*.tar.gz
+
+# Environment
+.env
+.env.local
+
+# Test coverage
+htmlcov
+.coverage
+coverage.xml
+
+# Virtual environments
+venv
+env
+.venv

@@ -29,6 +29,9 @@
     XCircle,
   } from "lucide-svelte";
 
+  // Import extracted sub-components
+  import { KillZoneBanner, NewsHeader, NewsEventList, NewsDetailPanel } from "./news";
+
   const dispatch = createEventDispatcher();
 
   // Types for News Events and Kill Zones
@@ -78,7 +81,7 @@
     currencies: ["USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF"] as string[],
   };
 
-  // Mock economic calendar data
+  // Economic calendar data loaded from API
   let newsEvents: NewsEvent[] = [];
   let filteredEvents: NewsEvent[] = [];
   let killZones: KillZone[] = [];

@@ -284,28 +284,20 @@ void OnTick()
 
     @pytest.mark.asyncio
     async def test_memory_operations(self):
-        """Test LangMem memory operations."""
-        from src.memory.langmem_manager import LangMemManager
-        
-        manager = LangMemManager()
-        
-        # Add semantic memory
-        entry = await manager.add_semantic_memory(
-            agent_name="analyst",
-            content="EURUSD shows mean reversion behavior on H1 timeframe during Asian session",
-            importance=0.8
+        """Test native memory operations (LangMem removed)."""
+        # LangMem has been removed - testing native memory tools in base_agent
+        from src.agents.core.base_agent import BaseAgent
+
+        agent = BaseAgent(
+            name="test_agent",
+            role="tester",
+            enable_long_term_memory=True
         )
-        
-        assert entry.id is not None
-        assert entry.content == "EURUSD shows mean reversion behavior on H1 timeframe during Asian session"
-        
-        # Search memory
-        results = await manager.search_semantic_memory(
-            agent_name="analyst",
-            query="EURUSD behavior"
-        )
-        
-        assert len(results) > 0
+
+        # Verify memory tools are present
+        tool_names = [t.name for t in agent.tools]
+        assert "store_memory" in tool_names
+        assert "recall_memory" in tool_names
 
     @pytest.mark.asyncio
     async def test_workflow_orchestrator(self, sample_nprd_data: Dict[str, Any], tmp_path: Path):

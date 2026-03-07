@@ -8,10 +8,17 @@
     FileText,
     X,
     Plus,
-    TrendingUp,
-    Award,
-    AlertCircle,
+    ArrowLeft,
   } from "lucide-svelte";
+  import { navigationStore } from "../stores/navigationStore";
+
+  // Import extracted sub-components
+  import {
+    PaperTradingAgentCard,
+    PaperTradingDeployModal,
+    PaperTradingLogsModal,
+    PaperTradingPromoteModal,
+  } from "./paper-trading";
 
   // Props
   export let baseUrl: string = "http://localhost:8000";
@@ -469,9 +476,18 @@
 </script>
 
 <div class="paper-trading-panel">
-  <!-- Header -->
+  <!-- Header with back navigation -->
   <div class="panel-header">
-    <h2 class="panel-title">Paper Trading</h2>
+    <div class="header-left">
+      <button
+        class="back-button"
+        on:click={() => navigationStore.navigateToView("live", "Live Trading")}
+        title="Back to Live Trading"
+      >
+        <ArrowLeft size={20} />
+      </button>
+      <h2 class="panel-title">Paper Trading</h2>
+    </div>
     <button
       class="btn btn-primary"
       on:click={() => (showDeployForm = true)}
@@ -513,512 +529,52 @@
     {:else}
       <div class="agents-grid">
         {#each agents as agent (agent.agent_id)}
-          <div class="agent-card">
-            <!-- Agent Header -->
-            <div class="agent-header">
-              <div class="agent-name">{agent.strategy_name}</div>
-              <div
-                class="agent-status-badge {getStatusBadgeColor(agent.status)}"
-              >
-                {agent.status.toUpperCase()}
-              </div>
-            </div>
-
-            <!-- Agent Details -->
-            <div class="agent-details">
-              <div class="detail-row">
-                <span class="detail-label">ID:</span>
-                <span class="detail-value">{agent.agent_id}</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">Symbol:</span>
-                <span class="detail-value">{agent.symbol || "-"}</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">Timeframe:</span>
-                <span class="detail-value">{agent.timeframe || "-"}</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">Uptime:</span>
-                <span class="detail-value"
-                  >{formatUptime(agent.uptime_seconds)}</span
-                >
-              </div>
-            </div>
-
-            <!-- Performance Metrics -->
-            {#if performanceMetrics[agent.agent_id]}
-              {@const metrics = performanceMetrics[agent.agent_id]}
-              <div class="performance-section">
-                <div class="performance-header">
-                  <TrendingUp size={14} />
-                  <span>Performance</span>
-                  <div
-                    class="validation-badge {getValidationBadgeColor(
-                      metrics.validation_status,
-                    )}"
-                  >
-                    {metrics.validation_status.toUpperCase()}
-                  </div>
-                </div>
-
-                <div class="metrics-grid">
-                  <div class="metric-item">
-                    <span class="metric-label">Sharpe</span>
-                    <span
-                      class="metric-value {getSharpeColor(
-                        metrics.sharpe_ratio,
-                      )}"
-                    >
-                      {metrics.sharpe_ratio !== null
-                        ? metrics.sharpe_ratio.toFixed(2)
-                        : "-"}
-                    </span>
-                    {#if metrics.sharpe_ratio !== null && metrics.sharpe_ratio >= 1.5}
-                      <span class="metric-check">✓</span>
-                    {/if}
-                  </div>
-
-                  <div class="metric-item">
-                    <span class="metric-label">Win Rate</span>
-                    <span
-                      class="metric-value {getWinRateColor(metrics.win_rate)}"
-                    >
-                      {(metrics.win_rate * 100).toFixed(1)}%
-                    </span>
-                    {#if metrics.win_rate >= 0.55}
-                      <span class="metric-check">✓</span>
-                    {/if}
-                  </div>
-
-                  <div class="metric-item">
-                    <span class="metric-label">Trades</span>
-                    <span class="metric-value">{metrics.total_trades}</span>
-                  </div>
-
-                  <div class="metric-item">
-                    <span class="metric-label">PnL</span>
-                    <span
-                      class="metric-value"
-                      class:text-green-400={metrics.total_pnl > 0}
-                      class:text-red-400={metrics.total_pnl < 0}
-                    >
-                      ${metrics.total_pnl.toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-
-                <!-- Validation Progress -->
-                <div class="validation-progress">
-                  <div class="progress-label">
-                    <span>Validation Progress</span>
-                    <span>{metrics.days_validated}/30 days</span>
-                  </div>
-                  <div class="progress-bar">
-                    <div
-                      class="progress-fill"
-                      style="width: {Math.min(
-                        100,
-                        (metrics.days_validated / 30) * 100,
-                      )}%"
-                      class:complete={metrics.days_validated >= 30}
-                    ></div>
-                  </div>
-                </div>
-              </div>
-            {/if}
-
-            <!-- Tick Data -->
-            {#if agent.symbol && tickData[agent.symbol]}
-              <div class="tick-data">
-                <div class="tick-row">
-                  <span class="tick-label">Bid:</span>
-                  <span class="tick-value"
-                    >{tickData[agent.symbol].bid.toFixed(5)}</span
-                  >
-                </div>
-                <div class="tick-row">
-                  <span class="tick-label">Ask:</span>
-                  <span class="tick-value"
-                    >{tickData[agent.symbol].ask.toFixed(5)}</span
-                  >
-                </div>
-                <div class="tick-row">
-                  <span class="tick-label">Spread:</span>
-                  <span class="tick-value {getStatusColor(agent.status)}">
-                    {tickData[agent.symbol].spread.toFixed(5)}
-                  </span>
-                </div>
-              </div>
-            {/if}
-
-            <!-- Actions -->
-            <div class="agent-actions">
-              <button
-                class="btn-icon"
-                on:click={() => viewLogs(agent.agent_id)}
-                title="View Logs"
-              >
-                <FileText size={18} />
-              </button>
-              {#if canPromote(performanceMetrics[agent.agent_id])}
-                <button
-                  class="btn-icon btn-success"
-                  on:click={() => openPromoteModal(agent.agent_id)}
-                  title="Promote to Live Trading"
-                >
-                  <Award size={18} />
-                </button>
-              {/if}
-              {#if agent.status === "running"}
-                <button
-                  class="btn-icon btn-danger"
-                  on:click={() => stopAgent(agent.agent_id)}
-                  title="Stop Agent"
-                >
-                  <Square size={18} />
-                </button>
-              {/if}
-            </div>
-          </div>
+          <PaperTradingAgentCard
+            {agent}
+            performanceMetrics={performanceMetrics[agent.agent_id]}
+            tickData={agent.symbol ? tickData[agent.symbol] : undefined}
+            on:stop={(e) => stopAgent(e.detail)}
+            on:logs={(e) => viewLogs(e.detail)}
+            on:promote={(e) => openPromoteModal(e.detail)}
+          />
         {/each}
       </div>
     {/if}
   </div>
 
   <!-- Deploy Form Modal -->
-  {#if showDeployForm}
-    <div
-      class="modal-overlay"
-      on:click={() => (showDeployForm = false)}
-      role="button"
-      tabindex="0"
-      on:keydown={(e) => e.key === "Escape" && (showDeployForm = false)}
-    >
-      <div class="modal-content" on:click|stopPropagation role="presentation">
-        <div class="modal-header">
-          <h3>Deploy New Paper Trading Agent</h3>
-          <button class="btn-icon" on:click={() => (showDeployForm = false)}>
-            <X size={20} />
-          </button>
-        </div>
-
-        <div class="modal-body">
-          <div class="form-group">
-            <label for="deploy-strategy-name" class="form-label"
-              >Strategy Name *</label
-            >
-            <input
-              id="deploy-strategy-name"
-              type="text"
-              class="form-input"
-              bind:value={deployForm.strategy_name}
-              placeholder="e.g., RSI Reversal"
-            />
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="deploy-symbol" class="form-label">Symbol *</label>
-              <select
-                id="deploy-symbol"
-                class="form-input"
-                bind:value={deployForm.symbol}
-              >
-                {#each symbols as symbol}
-                  <option value={symbol}>{symbol}</option>
-                {/each}
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label for="deploy-tf" class="form-label">Timeframe *</label>
-              <select
-                id="deploy-tf"
-                class="form-input"
-                bind:value={deployForm.timeframe}
-              >
-                {#each timeframes as tf}
-                  <option value={tf}>{tf}</option>
-                {/each}
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="deploy-acc" class="form-label">MT5 Account *</label>
-            <input
-              id="deploy-acc"
-              type="text"
-              class="form-input"
-              bind:value={deployForm.mt5_account}
-              placeholder="Account number"
-            />
-          </div>
-
-          <div class="form-group">
-            <label for="deploy-pass" class="form-label">MT5 Password *</label>
-            <input
-              id="deploy-pass"
-              type="password"
-              class="form-input"
-              bind:value={deployForm.mt5_password}
-              placeholder="Account password"
-            />
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">MT5 Server</label>
-            <input
-              type="text"
-              class="form-input"
-              bind:value={deployForm.mt5_server}
-              placeholder="e.g., MetaQuotes-Demo"
-            />
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Strategy Code *</label>
-            <textarea
-              class="form-textarea"
-              bind:value={deployForm.strategy_code}
-              rows="6"
-              placeholder="Enter your Python strategy code here..."
-            ></textarea>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Magic Number</label>
-            <input
-              type="text"
-              class="form-input"
-              bind:value={deployForm.magic_number}
-              disabled
-            />
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <button
-            class="btn btn-secondary"
-            on:click={() => (showDeployForm = false)}
-          >
-            Cancel
-          </button>
-          <button
-            class="btn btn-primary"
-            on:click={deployAgent}
-            disabled={isLoading}
-          >
-            {#if isLoading}
-              Deploying...
-            {:else}
-              <Play size={18} />
-              Deploy Agent
-            {/if}
-          </button>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <PaperTradingDeployModal
+    isOpen={showDeployForm}
+    {form}
+    {isLoading}
+    on:close={() => (showDeployForm = false)}
+    on:deploy={(e) => {
+      deployForm = e.detail;
+      deployAgent();
+    }}
+  />
 
   <!-- Logs Modal -->
-  {#if selectedAgent}
-    <div
-      class="modal-overlay"
-      on:click={closeLogs}
-      role="button"
-      tabindex="0"
-      on:keydown={(e) => e.key === "Escape" && closeLogs()}
-    >
-      <div
-        class="modal-content modal-large"
-        on:click|stopPropagation
-        role="presentation"
-      >
-        <div class="modal-header">
-          <h3>Agent Logs: {selectedAgent.strategy_name}</h3>
-          <button class="btn-icon" on:click={closeLogs}>
-            <X size={20} />
-          </button>
-        </div>
-
-        <div class="modal-body">
-          {#if isLoading}
-            <div class="loading-state">Loading logs...</div>
-          {:else if agentLogs.length === 0}
-            <div class="empty-state">
-              <p>No logs available</p>
-            </div>
-          {:else}
-            <div class="logs-container">
-              {#each agentLogs as log}
-                <div class="log-line">{log}</div>
-              {/each}
-            </div>
-          {/if}
-        </div>
-      </div>
-    </div>
-  {/if}
+  <PaperTradingLogsModal
+    isOpen={!!selectedAgent}
+    logs={agentLogs}
+    isLoading={isLoading}
+    on:close={closeLogs}
+  />
 
   <!-- Promotion Modal -->
-  {#if showPromoteModal && promoteAgentId}
-    {@const metrics = performanceMetrics[promoteAgentId]}
-    <div
-      class="modal-overlay"
-      on:click={() => (showPromoteModal = false)}
-      role="button"
-      tabindex="0"
-      on:keydown={(e) => e.key === "Escape" && (showPromoteModal = false)}
-    >
-      <div class="modal-content" on:click|stopPropagation role="presentation">
-        <div class="modal-header">
-          <h3>Promote to Live Trading</h3>
-          <button class="btn-icon" on:click={() => (showPromoteModal = false)}>
-            <X size={20} />
-          </button>
-        </div>
-
-        <div class="modal-body">
-          {#if promoteResult?.success}
-            <div class="success-message">
-              <Award size={48} />
-              <h4>Promotion Successful!</h4>
-              <p>Bot ID: <code>{promoteResult.bot_id}</code></p>
-              <p class="text-sm text-gray-400 mt-2">
-                Your strategy has been promoted to live trading. Monitor it in
-                the Strategy Router view.
-              </p>
-            </div>
-          {:else}
-            <!-- Validation Summary -->
-            {#if metrics}
-              <div class="validation-summary">
-                <h4>Validation Summary</h4>
-                <div class="summary-grid">
-                  <div class="summary-item">
-                    <span class="summary-label">Sharpe Ratio</span>
-                    <span
-                      class="summary-value {getSharpeColor(
-                        metrics.sharpe_ratio,
-                      )}"
-                    >
-                      {metrics.sharpe_ratio?.toFixed(2) || "-"}
-                      {#if metrics.sharpe_ratio >= 1.5}<span class="check"
-                          >✓</span
-                        >{/if}
-                    </span>
-                    <span class="summary-threshold">≥ 1.5</span>
-                  </div>
-
-                  <div class="summary-item">
-                    <span class="summary-label">Win Rate</span>
-                    <span
-                      class="summary-value {getWinRateColor(metrics.win_rate)}"
-                    >
-                      {(metrics.win_rate * 100).toFixed(1)}%
-                      {#if metrics.win_rate >= 0.55}<span class="check">✓</span
-                        >{/if}
-                    </span>
-                    <span class="summary-threshold">≥ 55%</span>
-                  </div>
-
-                  <div class="summary-item">
-                    <span class="summary-label">Days Validated</span>
-                    <span class="summary-value">
-                      {metrics.days_validated}/30
-                      {#if metrics.days_validated >= 30}<span class="check"
-                          >✓</span
-                        >{/if}
-                    </span>
-                    <span class="summary-threshold">≥ 30 days</span>
-                  </div>
-
-                  <div class="summary-item">
-                    <span class="summary-label">Total Trades</span>
-                    <span class="summary-value">{metrics.total_trades}</span>
-                    <span class="summary-threshold">Sample size</span>
-                  </div>
-                </div>
-              </div>
-            {/if}
-
-            {#if promoteResult?.error}
-              <div class="error-message">
-                <AlertCircle size={18} />
-                <span>{promoteResult.error}</span>
-              </div>
-            {/if}
-
-            <!-- Promotion Form -->
-            <div class="form-group">
-              <label for="promote-acc" class="form-label"
-                >Target Account *</label
-              >
-              <select
-                id="promote-acc"
-                class="form-input"
-                bind:value={promoteForm.target_account}
-              >
-                {#each accountOptions as opt}
-                  <option value={opt.value}>{opt.label}</option>
-                {/each}
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Strategy Name</label>
-              <input
-                type="text"
-                class="form-input"
-                bind:value={promoteForm.strategy_name}
-                placeholder="Name for live bot"
-              />
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Strategy Type</label>
-              <select class="form-input" bind:value={promoteForm.strategy_type}>
-                {#each strategyTypes as type}
-                  <option value={type}>{type}</option>
-                {/each}
-              </select>
-            </div>
-          {/if}
-        </div>
-
-        <div class="modal-footer">
-          {#if promoteResult?.success}
-            <button
-              class="btn btn-primary"
-              on:click={() => (showPromoteModal = false)}
-            >
-              Done
-            </button>
-          {:else}
-            <button
-              class="btn btn-secondary"
-              on:click={() => (showPromoteModal = false)}
-            >
-              Cancel
-            </button>
-            <button
-              class="btn btn-success"
-              on:click={promoteAgent}
-              disabled={promoteLoading || !canPromote(metrics)}
-            >
-              {#if promoteLoading}
-                Promoting...
-              {:else}
-                <Award size={18} />
-                Promote to Live
-              {/if}
-            </button>
-          {/if}
-        </div>
-      </div>
-    </div>
-  {/if}
+  <!-- Promotion Modal -->
+  <PaperTradingPromoteModal
+    isOpen={showPromoteModal && !!promoteAgentId}
+    form={promoteForm}
+    isLoading={promoteLoading}
+    {result}
+    on:close={() => (showPromoteModal = false)}
+    on:promote={(e) => {
+      promoteForm = e.detail;
+      promoteAgent();
+    }}
+  />
 </div>
 
 <style>

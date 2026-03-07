@@ -19,7 +19,7 @@ import logging
 import json
 
 from src.agents.departments.floor_manager import get_floor_manager, FloorManager
-from src.agents.departments.types import Department
+from src.agents.departments.types import Department, get_personality, get_all_personalities
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ class ChatResponse(BaseModel):
 
 class DelegateRequest(BaseModel):
     """Request to delegate a task to a specific department."""
-    department: str = Field(..., description="Target department (analysis, research, risk, execution, portfolio)")
+    department: str = Field(..., description="Target department (development, research, risk, trading, portfolio)")
     task: str = Field(..., description="Task description")
     priority: str = Field(default="normal", description="Task priority (low, normal, high, urgent)")
     context: Optional[Dict[str, Any]] = Field(default=None, description="Optional context")
@@ -184,6 +184,71 @@ async def list_departments():
     }
 
 
+@router.get("/departments/{department}/personality")
+async def get_department_personality(department: str):
+    """
+    Get personality for a specific department.
+
+    Returns the department's persona name, traits, communication style,
+    strengths, weaknesses, color, and icon.
+    """
+    try:
+        dept = Department(department.lower())
+    except ValueError:
+        valid = [d.value for d in Department]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid department '{department}'. Valid options: {valid}"
+        )
+
+    personality = get_personality(dept)
+    if personality is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No personality found for department '{department}'"
+        )
+
+    return {
+        "department": department,
+        "name": personality.name,
+        "tagline": personality.tagline,
+        "traits": personality.traits,
+        "communication_style": personality.communication_style,
+        "strengths": personality.strengths,
+        "weaknesses": personality.weaknesses,
+        "color": personality.color,
+        "icon": personality.icon,
+    }
+
+
+@router.get("/departments/personality")
+async def list_department_personalities():
+    """
+    List all department personalities.
+
+    Returns personality information for all 5 quant departments.
+    """
+    personalities = get_all_personalities()
+
+    return {
+        "personalities": [
+            {
+                "department": dept_key,
+                "name": p.name,
+                "tagline": p.tagline,
+                "traits": p.traits,
+                "communication_style": p.communication_style,
+                "strengths": p.strengths,
+                "weaknesses": p.weaknesses,
+                "color": p.color,
+                "icon": p.icon,
+            }
+            for dept_key, p in personalities.items()
+        ],
+        "total": len(personalities),
+    }
+
+
 @router.post("/delegate")
 async def delegate_task(request: DelegateRequest):
     """
@@ -192,7 +257,7 @@ async def delegate_task(request: DelegateRequest):
     This explicitly routes a task to a department rather than relying on
     automatic classification. Optionally spawns a worker to handle the task.
 
-    Valid departments: analysis, research, risk, execution, portfolio
+    Valid departments: development, research, risk, trading, portfolio
     """
     manager = get_manager()
 

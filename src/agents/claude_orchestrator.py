@@ -5,6 +5,12 @@ Core execution engine that replaces AgentFactory + CompiledAgent.
 Spawns Claude CLI subprocesses with MCP configurations for each agent.
 
 **Phase 2.1 - Claude Orchestrator**
+
+Features:
+- Checkpoint system for long-running agents
+- Heartbeat mechanism for health monitoring
+- Progress tracking with ETA estimation
+- Graceful interrupt handling
 """
 
 import asyncio
@@ -22,6 +28,16 @@ from src.agents.claude_config import (
     get_agent_config,
     initialize_hooks,
 )
+from src.agents.streaming import get_stream_handler
+from src.agents.checkpoint import (
+    CheckpointManager,
+    HeartbeatManager,
+    ProgressTracker,
+    LongRunningAgent,
+    AgentState,
+    get_checkpoint_manager,
+    get_heartbeat_manager,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,22 +48,52 @@ initialize_hooks()
 class ClaudeOrchestrator:
     """
     Orchestrator for Claude-powered agents.
-    
+
     Handles task submission, subprocess spawning, result polling,
     and streaming events via file-based communication.
+
+    Features:
+    - Long-running agent support with checkpoint/resume
+    - Heartbeat mechanism for health monitoring
+    - Progress tracking with ETA
+    - Graceful interrupt handling
     """
-    
-    def __init__(self, workspaces_dir: Optional[Path] = None):
+
+    def __init__(
+        self,
+        workspaces_dir: Optional[Path] = None,
+        checkpoint_dir: Optional[Path] = None,
+        checkpoint_interval_seconds: int = 60,
+        heartbeat_interval_seconds: int = 30,
+    ):
         """
         Initialize the orchestrator.
-        
+
         Args:
             workspaces_dir: Optional override for workspaces directory
+            checkpoint_dir: Optional override for checkpoint directory
+            checkpoint_interval_seconds: Interval between automatic checkpoints
+            heartbeat_interval_seconds: Heartbeat interval for health monitoring
         """
         self.workspaces_dir = workspaces_dir or Path(
             os.getenv("WORKSPACES_DIR", "/app/workspaces")
         )
         self._active_processes: Dict[str, asyncio.subprocess.Process] = {}
+
+        # Initialize checkpoint and heartbeat managers
+        self.checkpoint_manager = get_checkpoint_manager()
+        self.heartbeat_manager = get_heartbeat_manager()
+        self.checkpoint_interval = checkpoint_interval_seconds
+
+        # Track progress for long-running tasks
+        self._progress_trackers: Dict[str, ProgressTracker] = {}
+
+        # Long-running agent wrappers
+        self._long_running_agents: Dict[str, LongRunningAgent] = {}
+
+        # Start heartbeat monitoring
+        asyncio.create_task(self.heartbeat_manager.start_monitoring())
+
         logger.info(f"ClaudeOrchestrator initialized with workspaces: {self.workspaces_dir}")
     
     async def submit_task(
@@ -122,7 +168,29 @@ class ClaudeOrchestrator:
             task["error"] = str(e)
             with open(task_path, "w") as f:
                 json.dump(task, f, indent=2)
+
+            # Publish agent failed event
+            try:
+                stream_handler = get_stream_handler()
+                await stream_handler.publish_agent_failed(
+                    agent_id, task_id, task_id,
+                    error=str(e),
+                    metadata={"status": "spawn_failed"}
+                )
+            except Exception as stream_err:
+                logger.warning(f"Failed to publish stream event: {stream_err}")
+
             raise RuntimeError(f"Claude spawn failed: {e}")
+
+        # Publish agent started event
+        try:
+            stream_handler = get_stream_handler()
+            await stream_handler.publish_agent_started(
+                agent_id, task_id, task_id,
+                metadata={"status": "running", "session_id": session_id}
+            )
+        except Exception as stream_err:
+            logger.warning(f"Failed to publish stream event: {stream_err}")
         
         return task_id
     
@@ -354,9 +422,15 @@ class ClaudeOrchestrator:
         config = get_agent_config(agent_id)
         if not config:
             raise ValueError(f"Unknown agent: {agent_id}")
-        
+
         task_path = config.tasks_dir / f"{task_id}.json"
         result_path = config.results_dir / f"{task_id}.json"
+
+        # Get stream handler for SSE events
+        try:
+            stream_handler = get_stream_handler()
+        except Exception:
+            stream_handler = None
         
         # Emit started event
         yield {
@@ -380,6 +454,17 @@ class ClaudeOrchestrator:
                     tool_calls = result.get("tool_calls", [])
                     if len(tool_calls) > last_tool_calls_count:
                         for tc in tool_calls[last_tool_calls_count:]:
+                            # Publish to SSE stream
+                            if stream_handler:
+                                try:
+                                    await stream_handler.publish_tool_start(
+                                        agent_id, task_id, task_id,
+                                        tool_name=tc.get("name", "unknown"),
+                                        arguments=tc.get("arguments", {})
+                                    )
+                                except Exception as se:
+                                    logger.warning(f"Failed to publish tool_start: {se}")
+
                             yield {
                                 "type": "tool_call",
                                 "task_id": task_id,
@@ -406,6 +491,26 @@ class ClaudeOrchestrator:
                     
                     # Check if complete
                     if result.get("status") in ("completed", "failed"):
+                        # Publish to SSE stream
+                        if stream_handler:
+                            try:
+                                if result.get("status") == "completed":
+                                    await stream_handler.publish_agent_completed(
+                                        agent_id, task_id, task_id,
+                                        result={
+                                            "output": result.get("output", ""),
+                                            "status": "completed"
+                                        }
+                                    )
+                                else:
+                                    await stream_handler.publish_agent_failed(
+                                        agent_id, task_id, task_id,
+                                        error=result.get("error", "Unknown error"),
+                                        metadata=result
+                                    )
+                            except Exception as se:
+                                logger.warning(f"Failed to publish completion event: {se}")
+
                         yield {
                             "type": "completed",
                             "task_id": task_id,
@@ -580,6 +685,306 @@ class ClaudeOrchestrator:
         except Exception as e:
             logger.error(f"Failed to cancel task {task_id}: {e}")
             return False
+
+    # ==================== Checkpoint & Long-Running Agent Methods ====================
+
+    async def submit_long_running_task(
+        self,
+        agent_id: str,
+        messages: List[Dict[str, Any]],
+        context: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
+        total_steps: int = 100,
+    ) -> str:
+        """
+        Submit a task with long-running agent support (checkpoint/resume).
+
+        Args:
+            agent_id: Agent identifier
+            messages: List of message dicts with role and content
+            context: Optional context dictionary
+            session_id: Optional session ID for continuity
+            total_steps: Total steps for progress tracking
+
+        Returns:
+            task_id: Unique task identifier
+        """
+        # Generate task ID
+        task_id = str(uuid.uuid4())
+        session_id = session_id or str(uuid.uuid4())
+
+        # Initialize progress tracker
+        self._progress_trackers[task_id] = ProgressTracker(total_steps=total_steps)
+
+        # Create long-running agent wrapper
+        long_running_agent = LongRunningAgent(
+            agent_id=agent_id,
+            task_id=task_id,
+            session_id=session_id,
+            checkpoint_manager=self.checkpoint_manager,
+            heartbeat_manager=self.heartbeat_manager,
+            checkpoint_interval_seconds=self.checkpoint_interval,
+        )
+        self._long_running_agents[task_id] = long_running_agent
+
+        # Initialize conversation history
+        long_running_agent.conversation_history = messages.copy()
+
+        # Register for heartbeat and start
+        await long_running_agent.start()
+
+        # Update progress to started
+        await long_running_agent.update_progress(step_name="Task started")
+
+        # Submit task (spawns Claude subprocess)
+        await self.submit_task(agent_id, messages, context, session_id)
+
+        logger.info(
+            f"Long-running task submitted: {agent_id}/{task_id} with {total_steps} steps"
+        )
+        return task_id
+
+    async def save_checkpoint(
+        self,
+        agent_id: str,
+        task_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Save checkpoint for a running task.
+
+        Args:
+            agent_id: Agent identifier
+            task_id: Task identifier
+
+        Returns:
+            Checkpoint data or None if task not found
+        """
+        long_running_agent = self._long_running_agents.get(task_id)
+        if not long_running_agent:
+            logger.warning(f"No long-running agent found for task {task_id}")
+            return None
+
+        checkpoint = await long_running_agent.save_checkpoint()
+        if checkpoint:
+            logger.info(f"Checkpoint saved for {agent_id}/{task_id}")
+            return {
+                "checkpoint_id": checkpoint.checkpoint_id,
+                "checkpoint_number": checkpoint.checkpoint_number,
+                "progress_percent": checkpoint.progress.get("percent", 0),
+                "created_at": checkpoint.created_at,
+            }
+        return None
+
+    async def resume_from_checkpoint(
+        self,
+        agent_id: str,
+        task_id: str,
+        checkpoint_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Resume a task from a checkpoint.
+
+        Args:
+            agent_id: Agent identifier
+            task_id: Task identifier
+            checkpoint_id: Specific checkpoint to resume from (latest if None)
+
+        Returns:
+            New task_id if successful, None otherwise
+        """
+        # Get checkpoint
+        if checkpoint_id:
+            checkpoint = self.checkpoint_manager.get_checkpoint(agent_id, task_id, checkpoint_id)
+        else:
+            checkpoint = self.checkpoint_manager.get_latest_checkpoint(agent_id, task_id)
+
+        if not checkpoint:
+            logger.warning(f"No checkpoint found for {agent_id}/{task_id}")
+            return None
+
+        # Resume from checkpoint
+        long_running_agent = await LongRunningAgent.resume_from_checkpoint(
+            checkpoint,
+            self.checkpoint_manager,
+            self.heartbeat_manager,
+        )
+        self._long_running_agents[task_id] = long_running_agent
+
+        # Submit task with restored conversation
+        new_task_id = await self.submit_task(
+            agent_id,
+            checkpoint.conversation_history,
+            checkpoint.metadata,
+            checkpoint.session_id,
+        )
+
+        logger.info(f"Resumed task {agent_id}/{task_id} from checkpoint #{checkpoint.checkpoint_number}")
+        return new_task_id
+
+    async def update_progress(
+        self,
+        agent_id: str,
+        task_id: str,
+        completed_steps: Optional[int] = None,
+        step_name: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Update progress for a long-running task.
+
+        Args:
+            agent_id: Agent identifier
+            task_id: Task identifier
+            completed_steps: Number of completed steps
+            step_name: Description of current step
+
+        Returns:
+            Progress update or None if task not found
+        """
+        long_running_agent = self._long_running_agents.get(task_id)
+        if not long_running_agent:
+            # Fall back to progress tracker
+            tracker = self._progress_trackers.get(task_id)
+            if tracker:
+                progress = await tracker.update(completed_steps, step_name)
+                return {
+                    "progress_percent": progress.progress_percent,
+                    "current_step": progress.current_step,
+                    "eta_seconds": progress.eta_seconds,
+                }
+            return None
+
+        progress = await long_running_agent.update_progress(completed_steps, step_name)
+        return {
+            "progress_percent": progress.progress_percent,
+            "current_step": progress.current_step,
+            "completed_steps": progress.completed_steps,
+            "total_steps": progress.total_steps,
+            "eta_seconds": progress.eta_seconds,
+        }
+
+    def get_progress(
+        self,
+        task_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get current progress for a task.
+
+        Args:
+            task_id: Task identifier
+
+        Returns:
+            Progress data or None if not found
+        """
+        tracker = self._progress_trackers.get(task_id)
+        if tracker:
+            return {
+                "progress_percent": tracker.progress_percent,
+                "eta_seconds": tracker.eta_seconds,
+                "completed_steps": tracker.completed_steps,
+                "total_steps": tracker.total_steps,
+            }
+
+        long_running_agent = self._long_running_agents.get(task_id)
+        if long_running_agent:
+            return {
+                "progress_percent": long_running_agent.progress_tracker.progress_percent,
+                "eta_seconds": long_running_agent.progress_tracker.eta_seconds,
+                "completed_steps": long_running_agent.progress_tracker.completed_steps,
+                "total_steps": long_running_agent.progress_tracker.total_steps,
+            }
+
+        return None
+
+    def list_checkpoints(
+        self,
+        agent_id: str,
+        task_id: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        List all checkpoints for a task.
+
+        Args:
+            agent_id: Agent identifier
+            task_id: Task identifier
+
+        Returns:
+            List of checkpoint metadata
+        """
+        return self.checkpoint_manager.list_checkpoints(agent_id, task_id)
+
+    async def get_heartbeat_status(
+        self,
+        agent_id: str,
+        task_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get heartbeat status for a task.
+
+        Args:
+            agent_id: Agent identifier
+            task_id: Task identifier
+
+        Returns:
+            Heartbeat data or None if not registered
+        """
+        heartbeat = await self.heartbeat_manager.get_heartbeat(agent_id, task_id)
+        if heartbeat:
+            return {
+                "status": heartbeat.status,
+                "last_update": heartbeat.last_update,
+                "progress": heartbeat.progress * 100,
+                "current_step": heartbeat.current_step,
+                "eta_seconds": heartbeat.eta_seconds,
+            }
+        return None
+
+    async def get_all_heartbeats(self) -> List[Dict[str, Any]]:
+        """
+        Get heartbeat status for all monitored agents.
+
+        Returns:
+            List of heartbeat data
+        """
+        heartbeats = await self.heartbeat_manager.get_all_heartbeats()
+        return [
+            {
+                "agent_id": hb.agent_id,
+                "task_id": hb.task_id,
+                "status": hb.status,
+                "last_update": hb.last_update,
+                "progress": hb.progress * 100,
+                "current_step": hb.current_step,
+                "stall_count": hb.stall_count,
+            }
+            for hb in heartbeats
+        ]
+
+    async def stop_long_running_task(
+        self,
+        agent_id: str,
+        task_id: str,
+        status: str = "completed",
+    ) -> bool:
+        """
+        Stop a long-running task gracefully.
+
+        Args:
+            agent_id: Agent identifier
+            task_id: Task identifier
+            status: Final status (completed, failed, cancelled)
+
+        Returns:
+            True if stopped successfully
+        """
+        long_running_agent = self._long_running_agents.get(task_id)
+        if long_running_agent:
+            await long_running_agent.stop(status)
+            self._long_running_agents.pop(task_id, None)
+            self._progress_trackers.pop(task_id, None)
+            logger.info(f"Long-running task {agent_id}/{task_id} stopped: {status}")
+            return True
+
+        return False
 
 
 # Global orchestrator instance

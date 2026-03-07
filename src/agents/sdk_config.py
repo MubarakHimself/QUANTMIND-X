@@ -31,9 +31,9 @@ MODEL_MAPPING = {
         "haiku": "claude-haiku-3-5-20241022",
     },
     "zai": {
-        "opus": "glm-5",
-        "sonnet": "glm-4.7",
-        "haiku": "glm-4.5-air",
+        "opus": "glm-4-plus",
+        "sonnet": "glm-4",
+        "haiku": "glm-4-flash",
     }
 }
 

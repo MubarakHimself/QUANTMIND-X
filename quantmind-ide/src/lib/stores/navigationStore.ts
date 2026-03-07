@@ -6,7 +6,7 @@ export interface Breadcrumb {
   name?: string; // Optional for backwards compatibility
   type: 'view' | 'folder' | 'file' | 'subpage';
   path?: string; // For Breadcrumbs component compatibility
-  fullPath?: string; // Store the full path for nested folders (e.g., 'ict-scalper/nprd')
+  fullPath?: string; // Store the full path for nested folders (e.g., 'ict-scalper/video_ingest')
   level?: number; // Depth level in the hierarchy
 }
 

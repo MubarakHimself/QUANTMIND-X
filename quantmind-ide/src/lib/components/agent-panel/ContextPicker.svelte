@@ -233,7 +233,7 @@
                         <span class="item-name">{strategy.name}</span>
                         <span class="item-meta">
                           Status: {strategy.status}
-                          {#if strategy.has_nprd}• NPRD{/if}
+                          {#if strategy.has_video_ingest}• VideoIngest{/if}
                           {#if strategy.has_ea}• EA{/if}
                         </span>
                       </div>

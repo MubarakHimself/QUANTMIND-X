@@ -34,6 +34,7 @@ class ToolRegistry:
         "broker_tools": "src.agents.tools.broker_tools",
         "ea_lifecycle": "src.agents.tools.ea_lifecycle",
         "strategy_extraction": "src.agents.tools.strategy_extraction",
+        "gemini_cli": "src.agents.tools.gemini_cli_tool",
         "mail": "src.agents.departments.department_mail",
         "memory_all_depts": "src.agents.departments.memory_access",
     }
@@ -117,26 +118,34 @@ class ToolRegistry:
             return None
 
         try:
-            # Import module and get main class
-            parts = module_path.split(".")
-            module_name = ".".join(parts[:-1])
-
+            # Handle special cases with custom module imports
             import importlib
-            module = importlib.import_module(module_name)
 
-            # Get main class from module (convention: class name = CamelCase of tool_name)
-            class_name = "".join(
-                word.capitalize() for word in tool_name.split("_")
-            )
-            # Handle special cases
-            if tool_name == "ea_lifecycle":
-                class_name = "EALifecycleTools"
+            if tool_name == "gemini_cli":
+                # Special case: import the full module path directly
+                module = importlib.import_module(module_path)
+                class_name = "GeminiCLITool"
             elif tool_name == "mail":
+                # Special case: import full module for mail
+                module = importlib.import_module(module_path)
                 class_name = "DepartmentMailService"
+            else:
+                # Standard import using namespace package approach
+                parts = module_path.split(".")
+                module_name = ".".join(parts[:-1])
+                module = importlib.import_module(module_name)
+
+                # Get main class from module (convention: class name = CamelCase of tool_name)
+                class_name = "".join(
+                    word.capitalize() for word in tool_name.split("_")
+                )
+                # Handle special cases
+                if tool_name == "ea_lifecycle":
+                    class_name = "EALifecycleTools"
 
             tool_class = getattr(module, class_name, None)
             if not tool_class:
-                logger.warning(f"Tool class not found: {class_name} in {module_name}")
+                logger.warning(f"Tool class not found: {class_name} in {module_path}")
                 return None
 
             # Create and cache instance

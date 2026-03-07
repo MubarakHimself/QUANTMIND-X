@@ -30,6 +30,7 @@ class BacktestAPIHandler:
     def __init__(self):
         """Initialize backtest API handler."""
         self._backtest_results: Dict[str, BacktestResultResponse] = {}
+        self._backtest_status: Dict[str, Dict] = {}  # Track running backtest status
 
     def run_backtest(self, request: BacktestRunRequest) -> BacktestRunResponse:
         """
@@ -60,6 +61,18 @@ class BacktestAPIHandler:
                 message=f"Backtest queued for {request.symbol}",
                 estimated_time_seconds=60  # Estimate
             )
+
+            # Store initial status
+            self._backtest_status[backtest_id] = {
+                "backtest_id": backtest_id,
+                "status": "running",
+                "progress": 0,
+                "symbol": request.symbol,
+                "timeframe": request.timeframe.value if hasattr(request.timeframe, 'value') else str(request.timeframe),
+                "variant": request.variant.value if hasattr(request.variant, 'value') else str(request.variant),
+                "start_date": request.start_date,
+                "end_date": request.end_date
+            }
 
             # In a real implementation, this would:
             # 1. Store request in database
@@ -110,3 +123,42 @@ class BacktestAPIHandler:
                 status="error",
                 error_message=str(e)
             )
+
+    def get_backtest_status(self, backtest_id: str) -> Dict:
+        """
+        Get the status of a backtest.
+
+        Args:
+            backtest_id: Backtest identifier
+
+        Returns:
+            Dict with status information
+        """
+        try:
+            # Check if we have status info
+            if backtest_id in self._backtest_status:
+                return self._backtest_status[backtest_id]
+
+            # Check if we have results
+            if backtest_id in self._backtest_results:
+                return {
+                    "backtest_id": backtest_id,
+                    "status": "completed",
+                    "progress": 100
+                }
+
+            # Return not found
+            return {
+                "backtest_id": backtest_id,
+                "status": "not_found",
+                "progress": 0
+            }
+
+        except Exception as e:
+            logger.error(f"Error retrieving backtest status: {e}")
+            return {
+                "backtest_id": backtest_id,
+                "status": "error",
+                "error": str(e),
+                "progress": 0
+            }

@@ -1,19 +1,21 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { 
-    RefreshCw, 
-    Github, 
-    FileCode, 
-    CheckCircle, 
-    AlertCircle, 
-    Clock, 
+  import {
+    RefreshCw,
+    Github,
+    FileCode,
+    CheckCircle,
+    AlertCircle,
+    Clock,
     ChevronRight,
     Loader,
     Plus,
     Filter,
-    Search
+    Search,
+    ArrowLeft
   } from 'lucide-svelte';
   import { PUBLIC_API_BASE } from '$env/static/public';
+  import { goto } from '$app/navigation';
 
   // Types
   interface SyncStatus {
@@ -216,6 +218,12 @@
 <div class="github-ea-sync">
   <!-- Header -->
   <div class="panel-header">
+    <div class="header-nav">
+      <button class="back-button" on:click={() => goto('/?view=ea')}>
+        <ArrowLeft size={18} />
+        <span>Back to EA Management</span>
+      </button>
+    </div>
     <div class="header-title">
       <Github size={24} />
       <h2>GitHub EA Sync</h2>
@@ -404,6 +412,31 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+  }
+
+  .header-nav {
+    display: flex;
+    align-items: center;
+  }
+
+  .back-button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--bg-tertiary, #16213e);
+    border: 1px solid var(--border-color, #2a3f5f);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    color: var(--text-secondary, #a0a0a0);
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+  }
+
+  .back-button:hover {
+    background: var(--bg-hover, #1e2d4d);
+    color: var(--text-primary, #ffffff);
+    border-color: var(--accent-color, #4a90d9);
   }
 
   .header-title {

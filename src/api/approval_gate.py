@@ -7,6 +7,7 @@ Provides REST API endpoints for workflow stage approval gates.
 - Accepts workflow stage transitions
 - Requires user approval before moving to next stage
 - Stores approval status in database
+- Sends department mail notifications on creation, approval, and rejection
 
 Endpoints:
 - POST /api/approval-gates - Create an approval request
@@ -28,6 +29,22 @@ from sqlalchemy.orm import Session
 
 from src.database.models import Base
 from src.database.engine import engine, get_session
+
+# Import WebSocket broadcast function (optional - gracefully fails if not available)
+try:
+    from src.api.websocket_endpoints import broadcast_approval_gate
+    WS_AVAILABLE = True
+except ImportError:
+    WS_AVAILABLE = False
+    logger.warning("WebSocket broadcast not available for approval gates")
+
+# Import department mail service for notifications
+try:
+    from src.agents.departments.department_mail import get_mail_service, Priority as MailPriority
+    MAIL_AVAILABLE = True
+except ImportError:
+    MAIL_AVAILABLE = False
+    logger.warning("Department mail not available for approval gates")
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +88,7 @@ class ApprovalGateModel(Base):
     gate_type = Column(SQLEnum(GateType), nullable=False, default=GateType.STAGE_TRANSITION)
     status = Column(SQLEnum(ApprovalStatus), nullable=False, default=ApprovalStatus.PENDING)
     requester = Column(String(100), nullable=True)
+    assigned_to = Column(String(100), nullable=True, index=True)
     approver = Column(String(100), nullable=True)
     reason = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
@@ -98,11 +116,12 @@ def init_approval_gates_table():
 class ApprovalGateCreate(BaseModel):
     """Request model for creating an approval gate."""
     workflow_id: str = Field(..., description="ID of the workflow requesting approval")
-    workflow_type: Optional[str] = Field(None, description="Type of workflow (e.g., nprd_to_ea, trd_to_ea)")
+    workflow_type: Optional[str] = Field(None, description="Type of workflow (e.g., video_ingest_to_ea, trd_to_ea)")
     from_stage: str = Field(..., description="Current workflow stage")
     to_stage: str = Field(..., description="Next workflow stage to transition to")
     gate_type: GateType = Field(default=GateType.STAGE_TRANSITION, description="Type of approval gate")
     requester: Optional[str] = Field(None, description="User requesting approval")
+    assigned_to: Optional[str] = Field(None, description="User or role assigned to approve this gate")
     reason: Optional[str] = Field(None, description="Reason for the transition")
     extra_data: Optional[Dict[str, Any]] = Field(default=None, description="Additional metadata")
 
@@ -123,6 +142,7 @@ class ApprovalGateResponse(BaseModel):
     gate_type: GateType
     status: ApprovalStatus
     requester: Optional[str]
+    assigned_to: Optional[str]
     approver: Optional[str]
     reason: Optional[str]
     notes: Optional[str]
@@ -181,6 +201,7 @@ def _model_to_response(model: ApprovalGateModel) -> ApprovalGateResponse:
         gate_type=model.gate_type,
         status=model.status,
         requester=model.requester,
+        assigned_to=model.assigned_to,
         approver=model.approver,
         reason=model.reason,
         notes=model.notes,
@@ -190,6 +211,104 @@ def _model_to_response(model: ApprovalGateModel) -> ApprovalGateResponse:
         approved_at=model.approved_at.isoformat() if model.approved_at else None,
         rejected_at=model.rejected_at.isoformat() if model.rejected_at else None,
     )
+
+
+def _send_approval_mail(
+    gate: ApprovalGateModel,
+    action: str,
+    approver_name: Optional[str] = None,
+) -> None:
+    """
+    Send department mail notification for approval gate events.
+
+    Args:
+        gate: The approval gate model
+        action: The action (created, approved, rejected)
+        approver_name: Name of the approver (for approved/rejected actions)
+    """
+    if not MAIL_AVAILABLE:
+        return
+
+    try:
+        mail_service = get_mail_service()
+
+        # Determine target department based on assignment or workflow type
+        to_dept = gate.assigned_to if gate.assigned_to else "development"
+
+        # Map workflow types to departments
+        workflow_dept_map = {
+            "video_ingest_to_ea": "research",
+            "trd_to_ea": "development",
+            "backtest": "research",
+        }
+        if gate.workflow_type and gate.workflow_type in workflow_dept_map:
+            to_dept = workflow_dept_map[gate.workflow_type]
+
+        # Determine the appropriate action and body based on action type
+        if action == "created":
+            subject = f"Approval Required: {gate.from_stage} -> {gate.to_stage}"
+            body = f"""An approval is required to transition from '{gate.from_stage}' to '{gate.to_stage}'.
+
+Workflow ID: {gate.workflow_id}
+Workflow Type: {gate.workflow_type or 'N/A'}
+Gate Type: {gate.gate_type.value}
+Requester: {gate.requester or 'System'}
+
+"""
+            if gate.reason:
+                body += f"Reason: {gate.reason}\n\n"
+            body += f"Gate ID: {gate.gate_id}\n\n"
+            body += "Please review and approve or reject this transition."
+
+            priority = MailPriority.HIGH
+        elif action == "approved":
+            subject = f"Approved: {gate.from_stage} -> {gate.to_stage}"
+            body = f"""The transition from '{gate.from_stage}' to '{gate.to_stage}' has been approved.
+
+Workflow ID: {gate.workflow_id}
+Approved by: {approver_name or gate.approver or 'Unknown'}
+
+"""
+            if gate.notes:
+                body += f"Notes: {gate.notes}\n\n"
+            body += f"Gate ID: {gate.gate_id}"
+
+            priority = MailPriority.NORMAL
+        else:  # rejected
+            subject = f"Rejected: {gate.from_stage} -> {gate.to_stage}"
+            body = f"""The transition from '{gate.from_stage}' to '{gate.to_stage}' has been rejected.
+
+Workflow ID: {gate.workflow_id}
+Rejected by: {approver_name or gate.approver or 'Unknown'}
+
+"""
+            if gate.notes:
+                body += f"Reason: {gate.notes}\n\n"
+            body += f"Gate ID: {gate.gate_id}"
+
+            priority = MailPriority.HIGH
+
+        # Send the notification
+        from src.agents.departments.department_mail import MessageType
+        mail_service.send(
+            from_dept="floor_manager",
+            to_dept=to_dept,
+            type=MessageType.APPROVAL_REQUEST if action == "created" else
+                 MessageType.APPROVAL_APPROVED if action == "approved" else
+                 MessageType.APPROVAL_REJECTED,
+            subject=subject,
+            body=body,
+            priority=priority,
+            gate_id=gate.gate_id,
+            workflow_id=gate.workflow_id,
+            from_stage=gate.from_stage,
+            to_stage=gate.to_stage,
+        )
+
+        logger.info(f"Sent approval mail notification for gate {gate.gate_id} ({action})")
+
+    except Exception as e:
+        logger.warning(f"Failed to send approval mail notification: {e}")
 
 
 # =============================================================================
@@ -203,18 +322,22 @@ def _model_to_response(model: ApprovalGateModel) -> ApprovalGateResponse:
 @router.get("/pending", response_model=ApprovalGateListResponse)
 async def list_pending_gates(
     workflow_id: Optional[str] = Query(None, description="Filter by workflow ID"),
+    assigned_to: Optional[str] = Query(None, description="Filter by assigned user/role"),
     limit: int = Query(50, description="Maximum number of gates to return"),
     db: Session = Depends(_get_db)
 ):
     """
     List all pending approval gates.
 
-    Optionally filter by workflow_id.
+    Optionally filter by workflow_id or assigned_to.
     """
     query = db.query(ApprovalGateModel).filter(ApprovalGateModel.status == ApprovalStatus.PENDING)
 
     if workflow_id:
         query = query.filter(ApprovalGateModel.workflow_id == workflow_id)
+
+    if assigned_to:
+        query = query.filter(ApprovalGateModel.assigned_to == assigned_to)
 
     gates = query.order_by(ApprovalGateModel.created_at.asc()).limit(limit).all()
 
@@ -268,6 +391,7 @@ async def create_approval_gate(
         gate_type=request.gate_type,
         status=ApprovalStatus.PENDING,
         requester=request.requester,
+        assigned_to=request.assigned_to,
         reason=request.reason,
         extra_data=json.dumps(request.extra_data) if request.extra_data else None,
         created_at=datetime.now(timezone.utc),
@@ -279,6 +403,23 @@ async def create_approval_gate(
     db.refresh(gate)
 
     logger.info(f"Created approval gate {gate_id} for workflow {request.workflow_id}")
+
+    # Broadcast approval gate creation via WebSocket
+    if WS_AVAILABLE:
+        try:
+            await broadcast_approval_gate(
+                gate_id=gate_id,
+                workflow_id=request.workflow_id,
+                action="created",
+                from_stage=request.from_stage,
+                to_stage=request.to_stage,
+                gate_type=request.gate_type.value
+            )
+        except Exception as e:
+            logger.warning(f"Failed to broadcast approval gate creation: {e}")
+
+    # Send department mail notification
+    _send_approval_mail(gate, "created")
 
     return _model_to_response(gate)
 
@@ -333,6 +474,25 @@ async def approve_gate(
 
     logger.info(f"Approved gate {gate_id} by {request.approver}")
 
+    # Broadcast approval via WebSocket
+    if WS_AVAILABLE:
+        try:
+            await broadcast_approval_gate(
+                gate_id=gate_id,
+                workflow_id=gate.workflow_id,
+                action="approved",
+                from_stage=gate.from_stage,
+                to_stage=gate.to_stage,
+                gate_type=gate.gate_type.value,
+                approver=request.approver,
+                notes=request.notes
+            )
+        except Exception as e:
+            logger.warning(f"Failed to broadcast approval: {e}")
+
+    # Send department mail notification
+    _send_approval_mail(gate, "approved", request.approver)
+
     return ApprovalActionResponse(
         success=True,
         gate_id=gate_id,
@@ -376,6 +536,25 @@ async def reject_gate(
     db.refresh(gate)
 
     logger.info(f"Rejected gate {gate_id} by {request.approver}")
+
+    # Broadcast rejection via WebSocket
+    if WS_AVAILABLE:
+        try:
+            await broadcast_approval_gate(
+                gate_id=gate_id,
+                workflow_id=gate.workflow_id,
+                action="rejected",
+                from_stage=gate.from_stage,
+                to_stage=gate.to_stage,
+                gate_type=gate.gate_type.value,
+                approver=request.approver,
+                notes=request.notes
+            )
+        except Exception as e:
+            logger.warning(f"Failed to broadcast rejection: {e}")
+
+    # Send department mail notification
+    _send_approval_mail(gate, "rejected", request.approver)
 
     return ApprovalActionResponse(
         success=True,

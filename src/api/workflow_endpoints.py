@@ -2,7 +2,7 @@
 Workflow API Endpoints
 
 Provides REST API endpoints for workflow management and execution.
-Supports NPRD to EA workflow, status tracking, and control operations.
+Supports VideoIngest to EA workflow, status tracking, and control operations.
 
 Delegates all workflow operations to the WorkflowOrchestrator for consistent
 state management and real agent/MCP integration.
@@ -88,8 +88,8 @@ class WorkflowSummary(BaseModel):
     error: Optional[str] = None
 
 
-class NPRDToEARequest(BaseModel):
-    nprd_content: str
+class VideoIngestToEARequest(BaseModel):
+    video_ingest_content: str
     metadata: Optional[Dict[str, Any]] = None
 
 
@@ -158,8 +158,8 @@ def _convert_orchestrator_workflow(orch_workflow: Dict[str, Any]) -> Workflow:
     progress = (completed_steps / len(steps) * 100) if steps else 0
     
     # Determine workflow type
-    workflow_type = "nprd_to_ea"
-    if "nprd_processing" not in orch_workflow.get("steps", {}):
+    workflow_type = "video_ingest_to_ea"
+    if "video_ingest_processing" not in orch_workflow.get("steps", {}):
         workflow_type = "trd_to_ea"
     
     return Workflow(
@@ -173,7 +173,7 @@ def _convert_orchestrator_workflow(orch_workflow: Dict[str, Any]) -> Workflow:
         intermediate_results=orch_workflow.get("metadata", {}),
         final_result=orch_workflow.get("steps", {}).get("validation", {}).get("output", {}),
         created_at=orch_workflow.get("created_at", ""),
-        started_at=orch_workflow.get("steps", {}).get("nprd_processing", {}).get("started_at") or
+        started_at=orch_workflow.get("steps", {}).get("video_ingest_processing", {}).get("started_at") or
                    orch_workflow.get("steps", {}).get("quantcode", {}).get("started_at"),
         completed_at=orch_workflow.get("steps", {}).get("validation", {}).get("completed_at"),
         error=orch_workflow.get("error")
@@ -183,7 +183,7 @@ def _convert_orchestrator_workflow(orch_workflow: Dict[str, Any]) -> Workflow:
 def _get_agent_type_for_step(step_name: str) -> str:
     """Get the agent type for a workflow step."""
     agent_map = {
-        "nprd_processing": "system",
+        "video_ingest_processing": "system",
         "analyst": "analyst",
         "trd_generation": "analyst",
         "quantcode": "quantcode",
@@ -198,16 +198,16 @@ def _get_agent_type_for_step(step_name: str) -> str:
 # API Endpoints
 # ============================================================================
 
-@router.post("/nprd-to-ea", response_model=Dict[str, Any])
-async def start_nprd_to_ea_workflow(
-    request: NPRDToEARequest,
+@router.post("/video-ingest-to-ea", response_model=Dict[str, Any])
+async def start_video_ingest_to_ea_workflow(
+    request: VideoIngestToEARequest,
     background_tasks: BackgroundTasks
 ):
     """
-    Start a new NPRD to EA workflow.
+    Start a new VideoIngest to EA workflow.
 
     This creates a workflow that:
-    1. Parses the NPRD
+    1. Parses the VideoIngest
     2. Generates a TRD (using Analyst agent)
     3. Generates MQL5 code (using QuantCode agent)
     4. Compiles the EA (using MT5 Compiler MCP)
@@ -218,35 +218,35 @@ async def start_nprd_to_ea_workflow(
     """
     orchestrator = _get_orchestrator()
     
-    # Save NPRD content to a temporary file
+    # Save VideoIngest content to a temporary file
     import tempfile
     import json
     
-    temp_dir = Path("workflows/nprd_inputs")
+    temp_dir = Path("workflows/video_ingest_inputs")
     temp_dir.mkdir(parents=True, exist_ok=True)
     
-    nprd_file = temp_dir / f"nprd_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.json"
+    video_ingest_file = temp_dir / f"video_ingest_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.json"
     
-    # Parse NPRD content if it's a string
+    # Parse VideoIngest content if it's a string
     try:
-        if isinstance(request.nprd_content, str):
-            nprd_data = json.loads(request.nprd_content)
+        if isinstance(request.video_ingest_content, str):
+            video_ingest_data = json.loads(request.video_ingest_content)
         else:
-            nprd_data = request.nprd_content
+            video_ingest_data = request.video_ingest_content
     except json.JSONDecodeError:
-        nprd_data = {"content": request.nprd_content}
+        video_ingest_data = {"content": request.video_ingest_content}
     
-    with open(nprd_file, 'w') as f:
-        json.dump(nprd_data, f, indent=2)
+    with open(video_ingest_file, 'w') as f:
+        json.dump(video_ingest_data, f, indent=2)
     
     # Submit to orchestrator
-    workflow_id = await orchestrator.submit_nprd_task(nprd_file, request.metadata)
+    workflow_id = await orchestrator.submit_video_ingest_task(video_ingest_file, request.metadata)
     
-    logger.info(f"Started NPRD to EA workflow: {workflow_id}")
+    logger.info(f"Started VideoIngest to EA workflow: {workflow_id}")
     
     return {
         "workflow_id": workflow_id,
-        "workflow_type": "nprd_to_ea",
+        "workflow_type": "video_ingest_to_ea",
         "status": "pending",
         "message": "Workflow started successfully",
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -261,7 +261,7 @@ async def start_trd_to_ea_workflow(
     """
     Start a new TRD to EA workflow.
 
-    This creates a workflow that skips NPRD processing and Analyst stages,
+    This creates a workflow that skips VideoIngest processing and Analyst stages,
     starting directly from QuantCode:
     1. Generates MQL5 code from TRD (using QuantCode agent)
     2. Compiles the EA (using MT5 Compiler MCP)
@@ -370,29 +370,37 @@ async def cancel_workflow(workflow_id: str):
 async def pause_workflow(workflow_id: str):
     """
     Pause a running workflow.
-    
-    Note: This is a placeholder for future implementation.
-    The current orchestrator does not support pausing.
+
+    The workflow will stop at the current step and can be resumed later.
     """
     orchestrator = _get_orchestrator()
     workflow_data = orchestrator.get_workflow_status(workflow_id)
-    
+
     if not workflow_data:
         raise HTTPException(status_code=404, detail=f"Workflow {workflow_id} not found")
-    
+
     if workflow_data.get("status") != "running":
         raise HTTPException(
             status_code=400,
             detail=f"Can only pause running workflows, current status: {workflow_data.get('status')}"
         )
-    
-    # TODO: Implement pause functionality in orchestrator
-    # For now, return a message indicating the limitation
+
+    # Call the orchestrator to pause the workflow
+    success = await orchestrator.pause_workflow(workflow_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to pause workflow {workflow_id}"
+        )
+
+    logger.info(f"Paused workflow: {workflow_id}")
+
     return {
-        "success": False,
+        "success": True,
         "workflow_id": workflow_id,
-        "status": workflow_data.get("status"),
-        "message": "Pause functionality not yet implemented"
+        "status": "paused",
+        "message": "Workflow paused successfully"
     }
 
 
@@ -400,27 +408,37 @@ async def pause_workflow(workflow_id: str):
 async def resume_workflow(workflow_id: str):
     """
     Resume a paused workflow.
-    
-    Note: This is a placeholder for future implementation.
+
+    The workflow will continue from where it was paused.
     """
     orchestrator = _get_orchestrator()
     workflow_data = orchestrator.get_workflow_status(workflow_id)
-    
+
     if not workflow_data:
         raise HTTPException(status_code=404, detail=f"Workflow {workflow_id} not found")
-    
+
     if workflow_data.get("status") != "paused":
         raise HTTPException(
             status_code=400,
             detail=f"Can only resume paused workflows, current status: {workflow_data.get('status')}"
         )
-    
-    # TODO: Implement resume functionality in orchestrator
+
+    # Call the orchestrator to resume the workflow
+    success = await orchestrator.resume_workflow(workflow_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to resume workflow {workflow_id}"
+        )
+
+    logger.info(f"Resumed workflow: {workflow_id}")
+
     return {
-        "success": False,
+        "success": True,
         "workflow_id": workflow_id,
-        "status": workflow_data.get("status"),
-        "message": "Resume functionality not yet implemented"
+        "status": "running",
+        "message": "Workflow resumed successfully"
     }
 
 
@@ -517,3 +535,53 @@ async def delete_workflow(workflow_id: str):
         "workflow_id": workflow_id,
         "message": "Workflow deleted successfully"
     }
+
+
+@router.get("/{workflow_id}/approvals", response_model=Dict[str, Any])
+async def get_workflow_approvals(workflow_id: str):
+    """
+    Get all approval gates for a specific workflow.
+
+    This endpoint proxies to the approval-gates API to get workflow approvals.
+    """
+    try:
+        import aiohttp
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"http://localhost:8000/api/approval-gates/workflow/{workflow_id}",
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data
+                else:
+                    return {"gates": [], "total": 0, "error": "Failed to fetch approvals"}
+    except Exception as e:
+        return {"gates": [], "total": 0, "error": str(e)}
+
+
+@router.get("/{workflow_id}/approvals/pending", response_model=Dict[str, Any])
+async def get_workflow_pending_approval(workflow_id: str):
+    """
+    Check if a workflow has a pending approval gate.
+
+    Returns the pending gate if one exists.
+    """
+    try:
+        import aiohttp
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"http://localhost:8000/api/approval-gates/pending?workflow_id={workflow_id}",
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    # Filter to only this workflow's gates
+                    gates = [g for g in data.get("gates", []) if g.get("workflow_id") == workflow_id]
+                    return {"has_pending": len(gates) > 0, "gates": gates, "total": len(gates)}
+                else:
+                    return {"has_pending": False, "gates": [], "total": 0}
+    except Exception as e:
+        return {"has_pending": False, "gates": [], "total": 0, "error": str(e)}

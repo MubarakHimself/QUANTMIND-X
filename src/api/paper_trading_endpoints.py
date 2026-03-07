@@ -29,6 +29,7 @@ from src.api.websocket_endpoints import (
     broadcast_paper_trading_promotion
 )
 from src.router.promotion_manager import PromotionManager, PerformanceTracker
+from src.api.pagination import PaginatedResponse, DEFAULT_LIMIT, DEFAULT_OFFSET, MAX_LIMIT
 
 logger = logging.getLogger(__name__)
 
@@ -167,19 +168,23 @@ async def deploy_agent_endpoint(
         raise HTTPException(status_code=500, detail=f"Deployment failed: {str(e)}")
 
 
-@router.get("/agents", response_model=List[PaperAgentStatus])
+@router.get("/agents", response_model=PaginatedResponse[PaperAgentStatus])
 async def list_agents(
     deployer: PaperTradingDeployer = Depends(get_deployer),
-) -> List[PaperAgentStatus]:
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="Maximum items to return"),
+    offset: int = Query(DEFAULT_OFFSET, ge=0, description="Number of items to skip")
+) -> PaginatedResponse[PaperAgentStatus]:
     """
-    List all paper trading agents.
+    List all paper trading agents with pagination.
 
     Returns status information for all deployed agent containers.
     """
-    agents = deployer.list_agents()
-    
-    # Broadcast current status of all agents to UI
-    for agent in agents:
+    all_agents = deployer.list_agents()
+    total = len(all_agents)
+    paginated_agents = all_agents[offset:offset + limit]
+
+    # Broadcast current status of paginated agents to UI
+    for agent in paginated_agents:
         await broadcast_paper_trading_update(
             agent_id=agent.agent_id,
             status=agent.status,
@@ -187,8 +192,13 @@ async def list_agents(
             timeframe=agent.timeframe,
             uptime_seconds=agent.uptime_seconds
         )
-    
-    return agents
+
+    return PaginatedResponse.create(
+        items=paginated_agents,
+        total=total,
+        limit=limit,
+        offset=offset
+    )
 
 
 @router.get("/agents/{agent_id}", response_model=PaperAgentStatus)
@@ -972,16 +982,18 @@ async def deploy_enhanced_endpoint(
         )
 
 
-@router.get("/demo-accounts", response_model=List[DemoAccountResponse])
+@router.get("/demo-accounts", response_model=PaginatedResponse[DemoAccountResponse])
 async def list_demo_accounts(
     manager: DemoAccountManager = Depends(get_demo_account_manager),
-) -> List[DemoAccountResponse]:
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="Maximum items to return"),
+    offset: int = Query(DEFAULT_OFFSET, ge=0, description="Number of items to skip")
+) -> PaginatedResponse[DemoAccountResponse]:
     """
-    List all configured demo accounts.
+    List all configured demo accounts with pagination.
     """
     try:
         accounts = manager.list_demo_accounts()
-        return [
+        items = [
             DemoAccountResponse(
                 login=acc["login"],
                 server=acc["server"],
@@ -992,6 +1004,14 @@ async def list_demo_accounts(
             )
             for acc in accounts
         ]
+        total = len(items)
+        paginated_items = items[offset:offset + limit]
+        return PaginatedResponse.create(
+            items=paginated_items,
+            total=total,
+            limit=limit,
+            offset=offset
+        )
     except Exception as e:
         logger.error(f"Failed to list demo accounts: {e}")
         raise HTTPException(

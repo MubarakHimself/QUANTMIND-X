@@ -7,8 +7,18 @@
     ChevronRight, ChevronDown, X, Check, AlertCircle,
     ArrowUpDown, Target, Award, Trophy, Gauge, MonitorPlay,
     Globe, Currency, Package, Settings as SettingsIcon, Scale,
-    Calculator, TrendingUp as TrendingUpIcon
+    Calculator, TrendingUp as TrendingUpIcon, Brain
   } from 'lucide-svelte';
+
+  // Import new components
+  import RouterHeader from './RouterHeader.svelte';
+  import MarketOverview from './MarketOverview.svelte';
+  import AuctionQueue from './AuctionQueue.svelte';
+  import RankingsTab from './RankingsTab.svelte';
+  import KellyCriterionTab from './KellyCriterionTab.svelte';
+  import CorrelationsTab from './CorrelationsTab.svelte';
+  import SettingsTab from './SettingsTab.svelte';
+  import HmmTrainingStatus from './HmmTrainingStatus.svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -134,6 +144,87 @@
     { date: '2024-01-09', botId: 'smc-gbp', fraction: 0.085, result: 128.50 },
     { date: '2024-01-08', botId: 'ict-eur', fraction: 0.125, result: 312.40 }
   ];
+
+  // HMM Training State
+  let hmmTraining = {
+    isTraining: false,
+    jobId: '',
+    progress: 0,
+    message: '',
+    modelType: 'universal' as 'universal' | 'per_symbol' | 'per_symbol_timeframe',
+    lastJob: null as { jobId: string; status: string; message: string } | null
+  };
+
+  // HMM Training config
+  let hmmConfig = {
+    modelType: 'universal',
+    symbol: '',
+    timeframe: 'H1',
+    nStates: 4,
+    forceRetrain: false
+  };
+
+  async function startHMMTraining() {
+    hmmTraining.isTraining = true;
+    hmmTraining.progress = 0;
+    hmmTraining.message = 'Starting training...';
+    hmmTraining.jobId = '';
+
+    try {
+      const res = await fetch('http://localhost:8000/api/hmm/train', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model_type: hmmConfig.modelType,
+          symbol: hmmConfig.symbol || null,
+          timeframe: hmmConfig.timeframe || null,
+          n_states: hmmConfig.nStates,
+          force_retrain: hmmConfig.forceRetrain
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        hmmTraining.jobId = data.job_id;
+        hmmTraining.message = data.message;
+
+        // Poll for status
+        pollTrainingStatus(data.job_id);
+      } else {
+        const error = await res.json();
+        hmmTraining.message = `Error: ${error.detail || 'Failed to start training'}`;
+        hmmTraining.isTraining = false;
+      }
+    } catch (e) {
+      hmmTraining.message = `Error: ${e instanceof Error ? e.message : 'Unknown error'}`;
+      hmmTraining.isTraining = false;
+    }
+  }
+
+  async function pollTrainingStatus(jobId: string) {
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`http://localhost:8000/api/hmm/train/${jobId}/status`);
+        if (res.ok) {
+          const status = await res.json();
+          hmmTraining.progress = status.progress;
+          hmmTraining.message = status.message;
+
+          if (status.status === 'completed') {
+            hmmTraining.isTraining = false;
+            hmmTraining.lastJob = { jobId, status: 'completed', message: 'Training completed successfully' };
+            clearInterval(pollInterval);
+          } else if (status.status === 'failed') {
+            hmmTraining.isTraining = false;
+            hmmTraining.lastJob = { jobId, status: 'failed', message: status.message };
+            clearInterval(pollInterval);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to poll training status:', e);
+      }
+    }, 2000);
+  }
 
   // MT5 Connection State
   let mt5Connected = false;
@@ -300,107 +391,21 @@
 
 <div class="router-view">
   <!-- Header -->
-  <div class="router-header">
-    <div class="header-left">
-      <Server size={24} class="router-icon" />
-      <div>
-        <h2>Strategy Router</h2>
-        <p>Auction-based trade signal selection and routing</p>
-      </div>
-    </div>
-    <div class="header-actions">
-      <div class="router-status" class:active={routerState.active}>
-        <div class="status-indicator"></div>
-        <span>{routerState.active ? 'Active' : 'Paused'}</span>
-      </div>
-      <button class="btn" on:click={() => autoRefresh = !autoRefresh} class:active={autoRefresh}>
-        <MonitorPlay size={14} />
-        <span>Auto</span>
-      </button>
-      <button class="btn" on:click={loadRouterState}>
-        <RefreshCw size={14} />
-        <span>Refresh</span>
-      </button>
-      <button class="btn primary" on:click={runAuction}>
-        <Play size={14} />
-        <span>Run Auction</span>
-      </button>
-    </div>
-  </div>
+  <RouterHeader
+    {routerState}
+    {hmmTraining}
+    {autoRefresh}
+    {toggleRouter}
+    {loadRouterState}
+    {runAuction}
+    {startHMMTraining}
+  />
+
+  <!-- HMM Training Status -->
+  <HmmTrainingStatus {hmmTraining} />
 
   <!-- Market Overview -->
-  <div class="market-overview">
-    <div class="overview-card regime">
-      <div class="card-header">
-        <Activity size={16} />
-        <h3>Market Regime</h3>
-      </div>
-      <div class="regime-display">
-        <div class="regime-quality">
-          <span class="quality-label">Quality</span>
-          <div class="quality-bar">
-            <div class="quality-fill" style="width: {marketState.regime.quality * 100}%"></div>
-          </div>
-          <span class="quality-value">{(marketState.regime.quality * 100).toFixed(1)}%</span>
-        </div>
-        <div class="regime-details">
-          <div class="regime-item">
-            <span class="label">Trend</span>
-            <span class="value {marketState.regime.trend}">{marketState.regime.trend}</span>
-          </div>
-          <div class="regime-item">
-            <span class="label">Chaos</span>
-            <span class="value">{marketState.regime.chaos.toFixed(1)}</span>
-          </div>
-          <div class="regime-item">
-            <span class="label">Volatility</span>
-            <span class="value">{marketState.regime.volatility}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="overview-card symbols">
-      <div class="card-header">
-        <Currency size={16} />
-        <h3>Active Symbols</h3>
-      </div>
-      <div class="symbols-list">
-        {#each marketState.symbols as symbol}
-          <div class="symbol-item">
-            <span class="symbol-name">{symbol.symbol}</span>
-            <span class="symbol-price">{symbol.price.toFixed(4)}</span>
-            <span class="symbol-change" class:positive={symbol.change > 0} class:negative={symbol.change < 0}>
-              {symbol.change > 0 ? '+' : ''}{symbol.change.toFixed(2)}%
-            </span>
-            <span class="symbol-spread">Spread: {symbol.spread}</span>
-          </div>
-        {/each}
-      </div>
-    </div>
-
-    <div class="overview-card house-money">
-      <div class="card-header">
-        <DollarSign size={16} />
-        <h3>House Money</h3>
-        <span class="mode-badge {houseMoney.mode}">{houseMoney.mode}</span>
-      </div>
-      <div class="house-money-content">
-        <div class="hm-profit">
-          <span class="label">Daily Profit</span>
-          <span class="value success">{formatCurrency(houseMoney.dailyProfit)}</span>
-        </div>
-        <div class="hm-house">
-          <span class="label">House Money</span>
-          <span class="value highlight">{formatCurrency(houseMoney.houseMoneyAmount)}</span>
-        </div>
-        <div class="hm-threshold">
-          <span class="label">Threshold</span>
-          <span class="value">{(houseMoney.threshold * 100).toFixed(0)}%</span>
-        </div>
-      </div>
-    </div>
-  </div>
+  <MarketOverview {marketState} {houseMoney} />
 
   <!-- Tabs -->
   <div class="router-tabs">
@@ -429,393 +434,41 @@
   <!-- Tab Content -->
   <div class="router-content">
     {#if activeTab === 'auction'}
-      <!-- Auction Queue -->
-      <div class="auction-section">
-        <div class="section-header">
-          <h3>Live Auctions</h3>
-          <span class="count">{auctionQueue.length} auctions</span>
-        </div>
-
-        <div class="auction-list">
-          {#each auctionQueue as auction}
-            <div class="auction-card">
-              <div class="auction-header">
-                <div class="auction-time">
-                  <Clock size={12} />
-                  <span>{timeAgo(auction.timestamp)}</span>
-                </div>
-                <span class="auction-status {auction.status}">{auction.status}</span>
-              </div>
-
-              <div class="auction-participants">
-                <span class="participants-label">Participants</span>
-                <div class="participants-list">
-                  {#each auction.participants as participant}
-                    <div class="participant-badge" class:winner={participant === auction.winner}>
-                      <span>{participant}</span>
-                      {#if participant === auction.winner}
-                        <Award size={12} />
-                      {/if}
-                    </div>
-                  {/each}
-                </div>
-              </div>
-
-              <div class="auction-result">
-                <span class="result-label">Winner</span>
-                <div class="winner-display">
-                  <span class="winner-name">{auction.winner}</span>
-                  <span class="winner-score" style="color: {getScoreColor(auction.winningScore)}">
-                    Score: {auction.winningScore.toFixed(1)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          {/each}
-
-          {#if auctionQueue.length === 0}
-            <div class="empty-state">
-              <Server size={32} />
-              <p>No auctions yet. Click "Run Auction" to start.</p>
-            </div>
-          {/if}
-        </div>
-      </div>
-
-      <!-- Bot Signals -->
-      <div class="signals-section">
-        <div class="section-header">
-          <h3>Bot Signals</h3>
-          <span class="count">{bots.filter(b => b.status === 'ready').length} ready</span>
-        </div>
-
-        <div class="bots-grid">
-          {#each bots as bot}
-            <div class="bot-card" class:status-ready={bot.status === 'ready'} class:status-idle={bot.status === 'idle'}>
-              <div class="bot-status" style="background: {getStatusColor(bot.status)}"></div>
-              <div class="bot-header">
-                <span class="bot-name">{bot.name}</span>
-                <span class="bot-symbol">{bot.symbol}</span>
-              </div>
-
-              {#if bot.status === 'ready'}
-                <div class="bot-signal">
-                  <span class="signal-strength" style="color: {getScoreColor(bot.score)}">
-                    {bot.score.toFixed(1)}
-                  </span>
-                  <span class="signal-label">Signal Strength</span>
-                </div>
-
-                <div class="bot-conditions">
-                  {#each bot.conditions as condition}
-                    <span class="condition-tag">{condition}</span>
-                  {/each}
-                </div>
-
-                <div class="bot-footer">
-                  <span class="last-signal">{timeAgo(bot.lastSignal)}</span>
-                  <span class="bot-status-text">{bot.status}</span>
-                </div>
-              {:else}
-                <div class="bot-idle">
-                  <span class="idle-text">{bot.status}</span>
-                </div>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      </div>
+      <AuctionQueue
+        {auctionQueue}
+        {bots}
+        {getScoreColor}
+        {getStatusColor}
+        {timeAgo}
+      />
 
     {:else if activeTab === 'rankings'}
-      <!-- Rankings -->
-      <div class="rankings-section">
-        <div class="rankings-tabs">
-          <button class="rank-tab active">Daily</button>
-          <button class="rank-tab">Weekly</button>
-          <button class="rank-tab">Monthly</button>
-        </div>
-
-        <div class="rankings-table">
-          <div class="table-header">
-            <span>Rank</span>
-            <span>Strategy</span>
-            <span>Profit</span>
-            <span>Trades</span>
-            <span>Win Rate</span>
-          </div>
-
-          {#each rankings.daily as ranking, index}
-            <div class="table-row">
-              <span class="rank">#{index + 1}</span>
-              <span class="name">{ranking.name}</span>
-              <span class="profit" class:positive={ranking.profit > 0}>
-                {formatCurrency(ranking.profit)}
-              </span>
-              <span class="trades">{ranking.trades}</span>
-              <span class="winrate">{ranking.winRate.toFixed(1)}%</span>
-            </div>
-          {/each}
-        </div>
-      </div>
+      <RankingsTab {rankings} />
 
     {:else if activeTab === 'kelly'}
-      <!-- Kelly Criterion -->
-      <div class="kelly-section">
-        <div class="kelly-header">
-          <div class="kelly-info">
-            <Calculator size={20} />
-            <div>
-              <h3>Kelly Criterion Analysis</h3>
-              <p>Optimal position sizing based on win rate and risk/reward</p>
-            </div>
-          </div>
-          <div class="kelly-summary">
-            <div class="summary-item">
-              <span class="label">Avg Kelly</span>
-              <span class="value">{(Object.values(kellyData).reduce((a, b) => a + b.kellyFraction, 0) / Object.values(kellyData).length * 100).toFixed(1)}%</span>
-            </div>
-            <div class="summary-item">
-              <span class="label">Avg Half-Kelly</span>
-              <span class="value">{(Object.values(kellyData).reduce((a, b) => a + b.halfKelly, 0) / Object.values(kellyData).length * 100).toFixed(1)}%</span>
-            </div>
-            <div class="summary-item">
-              <span class="label">Best Kelly</span>
-              <span class="value success">{Math.max(...Object.values(kellyData).map(k => k.kellyFraction * 100)).toFixed(1)}%</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Kelly Rankings -->
-        <div class="kelly-rankings">
-          <h4>Bot Rankings by Kelly Score</h4>
-          <div class="kelly-table">
-            <div class="table-header kelly-header-row">
-              <span>Rank</span>
-              <span>Bot</span>
-              <span>Full Kelly</span>
-              <span>Half Kelly</span>
-              <span>Win Rate</span>
-              <span>EV/Trade</span>
-              <span>Kelly Score</span>
-            </div>
-
-            {#each kellyRankings as ranking, index}
-              <div class="table-row kelly-row">
-                <span class="rank kelly-rank">#{index + 1}</span>
-                <span class="name">{ranking.name}</span>
-                <span class="kelly-value full-kelly" title="Full Kelly - aggressive">
-                  <div class="kelly-bar" style="width: {ranking.kellyFraction * 100 * 4}%"></div>
-                  {(ranking.kellyFraction * 100).toFixed(1)}%
-                </span>
-                <span class="kelly-value half-kelly" title="Half Kelly - conservative">
-                  <div class="kelly-bar half" style="width: {ranking.halfKelly * 100 * 4}%"></div>
-                  {(ranking.halfKelly * 100).toFixed(1)}%
-                </span>
-                <span class="winrate">{ranking.winRate * 100}%</span>
-                <span class="expected-value" class:positive={ranking.expectedValue > 0}>
-                  ${ranking.expectedValue.toFixed(2)}
-                </span>
-                <span class="kelly-score" class:top={index === 0}>
-                  {ranking.kellyScore}
-                </span>
-              </div>
-            {/each}
-          </div>
-        </div>
-
-        <!-- Kelly Details Grid -->
-        <div class="kelly-details-grid">
-          {#each Object.entries(kellyData) as [botId, data]}
-            <div class="kelly-card">
-              <div class="kelly-card-header">
-                <span class="bot-name">{bots.find(b => b.id === botId)?.name || botId}</span>
-                <span class="status-badge" class:optimal={data.kellyFraction < 0.15} class:caution={data.kellyFraction >= 0.15 && data.kellyFraction < 0.25} class:warning={data.kellyFraction >= 0.25}>
-                  {data.kellyFraction < 0.15 ? 'Optimal' : data.kellyFraction < 0.25 ? 'Moderate' : 'High Risk'}
-                </span>
-              </div>
-              <div class="kelly-card-body">
-                <div class="metric-row">
-                  <span class="metric-label">Win Rate</span>
-                  <span class="metric-value">{(data.winRate * 100).toFixed(0)}%</span>
-                </div>
-                <div class="metric-row">
-                  <span class="metric-label">Avg Win</span>
-                  <span class="metric-value success">${data.avgWin.toFixed(2)}</span>
-                </div>
-                <div class="metric-row">
-                  <span class="metric-label">Avg Loss</span>
-                  <span class="metric-value danger">${data.avgLoss.toFixed(2)}</span>
-                </div>
-                <div class="kelly-visual">
-                  <div class="kelly-gauge">
-                    <div class="gauge-track">
-                      <div class="gauge-fill" style="width: {data.kellyFraction * 100}%"></div>
-                      <div class="gauge-half" style="left: {data.halfKelly * 100}%"></div>
-                    </div>
-                    <div class="gauge-labels">
-                      <span>0%</span>
-                      <span class="half-mark">Half: {(data.halfKelly * 100).toFixed(1)}%</span>
-                      <span>{(data.kellyFraction * 100).toFixed(1)}%</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="suggested-fraction">
-                  <span class="label">Suggested Fraction:</span>
-                  <span class="value">{(data.suggestedFraction * 100).toFixed(0)}% of Kelly</span>
-                </div>
-              </div>
-            </div>
-          {/each}
-        </div>
-
-        <!-- Kelly History -->
-        <div class="kelly-history">
-          <h4>Recent Kelly Adjustments</h4>
-          <div class="history-list">
-            {#each kellyHistory.slice(0, 5) as entry}
-              <div class="history-item">
-                <span class="history-date">{entry.date}</span>
-                <span class="history-bot">{bots.find(b => b.id === entry.botId)?.name || entry.botId}</span>
-                <span class="history-fraction">Kelly: {(entry.fraction * 100).toFixed(1)}%</span>
-                <span class="history-result" class:positive={entry.result > 0} class:negative={entry.result < 0}>
-                  {entry.result > 0 ? '+' : ''}{formatCurrency(entry.result)}
-                </span>
-              </div>
-            {/each}
-          </div>
-        </div>
-      </div>
+      <KellyCriterionTab
+        {kellyData}
+        {bots}
+        {kellyRankings}
+        {kellyHistory}
+      />
 
     {:else if activeTab === 'correlations'}
-      <!-- Correlations -->
-      <div class="correlations-section">
-        <div class="section-header">
-          <h3>Symbol Correlations</h3>
-          <span class="info">Active positions with high correlation are limited</span>
-        </div>
-
-        <div class="correlations-grid">
-          {#each correlations as corr}
-            <div class="corr-card status-{corr.status}">
-              <div class="corr-pair">
-                <Layers size={16} />
-                <span>{corr.pair}</span>
-              </div>
-              <div class="corr-value">
-                <span class="value" style="color: {getScoreColor(Math.abs(corr.value) * 10)}">
-                  {corr.value > 0 ? '+' : ''}{corr.value.toFixed(2)}
-                </span>
-                <span class="label">{corr.status}</span>
-              </div>
-            </div>
-          {/each}
-        </div>
-
-        <div class="correlation-info">
-          <AlertTriangle size={14} />
-          <p>High correlation (≥0.7) limits simultaneous positions in correlated pairs</p>
-        </div>
-      </div>
+      <CorrelationsTab
+        {correlations}
+        {getScoreColor}
+      />
 
     {:else if activeTab === 'settings'}
-      <!-- Settings -->
-      <div class="settings-section">
-        <div class="setting-group">
-          <h3>Router Mode</h3>
-          <div class="setting-options">
-            <label class="radio-option">
-              <input type="radio" bind:group={routerState.mode} value="auction" />
-              <span>Auction (Recommended)</span>
-              <small>Best signal wins based on scoring</small>
-            </label>
-            <label class="radio-option">
-              <input type="radio" bind:group={routerState.mode} value="priority" />
-              <span>Priority</span>
-              <small>Higher priority bots go first</small>
-            </label>
-            <label class="radio-option">
-              <input type="radio" bind:group={routerState.mode} value="round-robin" />
-              <span>Round Robin</span>
-              <small>Equal opportunity for all bots</small>
-            </label>
-          </div>
-        </div>
-
-        <div class="setting-group">
-          <h3>Auction Settings</h3>
-          <div class="setting-row">
-            <span>Interval (ms)</span>
-            <input type="number" bind:value={routerState.auctionInterval} min="1000" max="60000" step="1000" />
-          </div>
-        </div>
-
-        <div class="setting-group">
-          <h3>Risk Limits</h3>
-          <div class="setting-row">
-            <span>Max Correlated Positions</span>
-            <input type="number" value="2" min="1" max="5" />
-          </div>
-          <div class="setting-row">
-            <span>Correlation Threshold</span>
-            <input type="number" value="0.7" min="0" max="1" step="0.1" />
-          </div>
-        </div>
-
-        <!-- MT5 Connection -->
-        <div class="setting-group mt5-connection">
-          <div class="setting-header">
-            <Globe size={16} />
-            <h3>MT5 Connection</h3>
-            <span class="connection-status" class:connected={mt5Connected}>
-              <span class="status-dot"></span>
-              {mt5Connected ? 'Connected' : 'Disconnected'}
-            </span>
-          </div>
-          
-          <div class="mt5-form">
-            <div class="form-row">
-              <label>Server</label>
-              <input type="text" bind:value={mt5Config.server} placeholder="e.g., ICMarkets-Live" />
-            </div>
-            <div class="form-row">
-              <label>Port</label>
-              <input type="number" bind:value={mt5Config.port} placeholder="443" />
-            </div>
-            <div class="form-row">
-              <label>Login</label>
-              <input type="text" bind:value={mt5Config.login} placeholder="Account ID" />
-            </div>
-            <div class="form-row">
-              <label>Password</label>
-              <input type="password" bind:value={mt5Config.password} placeholder="***" />
-            </div>
-            <div class="form-row">
-              <label>Symbol Mapping</label>
-              <textarea 
-                bind:value={mt5Config.symbolMapping}
-                placeholder={mt5SymbolMappingPlaceholder}
-                rows="3"
-              ></textarea>
-            </div>
-          </div>
-          
-          <div class="mt5-actions">
-            <button class="btn" on:click={testMt5Connection} disabled={mt5Testing}>
-              {mt5Testing ? 'Testing...' : 'Test Connection'}
-            </button>
-            <button class="btn primary" on:click={saveMt5Config}>
-              Save Configuration
-            </button>
-          </div>
-          
-          {#if mt5Error}
-            <div class="mt5-error">
-              <AlertCircle size={14} />
-              <span>{mt5Error}</span>
-            </div>
-          {/if}
-        </div>
-      </div>
+      <SettingsTab
+        {routerState}
+        {mt5Connected}
+        {mt5Testing}
+        {mt5Error}
+        {mt5Config}
+        {testMt5Connection}
+        {saveMt5Config}
+      />
     {/if}
   </div>
 </div>
@@ -924,6 +577,74 @@
     background: var(--accent-primary);
     border-color: var(--accent-primary);
     color: var(--bg-primary);
+  }
+
+  .btn.hmm-train-btn {
+    background: #7c3aed;
+    border-color: #7c3aed;
+    color: white;
+  }
+
+  .btn.hmm-train-btn:hover:not(:disabled) {
+    background: #6d28d9;
+    border-color: #6d28d9;
+  }
+
+  .btn.hmm-train-btn.training {
+    background: #4c1d95;
+    border-color: #4c1d95;
+    opacity: 0.8;
+    cursor: not-allowed;
+  }
+
+  .hmm-training-status {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 0 24px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .hmm-training-status.training {
+    border-color: #7c3aed;
+    background: #1e1b2e;
+  }
+
+  .training-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #e2e8f0;
+  }
+
+  .training-label {
+    font-weight: 500;
+    color: #94a3b8;
+  }
+
+  .training-message {
+    flex: 1;
+  }
+
+  .training-progress-text {
+    font-weight: 600;
+    color: #a78bfa;
+  }
+
+  .training-bar {
+    height: 4px;
+    background: #334155;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .training-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #7c3aed, #a78bfa);
+    transition: width 0.3s ease;
   }
 
   /* Market Overview */

@@ -3,13 +3,14 @@ EA Lifecycle Tools
 
 Tools for managing Expert Advisor (EA) lifecycle operations:
 - Create EA from strategy
+- Create EA variants (vanilla/spiced)
 - Validate EA code
 - Backtest EA
 - Deploy to paper trading
 - Stop running EA
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pathlib import Path
 import subprocess
 import json
@@ -25,6 +26,221 @@ class EALifecycleTools:
         self.base_path = Path(base_path)
         self.strategies_path = self.base_path / "strategies-yt"
         self.ea_output_path = self.base_path / "output" / "expert_advisors"
+
+
+class EALifecycleManager:
+    """Manager for EA variant creation from TRD."""
+
+    def __init__(self, base_path: str = "/home/mubarkahimself/Desktop/QUANTMINDX"):
+        self.base_path = Path(base_path)
+        self.strategies_path = self.base_path / "strategies-yt"
+        self.ea_output_path = self.base_path / "output" / "expert_advisors"
+        self.ea_output_path.mkdir(parents=True, exist_ok=True)
+
+    def create_ea_from_trd(
+        self,
+        trd_variants: Dict[str, Any],
+        create_variants: str = "both"
+    ) -> Dict[str, Any]:
+        """
+        Create EA(s) from TRD variants.
+
+        Args:
+            trd_variants: Dict with 'vanilla' and/or 'spiced' strategy configs
+            create_variants: Which variants to create - "vanilla", "spiced", or "both"
+
+        Returns:
+            Dict with created EA(s) - each containing ea_type, strategy_name, and code
+        """
+        result = {}
+
+        if create_variants in ("both", "vanilla") and "vanilla" in trd_variants:
+            result["vanilla"] = self._create_vanilla_ea(trd_variants["vanilla"])
+
+        if create_variants in ("both", "spiced") and "spiced" in trd_variants:
+            result["spiced"] = self._create_spiced_ea(trd_variants["spiced"])
+
+        return result
+
+    def _create_vanilla_ea(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a vanilla EA from config."""
+        strategy_name = config.get("strategy_name", "VanillaEA")
+        entry_rules = config.get("entry_rules", [])
+        exit_rules = config.get("exit_rules", [])
+        parameters = config.get("parameters", {})
+
+        ea_code = self._generate_mq5({
+            "strategy_name": strategy_name,
+            "entry_rules": entry_rules,
+            "exit_rules": exit_rules,
+            "parameters": parameters
+        }, ea_type="vanilla")
+
+        return {
+            "ea_type": "vanilla",
+            "strategy_name": strategy_name,
+            "code": ea_code,
+            "entry_rules": entry_rules,
+            "exit_rules": exit_rules
+        }
+
+    def _create_spiced_ea(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a spiced EA from config with enhanced features."""
+        strategy_name = config.get("strategy_name", "SpicedEA")
+        entry_rules = config.get("entry_rules", [])
+        exit_rules = config.get("exit_rules", [])
+        articles = config.get("articles", [])
+        parameters = config.get("parameters", {})
+
+        ea_code = self._generate_mq5({
+            "strategy_name": strategy_name,
+            "entry_rules": entry_rules,
+            "exit_rules": exit_rules,
+            "parameters": parameters,
+            "articles": articles
+        }, ea_type="spiced")
+
+        return {
+            "ea_type": "spiced",
+            "strategy_name": strategy_name,
+            "code": ea_code,
+            "entry_rules": entry_rules,
+            "exit_rules": exit_rules,
+            "articles": articles
+        }
+
+    def _generate_mq5(
+        self,
+        strategy_config: Dict[str, Any],
+        ea_type: str = "vanilla"
+    ) -> str:
+        """Generate MQL5 EA code based on strategy config and variant type."""
+        strategy_name = strategy_config.get("strategy_name", "Strategy")
+        entry_rules = strategy_config.get("entry_rules", [])
+        exit_rules = strategy_config.get("exit_rules", [])
+        parameters = strategy_config.get("parameters", {})
+        articles = strategy_config.get("articles", [])
+
+        risk_percent = parameters.get("risk_percent", 1.0)
+        lot_size = parameters.get("lot_size", 0.01)
+        stop_loss = parameters.get("stop_loss", 50)
+        take_profit = parameters.get("take_profit", 100)
+
+        # Generate entry rule comments
+        entry_rules_str = "\n".join([f"   // - {rule}" for rule in entry_rules]) if entry_rules else "   // No entry rules defined"
+        exit_rules_str = "\n".join([f"   // - {rule}" for rule in exit_rules]) if exit_rules else "   // No exit rules defined"
+
+        # Additional features for spiced variant
+        spiced_features = ""
+        if ea_type == "spiced" and articles:
+            spiced_features = f"""
+//+------------------------------------------------------------------+
+//| Article-based enhancements                                       |
+//+------------------------------------------------------------------+
+string GetArticleSignals() {{
+   string signals = "";
+   string articles[] = {json.dumps(articles)};
+   for(int i = 0; i < ArraySize(articles); i++) {{
+      signals += articles[i] + ";";
+   }}
+   return signals;
+}}
+"""
+
+        return f'''//+------------------------------------------------------------------+
+//|                                          {strategy_name}_{ea_type}.mq5    |
+//|                                    Generated by QuantMindX            |
+//|                                          Type: {ea_type}                   |
+//+------------------------------------------------------------------+
+#property copyright "QuantMindX"
+#property link      "https://quantmindx.io"
+#property version   "1.00"
+#property strict
+
+// Input parameters
+input double RiskPercent = {risk_percent};
+input double LotSize = {lot_size};
+input int StopLoss = {stop_loss};
+input int TakeProfit = {take_profit};
+
+// Global variables
+int strategyHandle = INVALID_HANDLE;
+datetime lastBarTime = 0;
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                     |
+//+------------------------------------------------------------------+
+int OnInit()
+{{
+   Print("{strategy_name} ({ea_type}) initialized");
+   return(INIT_SUCCEEDED);
+}}
+
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                   |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{{
+   Print("{strategy_name} deinitialized, reason: ", reason);
+}}
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                               |
+//+------------------------------------------------------------------+
+void OnTick()
+{{
+   // Check for new bar
+   datetime currentBarTime = iTime(_Symbol, _Period, 0);
+
+   if(lastBarTime != currentBarTime)
+   {{
+      lastBarTime = currentBarTime;
+
+      // Entry Rules:
+{entry_rules_str}
+
+      // Exit Rules:
+{exit_rules_str}
+
+      // Execute trading logic
+      if(CheckEntryConditions())
+      {{
+         ExecuteTrade();
+      }}
+   }}
+}}
+
+//+------------------------------------------------------------------+
+//| Check entry conditions                                            |
+//+------------------------------------------------------------------+
+bool CheckEntryConditions()
+{{
+   // Basic entry logic - implement strategy-specific conditions
+   return true;
+}}
+
+//+------------------------------------------------------------------+
+//| Execute trade                                                     |
+//+------------------------------------------------------------------+
+void ExecuteTrade()
+{{
+   // Trading execution logic
+   double lot = CalculateLotSize();
+   // Place order logic here
+}}
+
+//+------------------------------------------------------------------+
+//| Calculate lot size                                                |
+//+------------------------------------------------------------------+
+double CalculateLotSize()
+{{
+   double accountBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double lot = (accountBalance * RiskPercent / 100.0) / 1000.0;
+   return NormalizeDouble(MathMax(lot, LotSize), 2);
+}}
+{spiced_features}
+//+------------------------------------------------------------------+
+'''
 
     def create_ea(
         self,

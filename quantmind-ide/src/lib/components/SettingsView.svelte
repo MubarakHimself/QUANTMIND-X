@@ -7,78 +7,23 @@
     Shield, Wallet, TrendingUp, Zap, Globe, Lock, User, Bell,
     Eye, EyeOff, Trash2, Edit3, Download, Upload as UploadIcon,
     FolderOpen, Code, Terminal, Cpu, HardDrive,
-    Brain, Sparkles, FileText
+    Brain, Sparkles, FileText, Cpu as ModelIcon
   } from 'lucide-svelte';
   import ThemeSelector from './ThemeSelector.svelte';
-
-  // Prop Firm Presets
-  const PROP_FIRM_PRESETS = {
-    ftmo: { name: 'FTMO', maxRisk: 2, dailyLoss: 5, totalLoss: 10 },
-    the5ers: { name: 'The5ers', maxRisk: 2.5, dailyLoss: 6, totalLoss: 12 },
-    fundingpips: { name: 'FundingPips', maxRisk: 3, dailyLoss: 8, totalLoss: 15 },
-    custom: { name: 'Custom', maxRisk: 0, dailyLoss: 0, totalLoss: 0 }
-  };
+  import {
+    ApiKeysPanel,
+    McpServersPanel,
+    AgentsPanel,
+    RiskPanel,
+    DatabasePanel,
+    ConnectionPanel,
+    SecurityPanel
+  } from './settings';
 
   const dispatch = createEventDispatcher();
 
-  // AGENTS.md content
-  let agentsMdContent = '';
-  let agentsMdLoading = false;
-  let agentsMdSaved = false;
-
-  // Per-agent configuration editing
-  let agentConfigs: Record<string, {
-    name: string;
-    role: string;
-    provider: string;
-    model: string;
-    temperature: number;
-    maxTokens: number;
-    systemPrompt: string;
-    skills: Array<{ id: string; name: string; description: string; enabled: boolean }>;
-    tools: string[];
-  }> = {
-    copilot: {
-      name: 'copilot',
-      role: 'Trading Assistant & Workflow Guide',
-      provider: 'openrouter',
-      model: 'anthropic/claude-sonnet-4',
-      temperature: 0.7,
-      maxTokens: 4096,
-      systemPrompt: '',
-      skills: [],
-      tools: []
-    },
-    quantcode: {
-      name: 'quantcode',
-      role: 'MQL5 Code Expert',
-      provider: 'openrouter',
-      model: 'anthropic/claude-sonnet-4',
-      temperature: 0.3,
-      maxTokens: 8192,
-      systemPrompt: '',
-      skills: [],
-      tools: []
-    },
-    analyst: {
-      name: 'analyst',
-      role: 'Trading Strategy Analyst',
-      provider: 'openrouter',
-      model: 'anthropic/claude-sonnet-4',
-      temperature: 0.5,
-      maxTokens: 6144,
-      systemPrompt: '',
-      skills: [],
-      tools: []
-    }
-  };
-
-  let selectedAgent: string = 'copilot';
-  let agentEditModal = false;
-  let showRawEditor = true;
-
   // Settings tabs
-  type SettingsTab = 'general' | 'api-keys' | 'mcp-servers' | 'agents' | 'risk' | 'database' | 'connection' | 'security';
+  type SettingsTab = 'general' | 'api-keys' | 'mcp-servers' | 'agents' | 'models' | 'risk' | 'database' | 'connection' | 'security';
   let activeTab: SettingsTab = 'general';
   let settingsVisible = false;
 
@@ -88,7 +33,7 @@
     language: 'en',
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     autoSave: true,
-    autoSaveInterval: 30, // seconds
+    autoSaveInterval: 30,
     debugMode: false,
     logLevel: 'info' as 'debug' | 'info' | 'warn' | 'error'
   };
@@ -185,30 +130,66 @@
   };
 
   // Agent settings
-  let agentSettings = {
-    defaultModel: 'claude-sonnet-4',
-    temperature: 0.7,
-    maxTokens: 4096,
-    enableMemory: true,
-    memoryType: 'hybrid' as 'short' | 'long' | 'hybrid',
-    skillsEnabled: true,
-    autoDelegate: false
+  let agentConfigs: Record<string, {
+    name: string;
+    role: string;
+    provider: string;
+    model: string;
+    temperature: number;
+    maxTokens: number;
+    systemPrompt: string;
+    skills: Array<{ id: string; name: string; description: string; enabled: boolean }>;
+    tools: string[];
+  }> = {
+    copilot: {
+      name: 'copilot',
+      role: 'Trading Assistant & Workflow Guide',
+      provider: 'openrouter',
+      model: 'anthropic/claude-sonnet-4',
+      temperature: 0.7,
+      maxTokens: 4096,
+      systemPrompt: '',
+      skills: [],
+      tools: []
+    },
+    quantcode: {
+      name: 'quantcode',
+      role: 'MQL5 Code Expert',
+      provider: 'openrouter',
+      model: 'anthropic/claude-sonnet-4',
+      temperature: 0.3,
+      maxTokens: 8192,
+      systemPrompt: '',
+      skills: [],
+      tools: []
+    },
+    analyst: {
+      name: 'analyst',
+      role: 'Trading Strategy Analyst',
+      provider: 'openrouter',
+      model: 'anthropic/claude-sonnet-4',
+      temperature: 0.5,
+      maxTokens: 6144,
+      systemPrompt: '',
+      skills: [],
+      tools: []
+    }
   };
 
-  let agentSkills: Array<{
-    id: string;
-    name: string;
-    agent: 'copilot' | 'analyst' | 'quantcode';
-    enabled: boolean;
-    description: string;
-  }> = [];
+  let selectedAgent = 'copilot';
+  let showRawEditor = true;
+
+  // AGENTS.md content
+  let agentsMdContent = '';
+  let agentsMdLoading = false;
+  let agentsMdSaved = false;
 
   // Risk Management settings
   let riskSettings = {
     houseMoneyEnabled: true,
-    houseMoneyThreshold: 0.5, // 50% of daily profit
-    dailyLossLimit: 5, // percentage
-    maxDrawdown: 10, // percentage
+    houseMoneyThreshold: 0.5,
+    dailyLossLimit: 5,
+    maxDrawdown: 10,
     riskMode: 'dynamic' as 'fixed' | 'dynamic' | 'conservative',
     propFirmPreset: 'custom' as 'ftmo' | 'the5ers' | 'fundingpips' | 'custom',
     balanceZones: {
@@ -221,12 +202,12 @@
 
   // Database settings
   let dbSettings = {
-    connectionType: 'sqlite', // 'sqlite' | 'postgresql'
+    connectionType: 'sqlite',
     databaseUrl: '',
     sqlitePath: './data/quantmind.db',
     duckdbPath: './data/analytics.duckdb',
     autoBackup: true,
-    backupInterval: 3600, // seconds
+    backupInterval: 3600,
     maxBackups: 10
   };
 
@@ -245,188 +226,35 @@
     secretKeyPrefix: ''
   };
 
-  async function loadAgentsMd() {
-    try {
-      const res = await fetch('http://localhost:8000/api/settings/agents-md');
-      if (res.ok) {
-        const data = await res.json();
-        agentsMdContent = data.content || '';
-      }
-    } catch (e) {
-      console.error('Failed to load AGENTS.md:', e);
-      // Set default content
-      agentsMdContent = '# Agent Configuration\n\nConfigure your agent behavior here.';
-    }
-  }
+  // Model config
+  type ModelProvider = 'anthropic' | 'zhipu' | 'minimax' | 'openai' | 'deepseek' | 'openrouter';
+  const providerBaseUrls: Record<string, string> = {
+    anthropic: '',
+    zhipu: 'https://api.z.ai/api/coding/paas/v4',
+    minimax: 'https://api.minimax.chat/v1',
+    openai: 'https://api.openai.com/v1',
+    deepseek: 'https://api.deepseek.com/v1',
+    openrouter: 'https://openrouter.ai/api/v1'
+  };
+  let modelConfig = {
+    provider: 'anthropic' as ModelProvider,
+    baseUrl: '',
+    apiKey: '',
+    model: 'claude-sonnet-4-20250514',
+    availableModels: [] as Array<{ id: string; name: string; tier: string }>,
+    showApiKey: false,
+    isSaving: false,
+    isLoading: false
+  };
 
-  async function saveAgentsMd() {
-    agentsMdLoading = true;
-    try {
-      const res = await fetch('http://localhost:8000/api/settings/agents-md', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: agentsMdContent })
-      });
-
-      if (res.ok) {
-        agentsMdSaved = true;
-        setTimeout(() => agentsMdSaved = false, 2000);
-        // Reload agent configs after saving
-        await loadAgentConfigs();
-      } else {
-        console.error('Failed to save AGENTS.md');
-      }
-    } catch (e) {
-      console.error('Failed to save AGENTS.md:', e);
-    } finally {
-      agentsMdLoading = false;
-    }
-  }
-
-  async function loadAgentConfigs() {
-    try {
-      const res = await fetch('http://localhost:8000/api/settings/agents-config');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.agents) {
-          agentConfigs = data.agents;
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load agent configs:', e);
-    }
-  }
-
-  function exportAgentsMd() {
-    const blob = new Blob([agentsMdContent], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'AGENTS.md';
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function importAgentsMd() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.md';
-    input.onchange = async (e) => {
-      const target = e.target;
-      const file = target.files?.[0];
-      if (file) {
-        const content = await file.text();
-        agentsMdContent = content;
-        await saveAgentsMd();
-      }
-    };
-    input.click();
-  }
-
-  function applyTheme() {
-    const theme = localStorage.getItem('theme') || generalSettings.theme;
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
-  }
-
-  function applyLanguage() {
-    const language = localStorage.getItem('language') || generalSettings.language;
-    document.documentElement.lang = language;
-    localStorage.setItem('language', language);
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && settingsVisible) {
-      hide();
-    }
-  }
-
-  async function loadSettings() {
-    try {
-      // Load general settings
-      const generalRes = await fetch('http://localhost:8000/api/settings/general');
-      if (generalRes.ok) {
-        const data = await generalRes.json();
-        generalSettings = { ...generalSettings, ...data };
-      }
-
-      // Load API keys
-      const keysRes = await fetch('http://localhost:8000/api/settings/keys');
-      if (keysRes.ok) {
-        apiKeys = await keysRes.json();
-      }
-
-      // Load MCP servers
-      const mcpRes = await fetch('http://localhost:8000/api/settings/mcp');
-      if (mcpRes.ok) {
-        mcpServers = await mcpRes.json();
-      }
-
-      // Load agent settings
-      const agentRes = await fetch('http://localhost:8000/api/settings/agents');
-      if (agentRes.ok) {
-        const data = await agentRes.json();
-        agentSettings = { ...agentSettings, ...data };
-      }
-
-      // Load agent skills
-      const skillsRes = await fetch('http://localhost:8000/api/settings/skills');
-      if (skillsRes.ok) {
-        agentSkills = await skillsRes.json();
-      }
-
-      // Load risk settings
-      const riskRes = await fetch('http://localhost:8000/api/settings/risk');
-      if (riskRes.ok) {
-        const data = await riskRes.json();
-        riskSettings = { ...riskSettings, ...data };
-      }
-
-      // Load database settings
-      const dbRes = await fetch('http://localhost:8000/api/settings/database');
-      if (dbRes.ok) {
-        const data = await dbRes.json();
-        dbSettings = { ...dbSettings, ...data };
-      }
-    } catch (e) {
-      console.error('Failed to load settings:', e);
-    }
-  }
-
-  async function saveSettings() {
-    try {
-      // Save all settings
-      await Promise.all([
-        fetch('http://localhost:8000/api/settings/general', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(generalSettings)
-        }),
-        fetch('http://localhost:8000/api/settings/agents', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(agentSettings)
-        }),
-        fetch('http://localhost:8000/api/settings/risk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(riskSettings)
-        })
-      ]);
-
-      dispatch('settingsSaved');
-    } catch (e) {
-      console.error('Failed to save settings:', e);
-    }
-  }
-
+  // Handlers for API Keys
   async function addApiKey() {
     if (!newApiKey.name || !newApiKey.key) return;
 
     const apiKey: typeof apiKeys[0] = {
       id: Date.now().toString(),
       name: newApiKey.name,
-      key: newApiKey.key, // In production, this should be encrypted
+      key: newApiKey.key,
       service: newApiKey.service,
       created: new Date().toISOString()
     };
@@ -440,7 +268,6 @@
 
       if (res.ok) {
         const data = await res.json();
-        // Use the returned API key with server-generated ID
         apiKeys = [...apiKeys, data];
         newApiKey = { name: '', key: '', service: 'openai' };
         apiKeyModal = false;
@@ -449,31 +276,6 @@
       }
     } catch (e) {
       console.error('Failed to add API key:', e);
-    }
-  }
-
-  async function editApiKey(id: string, updatedKey: Partial<typeof apiKeys[0]>) {
-    const index = apiKeys.findIndex(k => k.id === id);
-    if (index === -1) return;
-
-    const originalKey = apiKeys[index];
-    const updated = { ...originalKey, ...updatedKey };
-
-    try {
-      const res = await fetch(`http://localhost:8000/api/settings/keys/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated)
-      });
-
-      if (res.ok) {
-        apiKeys[index] = updated;
-        apiKeys = [...apiKeys];
-      } else {
-        throw new Error('Failed to update API key');
-      }
-    } catch (e) {
-      console.error('Failed to edit API key:', e);
     }
   }
 
@@ -489,6 +291,7 @@
     }
   }
 
+  // Handlers for MCP Servers
   async function addMcpServer() {
     if (!newMcpServer.name || !newMcpServer.command) return;
 
@@ -511,7 +314,6 @@
 
       if (res.ok) {
         const data = await res.json();
-        // Use the returned server with server-generated ID
         mcpServers = [...mcpServers, data];
         newMcpServer = { name: '', command: '', args: '', description: '' };
         mcpModalOpen = false;
@@ -520,31 +322,6 @@
       }
     } catch (e) {
       console.error('Failed to add MCP server:', e);
-    }
-  }
-
-  async function editMcpServer(id: string, updatedServer: Partial<typeof mcpServers[0]>) {
-    const index = mcpServers.findIndex(s => s.id === id);
-    if (index === -1) return;
-
-    const originalServer = mcpServers[index];
-    const updated = { ...originalServer, ...updatedServer };
-
-    try {
-      const res = await fetch(`http://localhost:8000/api/settings/mcp/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated)
-      });
-
-      if (res.ok) {
-        mcpServers[index] = updated;
-        mcpServers = [...mcpServers];
-      } else {
-        throw new Error('Failed to update MCP server');
-      }
-    } catch (e) {
-      console.error('Failed to edit MCP server:', e);
     }
   }
 
@@ -579,67 +356,244 @@
     }
   }
 
-  async function toggleAgentSkill(skillId: string) {
-    const skill = agentSkills.find(s => s.id === skillId);
-    if (skill) {
-      skill.enabled = !skill.enabled;
+  // Handlers for Agents
+  async function loadAgentsMd() {
+    try {
+      const res = await fetch('http://localhost:8000/api/settings/agents-md');
+      if (res.ok) {
+        const data = await res.json();
+        agentsMdContent = data.content || '';
+      }
+    } catch (e) {
+      console.error('Failed to load AGENTS.md:', e);
+      agentsMdContent = '# Agent Configuration\n\nConfigure your agent behavior here.';
+    }
+  }
 
-      // Sync with backend
-      try {
-        const res = await fetch(`http://localhost:8000/api/settings/skills/${skillId}`, {
+  async function saveAgentsMd() {
+    agentsMdLoading = true;
+    try {
+      const res = await fetch('http://localhost:8000/api/settings/agents-md', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: agentsMdContent })
+      });
+
+      if (res.ok) {
+        agentsMdSaved = true;
+        setTimeout(() => agentsMdSaved = false, 2000);
+      } else {
+        console.error('Failed to save AGENTS.md');
+      }
+    } catch (e) {
+      console.error('Failed to save AGENTS.md:', e);
+    } finally {
+      agentsMdLoading = false;
+    }
+  }
+
+  function exportAgentsMd() {
+    const blob = new Blob([agentsMdContent], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'AGENTS.md';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importAgentsMd() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.md';
+    input.onchange = async (e) => {
+      const target = e.target;
+      const file = target.files?.[0];
+      if (file) {
+        const content = await file.text();
+        agentsMdContent = content;
+        await saveAgentsMd();
+      }
+    };
+    input.click();
+  }
+
+  function handleAgentSelect(event: CustomEvent) {
+    selectedAgent = event.detail.agent;
+  }
+
+  function handleAgentConfigUpdate(event: CustomEvent) {
+    const { agent, field, value } = event.detail;
+    if (agentConfigs[agent]) {
+      (agentConfigs[agent] as any)[field] = value;
+    }
+  }
+
+  // Handlers for Risk
+  function handleRiskUpdate(event: CustomEvent) {
+    const { field, value } = event.detail;
+    (riskSettings as any)[field] = value;
+  }
+
+  // Handlers for Database
+  function handleDbUpdate(event: CustomEvent) {
+    const { field, value } = event.detail;
+    (dbSettings as any)[field] = value;
+  }
+
+  // Handlers for Connection
+  function handleConnectionUpdate(event: CustomEvent) {
+    const { field, value } = event.detail;
+    (connectionSettings as any)[field] = value;
+  }
+
+  // Handlers for Model Config
+  function handleProviderChange() {
+    // Set default base URL for the selected provider
+    modelConfig.baseUrl = providerBaseUrls[modelConfig.provider] || '';
+    // Clear model selection when provider changes
+    modelConfig.model = '';
+  }
+
+  async function loadModelConfig() {
+    modelConfig.isLoading = true;
+    try {
+      const res = await fetch('/api/agent-config/available-models');
+      if (res.ok) {
+        const data = await res.json();
+        // Update available models for the current provider
+        const providerData = data.providers?.[modelConfig.provider];
+        if (providerData?.models) {
+          modelConfig.availableModels = providerData.models;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load model config:', e);
+    } finally {
+      modelConfig.isLoading = false;
+    }
+  }
+
+  async function saveModelConfig() {
+    modelConfig.isSaving = true;
+    try {
+      // Save to each agent type with the selected provider/model
+      const agents = ['copilot', 'quantcode', 'analyst', 'floor_manager', 'research', 'development', 'trading', 'risk', 'portfolio'];
+      const promises = agents.map(agent =>
+        fetch(`/api/agent-config/${agent}/model`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enabled: skill.enabled })
-        });
+          body: JSON.stringify({
+            model: modelConfig.model,
+            provider: modelConfig.provider
+          })
+        })
+      );
 
-        if (!res.ok) {
-          throw new Error('Failed to toggle skill');
+      const results = await Promise.all(promises);
+      const allSucceeded = results.every(r => r.ok);
+
+      if (allSucceeded) {
+        dispatch('settingsSaved');
+      }
+    } catch (e) {
+      console.error('Failed to save model config:', e);
+    } finally {
+      modelConfig.isSaving = false;
+    }
+  }
+
+  // Handlers for General Settings
+  function applyTheme() {
+    const theme = localStorage.getItem('theme') || generalSettings.theme;
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }
+
+  function applyLanguage() {
+    const language = localStorage.getItem('language') || generalSettings.language;
+    document.documentElement.lang = language;
+    localStorage.setItem('language', language);
+  }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && settingsVisible) {
+      hide();
+    }
+  }
+
+  async function loadSettings() {
+    try {
+      const generalRes = await fetch('http://localhost:8000/api/settings/general');
+      if (generalRes.ok) {
+        const data = await generalRes.json();
+        generalSettings = { ...generalSettings, ...data };
+      }
+
+      const keysRes = await fetch('http://localhost:8000/api/settings/keys');
+      if (keysRes.ok) {
+        apiKeys = await keysRes.json();
+      }
+
+      const mcpRes = await fetch('http://localhost:8000/api/settings/mcp');
+      if (mcpRes.ok) {
+        mcpServers = await mcpRes.json();
+      }
+
+      const riskRes = await fetch('http://localhost:8000/api/settings/risk');
+      if (riskRes.ok) {
+        const data = await riskRes.json();
+        riskSettings = { ...riskSettings, ...data };
+      }
+
+      const dbRes = await fetch('http://localhost:8000/api/settings/database');
+      if (dbRes.ok) {
+        const data = await dbRes.json();
+        dbSettings = { ...dbSettings, ...data };
+      }
+
+      // Load model config
+      const modelRes = await fetch('/api/agent-config/models');
+      if (modelRes.ok) {
+        const data = await modelRes.json();
+        if (data.copilot) {
+          modelConfig.provider = data.copilot.provider || 'anthropic';
+          modelConfig.model = data.copilot.model || 'claude-sonnet-4-20250514';
+          modelConfig.baseUrl = providerBaseUrls[modelConfig.provider] || '';
         }
-      } catch (e) {
-        console.error('Failed to toggle skill:', e);
-        // Revert on error
-        skill.enabled = !skill.enabled;
       }
+
+      // Load available models
+      await loadModelConfig();
+    } catch (e) {
+      console.error('Failed to load settings:', e);
     }
   }
 
-  // Helper functions for skills management
-  function getSkillsByAgent(agent: string) {
-    return agentSkills.filter(s => s.agent === agent);
-  }
+  async function saveSettings() {
+    try {
+      await Promise.all([
+        fetch('http://localhost:8000/api/settings/general', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(generalSettings)
+        }),
+        fetch('http://localhost:8000/api/settings/risk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(riskSettings)
+        })
+      ]);
 
-  function getAgentDisplayName(agent: string) {
-    const names: Record<string, string> = {
-      copilot: 'Copilot',
-      analyst: 'Analyst',
-      quantcode: 'QuantCode'
-    };
-    return names[agent] || agent;
-  }
-
-  function allAgentSkillsEnabled(agent: string) {
-    const skills = getSkillsByAgent(agent);
-    return skills.length > 0 && skills.every(s => s.enabled);
-  }
-
-  function toggleAllAgentSkills(agent: string, enabled: boolean) {
-    for (const skill of agentSkills) {
-      if (skill.agent === agent) {
-        skill.enabled = enabled;
-        toggleAgentSkill(skill.id);
-      }
+      dispatch('settingsSaved');
+    } catch (e) {
+      console.error('Failed to save settings:', e);
     }
-  }
-
-  function testConnection(service: string) {
-    // Test API connection
-    console.log(`Testing connection to ${service}...`);
   }
 
   function exportSettings() {
     const settings = {
       general: generalSettings,
-      agent: agentSettings,
       risk: riskSettings,
       database: dbSettings
     };
@@ -653,44 +607,29 @@
     URL.revokeObjectURL(url);
   }
 
-  // Expose methods
   export function show() {
     settingsVisible = true;
   }
 
   export function hide() {
     settingsVisible = false;
-    dispatch('close'); // Emit close event for parent component
+    dispatch('close');
   }
 
-  // Apply theme changes reactively
+  // Reactive statements
   $: if (generalSettings.theme && settingsVisible) {
     applyTheme();
   }
 
-  // Apply language changes reactively
   $: if (generalSettings.language && settingsVisible) {
     applyLanguage();
   }
 
-  // Apply timezone changes reactively
   $: if (generalSettings.timezone && settingsVisible) {
     localStorage.setItem('timezone', generalSettings.timezone);
   }
 
-  function getServiceIcon(service: string) {
-    const icons: Record<string, typeof Cpu> = {
-      openai: Brain,
-      anthropic: Sparkles,
-      gemini: Zap,
-      openrouter: Globe,
-      together: Server,
-      groq: Cpu
-    };
-    return icons[service] || Key;
-  }
-
-  // Global Escape key handler for accessibility
+  // Global Escape key handler
   let handleGlobalEscape: ((e: KeyboardEvent) => void) | null = null;
 
   onMount(() => {
@@ -780,6 +719,14 @@
         </button>
         <button
           class="tab"
+          class:active={activeTab === 'models'}
+          on:click={() => activeTab = 'models'}
+        >
+          <ModelIcon size={16} />
+          <span>Models</span>
+        </button>
+        <button
+          class="tab"
           class:active={activeTab === 'risk'}
           on:click={() => activeTab = 'risk'}
         >
@@ -823,736 +770,177 @@
 
         <!-- API Keys -->
         {#if activeTab === 'api-keys'}
-          <div class="panel">
-            <div class="panel-header">
-              <h3>API Keys</h3>
-              <button class="btn primary" on:click={() => apiKeyModal = true}>
-                <Plus size={14} /> Add Key
-              </button>
-            </div>
-
-            <div class="info-box">
-              <AlertCircle size={16} />
-              <span>Your API keys are stored locally and encrypted. Never share them with anyone.</span>
-            </div>
-
-            <div class="keys-list">
-              {#each apiKeys as key}
-                <div class="key-item">
-                  <div class="key-icon">
-                    <svelte:component this={getServiceIcon(key.service)} />
-                  </div>
-                  <div class="key-info">
-                    <div class="key-name">{key.name}</div>
-                    <div class="key-service">{key.service}</div>
-                  </div>
-                  <div class="key-value">
-                    <code>{key.key.slice(0, 8)}...</code>
-                  </div>
-                  <div class="key-actions">
-                    <button class="icon-btn" on:click={() => testConnection(key.service)} title="Test Connection">
-                      <RefreshCw size={14} />
-                    </button>
-                    <button class="icon-btn danger" on:click={() => removeApiKey(key.id)} title="Remove">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              {:else}
-                <div class="empty-state">
-                  <Key size={32} />
-                  <p>No API keys configured</p>
-                  <button class="btn primary" on:click={() => apiKeyModal = true}>
-                    Add Your First API Key
-                  </button>
-                </div>
-              {/each}
-            </div>
-          </div>
+          <ApiKeysPanel
+            bind:apiKeys
+            bind:apiKeyModal
+            bind:newApiKey
+            on:addApiKey={addApiKey}
+            on:removeApiKey={(e) => removeApiKey(e.detail.id)}
+          />
         {/if}
 
         <!-- MCP Servers -->
         {#if activeTab === 'mcp-servers'}
+          <McpServersPanel
+            bind:mcpServers
+            bind:mcpModalOpen
+            bind:newMcpServer
+            on:addMcpServer={addMcpServer}
+            on:toggleMcpServer={(e) => toggleMcpServer(e.detail.id)}
+            on:removeMcpServer={(e) => removeMcpServer(e.detail.id)}
+          />
+        {/if}
+
+        <!-- Agents -->
+        {#if activeTab === 'agents'}
+          <AgentsPanel
+            bind:agentConfigs
+            bind:selectedAgent
+            bind:showRawEditor
+            bind:agentsMdContent
+            bind:agentsMdLoading
+            bind:agentsMdSaved
+            on:exportAgentsMd={exportAgentsMd}
+            on:importAgentsMd={importAgentsMd}
+            on:saveAgentsMd={saveAgentsMd}
+            on:selectAgent={handleAgentSelect}
+            on:updateAgentConfig={handleAgentConfigUpdate}
+          />
+        {/if}
+
+        <!-- Models -->
+        {#if activeTab === 'models'}
           <div class="panel">
             <div class="panel-header">
-              <h3>MCP Servers</h3>
-              <button class="btn primary" on:click={() => mcpModalOpen = true}>
-                <Plus size={14} /> Add Server
-              </button>
+              <h3>Model Configuration</h3>
+              <div class="header-actions">
+                <button class="icon-btn" on:click={loadModelConfig} title="Refresh">
+                  <RefreshCw size={16} />
+                </button>
+              </div>
             </div>
 
             <div class="info-box">
-              <Server size={16} />
-              <span>MCP servers extend agent capabilities with external tools and data sources.</span>
+              <Zap size={16} />
+              <span>Configure the default model provider and parameters for AI agents.</span>
             </div>
 
-            <div class="servers-list">
-              {#each mcpServers as server}
-                <div class="server-item">
-                  <div class="server-icon">
-                    <Terminal size={20} />
-                  </div>
-                  <div class="server-info">
-                    <div class="server-name">{server.name}</div>
-                    <div class="server-desc">{server.description || 'Custom MCP server'}</div>
-                    <div class="server-command">
-                      <code>{server.command} {server.args.join(' ')}</code>
-                    </div>
-                  </div>
-                  <div class="server-status">
-                    <span class="status-badge" class:running={server.status === 'running'} class:stopped={server.status === 'stopped'} class:error={server.status === 'error'}>
-                      {server.status}
-                    </span>
-                  </div>
-                  <div class="server-actions">
-                    <button
-                      class="icon-btn"
-                      on:click={() => toggleMcpServer(server.id)}
-                      title={server.status === 'running' ? 'Stop' : 'Start'}
-                    >
-                      {#if server.status === 'running'}
-                        <EyeOff size={14} />
-                      {:else}
-                        <Eye size={14} />
-                      {/if}
-                    </button>
-                    {#if server.type === 'custom'}
-                      <button class="icon-btn danger" on:click={() => removeMcpServer(server.id)} title="Remove">
-                        <Trash2 size={14} />
-                      </button>
+            <div class="setting-group">
+              <label>Provider</label>
+              <select bind:value={modelConfig.provider} on:change={handleProviderChange}>
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="zhipu">Zhipu (GLM)</option>
+                <option value="minimax">MiniMax</option>
+                <option value="openai">OpenAI</option>
+                <option value="deepseek">DeepSeek</option>
+              </select>
+            </div>
+
+            {#if modelConfig.provider !== 'anthropic'}
+              <div class="setting-group">
+                <label>Base URL</label>
+                <input
+                  type="text"
+                  class="text-input"
+                  bind:value={modelConfig.baseUrl}
+                  placeholder={providerBaseUrls[modelConfig.provider] || 'Enter base URL'}
+                />
+                <small>Default: {providerBaseUrls[modelConfig.provider] || 'N/A'}</small>
+              </div>
+
+              <div class="setting-group">
+                <label>API Key</label>
+                <div class="password-input-wrapper">
+                  <input
+                    type={modelConfig.showApiKey ? 'text' : 'password'}
+                    class="text-input"
+                    bind:value={modelConfig.apiKey}
+                    placeholder="Enter API key"
+                  />
+                  <button
+                    class="icon-btn"
+                    type="button"
+                    on:click={() => modelConfig.showApiKey = !modelConfig.showApiKey}
+                  >
+                    {#if modelConfig.showApiKey}
+                      <EyeOff size={14} />
+                    {:else}
+                      <Eye size={14} />
                     {/if}
-                  </div>
-                </div>
-              {:else}
-                <div class="empty-state">
-                  <Server size={32} />
-                  <p>No MCP servers configured</p>
-                  <button class="btn primary" on:click={() => mcpModalOpen = true}>
-                    Add MCP Server
                   </button>
                 </div>
-              {/each}
-            </div>
-          </div>
-        {/if}
+              </div>
+            {/if}
 
-        <!-- Agents Settings -->
-        {#if activeTab === 'agents'}
-          <div class="panel">
-            <div class="panel-header">
-              <h3>Agent Configuration</h3>
-              <div class="header-actions">
-                <button class="btn secondary" on:click={exportAgentsMd} title="Export AGENTS.md">
-                  <Download size={14} /> Export
-                </button>
-                <button class="btn secondary" on:click={importAgentsMd} title="Import AGENTS.md">
-                  <UploadIcon size={14} /> Import
-                </button>
-                <button
-                  class="btn primary"
-                  on:click={saveAgentsMd}
-                  disabled={agentsMdLoading}
-                  class:loading={agentsMdLoading}
-                  class:saved={agentsMdSaved}
-                >
-                  {#if agentsMdLoading}
-                    <RefreshCw size={14} class="spinning" />
-                  {:else if agentsMdSaved}
-                    <Check size={14} />
+            <div class="setting-group">
+              <label>Model</label>
+              <select bind:value={modelConfig.model} disabled={modelConfig.availableModels.length === 0}>
+                {#if modelConfig.availableModels.length > 0}
+                  {#each modelConfig.availableModels as model}
+                    <option value={model.id}>{model.name} ({model.tier})</option>
+                  {/each}
+                {:else}
+                  {#if modelConfig.provider === 'anthropic'}
+                    <option value="claude-opus-4-20250514">Claude Opus 4</option>
+                    <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                    <option value="claude-haiku-3-20240307">Claude Haiku 3.5</option>
                   {:else}
-                    <Save size={14} />
+                    <option value="">Loading models...</option>
                   {/if}
-                  {agentsMdLoading ? 'Saving...' : agentsMdSaved ? 'Saved!' : 'Save'}
-                </button>
-              </div>
-            </div>
-
-            <div class="info-box">
-              <FileText size={16} />
-              <span>Configure agent behavior, prompts, model settings, and skills. Edit via the visual editor or raw markdown.</span>
-            </div>
-
-            <!-- Agent Selector Tabs -->
-            <div class="agent-selector-tabs">
-              <button
-                class="agent-tab"
-                class:active={selectedAgent === 'copilot'}
-                on:click={() => selectedAgent = 'copilot'}
-              >
-                <Bot size={14} />
-                <span>Copilot</span>
-              </button>
-              <button
-                class="agent-tab"
-                class:active={selectedAgent === 'quantcode'}
-                on:click={() => selectedAgent = 'quantcode'}
-              >
-                <Code size={14} />
-                <span>QuantCode</span>
-              </button>
-              <button
-                class="agent-tab"
-                class:active={selectedAgent === 'analyst'}
-                on:click={() => selectedAgent = 'analyst'}
-              >
-                <TrendingUp size={14} />
-                <span>Analyst</span>
-              </button>
-            </div>
-
-            <!-- Editor Mode Toggle -->
-            <div class="editor-mode-toggle">
-              <button
-                class="mode-btn"
-                class:active={showRawEditor}
-                on:click={() => showRawEditor = true}
-              >
-                <Terminal size={14} /> Raw Markdown
-              </button>
-              <button
-                class="mode-btn"
-                class:active={!showRawEditor}
-                on:click={() => showRawEditor = false}
-              >
-                <Sliders size={14} /> Visual Editor
-              </button>
-            </div>
-
-            {#if showRawEditor}
-              <!-- Raw Markdown Editor -->
-              <div class="agents-md-editor">
-                <textarea
-                  bind:value={agentsMdContent}
-                  rows="30"
-                  class="code-editor"
-                  placeholder="# Agent Configuration
-
-Configure your agent behavior here..."
-                ></textarea>
-              </div>
-            {:else}
-              <!-- Visual Per-Agent Configuration Editor -->
-              {#if selectedAgent && agentConfigs[selectedAgent]}
-                <div class="agent-config-editor">
-                  <!-- Agent Role & Description -->
-                  <div class="setting-group">
-                    <label>Agent Identity</label>
-                    <div class="setting-row">
-                      <span>Agent Name</span>
-                      <input type="text" value={agentConfigs[selectedAgent].name} class="text-input" readonly />
-                    </div>
-                    <div class="setting-row">
-                      <span>Role</span>
-                      <input type="text" bind:value={agentConfigs[selectedAgent].role} class="text-input" />
-                    </div>
-                  </div>
-
-                  <!-- Model Configuration -->
-                  <div class="setting-group">
-                    <label>Model Configuration</label>
-                    <div class="setting-row">
-                      <span>Provider</span>
-                      <select bind:value={agentConfigs[selectedAgent].provider}>
-                        <option value="openrouter">OpenRouter</option>
-                        <option value="anthropic">Anthropic</option>
-                        <option value="zhipu">Zhipu AI</option>
-                      </select>
-                    </div>
-                    <div class="setting-row">
-                      <span>Model</span>
-                      <input type="text" bind:value={agentConfigs[selectedAgent].model} class="text-input" placeholder="anthropic/claude-sonnet-4" />
-                    </div>
-                    <div class="setting-row">
-                      <span>Temperature: {agentConfigs[selectedAgent].temperature.toFixed(2)}</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        bind:value={agentConfigs[selectedAgent].temperature}
-                        class="slider-input"
-                      />
-                    </div>
-                    <div class="setting-row">
-                      <span>Max Tokens</span>
-                      <input
-                        type="number"
-                        min="1024"
-                        max="128000"
-                        step="1024"
-                        bind:value={agentConfigs[selectedAgent].maxTokens}
-                        class="number-input"
-                      />
-                    </div>
-                  </div>
-
-                  <!-- System Prompt -->
-                  <div class="setting-group">
-                    <label>System Prompt</label>
-                    <div class="prompt-editor">
-                      <textarea
-                        bind:value={agentConfigs[selectedAgent].systemPrompt}
-                        rows="12"
-                        class="prompt-textarea"
-                        placeholder="Enter the system prompt for this agentConfigs[selectedAgent]..."
-                      ></textarea>
-                    </div>
-                    <small class="help-text">This prompt defines the agent's behavior and responsibilities.</small>
-                  </div>
-
-                  <!-- Skills -->
-                  <div class="setting-group">
-                    <label>
-                      Skills
-                      <button class="add-skill-btn" on:click={() => {
-                        const newId = `custom-${Date.now()}`;
-                        agentConfigs[selectedAgent].skills = [...agentConfigs[selectedAgent].skills, {
-                          id: newId,
-                          name: 'New Skill',
-                          description: 'Add skill description',
-                          enabled: true
-                        }];
-                      }}>
-                          <Plus size={12} /> Add Skill
-                        </button>
-                    </label>
-                    <div class="skills-grid">
-                      {#each agentConfigs[selectedAgent].skills as skill, index}
-                        <div class="skill-config-item">
-                          <div class="skill-header">
-                            <label class="switch small">
-                              <input type="checkbox" bind:checked={skill.enabled} />
-                              <span class="slider"></span>
-                            </label>
-                            <input
-                              type="text"
-                              bind:value={skill.name}
-                              class="skill-name-input"
-                              placeholder="Skill name"
-                            />
-                            <button
-                              class="icon-btn danger"
-                              on:click={() => agentConfigs[selectedAgent].skills = agentConfigs[selectedAgent].skills.filter((_, i) => i !== index)}
-                              title="Remove skill"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                          <input
-                            type="text"
-                            bind:value={skill.description}
-                            class="skill-desc-input"
-                            placeholder="Skill description"
-                          />
-                        </div>
-                      {/each}
-                    </div>
-                  </div>
-
-                  <!-- Tools -->
-                  <div class="setting-group">
-                    <label>Available Tools</label>
-                    <div class="tools-list">
-                      {#each ['get_market_data', 'run_backtest', 'get_position_size', 'store_semantic_memory', 'search_semantic_memories'] as tool}
-                        <label class="tool-checkbox">
-                          <input type="checkbox" checked={agentConfigs[selectedAgent].tools.includes(tool)} on:change={(e) => {
-                            if (e.target.checked) {
-                              agentConfigs[selectedAgent].tools = [...agentConfigs[selectedAgent].tools, tool];
-                            } else {
-                              agentConfigs[selectedAgent].tools = agentConfigs[selectedAgent].tools.filter(t => t !== tool);
-                            }
-                          }} />
-                          <code>{tool}</code>
-                        </label>
-                      {/each}
-                    </div>
-                  </div>
-                </div>
+                {/if}
+              </select>
+              {#if modelConfig.availableModels.length === 0 && modelConfig.provider !== 'anthropic'}
+                <small>Configure API key to load available models</small>
               {/if}
-            {/if}
+            </div>
+
+            <div class="form-actions">
+              <button class="btn primary" on:click={saveModelConfig} disabled={modelConfig.isSaving}>
+                {#if modelConfig.isSaving}
+                  <RefreshCw size={14} class="spinning" />
+                  Saving...
+                {:else}
+                  <Save size={14} />
+                  Save Configuration
+                {/if}
+              </button>
+            </div>
           </div>
         {/if}
 
-        <!-- Risk Management Settings -->
+        <!-- Risk -->
         {#if activeTab === 'risk'}
-          <div class="panel">
-            <h3>Risk Management</h3>
-
-            <div class="setting-group">
-              <label>House Money Effect</label>
-              <div class="setting-row">
-                <span>Enable House Money</span>
-                <label class="switch">
-                  <input type="checkbox" bind:checked={riskSettings.houseMoneyEnabled} />
-                  <span class="slider"></span>
-                </label>
-              </div>
-              <div class="setting-row">
-                <span>Threshold (% of daily profit)</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  bind:value={riskSettings.houseMoneyThreshold}
-                  class="number-input"
-                />
-              </div>
-            </div>
-
-            <div class="setting-group">
-              <label>Risk Limits</label>
-              <div class="setting-row">
-                <span>Daily Loss Limit (%)</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  bind:value={riskSettings.dailyLossLimit}
-                  class="number-input"
-                />
-              </div>
-              <div class="setting-row">
-                <span>Max Drawdown (%)</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="50"
-                  bind:value={riskSettings.maxDrawdown}
-                  class="number-input"
-                />
-              </div>
-            </div>
-
-            <div class="setting-group">
-              <label>Prop Firm Preset</label>
-              <div class="setting-row">
-                <span>Select Preset</span>
-                <select bind:value={riskSettings.propFirmPreset} class="select-input">
-                  <option value="ftmo">FTMO</option>
-                  <option value="the5ers">The5ers</option>
-                  <option value="fundingpips">FundingPips</option>
-                  <option value="custom">Custom</option>
-                </select>
-              </div>
-              {#if riskSettings.propFirmPreset !== 'custom'}
-                <p class="hint">
-                  Preset: {PROP_FIRM_PRESETS[riskSettings.propFirmPreset].name} -
-                  Max Risk: {PROP_FIRM_PRESETS[riskSettings.propFirmPreset].maxRisk}%,
-                  Daily Loss: {PROP_FIRM_PRESETS[riskSettings.propFirmPreset].dailyLoss}%,
-                  Total Loss: {PROP_FIRM_PRESETS[riskSettings.propFirmPreset].totalLoss}%
-                </p>
-              {/if}
-            </div>
-
-            <div class="setting-group">
-              <label>Risk Mode</label>
-              <div class="setting-row">
-                <span>Mode</span>
-                <select bind:value={riskSettings.riskMode}>
-                  <option value="fixed">Fixed (constant risk)</option>
-                  <option value="dynamic">Dynamic (adjusts to conditions)</option>
-                  <option value="conservative">Conservative (protects capital)</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="setting-group">
-              <label>Balance Zones</label>
-              <div class="zones-grid">
-                <div class="zone-item danger">
-                  <span class="zone-label">DANGER</span>
-                  <span class="zone-amount">${riskSettings.balanceZones.danger}</span>
-                </div>
-                <div class="zone-item growth">
-                  <span class="zone-label">GROWTH</span>
-                  <span class="zone-amount">${riskSettings.balanceZones.growth}</span>
-                </div>
-                <div class="zone-item scaling">
-                  <span class="zone-label">SCALING</span>
-                  <span class="zone-amount">${riskSettings.balanceZones.scaling}</span>
-                </div>
-                <div class="zone-item guardian">
-                  <span class="zone-label">GUARDIAN</span>
-                  <span class="zone-amount">{riskSettings.balanceZones.guardian === Infinity ? '∞' : '$' + riskSettings.balanceZones.guardian}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <RiskPanel
+            bind:riskSettings
+            on:updateRiskSettings={handleRiskUpdate}
+          />
         {/if}
 
-        <!-- Database Settings -->
+        <!-- Database -->
         {#if activeTab === 'database'}
-          <div class="panel">
-            <h3>Database Configuration</h3>
-
-            <div class="setting-group">
-              <label>Connection Type</label>
-              <div class="connection-type-selector">
-                <button
-                  class="connection-type-btn"
-                  class:active={dbSettings.connectionType === 'sqlite'}
-                  on:click={() => dbSettings.connectionType = 'sqlite'}
-                >
-                  <Database size={16} />
-                  <span>SQLite</span>
-                </button>
-                <button
-                  class="connection-type-btn"
-                  class:active={dbSettings.connectionType === 'postgresql'}
-                  on:click={() => dbSettings.connectionType = 'postgresql'}
-                >
-                  <Server size={16} />
-                  <span>PostgreSQL</span>
-                </button>
-              </div>
-            </div>
-
-            {#if dbSettings.connectionType === 'postgresql'}
-              <div class="setting-group">
-                <label>PostgreSQL Connection</label>
-                <div class="setting-row">
-                  <span>Database URL</span>
-                  <input
-                    type="text"
-                    bind:value={dbSettings.databaseUrl}
-                    class="text-input"
-                    placeholder="postgresql://user:pass@host:5432/dbname"
-                  />
-                </div>
-              </div>
-            {/if}
-
-            {#if dbSettings.connectionType === 'sqlite'}
-              <div class="setting-group">
-                <label>SQLite (Transactional)</label>
-                <div class="setting-row">
-                  <span>Path</span>
-                  <input type="text" bind:value={dbSettings.sqlitePath} class="text-input" />
-                </div>
-              </div>
-            {/if}
-
-            <div class="setting-group">
-              <label>DuckDB (Analytics)</label>
-              <div class="setting-row">
-                <span>Path</span>
-                <input type="text" bind:value={dbSettings.duckdbPath} class="text-input" />
-              </div>
-            </div>
-
-            <div class="setting-group">
-              <label>Backup</label>
-              <div class="setting-row">
-                <span>Auto Backup</span>
-                <label class="switch">
-                  <input type="checkbox" bind:checked={dbSettings.autoBackup} />
-                  <span class="slider"></span>
-                </label>
-              </div>
-              {#if dbSettings.autoBackup}
-                <div class="setting-row">
-                  <span>Interval (seconds)</span>
-                  <input
-                    type="number"
-                    min="300"
-                    max="86400"
-                    bind:value={dbSettings.backupInterval}
-                    class="number-input"
-                  />
-                </div>
-                <div class="setting-row">
-                  <span>Max Backups</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="50"
-                    bind:value={dbSettings.maxBackups}
-                    class="number-input"
-                  />
-                </div>
-              {/if}
-            </div>
-
-            <div class="setting-group">
-              <label>Storage Info</label>
-              <div class="storage-info">
-                <div class="storage-item">
-                  <HardDrive size={16} />
-                  <div class="storage-details">
-                    <span class="label">SQLite Database</span>
-                    <span class="size">~2.4 MB</span>
-                  </div>
-                </div>
-                <div class="storage-item">
-                  <Cpu size={16} />
-                  <div class="storage-details">
-                    <span class="label">DuckDB Analytics</span>
-                    <span class="size">~15.8 MB</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <DatabasePanel
+            bind:dbSettings
+            on:updateDbSettings={handleDbUpdate}
+          />
         {/if}
 
-        <!-- Connection Settings -->
+        <!-- Connection -->
         {#if activeTab === 'connection'}
-          <div class="panel">
-            <h3>Connection Settings</h3>
-
-            <div class="setting-group">
-              <label>Redis URL</label>
-              <input type="text" bind:value={connectionSettings.redisUrl} class="text-input" />
-            </div>
-
-            <div class="setting-group">
-              <label>ZMQ Endpoint</label>
-              <input type="text" bind:value={connectionSettings.zmqEndpoint} class="text-input" />
-            </div>
-
-            <h4>MetaTrader 5</h4>
-            <div class="setting-group">
-              <label>Login</label>
-              <input type="number" bind:value={connectionSettings.mt5Login} class="text-input" />
-            </div>
-            <div class="setting-group">
-              <label>Password</label>
-              <input type="password" bind:value={connectionSettings.mt5Password} class="text-input" />
-            </div>
-            <div class="setting-group">
-              <label>Server</label>
-              <input type="text" bind:value={connectionSettings.mt5Server} class="text-input" />
-            </div>
-          </div>
+          <ConnectionPanel
+            bind:connectionSettings
+            on:updateConnectionSettings={handleConnectionUpdate}
+          />
         {/if}
 
-        <!-- Security Settings -->
+        <!-- Security -->
         {#if activeTab === 'security'}
-          <div class="panel">
-            <h3>Security</h3>
-
-            <div class="setting-group">
-              <label>Secret Key Status</label>
-              {#if securitySettings.secretKeyConfigured}
-                <span class="status-badge success">Configured</span>
-                <p class="hint">Key starts with: {securitySettings.secretKeyPrefix}***</p>
-              {:else}
-                <span class="status-badge warning">Not Configured</span>
-                <p class="hint">Set SECRET_KEY environment variable</p>
-              {/if}
-            </div>
-
-            <div class="setting-group">
-              <button class="btn btn-secondary">
-                <RefreshCw size={16} />
-                Generate New Key
-              </button>
-            </div>
-          </div>
+          <SecurityPanel
+            bind:securitySettings
+          />
         {/if}
       </div>
     </div>
   </div>
-
-  <!-- API Key Modal -->
-  {#if apiKeyModal}
-    <div class="modal-overlay" on:click|self={() => apiKeyModal = false}>
-      <div class="modal">
-        <div class="modal-header">
-          <h3>Add API Key</h3>
-          <button on:click={() => apiKeyModal = false}><X size={20} /></button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>Name</label>
-            <input type="text" placeholder="My OpenAI Key" bind:value={newApiKey.name} />
-          </div>
-          <div class="form-group">
-            <label>Service</label>
-            <select bind:value={newApiKey.service}>
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic</option>
-              <option value="gemini">Google Gemini</option>
-              <option value="openrouter">OpenRouter</option>
-              <option value="together">Together AI</option>
-              <option value="groq">Groq</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>API Key</label>
-            <input type="password" placeholder="sk-..." bind:value={newApiKey.key} />
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn secondary" on:click={() => apiKeyModal = false}>Cancel</button>
-          <button class="btn primary" on:click={addApiKey}>Add Key</button>
-        </div>
-      </div>
-    </div>
-  {/if}
-
-  <!-- MCP Server Modal -->
-  {#if mcpModalOpen}
-    <div class="modal-overlay" on:click|self={() => mcpModalOpen = false}>
-      <div class="modal">
-        <div class="modal-header">
-          <h3>Add MCP Server</h3>
-          <button on:click={() => mcpModalOpen = false}><X size={20} /></button>
-        </div>
-        <div class="modal-body">
-          <!-- Quick Add Templates -->
-          <div class="quick-add-section">
-            <h4>Quick Add</h4>
-            <div class="template-grid">
-              {#each DEFAULT_MCP_SERVERS as template}
-                <button
-                  class="template-card"
-                  on:click={() => {
-                    newMcpServer = {
-                      name: template.name,
-                      command: template.command,
-                      args: template.args.join(' '),
-                      description: template.description
-                    };
-                  }}
-                >
-                  <Terminal size={16} />
-                  <span>{template.name}</span>
-                </button>
-              {/each}
-            </div>
-          </div>
-
-          <div class="divider">
-            <span>or add custom</span>
-          </div>
-
-          <div class="form-group">
-            <label>Server Name</label>
-            <input type="text" placeholder="My Custom Server" bind:value={newMcpServer.name} />
-          </div>
-          <div class="form-group">
-            <label>Command</label>
-            <input type="text" placeholder="npx" bind:value={newMcpServer.command} />
-            <small>The executable or command to run</small>
-          </div>
-          <div class="form-group">
-            <label>Arguments (space-separated)</label>
-            <input type="text" placeholder="-y @package/server --port 3000" bind:value={newMcpServer.args} />
-            <small>Command line arguments, separated by spaces</small>
-          </div>
-          <div class="form-group">
-            <label>Description</label>
-            <textarea placeholder="What this server does..." bind:value={newMcpServer.description}></textarea>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn secondary" on:click={() => mcpModalOpen = false}>Cancel</button>
-          <button class="btn primary" on:click={addMcpServer}>Add Server</button>
-        </div>
-      </div>
-    </div>
-  {/if}
 </div>
 
 <style>
@@ -1586,7 +974,6 @@ Configure your agent behavior here..."
     box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
   }
 
-  /* Header */
   .settings-header {
     display: flex;
     justify-content: space-between;
@@ -1618,7 +1005,6 @@ Configure your agent behavior here..."
     gap: 8px;
   }
 
-  /* Content */
   .settings-content {
     flex: 1;
     display: flex;
@@ -1633,6 +1019,7 @@ Configure your agent behavior here..."
     gap: 4px;
     border-right: 1px solid var(--border-subtle);
     background: var(--bg-primary);
+    overflow-y: auto;
   }
 
   .settings-tabs .tab {
@@ -1671,10 +1058,20 @@ Configure your agent behavior here..."
     border-radius: 10px;
   }
 
+  .settings-tabs .tab.active .badge {
+    background: rgba(255, 255, 255, 0.2);
+    color: var(--bg-primary);
+  }
+
   .settings-panels {
     flex: 1;
     padding: 24px;
     overflow-y: auto;
+  }
+
+  .panel {
+    background: var(--bg-secondary);
+    border-radius: 8px;
   }
 
   .panel h3 {
@@ -1683,19 +1080,30 @@ Configure your agent behavior here..."
     color: var(--text-primary);
   }
 
-  .panel-header {
+  .panel h4 {
+    margin: 20px 0 12px;
+    font-size: 14px;
+    color: var(--text-primary);
+  }
+
+  /* Common styles for panels */
+  .panel :global(.panel-header) {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 16px;
   }
 
-  .panel-header h3 {
+  .panel :global(.panel-header h3) {
     margin: 0;
   }
 
-  /* Setting Groups */
-  .setting-group {
+  .panel :global(.header-actions) {
+    display: flex;
+    gap: 8px;
+  }
+
+  .panel :global(.setting-group) {
     margin-bottom: 24px;
     padding: 16px;
     background: var(--bg-primary);
@@ -1703,7 +1111,7 @@ Configure your agent behavior here..."
     border-radius: 8px;
   }
 
-  .setting-group label {
+  .panel :global(.setting-group label) {
     display: block;
     font-size: 12px;
     font-weight: 500;
@@ -1711,7 +1119,7 @@ Configure your agent behavior here..."
     margin-bottom: 12px;
   }
 
-  .setting-row {
+  .panel :global(.setting-row) {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1719,166 +1127,11 @@ Configure your agent behavior here..."
     font-size: 13px;
   }
 
-  .setting-row span:first-child {
+  .panel :global(.setting-row span:first-child) {
     color: var(--text-primary);
   }
 
-  /* Inputs */
-  input[type="text"],
-  input[type="number"],
-  input[type="password"],
-  select,
-  textarea {
-    padding: 8px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 6px;
-    color: var(--text-primary);
-    font-size: 13px;
-    font-family: inherit;
-  }
-
-  input[type="text"],
-  input[type="number"],
-  input[type="password"] {
-    width: 200px;
-  }
-
-  .text-input {
-    width: 100%;
-  }
-
-  .number-input {
-    width: 100px;
-  }
-
-  textarea {
-    width: 100%;
-    min-height: 80px;
-    resize: vertical;
-  }
-
-  select {
-    cursor: pointer;
-  }
-
-  /* Switch */
-  .switch {
-    position: relative;
-    display: inline-block;
-    width: 44px;
-    height: 24px;
-  }
-
-  .switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-  }
-
-  .slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--border-subtle);
-    transition: 0.3s;
-    border-radius: 24px;
-  }
-
-  .slider:before {
-    position: absolute;
-    content: "";
-    height: 18px;
-    width: 18px;
-    left: 3px;
-    bottom: 3px;
-    background-color: white;
-    transition: 0.3s;
-    border-radius: 50%;
-  }
-
-  input:checked + .slider {
-    background-color: var(--accent-primary);
-  }
-
-  input:checked + .slider:before {
-    transform: translateX(20px);
-  }
-
-  /* Range Slider */
-  .slider-input {
-    -webkit-appearance: none;
-    width: 120px;
-    height: 6px;
-    background: var(--bg-tertiary);
-    border-radius: 3px;
-    outline: none;
-  }
-
-  .slider-input::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 16px;
-    height: 16px;
-    background: var(--accent-primary);
-    border-radius: 50%;
-    cursor: pointer;
-  }
-
-  /* Buttons */
-  .btn {
-    padding: 8px 16px;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    border: none;
-    transition: all 0.15s;
-  }
-
-  .btn.primary {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
-  }
-
-  .btn.secondary {
-    background: var(--bg-tertiary);
-    color: var(--text-secondary);
-  }
-
-  .icon-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    background: transparent;
-    border: none;
-    border-radius: 6px;
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .icon-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-  }
-
-  .icon-btn.primary {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
-  }
-
-  .icon-btn.danger:hover {
-    background: rgba(239, 68, 68, 0.2);
-    color: #ef4444;
-  }
-
-  /* Info Box */
-  .info-box {
+  .panel :global(.info-box) {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -1891,258 +1144,227 @@ Configure your agent behavior here..."
     color: var(--text-secondary);
   }
 
-  /* Keys List */
-  .keys-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+  .panel :global(.btn) {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
 
-  .key-item {
+  .panel :global(.btn.primary) {
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+  }
+
+  .panel :global(.btn.secondary) {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+  }
+
+  .panel :global(.icon-btn) {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 8px;
-  }
-
-  .key-icon {
+    justify-content: center;
     width: 36px;
     height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg-tertiary);
+    background: transparent;
+    border: none;
     border-radius: 6px;
-    color: var(--accent-primary);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
   }
 
-  .key-info {
-    flex: 1;
-  }
-
-  .key-name {
-    font-size: 13px;
-    font-weight: 500;
+  .panel :global(.icon-btn:hover) {
+    background: var(--bg-tertiary);
     color: var(--text-primary);
   }
 
-  .key-service {
-    font-size: 11px;
-    color: var(--text-muted);
+  .panel :global(.icon-btn.primary) {
+    background: var(--accent-primary);
+    color: var(--bg-primary);
   }
 
-  .key-value code {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    color: var(--text-muted);
-    background: var(--bg-tertiary);
-    padding: 4px 8px;
-    border-radius: 4px;
-  }
-
-  .key-actions {
-    display: flex;
-    gap: 4px;
-  }
-
-  /* MCP Servers */
-  .servers-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .server-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 8px;
-  }
-
-  .server-icon {
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg-tertiary);
-    border-radius: 6px;
-    color: var(--accent-primary);
-  }
-
-  .server-info {
-    flex: 1;
-  }
-
-  .server-name {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-primary);
-  }
-
-  .server-desc {
-    font-size: 11px;
-    color: var(--text-muted);
-    margin: 2px 0;
-  }
-
-  .server-command code {
-    display: block;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: var(--text-muted);
-    background: var(--bg-tertiary);
-    padding: 4px 8px;
-    border-radius: 4px;
-    margin-top: 4px;
-  }
-
-  .status-badge {
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 11px;
-    font-weight: 500;
-    text-transform: uppercase;
-  }
-
-  .status-badge.running {
-    background: rgba(16, 185, 129, 0.2);
-    color: #10b981;
-  }
-
-  .status-badge.stopped {
-    background: var(--bg-tertiary);
-    color: var(--text-muted);
-  }
-
-  .status-badge.error {
+  .panel :global(.icon-btn.danger:hover) {
     background: rgba(239, 68, 68, 0.2);
     color: #ef4444;
   }
 
-  /* Skills List - removed unused selectors */
+  .panel :global(input[type="text"]),
+  .panel :global(input[type="number"]),
+  .panel :global(input[type="password"]),
+  .panel :global(select),
+  .panel :global(textarea) {
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: inherit;
+  }
 
-  .stat-value.disabled {
+  .panel :global(input[type="text"]),
+  .panel :global(input[type="number"]),
+  .panel :global(input[type="password"]) {
+    width: 200px;
+  }
+
+  .panel :global(.text-input) {
+    width: 100%;
+  }
+
+  .panel :global(.number-input) {
+    width: 100px;
+  }
+
+  .panel :global(textarea) {
+    width: 100%;
+    min-height: 80px;
+    resize: vertical;
+  }
+
+  .panel :global(.switch) {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+  }
+
+  .panel :global(.switch input) {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .panel :global(.slider) {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--border-subtle);
+    transition: 0.3s;
+    border-radius: 24px;
+  }
+
+  .panel :global(.slider:before) {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+  }
+
+  .panel :global(input:checked + .slider) {
+    background-color: var(--accent-primary);
+  }
+
+  .panel :global(input:checked + .slider:before) {
+    transform: translateX(20px);
+  }
+
+  .panel :global(.slider-input) {
+    -webkit-appearance: none;
+    width: 120px;
+    height: 6px;
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+    outline: none;
+  }
+
+  .panel :global(.slider-input::-webkit-slider-thumb) {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--accent-primary);
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  .panel :global(.status-badge) {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .panel :global(.status-badge.success) {
+    background: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+  }
+
+  .panel :global(.status-badge.warning) {
+    background: rgba(234, 179, 8, 0.2);
+    color: #eab308;
+  }
+
+  .panel :global(.status-badge.running) {
+    background: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+  }
+
+  .panel :global(.status-badge.stopped) {
+    background: rgba(156, 163, 175, 0.2);
+    color: #9ca3af;
+  }
+
+  .panel :global(.status-badge.error) {
+    background: rgba(239, 68, 68, 0.2);
     color: #ef4444;
   }
 
-  /* Zones Grid */
-  .zones-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-  }
-
-  .zone-item {
-    padding: 16px;
-    border-radius: 8px;
-    text-align: center;
-  }
-
-  .zone-item.danger {
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-  }
-
-  .zone-item.growth {
-    background: rgba(245, 158, 11, 0.1);
-    border: 1px solid rgba(245, 158, 11, 0.3);
-  }
-
-  .zone-item.scaling {
-    background: rgba(59, 130, 246, 0.1);
-    border: 1px solid rgba(59, 130, 246, 0.3);
-  }
-
-  .zone-item.guardian {
-    background: rgba(16, 185, 129, 0.1);
-    border: 1px solid rgba(16, 185, 129, 0.3);
-  }
-
-  .zone-label {
-    display: block;
-    font-size: 10px;
-    font-weight: 600;
-    margin-bottom: 4px;
-  }
-
-  .zone-amount {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  /* Storage Info */
-  .storage-info {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .storage-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px;
-    background: var(--bg-tertiary);
-    border-radius: 6px;
-  }
-
-  .storage-details {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .storage-details .label {
+  .panel :global(.hint) {
+    margin-top: 8px;
     font-size: 12px;
-    color: var(--text-primary);
-  }
-
-  .storage-details .size {
-    font-size: 11px;
     color: var(--text-muted);
   }
 
-  /* Empty State */
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 40px;
+  .panel :global(.empty-state) {
     text-align: center;
+    padding: 40px 20px;
     color: var(--text-muted);
   }
 
-  .empty-state span {
+  .panel :global(.empty-state p) {
     margin: 12px 0;
   }
 
-  /* Modal */
-  .modal-overlay {
-    position: absolute;
+  /* Modal styles */
+  .panel :global(.modal-overlay) {
+    position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.7);
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 10;
+    z-index: 1001;
   }
 
-  .modal {
+  .panel :global(.modal) {
     background: var(--bg-secondary);
     border-radius: 12px;
     width: 480px;
-    max-width: 90%;
+    max-width: 90vw;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
-  .modal-header {
+  .panel :global(.modal-header) {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -2150,35 +1372,25 @@ Configure your agent behavior here..."
     border-bottom: 1px solid var(--border-subtle);
   }
 
-  .modal-header h3 {
+  .panel :global(.modal-header h3) {
     margin: 0;
     font-size: 16px;
-    color: var(--text-primary);
   }
 
-  .modal-body {
+  .panel :global(.modal-header button) {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+  }
+
+  .panel :global(.modal-body) {
     padding: 20px;
+    overflow-y: auto;
   }
 
-  .form-group {
-    margin-bottom: 16px;
-  }
-
-  .form-group label {
-    display: block;
-    margin-bottom: 6px;
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-
-  .form-group small {
-    display: block;
-    margin-top: 4px;
-    font-size: 11px;
-    color: var(--text-muted);
-  }
-
-  .modal-footer {
+  .panel :global(.modal-footer) {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
@@ -2186,374 +1398,88 @@ Configure your agent behavior here..."
     border-top: 1px solid var(--border-subtle);
   }
 
-  /* Quick Add Section */
-  .quick-add-section {
-    margin-bottom: 20px;
+  .panel :global(.form-group) {
+    margin-bottom: 16px;
   }
 
-  .quick-add-section h4 {
-    margin: 0 0 12px;
-    font-size: 12px;
+  .panel :global(.form-group label) {
+    display: block;
+    font-size: 13px;
     font-weight: 500;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    color: var(--text-primary);
+    margin-bottom: 6px;
   }
 
-  .template-grid {
+  .panel :global(.form-group input),
+  .panel :global(.form-group select),
+  .panel :global(.form-group textarea) {
+    width: 100%;
+  }
+
+  .panel :global(.form-group small) {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .panel :global(.divider) {
+    text-align: center;
+    margin: 20px 0;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  .panel :global(.template-grid) {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 8px;
   }
 
-  .template-card {
+  .panel :global(.template-card) {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 12px;
-    background: var(--bg-primary);
+    padding: 10px;
+    background: var(--bg-tertiary);
     border: 1px solid var(--border-subtle);
-    border-radius: 8px;
+    border-radius: 6px;
     color: var(--text-primary);
     font-size: 12px;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all 0.15s;
   }
 
-  .template-card:hover {
-    background: var(--bg-secondary);
+  .panel :global(.template-card:hover) {
     border-color: var(--accent-primary);
-    transform: translateY(-1px);
+    background: var(--bg-primary);
   }
 
-  .template-card :global(svg) {
-    color: var(--accent-primary);
-    flex-shrink: 0;
-  }
-
-  .divider {
+  .panel :global(.password-input-wrapper) {
     display: flex;
+    gap: 8px;
     align-items: center;
-    gap: 12px;
-    margin: 20px 0;
-    color: var(--text-muted);
-    font-size: 11px;
   }
 
-  .divider::before,
-  .divider::after {
-    content: '';
+  .panel :global(.password-input-wrapper input) {
     flex: 1;
-    height: 1px;
-    background: var(--border-subtle);
   }
 
-  /* AGENTS.md Editor */
-  .agents-md-editor {
-    margin-top: 16px;
+  .panel :global(.form-actions) {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-subtle);
   }
 
-  .code-editor {
-    font-family: 'JetBrains Mono', 'Monaco', 'Courier New', monospace;
-    font-size: 13px;
-    line-height: 1.5;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 8px;
-    padding: 16px;
-    width: 100%;
-    min-height: 400px;
-    resize: vertical;
-    color: var(--text-primary);
-  }
-
-  .code-editor:focus {
-    outline: none;
-    border-color: var(--accent-primary);
-  }
-
-  /* Loading and Saved States */
-  .btn.loading {
-    opacity: 0.7;
-    cursor: not-allowed;
-  }
-
-  .btn.saved {
-    background: #10b981;
-    color: white;
-  }
-
-  .spinning {
+  .panel :global(.spinning) {
     animation: spin 1s linear infinite;
   }
 
   @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  /* Settings Panel Focus */
-  .settings-panel {
-    background: var(--bg-secondary);
-    border-radius: 12px;
-    width: 900px;
-    max-width: 95vw;
-    height: 85vh;
-    max-height: 90vh;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
-    outline: none;
-  }
-
-  .settings-panel:focus {
-    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5), 0 0 0 2px var(--accent-primary);
-  }
-
-  .icon-btn[title="Close"] {
-    margin-left: 8px;
-  }
-
-  .icon-btn[title="Close"]:hover {
-    background: rgba(239, 68, 68, 0.2);
-    color: #ef4444;
-  }
-
-  /* Agent Selector Tabs */
-  .agent-selector-tabs {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 16px;
-    padding: 4px;
-    background: var(--bg-primary);
-    border-radius: 8px;
-  }
-
-  .agent-tab {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 10px 16px;
-    background: transparent;
-    border: none;
-    border-radius: 6px;
-    color: var(--text-secondary);
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .agent-tab:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-  }
-
-  .agent-tab.active {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
-  }
-
-  /* Editor Mode Toggle */
-  .editor-mode-toggle {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 16px;
-  }
-
-  .mode-btn {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 8px 12px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 6px;
-    color: var(--text-secondary);
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .mode-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-  }
-
-  .mode-btn.active {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
-    color: var(--bg-primary);
-  }
-
-  /* Agent Configuration Editor */
-  .agent-config-editor {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .prompt-editor {
-    margin-top: 8px;
-  }
-
-  .prompt-textarea {
-    font-family: 'JetBrains Mono', 'Monaco', 'Courier New', monospace;
-    font-size: 13px;
-    line-height: 1.6;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 8px;
-    padding: 12px;
-    width: 100%;
-    min-height: 200px;
-    resize: vertical;
-    color: var(--text-primary);
-  }
-
-  .prompt-textarea:focus {
-    outline: none;
-    border-color: var(--accent-primary);
-  }
-
-  .help-text {
-    display: block;
-    margin-top: 6px;
-    font-size: 11px;
-    color: var(--text-muted);
-  }
-
-  /* Skills Grid */
-  .skills-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 12px;
-    margin-top: 12px;
-  }
-
-  .skill-config-item {
-    padding: 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 6px;
-  }
-
-  .skill-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-
-  .skill-name-input {
-    flex: 1;
-    padding: 6px 10px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 4px;
-    color: var(--text-primary);
-    font-size: 12px;
-    font-weight: 500;
-  }
-
-  .skill-desc-input {
-    width: 100%;
-    padding: 6px 10px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 4px;
-    color: var(--text-primary);
-    font-size: 11px;
-  }
-
-  .switch.small {
-    width: 32px;
-    height: 18px;
-  }
-
-  .switch.small .slider:before {
-    height: 14px;
-    width: 14px;
-    left: 2px;
-    bottom: 2px;
-  }
-
-  .switch.small input:checked + .slider:before {
-    transform: translateX(14px);
-  }
-
-  .add-skill-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    margin-left: auto;
-    padding: 4px 10px;
-    background: var(--accent-primary);
-    border: none;
-    border-radius: 4px;
-    color: var(--bg-primary);
-    font-size: 11px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .add-skill-btn:hover {
-    opacity: 0.9;
-  }
-
-  /* Tools List */
-  .tools-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 12px;
-  }
-
-  .tool-checkbox {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .tool-checkbox:hover {
-    background: var(--bg-primary);
-  }
-
-  .tool-checkbox input {
-    width: 14px;
-    height: 14px;
-    accent-color: var(--accent-primary);
-  }
-
-  .tool-checkbox code {
-    font-size: 11px;
-    color: var(--text-primary);
-  }
-
-  /* Header Actions */
-  .panel-header .header-actions {
-    display: flex;
-    gap: 8px;
-  }
-
-  /* Text Input Full Width */
-  input.text-input {
-    width: 200px;
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 </style>

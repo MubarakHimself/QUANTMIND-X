@@ -8,13 +8,18 @@ Provides endpoints for:
 """
 
 from fastapi import APIRouter, HTTPException
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 import logging
+import asyncio
 from zoneinfo import ZoneInfo
+import gc
+import os
+from pathlib import Path
 
 from src.router.sessions import SessionDetector, TradingSession, get_current_session, is_market_open, get_next_session_time
+from src.agents.memory.compaction import SessionCompactor, CompactionConfig, CompactionResult
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +71,49 @@ class TimezoneConvertResponse(BaseModel):
     converted_time: str = Field(..., description="Converted time in ISO format")
     converted_timezone: str = Field(..., description="Target timezone")
     session_context: Optional[str] = Field(None, description="Trading session at converted time")
+
+
+# =============================================================================
+# Session Compaction Models
+# =============================================================================
+
+class CompactionRequest(BaseModel):
+    """Request to compact a session."""
+    session_id: str = Field(..., description="Session ID to compact")
+    context_limit: int = Field(default=10000, description="Token limit after compaction")
+    preserve_recent: int = Field(default=4, description="Number of recent messages to preserve")
+
+
+class CompactionResponse(BaseModel):
+    """Response from session compaction."""
+    session_id: str
+    success: bool
+    original_tokens: int
+    compacted_tokens: int
+    reduction_ratio: float
+    summary: str
+    duration_ms: float
+    timestamp: str
+
+
+class CleanupRequest(BaseModel):
+    """Request to cleanup old sessions."""
+    older_than_hours: int = Field(default=24, description="Remove sessions inactive longer than this")
+
+
+class CleanupResponse(BaseModel):
+    """Response from session cleanup."""
+    removed_sessions: List[str]
+    removed_count: int
+    timestamp: str
+
+
+class MemoryStatsResponse(BaseModel):
+    """Response with memory statistics."""
+    active_sessions: int
+    total_memory_mb: float
+    sessions: List[Dict[str, Any]]
+    timestamp: str
 
 
 # =============================================================================
@@ -521,3 +569,298 @@ async def check_market_open() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error checking market status: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to check market status: {str(e)}")
+
+
+# =============================================================================
+# Session Compaction Endpoints
+# =============================================================================
+
+# Global session compactor instance
+_session_compactor: Optional[SessionCompactor] = None
+_session_messages: Dict[str, List[Dict[str, Any]]] = {}
+
+
+def get_session_compactor() -> SessionCompactor:
+    """Get or create the global session compactor."""
+    global _session_compactor
+    if _session_compactor is None:
+        config = CompactionConfig(
+            context_limit=10000,
+            preserve_recent_count=4,
+            enable_background=False
+        )
+        _session_compactor = SessionCompactor(config=config)
+    return _session_compactor
+
+
+@router.post("/compaction/compact", response_model=CompactionResponse)
+async def compact_session(request: CompactionRequest) -> CompactionResponse:
+    """
+    Compact a session's messages to reduce memory usage.
+
+    Uses summarization to preserve context while reducing token count.
+    Keeps recent messages intact and summarizes older ones.
+
+    Example:
+        POST /api/sessions/compaction/compact
+        {
+            "session_id": "chat_001",
+            "context_limit": 10000,
+            "preserve_recent": 4
+        }
+
+        Response:
+        {
+            "session_id": "chat_001",
+            "success": true,
+            "original_tokens": 15000,
+            "compacted_tokens": 8500,
+            "reduction_ratio": 0.43,
+            "summary": "Previous discussion covered...",
+            "duration_ms": 125.5,
+            "timestamp": "2026-03-05T10:00:00Z"
+        }
+    """
+    try:
+        compactor = get_session_compactor()
+
+        # Get session messages or create sample
+        messages = _session_messages.get(request.session_id, [])
+
+        if not messages:
+            # Create sample messages for demonstration if none exist
+            messages = [
+                {"role": "system", "content": "You are a helpful trading assistant."},
+                {"role": "user", "content": f"Analyze the current market conditions for session {request.session_id}."},
+                {"role": "assistant", "content": "I'll analyze the market data for you."}
+            ]
+            _session_messages[request.session_id] = messages
+
+        # Configure compactor based on request
+        config = CompactionConfig(
+            context_limit=request.context_limit,
+            preserve_recent_count=request.preserve_recent
+        )
+        compactor.config = config
+
+        # Perform compaction
+        result = compactor.compact(messages)
+
+        # Update stored messages
+        _session_messages[request.session_id] = result.preserved_messages
+
+        return CompactionResponse(
+            session_id=request.session_id,
+            success=True,
+            original_tokens=result.original_tokens,
+            compacted_tokens=result.compacted_tokens,
+            reduction_ratio=result.reduction_ratio,
+            summary=result.summary,
+            duration_ms=result.duration_ms,
+            timestamp=result.timestamp.isoformat()
+        )
+    except Exception as e:
+        logger.error(f"Error compacting session: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to compact session: {str(e)}")
+
+
+@router.post("/compaction/cleanup", response_model=CleanupResponse)
+async def cleanup_old_sessions(request: CleanupRequest) -> CleanupResponse:
+    """
+    Clean up old inactive sessions to free memory.
+
+    Removes session data that hasn't been active for the specified duration.
+
+    Example:
+        POST /api/sessions/compaction/cleanup
+        {
+            "older_than_hours": 24
+        }
+
+        Response:
+        {
+            "removed_sessions": ["session_001", "session_002"],
+            "removed_count": 2,
+            "timestamp": "2026-03-05T10:00:00Z"
+        }
+    """
+    try:
+        # Get list of session files from common locations
+        session_dirs = [
+            Path("sessions"),
+            Path(".sessions"),
+            Path("/tmp/sessions"),
+        ]
+
+        removed_sessions = []
+        cutoff = datetime.now() - timedelta(hours=request.older_than_hours)
+
+        for session_dir in session_dirs:
+            if not session_dir.exists():
+                continue
+
+            for session_file in session_dir.glob("*.json"):
+                try:
+                    # Check file modification time
+                    mtime = datetime.fromtimestamp(session_file.stat().st_mtime)
+                    if mtime < cutoff:
+                        session_id = session_file.stem
+                        # Remove old session file
+                        session_file.unlink()
+                        removed_sessions.append(session_id)
+                        logger.info(f"Removed old session file: {session_file}")
+                except Exception as e:
+                    logger.warning(f"Failed to process session file {session_file}: {e}")
+
+        # Also clean from in-memory sessions
+        global _session_messages
+        sessions_to_remove = [
+            sid for sid, msgs in _session_messages.items()
+            if len(msgs) == 0  # Empty sessions
+        ]
+        for sid in sessions_to_remove:
+            del _session_messages[sid]
+            removed_sessions.append(sid)
+
+        # Force garbage collection
+        gc.collect()
+
+        return CleanupResponse(
+            removed_sessions=removed_sessions,
+            removed_count=len(removed_sessions),
+            timestamp=datetime.now(timezone.utc).isoformat()
+        )
+    except Exception as e:
+        logger.error(f"Error cleaning up sessions: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to cleanup sessions: {str(e)}")
+
+
+@router.get("/compaction/stats", response_model=MemoryStatsResponse)
+async def get_memory_stats() -> MemoryStatsResponse:
+    """
+    Get current memory statistics for all sessions.
+
+    Returns memory usage and session information to help with
+    memory management decisions.
+
+    Example:
+        GET /api/sessions/compaction/stats
+
+        Response:
+        {
+            "active_sessions": 5,
+            "total_memory_mb": 125.5,
+            "sessions": [
+                {
+                    "session_id": "chat_001",
+                    "message_count": 50,
+                    "estimated_tokens": 15000
+                }
+            ],
+            "timestamp": "2026-03-05T10:00:00Z"
+        }
+    """
+    try:
+        sessions = []
+        total_memory = 0.0
+
+        # Get in-memory session info
+        for session_id, messages in _session_messages.items():
+            # Estimate tokens (rough: 4 chars per token)
+            total_chars = sum(len(str(m.get("content", ""))) for m in messages)
+            estimated_tokens = total_chars // 4
+
+            sessions.append({
+                "session_id": session_id,
+                "message_count": len(messages),
+                "estimated_tokens": estimated_tokens,
+                "memory_bytes": total_chars * 2  # Rough estimate
+            })
+            total_memory += total_chars * 2
+
+        # Also check session files on disk
+        session_dirs = [
+            Path("sessions"),
+            Path(".sessions"),
+        ]
+
+        for session_dir in session_dirs:
+            if not session_dir.exists():
+                continue
+
+            for session_file in session_dir.glob("*.json"):
+                session_id = session_file.stem
+                # Skip if already in memory
+                if any(s["session_id"] == session_id for s in sessions):
+                    continue
+
+                try:
+                    size = session_file.stat().st_size
+                    total_memory += size
+                    sessions.append({
+                        "session_id": session_id,
+                        "message_count": 0,
+                        "estimated_tokens": size // 8,
+                        "memory_bytes": size,
+                        "source": "disk"
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to stat session file {session_file}: {e}")
+
+        return MemoryStatsResponse(
+            active_sessions=len(sessions),
+            total_memory_mb=total_memory / (1024 * 1024),
+            sessions=sessions,
+            timestamp=datetime.now(timezone.utc).isoformat()
+        )
+    except Exception as e:
+        logger.error(f"Error getting memory stats: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get memory stats: {str(e)}")
+
+
+@router.delete("/compaction/{session_id}")
+async def clear_session(session_id: str) -> Dict[str, Any]:
+    """
+    Clear a specific session from memory.
+
+    Removes all messages for the given session ID.
+
+    Example:
+        DELETE /api/sessions/compaction/chat_001
+
+        Response:
+        {
+            "success": true,
+            "session_id": "chat_001",
+            "messages_removed": 50
+        }
+    """
+    try:
+        global _session_messages
+
+        messages_removed = 0
+        if session_id in _session_messages:
+            messages_removed = len(_session_messages[session_id])
+            del _session_messages[session_id]
+
+        # Also try to remove session file
+        session_files = [
+            Path(f"sessions/{session_id}.json"),
+            Path(f".sessions/{session_id}.json"),
+        ]
+
+        for session_file in session_files:
+            if session_file.exists():
+                session_file.unlink()
+                logger.info(f"Removed session file: {session_file}")
+
+        gc.collect()
+
+        return {
+            "success": True,
+            "session_id": session_id,
+            "messages_removed": messages_removed
+        }
+    except Exception as e:
+        logger.error(f"Error clearing session: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear session: {str(e)}")

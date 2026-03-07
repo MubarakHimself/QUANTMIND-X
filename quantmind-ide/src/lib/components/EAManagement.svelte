@@ -8,6 +8,19 @@
    */
   import { onMount } from 'svelte';
   import ModeIndicator from './ModeIndicator.svelte';
+  import Breadcrumbs from './Breadcrumbs.svelte';
+
+  // Navigation handler for breadcrumbs
+  function handleBreadcrumbNavigate(path: string) {
+    console.log('Navigate to:', path);
+    // Handle navigation - could route to different views or dispatch events
+  }
+
+  // Breadcrumb items for Video Ingest workflow navigation
+  const breadcrumbItems = [
+    { label: 'EA Management', path: '/ea-management' },
+    { label: 'Video Ingest', path: '/video-ingest' }
+  ];
 
   interface EAConfig {
     ea_id: string;
@@ -16,6 +29,7 @@
     timeframe: string;
     magic_number: number;
     mode: 'demo' | 'live';
+    variant: 'vanilla' | 'spiced';
     virtual_balance: number;
     preferred_regime?: string;
     preferred_volatility?: string;
@@ -67,6 +81,7 @@
   // New EA form
   let newEA: Partial<EAConfig> = {
     mode: 'demo',
+    variant: 'vanilla',
     virtual_balance: 1000.0,
     max_lot_size: 1.0,
     max_daily_loss_pct: 5.0
@@ -168,6 +183,7 @@
         showRegisterModal = false;
         newEA = {
           mode: 'demo',
+          variant: 'vanilla',
           virtual_balance: 1000.0,
           max_lot_size: 1.0,
           max_daily_loss_pct: 5.0
@@ -206,6 +222,9 @@
 </script>
 
 <div class="ea-management">
+  <!-- Breadcrumbs for Video Ingest workflow -->
+  <Breadcrumbs items={breadcrumbItems} onNavigate={handleBreadcrumbNavigate} showHome={true} />
+
   <!-- Header -->
   <div class="header">
     <h2>EA Management</h2>
@@ -302,6 +321,10 @@
           <div class="detail">
             <span class="label">Max Lot:</span>
             <span class="value">{ea.max_lot_size}</span>
+          </div>
+          <div class="detail">
+            <span class="label">Variant:</span>
+            <span class="value" class:spiced={ea.variant === 'spiced'}>{ea.variant || 'vanilla'}</span>
           </div>
         </div>
         
@@ -464,6 +487,7 @@
                         timeframe: strategy.timeframes[0] || 'H1',
                         magic_number: Math.floor(Math.random() * 900000) + 100000,
                         mode: 'demo',
+                        variant: 'vanilla',
                         virtual_balance: 1000.0,
                         max_lot_size: 1.0,
                         max_daily_loss_pct: 5.0,
@@ -523,7 +547,15 @@
             <option value="live">Live</option>
           </select>
         </div>
-        
+
+        <div class="form-group">
+          <label>Variant</label>
+          <select bind:value={newEA.variant}>
+            <option value="vanilla">Vanilla (Basic)</option>
+            <option value="spiced">Spiced (Enhanced)</option>
+          </select>
+        </div>
+
         {#if newEA.mode === 'demo'}
           <div class="form-group">
             <label>Virtual Balance</label>
@@ -670,6 +702,10 @@
   .detail .value {
     font-weight: 500;
     font-size: 0.85rem;
+  }
+
+  .detail .value.spiced {
+    color: #c084fc;
   }
   
   .virtual-balance {

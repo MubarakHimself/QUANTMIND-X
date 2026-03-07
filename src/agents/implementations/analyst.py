@@ -10,11 +10,11 @@ from src.agents.skills.queuing import TaskQueueSkill
 class AnalystState(TypedDict):
     """The state maintained throughout the Analyst's reasoning chain."""
     messages: Annotated[List[BaseMessage], operator.add]
-    mechanics: dict               # Extracted from NPRD
+    mechanics: dict               # Extracted from VideoIngest
     augmented_data: str           # KB Research results
     compliance_report: str        # Risk/Router alignment
     final_trd_path: str           # Resulting file path
-    source_context: str           # Link to original NPRD
+    source_context: str           # Link to original VideoIngest
 
 class AnalystAgent(BaseAgent):
     """
@@ -29,14 +29,14 @@ class AnalystAgent(BaseAgent):
         builder = StateGraph(AnalystState)
         
         # 1. Add Nodes
-        builder.add_node("nprd_miner", self.nprd_miner_node)
+        builder.add_node("video_ingest_miner", self.video_ingest_miner_node)
         builder.add_node("kb_augmenter", self.kb_augmenter_node)
         builder.add_node("compliance_checker", self.compliance_check_node)
         builder.add_node("synthesizer", self.synthesis_node)
         
         # 2. Define Edges
-        builder.set_entry_point("nprd_miner")
-        builder.add_edge("nprd_miner", "kb_augmenter")
+        builder.set_entry_point("video_ingest_miner")
+        builder.add_edge("video_ingest_miner", "kb_augmenter")
         builder.add_edge("kb_augmenter", "compliance_checker")
         builder.add_edge("compliance_checker", "synthesizer")
         builder.add_edge("synthesizer", END)
@@ -45,19 +45,19 @@ class AnalystAgent(BaseAgent):
 
     # --- Node Implementations ---
 
-    async def nprd_miner_node(self, state: AnalystState):
-        """Ingests strategy mechanics from local NPRD/Opal synced files."""
+    async def video_ingest_miner_node(self, state: AnalystState):
+        """Ingests strategy mechanics from local VideoIngest/Opal synced files."""
         # For V1, we simulate reading from data/nprd/
         import os
-        nprd_dir = "data/nprd"
-        os.makedirs(nprd_dir, exist_ok=True)
+        video_ingest_dir = "data/nprd"
+        os.makedirs(video_ingest_dir, exist_ok=True)
         
         # Logic: Find the latest transcript
-        files = os.listdir(nprd_dir)
+        files = os.listdir(video_ingest_dir)
         if not files:
-            return {"messages": [SystemMessage(content="Waiting for NPRD strategy documents in data/nprd/")]}
+            return {"messages": [SystemMessage(content="Waiting for VideoIngest strategy documents in data/nprd/")]}
             
-        source_context = os.path.join(nprd_dir, files[0])
+        source_context = os.path.join(video_ingest_dir, files[0])
         with open(source_context, "r") as f:
             content = f.read()
 

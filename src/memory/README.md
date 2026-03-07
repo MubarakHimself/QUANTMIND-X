@@ -284,8 +284,6 @@ src/memory/
 ├── search_manager.py        # Search functionality
 ├── session_memory.py        # Session tracking
 ├── temporal_decay.py        # Time-based decay
-├── langmem_integration.py   # Legacy LangMem integration
-├── langmem_manager.py       # LangMem manager
 ├── requirements.txt         # Dependencies
 ├── example_usage.py         # Usage examples
 └── README.md               # This file

@@ -26,6 +26,7 @@ from src.agents.departments.department_mail import (
     get_mail_service,
 )
 from src.agents.departments.types import Department
+from src.api.pagination import PaginatedResponse, DEFAULT_LIMIT, DEFAULT_OFFSET, MAX_LIMIT
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,11 @@ class MessageResponse(BaseModel):
     priority: str
     timestamp: datetime
     read: bool
+    # Approval-related fields
+    gate_id: Optional[str] = None
+    workflow_id: Optional[str] = None
+    from_stage: Optional[str] = None
+    to_stage: Optional[str] = None
 
 
 class InboxResponse(BaseModel):
@@ -103,6 +109,10 @@ def _message_to_response(msg: DepartmentMessage) -> MessageResponse:
         priority=msg.priority.value,
         timestamp=msg.timestamp,
         read=msg.read,
+        gate_id=msg.gate_id,
+        workflow_id=msg.workflow_id,
+        from_stage=msg.from_stage,
+        to_stage=msg.to_stage,
     )
 
 
@@ -231,17 +241,18 @@ async def get_inbox(
 @router.get("/inbox", response_model=ListMessagesResponse)
 async def get_all_inboxes(
     unread_only: bool = Query(False, description="Only return unread messages"),
-    limit: int = Query(100, ge=1, le=500, description="Maximum messages to return"),
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="Maximum messages to return"),
+    offset: int = Query(DEFAULT_OFFSET, ge=0, description="Number of messages to skip"),
 ):
     """
-    Get all inbox messages across all departments.
+    Get all inbox messages across all departments with pagination.
 
     Returns all messages addressed to any department, sorted by timestamp (newest first).
     """
     mail_service = get_mail_service()
 
     # Get all messages
-    all_messages = mail_service.list_messages(limit=1000)
+    all_messages = mail_service.list_messages(limit=10000)
 
     # Filter to only inbox messages (not from floor_manager if it's a dispatch)
     messages = [m for m in all_messages if m.to_dept != "floor_manager"]
@@ -250,28 +261,29 @@ async def get_all_inboxes(
         messages = [m for m in messages if not m.read]
 
     total = len(messages)
-    messages = messages[:limit]
+    paginated_messages = messages[offset:offset + limit]
 
     return ListMessagesResponse(
         total=total,
-        messages=[_message_to_response(m) for m in messages],
+        messages=[_message_to_response(m) for m in paginated_messages],
     )
 
 
 @router.get("/sent", response_model=ListMessagesResponse)
 async def get_sent_messages(
     from_dept: Optional[str] = Query(None, description="Filter by sender department"),
-    limit: int = Query(100, ge=1, le=500, description="Maximum messages to return"),
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="Maximum messages to return"),
+    offset: int = Query(DEFAULT_OFFSET, ge=0, description="Number of messages to skip"),
 ):
     """
-    Get sent messages.
+    Get sent messages with pagination.
 
     Returns messages sent by departments, sorted by timestamp (newest first).
     """
     mail_service = get_mail_service()
 
     # Get all messages
-    all_messages = mail_service.list_messages(limit=1000)
+    all_messages = mail_service.list_messages(limit=10000)
 
     # Filter to sent messages
     if from_dept:
@@ -281,11 +293,11 @@ async def get_sent_messages(
         messages = all_messages
 
     total = len(messages)
-    messages = messages[:limit]
+    paginated_messages = messages[offset:offset + limit]
 
     return ListMessagesResponse(
         total=total,
-        messages=[_message_to_response(m) for m in messages],
+        messages=[_message_to_response(m) for m in paginated_messages],
     )
 
 

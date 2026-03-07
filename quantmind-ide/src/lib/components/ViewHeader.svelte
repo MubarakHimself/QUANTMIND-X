@@ -1,0 +1,295 @@
+<script lang="ts">
+  import { createEventDispatcher } from "svelte";
+  import {
+    Search,
+    Grid,
+    List,
+    RefreshCw,
+    Upload,
+    Plus,
+    Play,
+    ArrowLeft,
+    ChevronRight,
+    Folder,
+    Home,
+  } from "lucide-svelte";
+
+  export let breadcrumbs: Array<{ name: string; id?: string; type?: string }> = [];
+  export let subPage: string = "";
+  export let searchQuery: string = "";
+  export let viewMode: string = "grid";
+  export let activeView: string = "";
+  export let viewConfig: Record<string, any> = {};
+
+  const dispatch = createEventDispatcher();
+
+  function navigateBack() {
+    dispatch("navigateBack");
+  }
+
+  function navigateToBreadcrumb(index: number) {
+    dispatch("navigateToBreadcrumb", { index });
+  }
+
+  function setViewMode(mode: string) {
+    dispatch("setViewMode", { mode });
+  }
+
+  function handleRefresh() {
+    dispatch("refresh");
+  }
+
+  function handleUpload() {
+    dispatch("openUpload");
+  }
+
+  function handleVideoIngest() {
+    dispatch("openVideoIngest");
+  }
+
+  function handleRunBacktest() {
+    dispatch("openBacktest");
+  }
+</script>
+
+<div class="view-header">
+  <div class="breadcrumb-nav">
+    {#if breadcrumbs.length > 1 || subPage}
+      <button
+        class="back-btn"
+        on:click={navigateBack}
+        title="Navigate back"
+      >
+        <ArrowLeft size={16} />
+      </button>
+    {/if}
+    {#each breadcrumbs as crumb, i}
+      {#if i > 0}<ChevronRight size={14} />{/if}
+      {#if i === breadcrumbs.length - 1 && !subPage}
+        <span class="breadcrumb-current">{crumb.name}</span>
+      {:else}
+        <button
+          class="breadcrumb-item"
+          on:click={() => navigateToBreadcrumb(i)}
+          title="Navigate to {crumb.name}"
+        >
+          {#if crumb.type === "view"}
+            <svelte:component
+              this={viewConfig[crumb.id]?.icon || Folder}
+              size={16}
+            />
+          {:else}
+            <Folder size={14} />
+          {/if}
+          <span>{crumb.name}</span>
+        </button>
+      {/if}
+    {/each}
+    {#if subPage}
+      <ChevronRight size={14} />
+      <span class="breadcrumb-current">{subPage}</span>
+    {/if}
+  </div>
+
+  <div class="view-toolbar">
+    {#if activeView === "database-view"}
+    <div class="search-box">
+      <Search size={14} />
+      <input
+        type="text"
+        placeholder="Search..."
+        bind:value={searchQuery}
+      />
+    </div>
+    <div class="view-toggle">
+      <button
+        class:active={viewMode === "grid"}
+        on:click={() => setViewMode("grid")}
+      ><Grid size={14} /></button
+      >
+      <button
+        class:active={viewMode === "list"}
+        on:click={() => setViewMode("list")}
+      ><List size={14} /></button
+      >
+    </div>
+    {/if}
+    <button class="toolbar-btn" on:click={handleRefresh}
+      ><RefreshCw size={14} /></button
+    >
+    {#if activeView === "knowledge"}
+      <button
+        class="toolbar-btn primary"
+        on:click={handleUpload}
+      ><Upload size={14} /> Upload</button
+      >
+    {:else if activeView === "ea"}
+      <button
+        class="toolbar-btn primary"
+        on:click={handleVideoIngest}
+      >
+        <Plus size={14} /> Video Ingest
+      </button>
+    {:else if activeView === "backtest"}
+      <button
+        class="toolbar-btn primary"
+        on:click={handleRunBacktest}
+      >
+        <Play size={14} /> Run Backtest
+      </button>
+    {/if}
+  </div>
+</div>
+
+<style>
+  .view-header {
+    margin-bottom: 20px;
+  }
+
+  .breadcrumb-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 16px;
+    padding: 8px 12px;
+    background: var(--bg-glass);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    min-height: 40px;
+    backdrop-filter: blur(var(--glass-blur));
+  }
+
+  .back-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-muted);
+    cursor: pointer;
+    margin-right: 8px;
+    transition: all 0.2s ease;
+  }
+
+  .back-btn:hover {
+    background: var(--bg-glass);
+    color: var(--text-primary);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 1px var(--accent-primary);
+  }
+
+  .back-btn:active {
+    transform: scale(0.95);
+  }
+
+  .breadcrumb-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s ease;
+  }
+
+  .breadcrumb-item:hover {
+    background: var(--bg-glass);
+    color: var(--accent-primary);
+    border-color: var(--border-subtle);
+  }
+
+  .breadcrumb-item:active {
+    transform: scale(0.98);
+  }
+
+  .breadcrumb-current {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: 13px;
+  }
+
+  .breadcrumb-nav :global(svg) {
+    flex-shrink: 0;
+  }
+
+  .view-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .search-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-muted);
+  }
+
+  .search-box input {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+    width: 180px;
+  }
+
+  .view-toggle {
+    display: flex;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .view-toggle button {
+    padding: 6px 10px;
+    background: var(--bg-secondary);
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .view-toggle button.active {
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+  }
+
+  .toolbar-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .toolbar-btn:hover {
+    background: var(--bg-tertiary);
+  }
+
+  .toolbar-btn.primary {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: var(--bg-primary);
+  }
+</style>

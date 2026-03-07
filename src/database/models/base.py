@@ -40,3 +40,9 @@ class TradingMode(PyEnum):
     """Trading mode enum for demo/live distinction."""
     DEMO = "demo"
     LIVE = "live"
+
+
+class AccountType(PyEnum):
+    """Account type enum for personal vs prop firm accounts."""
+    PERSONAL = "personal"
+    PROP_FIRM = "prop_firm"

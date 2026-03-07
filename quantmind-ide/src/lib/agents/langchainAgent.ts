@@ -1244,7 +1244,7 @@ export interface ThreeAgentWorkflowState {
   sessionId: string;
   currentStep: 'copilot' | 'analyst' | 'quantcode' | 'complete';
   strategyName?: string;
-  nprdContent?: string;
+  videoIngestContent?: string;
   vanillaTRD?: string;
   enhancedTRD?: string;
   vanillaEA?: string;
@@ -1287,7 +1287,7 @@ export class ThreeAgentWorkflowCoordinator {
   }
 
   /**
-   * Execute the complete workflow: YouTube → NPRD → TRD (Vanilla + Enhanced) → EA (Vanilla + Enhanced)
+   * Execute the complete workflow: YouTube → VideoIngest → TRD (Vanilla + Enhanced) → EA (Vanilla + Enhanced)
    */
   async executeFullWorkflow(input: {
     strategyName: string;
@@ -1310,32 +1310,32 @@ export class ThreeAgentWorkflowCoordinator {
       const copilotResult = await this.copilotManager.invoke(
         `User wants to create a new trading strategy called "${input.strategyName}". ` +
         `Description: ${input.description}. ` +
-        `Please help initialize the strategy and prepare for Analyst agent to create an NPRD.`,
+        `Please help initialize the strategy and prepare for Analyst agent to create a VideoIngest.`,
         { threadId: this.sessionId }
       );
       state.metadata.copilotResponse = copilotResult.response;
 
-      // Step 2: Analyst - Create NPRD from strategy description
+      // Step 2: Analyst - Create VideoIngest from strategy description
       state.currentStep = "analyst";
-      const analystNPRDResult = await this.analystManager.invoke(
-        `Create an NPRD for the trading strategy "${input.strategyName}". ` +
+      const analystVideoIngestResult = await this.analystManager.invoke(
+        `Create a VideoIngest for the trading strategy "${input.strategyName}". ` +
         `Description: ${input.description}. ` +
         `Source: ${input.sourceUrl || "manual input"}. ` +
-        `Use the create_nprd tool to generate the NPRD structure.`,
+        `Use the create_video_ingest tool to generate the VideoIngest structure.`,
         { threadId: this.sessionId }
       );
 
-      // Step 3: Analyst - Convert NPRD to Vanilla TRD
+      // Step 3: Analyst - Convert VideoIngest to Vanilla TRD
       const analystVanillaTRDResult = await this.analystManager.invoke(
-        `Convert the NPRD for "${input.strategyName}" to a Vanilla TRD. ` +
+        `Convert the VideoIngest for "${input.strategyName}" to a Vanilla TRD. ` +
         `Use the convert_to_vanilla_trd tool.`,
         { threadId: this.sessionId }
       );
       state.metadata.vanillaTRDResponse = analystVanillaTRDResult.response;
 
-      // Step 4: Analyst - Convert NPRD to Enhanced TRD
+      // Step 4: Analyst - Convert VideoIngest to Enhanced TRD
       const analystEnhancedTRDResult = await this.analystManager.invoke(
-        `Convert the NPRD for "${input.strategyName}" to an Enhanced TRD. ` +
+        `Convert the VideoIngest for "${input.strategyName}" to an Enhanced TRD. ` +
         `Use the convert_to_enhanced_trd tool. Include all QuantMindX features: ` +
         `Kelly Criterion, tiered risk management, house-money protection, circuit breaker.`,
         { threadId: this.sessionId }
@@ -1383,7 +1383,7 @@ export class ThreeAgentWorkflowCoordinator {
   }
 
   /**
-   * Execute partial workflow (e.g., NPRD → TRD only)
+   * Execute partial workflow (e.g., VideoIngest → TRD only)
    */
   async executePartialWorkflow(
     startStep: "analyst" | "quantcode",
@@ -1391,7 +1391,7 @@ export class ThreeAgentWorkflowCoordinator {
   ): Promise<Partial<ThreeAgentWorkflowState>> {
     switch (startStep) {
       case "analyst":
-        // Analyst workflow: Create NPRD → Convert to TRDs
+        // Analyst workflow: Create VideoIngest → Convert to TRDs
         return this.executeAnalystWorkflow(input);
 
       case "quantcode":
@@ -1404,7 +1404,7 @@ export class ThreeAgentWorkflowCoordinator {
   }
 
   /**
-   * Analyst workflow: NPRD → TRD (Vanilla + Enhanced)
+   * Analyst workflow: VideoIngest → TRD (Vanilla + Enhanced)
    */
   private async executeAnalystWorkflow(input: {
     strategyName: string;
@@ -1418,23 +1418,23 @@ export class ThreeAgentWorkflowCoordinator {
       metadata: {},
     };
 
-    // Create NPRD
-    const nprdResult = await this.analystManager.invoke(
-      `Create an NPRD for "${input.strategyName}". Description: ${input.description}`,
+    // Create VideoIngest
+    const videoIngestResult = await this.analystManager.invoke(
+      `Create a VideoIngest for "${input.strategyName}". Description: ${input.description}`,
       { threadId: this.sessionId }
     );
-    result.metadata.nprdResponse = nprdResult.response;
+    result.metadata.videoIngestResponse = videoIngestResult.response;
 
     // Convert to Vanilla TRD
     const vanillaTRDResult = await this.analystManager.invoke(
-      `Convert the NPRD to a Vanilla TRD for "${input.strategyName}"`,
+      `Convert the VideoIngest to a Vanilla TRD for "${input.strategyName}"`,
       { threadId: this.sessionId }
     );
     result.metadata.vanillaTRDResponse = vanillaTRDResult.response;
 
     // Convert to Enhanced TRD
     const enhancedTRDResult = await this.analystManager.invoke(
-      `Convert the NPRD to an Enhanced TRD for "${input.strategyName}"`,
+      `Convert the VideoIngest to an Enhanced TRD for "${input.strategyName}"`,
       { threadId: this.sessionId }
     );
     result.metadata.enhancedTRDResponse = enhancedTRDResult.response;
@@ -1492,12 +1492,12 @@ export class ThreeAgentWorkflowCoordinator {
     yield { step: "copilot", data: copilotResult };
 
     // Analyst steps
-    yield { step: "analyst", data: { message: "Creating NPRD..." } };
-    const nprdResult = await this.analystManager.invoke(
-      `Create NPRD for "${input.strategyName}"`,
+    yield { step: "analyst", data: { message: "Creating VideoIngest..." } };
+    const videoIngestResult = await this.analystManager.invoke(
+      `Create VideoIngest for "${input.strategyName}"`,
       { threadId: this.sessionId }
     );
-    yield { step: "analyst-nprd", data: nprdResult };
+    yield { step: "analyst-video-ingest", data: videoIngestResult };
 
     yield { step: "analyst", data: { message: "Converting to Vanilla TRD..." } };
     const vanillaTRDResult = await this.analystManager.invoke(

@@ -16,6 +16,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Qu
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from src.api.pagination import PaginatedResponse, DEFAULT_LIMIT, DEFAULT_OFFSET, MAX_LIMIT
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/brokers", tags=["brokers"])
@@ -150,6 +152,47 @@ class BrokerRegistry:
 # Global registry
 broker_registry = BrokerRegistry()
 
+# ============== Account Switching State ==============
+class AccountSwitcher:
+    """Manages the active account for the trading session."""
+
+    def __init__(self):
+        self._active_account_id: Optional[str] = None
+
+    @property
+    def active_account_id(self) -> Optional[str]:
+        return self._active_account_id
+
+    def set_active_account(self, account_id: str) -> bool:
+        """Set the active account. Returns True if successful."""
+        # Check if account exists
+        for broker_id, broker in broker_registry.brokers.items():
+            if broker.account_id == account_id:
+                self._active_account_id = account_id
+                return True
+        # Also check pending accounts
+        for broker_id, broker in broker_registry.pending.items():
+            if broker.account_id == account_id:
+                self._active_account_id = account_id
+                return True
+        return False
+
+    def get_active_account(self) -> Optional[BrokerInfo]:
+        """Get the currently active account details."""
+        if not self._active_account_id:
+            return None
+        for broker in broker_registry.get_all():
+            if broker.account_id == self._active_account_id:
+                return broker
+        return None
+
+    def clear_active_account(self):
+        """Clear the active account."""
+        self._active_account_id = None
+
+
+account_switcher = AccountSwitcher()
+
 
 # ============== WebSocket Manager ==============
 
@@ -208,26 +251,48 @@ ws_manager = BrokerWebSocketManager()
 
 # ============== HTTP Endpoints ==============
 
-@router.get("", response_model=List[BrokerInfo])
+@router.get("", response_model=PaginatedResponse[BrokerInfo])
 async def list_brokers(
     status: Optional[str] = Query(None, description="Filter by status"),
-    type: Optional[str] = Query(None, description="Filter by type")
+    type: Optional[str] = Query(None, description="Filter by type"),
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="Maximum items to return"),
+    offset: int = Query(DEFAULT_OFFSET, ge=0, description="Number of items to skip")
 ):
-    """List all registered brokers."""
-    brokers = broker_registry.get_all()
+    """List all registered brokers with pagination."""
+    all_brokers = broker_registry.get_all()
 
     if status:
-        brokers = [b for b in brokers if b.status == status]
+        all_brokers = [b for b in all_brokers if b.status == status]
     if type:
-        brokers = [b for b in brokers if b.type == type]
+        all_brokers = [b for b in all_brokers if b.type == type]
 
-    return brokers
+    total = len(all_brokers)
+    paginated_brokers = all_brokers[offset:offset + limit]
+
+    return PaginatedResponse.create(
+        items=paginated_brokers,
+        total=total,
+        limit=limit,
+        offset=offset
+    )
 
 
-@router.get("/pending", response_model=List[BrokerInfo])
-async def list_pending_brokers():
-    """List all pending brokers awaiting confirmation."""
-    return broker_registry.get_pending()
+@router.get("/pending", response_model=PaginatedResponse[BrokerInfo])
+async def list_pending_brokers(
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="Maximum items to return"),
+    offset: int = Query(DEFAULT_OFFSET, ge=0, description="Number of items to skip")
+):
+    """List all pending brokers awaiting confirmation with pagination."""
+    all_pending = broker_registry.get_pending()
+    total = len(all_pending)
+    paginated = all_pending[offset:offset + limit]
+
+    return PaginatedResponse.create(
+        items=paginated,
+        total=total,
+        limit=limit,
+        offset=offset
+    )
 
 
 @router.get("/{broker_id}", response_model=BrokerInfo)
@@ -432,3 +497,57 @@ async def broker_websocket(websocket: WebSocket):
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         ws_manager.disconnect(websocket)
+
+
+# ============== Account Switching Endpoints ==============
+
+class AccountSwitchRequest(BaseModel):
+    account_id: str
+
+
+class AccountSwitchResponse(BaseModel):
+    success: bool
+    account_id: Optional[str] = None
+    account: Optional[Dict[str, Any]] = None
+    message: str = ""
+
+
+@router.get("/accounts", response_model=List[BrokerInfo])
+async def list_all_accounts():
+    """List all accounts (both connected and pending) with their status."""
+    all_accounts = list(broker_registry.brokers.values()) + list(broker_registry.pending.values())
+    return all_accounts
+
+
+@router.get("/accounts/active", response_model=Optional[BrokerInfo])
+async def get_active_account():
+    """Get the currently active account."""
+    return account_switcher.get_active_account()
+
+
+@router.post("/accounts/active", response_model=AccountSwitchResponse)
+async def switch_account(request: AccountSwitchRequest):
+    """Switch to a different account."""
+    if account_switcher.set_active_account(request.account_id):
+        active = account_switcher.get_active_account()
+        return AccountSwitchResponse(
+            success=True,
+            account_id=request.account_id,
+            account=active.dict() if active else None,
+            message=f"Switched to account {request.account_id}"
+        )
+    return AccountSwitchResponse(
+        success=False,
+        account_id=request.account_id,
+        message=f"Account {request.account_id} not found"
+    )
+
+
+@router.delete("/accounts/active", response_model=AccountSwitchResponse)
+async def clear_active_account():
+    """Clear the active account selection."""
+    account_switcher.clear_active_account()
+    return AccountSwitchResponse(
+        success=True,
+        message="Active account cleared"
+    )

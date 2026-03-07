@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { Mail, Send, Inbox, CheckCircle, AlertCircle, Clock, Filter, RefreshCw, X, ChevronRight, User } from 'lucide-svelte';
+  import { Mail, Send, Inbox, CheckCircle, AlertCircle, Clock, Filter, RefreshCw, X, ChevronRight, User, ThumbsUp, ThumbsDown } from 'lucide-svelte';
   import {
     filteredInbox,
     sentMessages,
@@ -20,11 +20,69 @@
     type Priority as MessagePriority,
     type MessageType,
   } from '$lib/stores/departmentMailStore';
+  import { approvalStore, type ApprovalGate } from '$lib/stores/approvalStore';
 
   // Local state
   let viewMode: 'inbox' | 'sent' | 'stats' = 'inbox';
   let refreshInterval: number | null = null;
   let selectedMsg: DepartmentMailMessage | null = null;
+  let approvingGate = false;
+  let approverName = 'user'; // Default approver name
+  let approvalNotes = '';
+
+  // Check if message is an approval request
+  function isApprovalMessage(msg: DepartmentMailMessage): boolean {
+    return ['approval_request', 'approval_approved', 'approval_rejected'].includes(msg.type);
+  }
+
+  // Get the gate ID from message
+  function getGateIdFromMessage(msg: DepartmentMailMessage): string | null {
+    return msg.gate_id || null;
+  }
+
+  // Handle approve action
+  async function handleApprove() {
+    const gateId = selectedMsg?.gate_id;
+    if (!gateId) return;
+
+    approvingGate = true;
+    try {
+      await approvalStore.approveGate(gateId, {
+        approver: approverName,
+        notes: approvalNotes,
+      });
+      // Refresh mail to show updated status
+      await loadMailData();
+      selectedMsg = null;
+    } catch (err) {
+      console.error('Failed to approve gate:', err);
+    } finally {
+      approvingGate = false;
+      approvalNotes = '';
+    }
+  }
+
+  // Handle reject action
+  async function handleReject() {
+    const gateId = selectedMsg?.gate_id;
+    if (!gateId) return;
+
+    approvingGate = true;
+    try {
+      await approvalStore.rejectGate(gateId, {
+        approver: approverName,
+        notes: approvalNotes,
+      });
+      // Refresh mail to show updated status
+      await loadMailData();
+      selectedMsg = null;
+    } catch (err) {
+      console.error('Failed to reject gate:', err);
+    } finally {
+      approvingGate = false;
+      approvalNotes = '';
+    }
+  }
 
   // Reactive state from store
   $: inbox = $filteredInbox;
@@ -35,10 +93,15 @@
   $: selectedDept = $selectedDepartment;
   $: unread = $unreadCount;
 
+  // Check if selected message is an approval request that can be acted upon
+  $: canApprove = selectedMsg?.type === 'approval_request' && selectedMsg?.gate_id;
+
   // Departments for filtering
-  const departments = ['analysis', 'research', 'risk', 'execution', 'portfolio'];
+  const departments = ['development', 'research', 'risk', 'trading', 'portfolio'];
 
   onMount(() => {
+    // Set default department to 'development' for initial data load
+    setSelectedDepartment('development');
     loadMailData();
     // Set up polling for real-time updates
     refreshInterval = window.setInterval(() => {
@@ -107,8 +170,28 @@
       case 'question': return AlertCircle;
       case 'escalation': return AlertCircle;
       case 'health_check': return Clock;
+      case 'approval_request': return AlertCircle;
+      case 'approval_approved': return CheckCircle;
+      case 'approval_rejected': return AlertCircle;
       default: return Mail;
     }
+  }
+
+  // Get display label for message type
+  function getTypeLabel(type: MessageType): string {
+    const labels: Record<MessageType, string> = {
+      dispatch: 'Dispatch',
+      result: 'Result',
+      question: 'Question',
+      status: 'Status',
+      error: 'Error',
+      approval_request: 'Approval',
+      approval_approved: 'Approved',
+      approval_rejected: 'Rejected',
+      escalation: 'Escalation',
+      health_check: 'Health',
+    };
+    return labels[type] || type;
   }
 </script>
 
@@ -246,9 +329,74 @@
           </div>
         </div>
 
+        <!-- Approval Info Section -->
+        {#if isApprovalMessage(selectedMsg)}
+          <div class="approval-info">
+            <div class="approval-header">
+              <span class="approval-label">Approval Details</span>
+              <span class="approval-status" class:pending={selectedMsg.type === 'approval_request'} class:approved={selectedMsg.type === 'approval_approved'} class:rejected={selectedMsg.type === 'approval_rejected'}>
+                {selectedMsg.type === 'approval_request' ? 'Pending' : selectedMsg.type === 'approval_approved' ? 'Approved' : 'Rejected'}
+              </span>
+            </div>
+            {#if selectedMsg.from_stage && selectedMsg.to_stage}
+              <div class="approval-stages">
+                <span class="stage from-stage">{selectedMsg.from_stage}</span>
+                <span class="stage-arrow">→</span>
+                <span class="stage to-stage">{selectedMsg.to_stage}</span>
+              </div>
+            {/if}
+            {#if selectedMsg.workflow_id}
+              <div class="approval-workflow">
+                <span class="label">Workflow:</span>
+                <span class="value">{selectedMsg.workflow_id}</span>
+              </div>
+            {/if}
+            {#if selectedMsg.gate_id}
+              <div class="approval-gate-id">
+                <span class="label">Gate ID:</span>
+                <code class="value">{selectedMsg.gate_id}</code>
+              </div>
+            {/if}
+          </div>
+        {/if}
+
         <div class="detail-body">
           {selectedMsg.body}
         </div>
+
+        <!-- Approval Actions -->
+        {#if canApprove}
+          <div class="approval-actions">
+            <div class="approver-input">
+              <label for="approver-name">Your name:</label>
+              <input
+                id="approver-name"
+                type="text"
+                bind:value={approverName}
+                placeholder="Enter your name"
+              />
+            </div>
+            <div class="approval-notes">
+              <label for="approval-notes">Notes (optional):</label>
+              <textarea
+                id="approval-notes"
+                bind:value={approvalNotes}
+                placeholder="Add approval notes..."
+                rows="2"
+              ></textarea>
+            </div>
+            <div class="action-buttons">
+              <button class="approve-btn" on:click={handleApprove} disabled={approvingGate || !approverName}>
+                <ThumbsUp size={14} />
+                {approvingGate ? 'Approving...' : 'Approve'}
+              </button>
+              <button class="reject-btn" on:click={handleReject} disabled={approvingGate || !approverName}>
+                <ThumbsDown size={14} />
+                {approvingGate ? 'Rejecting...' : 'Reject'}
+              </button>
+            </div>
+          </div>
+        {/if}
 
         <div class="detail-footer">
           <span class="timestamp">
@@ -984,5 +1132,189 @@
   @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+  }
+
+  /* Approval Info Styles */
+  .approval-info {
+    background: var(--bg-input, #0f172a);
+    border: 1px solid var(--border-color, #334155);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .approval-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+
+  .approval-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary, #94a3b8);
+    text-transform: uppercase;
+  }
+
+  .approval-status {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+    text-transform: uppercase;
+  }
+
+  .approval-status.pending {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+  }
+
+  .approval-status.approved {
+    background: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+  }
+
+  .approval-status.rejected {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+  }
+
+  .approval-stages {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .stage {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    background: var(--bg-tertiary, #1e293b);
+  }
+
+  .stage-arrow {
+    color: var(--text-muted, #64748b);
+  }
+
+  .approval-workflow,
+  .approval-gate-id {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.6875rem;
+    margin-top: 0.25rem;
+  }
+
+  .approval-workflow .label,
+  .approval-gate-id .label {
+    color: var(--text-muted, #64748b);
+  }
+
+  .approval-gate-id code {
+    font-family: monospace;
+    font-size: 0.625rem;
+    background: var(--bg-tertiary, #1e293b);
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.125rem;
+    color: var(--accent-primary, #3b82f6);
+  }
+
+  /* Approval Actions Styles */
+  .approval-actions {
+    background: var(--bg-tertiary, #1e293b);
+    border: 1px solid var(--border-color, #334155);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .approver-input,
+  .approval-notes {
+    margin-bottom: 0.5rem;
+  }
+
+  .approver-input label,
+  .approval-notes label {
+    display: block;
+    font-size: 0.6875rem;
+    color: var(--text-muted, #64748b);
+    margin-bottom: 0.25rem;
+  }
+
+  .approver-input input,
+  .approval-notes textarea {
+    width: 100%;
+    padding: 0.5rem;
+    background: var(--bg-input, #0f172a);
+    border: 1px solid var(--border-color, #334155);
+    border-radius: 0.375rem;
+    color: var(--text-primary, #e2e8f0);
+    font-size: 0.75rem;
+  }
+
+  .approver-input input:focus,
+  .approval-notes textarea:focus {
+    outline: none;
+    border-color: var(--accent-primary, #3b82f6);
+  }
+
+  .approval-notes textarea {
+    resize: vertical;
+    min-height: 40px;
+  }
+
+  .action-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+
+  .approve-btn,
+  .reject-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    padding: 0.5rem;
+    border: none;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .approve-btn {
+    background: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+  }
+
+  .approve-btn:hover:not(:disabled) {
+    background: rgba(34, 197, 94, 0.3);
+  }
+
+  .approve-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .reject-btn {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+
+  .reject-btn:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.3);
+  }
+
+  .reject-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 </style>

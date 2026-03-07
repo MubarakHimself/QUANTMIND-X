@@ -73,76 +73,9 @@
   let showHistory = false;
   let pollingInterval: number | null = null;
 
-  // Mock data - replace with actual API calls
-  let bots: BotKillSwitchConfig[] = [
-    {
-      bot_id: "1",
-      bot_name: "EURUSD_M5_Trend",
-      status: "active",
-      strategy: "immediate",
-      today_pnl: 1250.5,
-      loss_count: 2,
-      max_losses: 5,
-      positions_open: 3,
-    },
-    {
-      bot_id: "2",
-      bot_name: "GBPUSD_H1_Breakout",
-      status: "active",
-      strategy: "breakeven",
-      today_pnl: -890.25,
-      loss_count: 4,
-      max_losses: 5,
-      positions_open: 2,
-    },
-    {
-      bot_id: "3",
-      bot_name: "USDJPY_M15_Scalp",
-      status: "suspended",
-      strategy: "trailing",
-      today_pnl: -1450.0,
-      loss_count: 5,
-      max_losses: 5,
-      positions_open: 0,
-    },
-    {
-      bot_id: "4",
-      bot_name: "XAUUSD_H4_Swing",
-      status: "quarantine",
-      strategy: "immediate",
-      today_pnl: -2100.0,
-      loss_count: 6,
-      max_losses: 5,
-      positions_open: 1,
-    },
-  ];
-
-  let killSwitchHistory: KillSwitchEvent[] = [
-    {
-      id: "1",
-      timestamp: "2025-01-15T14:32:00Z",
-      trigger_reason: "circuit_breaker",
-      strategy_used: "immediate",
-      positions_closed: 2,
-      total_pnl_preserved: -450.0,
-    },
-    {
-      id: "2",
-      timestamp: "2025-01-15T10:15:00Z",
-      trigger_reason: "manual",
-      strategy_used: "breakeven",
-      positions_closed: 3,
-      total_pnl_preserved: 890.5,
-    },
-    {
-      id: "3",
-      timestamp: "2025-01-14T16:45:00Z",
-      trigger_reason: "news",
-      strategy_used: "trailing",
-      positions_closed: 1,
-      total_pnl_preserved: 320.0,
-    },
-  ];
+  // Data loaded from API
+  let bots: BotKillSwitchConfig[] = [];
+  let killSwitchHistory: KillSwitchEvent[] = [];
 
   let killZoneConfig: KillZoneConfig = {
     enabled: true,
@@ -334,12 +267,35 @@
 
   // Lifecycle
   onMount(() => {
+    loadBotData();
+    loadKillSwitchHistory();
     // Poll for updates every 5 seconds
     pollingInterval = window.setInterval(() => {
-      // Refresh bot data from API
-      // fetchBotData();
+      loadBotData();
     }, 5000);
   });
+
+  async function loadBotData() {
+    try {
+      const res = await fetch('http://localhost:8000/api/kill-switch/bots');
+      if (res.ok) {
+        bots = await res.json();
+      }
+    } catch (e) {
+      console.error('Failed to load bot data:', e);
+    }
+  }
+
+  async function loadKillSwitchHistory() {
+    try {
+      const res = await fetch('http://localhost:8000/api/kill-switch/history');
+      if (res.ok) {
+        killSwitchHistory = await res.json();
+      }
+    } catch (e) {
+      console.error('Failed to load kill switch history:', e);
+    }
+  }
 
   onDestroy(() => {
     if (pollingInterval) {

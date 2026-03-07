@@ -17,9 +17,20 @@ SkillDefinition Schema:
 """
 
 from typing import Any, Dict, List, Literal, Optional
+from enum import Enum
 from pydantic import BaseModel, Field, validator
 import json
 import re
+
+
+# Department enum for skill binding
+class SkillDepartment(str, Enum):
+    """Departments that skills can be bound to."""
+    RESEARCH = "research"
+    DEVELOPMENT = "development"
+    TRADING = "trading"
+    RISK = "risk"
+    PORTFOLIO = "portfolio"
 
 
 class SkillDefinition(BaseModel):
@@ -34,6 +45,10 @@ class SkillDefinition(BaseModel):
         ..., description="Skill category for classification"
     )
     description: str = Field(..., description="Human-readable skill description")
+    departments: List[SkillDepartment] = Field(
+        default_factory=list,
+        description="Departments this skill is available to"
+    )
     input_schema: Dict[str, Any] = Field(
         ..., description="JSON Schema for input validation"
     )
@@ -110,6 +125,7 @@ class SkillDefinition(BaseModel):
             "name": self.name,
             "description": self.description,
             "category": self.category,
+            "departments": [d.value for d in self.departments],
             "code": self.code,
             "dependencies": self.dependencies,
             "example_usage": self.example_usage,
@@ -386,31 +402,113 @@ class SkillRegistry:
             reverse=True,
         )
 
-    def list_skills(self, category: Optional[str] = None) -> List[str]:
+    def list_skills(
+        self,
+        category: Optional[str] = None,
+        department: Optional[str] = None,
+    ) -> List[str]:
         """
         List all registered skill names.
 
         Args:
             category: Optional category filter
+            department: Optional department filter (e.g., 'research', 'trading')
 
         Returns:
             List of skill names
         """
-        if category is None:
-            return list(self._skills.keys())
+        result = list(self._skills.keys())
 
-        return [
-            name
+        if category is not None:
+            result = [
+                name
+                for name in result
+                if any(
+                    skill.category == category
+                    for skill in self._skills[name].values()
+                )
+            ]
+
+        if department is not None:
+            result = [
+                name
+                for name in result
+                if any(
+                    department in [d.value for d in skill.departments]
+                    for skill in self._skills[name].values()
+                )
+            ]
+
+        return result
+
+    def get_skills_by_department(self, department: str) -> Dict[str, "SkillDefinition"]:
+        """
+        Get all skills available to a specific department.
+
+        Args:
+            department: Department name (e.g., 'research', 'trading')
+
+        Returns:
+            Dictionary of skill names to SkillDefinitions
+        """
+        return {
+            name: versions[sorted(versions.keys(), key=lambda v: [int(x) for x in v.split(".")])[0]]
             for name, versions in self._skills.items()
             if any(
-                skill.category == category
+                department in [d.value for d in skill.departments]
                 for skill in versions.values()
             )
-        ]
+        }
 
 
 # Predefined category enum for type safety
 SkillCategory = Literal["trading_skills", "system_skills", "data_skills"]
+
+
+# Skill to Department Mappings
+# Maps skill categories to appropriate departments
+SKILL_DEPARTMENT_MAPPING = {
+    # Development Department Skills
+    "code_gen": ["development"],
+    "code_debug": ["development"],
+    "code_optimize": ["development"],
+    "code_review": ["development"],
+    "analyze_code_complexity": ["development"],
+    "suggest_code_improvements": ["development"],
+    "generate_documentation": ["development"],
+
+    # Research Department Skills
+    "knowledge_search": ["research"],
+    "extract_trading_rules": ["research"],
+    "research_summary": ["research"],
+    "strategy_analysis": ["research"],
+    "backtest": ["research", "development"],
+    "signal_generation": ["research"],
+
+    # Trading Department Skills
+    "calculate_position_size": ["trading", "risk"],
+    "calculate_rsi": ["trading", "research"],
+    "detect_support_resistance": ["trading", "research"],
+    "calculate_pivot_points": ["trading", "research"],
+    "order_execution": ["trading"],
+    "fill_tracking": ["trading"],
+    "trade_management": ["trading"],
+
+    # Risk Department Skills
+    "validate_risk_parameters": ["risk"],
+    "calculate_portfolio_risk": ["risk", "portfolio"],
+    "calculate_correlation_risk": ["risk", "portfolio"],
+    "risk_analysis": ["risk"],
+    "position_sizing": ["risk"],
+    "drawdown_monitoring": ["risk"],
+    "var_calculation": ["risk"],
+
+    # Portfolio Department Skills
+    "allocation": ["portfolio"],
+    "rebalancing": ["portfolio"],
+    "performance_tracking": ["portfolio"],
+    "portfolio_optimization": ["portfolio"],
+}
 
 
 __all__ = [
@@ -419,4 +517,6 @@ __all__ = [
     "SkillValidator",
     "SkillRegistry",
     "SkillCategory",
+    "SkillDepartment",
+    "SKILL_DEPARTMENT_MAPPING",
 ]

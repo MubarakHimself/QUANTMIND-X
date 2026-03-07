@@ -196,6 +196,19 @@ DEAD_TRIGGERS = {
     "max_capital_loss_pct": 0.50,  # Lost 50% of allocated capital
 }
 
+# Configurable thresholds by book type
+# Personal Book: 5 losses, Prop Firm Book: 3 losses (tighter)
+THRESHOLDS_BY_BOOK = {
+    "personal": {
+        "max_consecutive_losing_days": 5,
+        "max_quarantine_days": 30,
+    },
+    "prop_firm": {
+        "max_consecutive_losing_days": 3,  # Tighter for prop firms
+        "max_quarantine_days": 14,          # Shorter quarantine for prop firms
+    },
+}
+
 
 @dataclass
 class LifecycleCheckResult:
@@ -643,30 +656,38 @@ class LifecycleManager:
     ) -> List[str]:
         """
         Check if bot should be quarantined.
-        
+
         Returns:
             List of triggered quarantine conditions
         """
         triggered = []
-        
+
         if stats["win_rate"] < QUARANTINE_TRIGGERS["min_win_rate"]:
             triggered.append(
                 f"win_rate_below_{QUARANTINE_TRIGGERS['min_win_rate']:.0%}"
             )
-        
+
         if stats["sharpe_ratio"] < QUARANTINE_TRIGGERS["min_sharpe_ratio"]:
             triggered.append(
                 f"sharpe_below_{QUARANTINE_TRIGGERS['min_sharpe_ratio']}"
             )
-        
+
         if stats["max_drawdown"] > QUARANTINE_TRIGGERS["max_drawdown"]:
             triggered.append(
                 f"drawdown_above_{QUARANTINE_TRIGGERS['max_drawdown']:.0%}"
             )
-        
-        # Check consecutive losing days
+
+        # Check consecutive losing days - use configurable threshold by book type
         losing_days = self._get_consecutive_losing_days(bot.bot_id)
-        if losing_days >= QUARANTINE_TRIGGERS["max_consecutive_losing_days"]:
+        # Get account book type from bot manifest
+        account_book = getattr(bot, 'account_book', 'personal')
+        book_thresholds = THRESHOLDS_BY_BOOK.get(account_book, THRESHOLDS_BY_BOOK["personal"])
+        max_losing_days = book_thresholds["max_consecutive_losing_days"]
+
+        if losing_days >= max_losing_days:
+            triggered.append(
+                f"{losing_days}_consecutive_losing_days (threshold: {max_losing_days})"
+            )
             triggered.append(
                 f"{losing_days}_consecutive_losing_days"
             )
@@ -680,23 +701,27 @@ class LifecycleManager:
     ) -> List[str]:
         """
         Check if bot should be marked as dead.
-        
+
         Returns:
             List of triggered dead conditions
         """
         triggered = []
-        
-        # Check quarantine duration
+
+        # Check quarantine duration - use configurable threshold by book type
         quarantine_start = self._quarantine_tracker.get(bot.bot_id)
         if quarantine_start:
+            account_book = getattr(bot, 'account_book', 'personal')
+            book_thresholds = THRESHOLDS_BY_BOOK.get(account_book, THRESHOLDS_BY_BOOK["personal"])
+            max_quarantine_days = book_thresholds["max_quarantine_days"]
+
             days_in_quarantine = (
                 datetime.now(timezone.utc) - quarantine_start
             ).days
-            if days_in_quarantine >= DEAD_TRIGGERS["max_quarantine_days"]:
+            if days_in_quarantine >= max_quarantine_days:
                 triggered.append(
-                    f"{days_in_quarantine}_days_in_quarantine"
+                    f"{days_in_quarantine}_days_in_quarantine (threshold: {max_quarantine_days})"
                 )
-        
+
         if stats["win_rate"] < DEAD_TRIGGERS["min_win_rate"]:
             triggered.append(
                 f"win_rate_below_{DEAD_TRIGGERS['min_win_rate']:.0%}"

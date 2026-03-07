@@ -10,13 +10,14 @@ import logging
 from typing import List, Optional
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from src.database.models import ImportedEA, get_db_session
 from src.integrations.github_ea_sync import GitHubEASync
 from src.integrations.github_ea_scheduler import get_scheduler
+from src.api.pagination import PaginatedResponse, DEFAULT_LIMIT, DEFAULT_OFFSET, MAX_LIMIT
 
 logger = logging.getLogger(__name__)
 
@@ -201,35 +202,38 @@ async def trigger_sync(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/eas", response_model=List[EAListItem])
+@router.get("/eas", response_model=PaginatedResponse[EAListItem])
 async def list_eas(
     status: Optional[str] = None,
     strategy_type: Optional[str] = None,
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="Maximum number of results"),
+    offset: int = Query(DEFAULT_OFFSET, ge=0, description="Pagination offset"),
     db: Session = Depends(get_db_session)
 ):
     """
-    List all available EAs from the GitHub repository.
-    
+    List all available EAs from the GitHub repository with pagination.
+
     Query parameters:
     - status: Filter by status (new, updated, unchanged)
     - strategy_type: Filter by strategy type
-    - limit: Maximum number of results (default: 50)
+    - limit: Maximum number of results (default: 50, max: 100)
     - offset: Pagination offset (default: 0)
     """
     try:
         query = db.query(ImportedEA)
-        
+
         if status:
             query = query.filter(ImportedEA.status == status)
-        
+
         if strategy_type:
             query = query.filter(ImportedEA.strategy_type.ilike(f"%{strategy_type}%"))
-        
+
+        # Get total count before applying limit/offset
+        total = query.count()
+
         eas = query.order_by(ImportedEA.imported_at.desc()).offset(offset).limit(limit).all()
-        
-        return [
+
+        items = [
             EAListItem(
                 id=ea.id,
                 ea_filename=ea.ea_filename,
@@ -244,7 +248,14 @@ async def list_eas(
             )
             for ea in eas
         ]
-        
+
+        return PaginatedResponse.create(
+            items=items,
+            total=total,
+            limit=limit,
+            offset=offset
+        )
+
     except Exception as e:
         logger.error(f"Failed to list EAs: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -14,6 +14,8 @@
     MonitorPlay,
     Github,
     Wrench,
+    Workflow,
+    Layers,
   } from "lucide-svelte";
   import { navigationStore } from "../stores/navigationStore";
 
@@ -43,7 +45,10 @@
     { id: "hmm", icon: Activity, label: "HMM Dashboard" },
     { id: "journal", icon: FileText, label: "Trade Journal" },
     { id: "github-ea", icon: Github, label: "GitHub EA Library" },
+    { id: "batch", icon: Layers, label: "Batch Processing" },
     { id: "editor", icon: Edit3, label: "Editor Workspace" },
+    { id: "workflow", icon: Activity, label: "Workflows" },
+    { id: "workflow-builder", icon: Workflow, label: "Workflow Builder" },
   ];
 
   export let activeView = "live";

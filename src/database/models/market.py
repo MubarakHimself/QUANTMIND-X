@@ -83,17 +83,17 @@ class TickCache(Base):
 
 class StrategyFolder(Base):
     """
-    Strategy Folder for linking NPRD -> TRD -> EA.
+    Strategy Folder for linking VideoIngest -> TRD -> EA.
 
     Tracks the complete strategy development pipeline from Non-Processing
-    Research Data (NPRD) through Technical Requirements Document (TRD) to
+    Research Data (VideoIngest) through Technical Requirements Document (TRD) to
     Expert Advisor (EA) code.
 
     Attributes:
         id: Primary key
         folder_name: Unique folder name (e.g., "ict_orderblock")
         description: Strategy description
-        nprd_path: Path to NPRD document
+        video_ingest_path: Path to VideoIngest document
         trd_vanilla_path: Path to vanilla TRD document
         trd_enhanced_path: Path to enhanced TRD document
         ea_vanilla_path: Path to vanilla EA code
@@ -108,7 +108,7 @@ class StrategyFolder(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     folder_name = Column(String(200), nullable=False, unique=True, index=True)
     description = Column(Text, nullable=True)
-    nprd_path = Column(String(500), nullable=True)
+    video_ingest_path = Column(String(500), nullable=True)
     trd_vanilla_path = Column(String(500), nullable=True)
     trd_enhanced_path = Column(String(500), nullable=True)
     ea_vanilla_path = Column(String(500), nullable=True)

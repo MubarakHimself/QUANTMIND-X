@@ -6,7 +6,7 @@ Contains models for bot management including circuit breakers, cloning, manifest
 
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Index, Enum, Text, UniqueConstraint, JSON
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, attributes
 from ..models.base import Base, TradingMode
 
 
@@ -274,6 +274,59 @@ class BotManifest(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
+
+    @property
+    def prop_firm_tags(self) -> list:
+        """Get prop firm tags from bot metadata."""
+        if not self.bot_metadata:
+            return []
+        return list(self.bot_metadata.get('prop_firm_tags', []))
+
+    @prop_firm_tags.setter
+    def prop_firm_tags(self, tags: list):
+        """Set prop firm tags in bot metadata."""
+        if self.bot_metadata is None:
+            self.bot_metadata = {}
+        self.bot_metadata['prop_firm_tags'] = list(tags)
+        attributes.flag_modified(self, 'bot_metadata')
+
+    @property
+    def firm_config(self) -> dict:
+        """Get firm configuration from bot metadata."""
+        if not self.bot_metadata:
+            return {}
+        return self.bot_metadata.get('firm_config', {})
+
+    @firm_config.setter
+    def firm_config(self, config: dict):
+        """Set firm configuration in bot metadata."""
+        if self.bot_metadata is None:
+            self.bot_metadata = {}
+        self.bot_metadata['firm_config'] = config
+        attributes.flag_modified(self, 'bot_metadata')
+
+    def add_prop_firm_tag(self, tag: str) -> None:
+        """Add a prop firm tag to the bot."""
+        tags = self.prop_firm_tags
+        if tag not in tags:
+            tags.append(tag)
+            self.prop_firm_tags = tags
+
+    def remove_prop_firm_tag(self, tag: str) -> None:
+        """Remove a prop firm tag from the bot."""
+        tags = self.prop_firm_tags
+        if tag in tags:
+            tags.remove(tag)
+            self.prop_firm_tags = tags
+
+    def has_prop_firm_tag(self, tag: str) -> bool:
+        """Check if bot has a specific prop firm tag."""
+        return tag in self.prop_firm_tags
+
+    @classmethod
+    def get_valid_prop_firm_tags(cls) -> list:
+        """Get list of valid prop firm tags."""
+        return ['@fundednext', '@challenge_active', '@funded']
 
 
 class BotLifecycleLog(Base):

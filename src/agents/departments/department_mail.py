@@ -27,6 +27,10 @@ class MessageType(str, Enum):
     CODE_READY = "code_ready"                 # Dev → Risk
     RISK_CLEARED = "risk_cleared"             # Risk → Execution
     BACKTEST_REQUEST = "backtest_request"     # Any → Research
+    # Approval gate message types
+    APPROVAL_REQUEST = "approval_request"    # Approval gate created
+    APPROVAL_APPROVED = "approval_approved"  # Approval granted
+    APPROVAL_REJECTED = "approval_rejected"  # Approval rejected
 
 
 class Priority(str, Enum):
@@ -52,6 +56,11 @@ class DepartmentMessage:
         priority: Message priority
         timestamp: When message was created
         read: Whether message has been read
+        # Approval gate related fields
+        gate_id: Optional approval gate ID for approval messages
+        workflow_id: Optional workflow ID for context
+        from_stage: Optional source stage for approval transitions
+        to_stage: Optional target stage for approval transitions
     """
     id: str
     from_dept: str
@@ -62,6 +71,10 @@ class DepartmentMessage:
     priority: Priority
     timestamp: datetime
     read: bool = False
+    gate_id: Optional[str] = None
+    workflow_id: Optional[str] = None
+    from_stage: Optional[str] = None
+    to_stage: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -75,6 +88,10 @@ class DepartmentMessage:
             "priority": self.priority.value,
             "timestamp": self.timestamp.isoformat(),
             "read": self.read,
+            "gate_id": self.gate_id,
+            "workflow_id": self.workflow_id,
+            "from_stage": self.from_stage,
+            "to_stage": self.to_stage,
         }
 
 
@@ -114,7 +131,11 @@ class DepartmentMailService:
                 body TEXT,
                 priority TEXT DEFAULT 'normal',
                 timestamp TEXT NOT NULL,
-                read INTEGER DEFAULT 0
+                read INTEGER DEFAULT 0,
+                gate_id TEXT,
+                workflow_id TEXT,
+                from_stage TEXT,
+                to_stage TEXT
             );
 
             CREATE INDEX IF NOT EXISTS idx_to_dept_read
@@ -123,6 +144,10 @@ class DepartmentMailService:
                 ON messages(from_dept);
             CREATE INDEX IF NOT EXISTS idx_timestamp
                 ON messages(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_gate_id
+                ON messages(gate_id);
+            CREATE INDEX IF NOT EXISTS idx_workflow_id
+                ON messages(workflow_id);
         """)
         self.db.commit()
 
@@ -139,6 +164,10 @@ class DepartmentMailService:
         subject: str,
         body: str,
         priority: Priority = Priority.NORMAL,
+        gate_id: Optional[str] = None,
+        workflow_id: Optional[str] = None,
+        from_stage: Optional[str] = None,
+        to_stage: Optional[str] = None,
     ) -> DepartmentMessage:
         """
         Send a message to a department inbox.
@@ -150,6 +179,10 @@ class DepartmentMailService:
             subject: Brief subject line
             body: Message content
             priority: Message priority
+            gate_id: Optional approval gate ID for approval messages
+            workflow_id: Optional workflow ID for context
+            from_stage: Optional source stage for approval transitions
+            to_stage: Optional target stage for approval transitions
 
         Returns:
             The created message
@@ -164,12 +197,16 @@ class DepartmentMailService:
             priority=priority,
             timestamp=datetime.now(timezone.utc),
             read=False,
+            gate_id=gate_id,
+            workflow_id=workflow_id,
+            from_stage=from_stage,
+            to_stage=to_stage,
         )
 
         cursor = self.db.cursor()
         cursor.execute("""
-            INSERT INTO messages (id, from_dept, to_dept, type, subject, body, priority, timestamp, read)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO messages (id, from_dept, to_dept, type, subject, body, priority, timestamp, read, gate_id, workflow_id, from_stage, to_stage)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             message.id,
             message.from_dept,
@@ -180,6 +217,10 @@ class DepartmentMailService:
             message.priority.value,
             message.timestamp.isoformat(),
             0,
+            message.gate_id,
+            message.workflow_id,
+            message.from_stage,
+            message.to_stage,
         ))
         self.db.commit()
 
@@ -206,7 +247,7 @@ class DepartmentMailService:
 
         if unread_only:
             cursor.execute("""
-                SELECT id, from_dept, to_dept, type, subject, body, priority, timestamp, read
+                SELECT id, from_dept, to_dept, type, subject, body, priority, timestamp, read, gate_id, workflow_id, from_stage, to_stage
                 FROM messages
                 WHERE to_dept = ? AND read = 0
                 ORDER BY timestamp DESC
@@ -214,7 +255,7 @@ class DepartmentMailService:
             """, (dept, limit))
         else:
             cursor.execute("""
-                SELECT id, from_dept, to_dept, type, subject, body, priority, timestamp, read
+                SELECT id, from_dept, to_dept, type, subject, body, priority, timestamp, read, gate_id, workflow_id, from_stage, to_stage
                 FROM messages
                 WHERE to_dept = ?
                 ORDER BY timestamp DESC
@@ -233,6 +274,10 @@ class DepartmentMailService:
                 priority=Priority(row[6]),
                 timestamp=datetime.fromisoformat(row[7]),
                 read=bool(row[8]),
+                gate_id=row[9],
+                workflow_id=row[10],
+                from_stage=row[11],
+                to_stage=row[12],
             ))
 
         return messages
@@ -266,7 +311,7 @@ class DepartmentMailService:
         """
         cursor = self.db.cursor()
         cursor.execute("""
-            SELECT id, from_dept, to_dept, type, subject, body, priority, timestamp, read
+            SELECT id, from_dept, to_dept, type, subject, body, priority, timestamp, read, gate_id, workflow_id, from_stage, to_stage
             FROM messages WHERE id = ?
         """, (message_id,))
 
@@ -284,6 +329,10 @@ class DepartmentMailService:
             priority=Priority(row[6]),
             timestamp=datetime.fromisoformat(row[7]),
             read=bool(row[8]),
+            gate_id=row[9],
+            workflow_id=row[10],
+            from_stage=row[11],
+            to_stage=row[12],
         )
 
     def purge_old_messages(self, days: int = 30) -> int:
@@ -303,3 +352,183 @@ class DepartmentMailService:
         """, (f"-{days} days",))
         self.db.commit()
         return cursor.rowcount
+
+    def get_messages_by_gate(self, gate_id: str) -> List[DepartmentMessage]:
+        """
+        Get all messages related to a specific approval gate.
+
+        Args:
+            gate_id: The approval gate ID
+
+        Returns:
+            List of messages for this gate
+        """
+        cursor = self.db.cursor()
+        cursor.execute("""
+            SELECT id, from_dept, to_dept, type, subject, body, priority, timestamp, read, gate_id, workflow_id, from_stage, to_stage
+            FROM messages
+            WHERE gate_id = ?
+            ORDER BY timestamp DESC
+        """, (gate_id,))
+
+        messages = []
+        for row in cursor.fetchall():
+            messages.append(DepartmentMessage(
+                id=row[0],
+                from_dept=row[1],
+                to_dept=row[2],
+                type=MessageType(row[3]),
+                subject=row[4] or "",
+                body=row[5] or "",
+                priority=Priority(row[6]),
+                timestamp=datetime.fromisoformat(row[7]),
+                read=bool(row[8]),
+                gate_id=row[9],
+                workflow_id=row[10],
+                from_stage=row[11],
+                to_stage=row[12],
+            ))
+
+        return messages
+
+    def get_messages_by_workflow(self, workflow_id: str) -> List[DepartmentMessage]:
+        """
+        Get all messages related to a specific workflow.
+
+        Args:
+            workflow_id: The workflow ID
+
+        Returns:
+            List of messages for this workflow
+        """
+        cursor = self.db.cursor()
+        cursor.execute("""
+            SELECT id, from_dept, to_dept, type, subject, body, priority, timestamp, read, gate_id, workflow_id, from_stage, to_stage
+            FROM messages
+            WHERE workflow_id = ?
+            ORDER BY timestamp DESC
+        """, (workflow_id,))
+
+        messages = []
+        for row in cursor.fetchall():
+            messages.append(DepartmentMessage(
+                id=row[0],
+                from_dept=row[1],
+                to_dept=row[2],
+                type=MessageType(row[3]),
+                subject=row[4] or "",
+                body=row[5] or "",
+                priority=Priority(row[6]),
+                timestamp=datetime.fromisoformat(row[7]),
+                read=bool(row[8]),
+                gate_id=row[9],
+                workflow_id=row[10],
+                from_stage=row[11],
+                to_stage=row[12],
+            ))
+
+        return messages
+
+    def send_approval_notification(
+        self,
+        from_dept: str,
+        to_dept: str,
+        gate_id: str,
+        workflow_id: str,
+        from_stage: str,
+        to_stage: str,
+        action: str,
+        requester: Optional[str] = None,
+        reason: Optional[str] = None,
+    ) -> DepartmentMessage:
+        """
+        Send an approval-related notification message.
+
+        Args:
+            from_dept: Sending department (system)
+            to_dept: Receiving department
+            gate_id: The approval gate ID
+            workflow_id: The workflow ID
+            from_stage: Current stage
+            to_stage: Target stage
+            action: The approval action (created, approved, rejected)
+            requester: Who requested the approval
+            reason: Reason for the request
+
+        Returns:
+            The created message
+        """
+        if action == "created":
+            msg_type = MessageType.APPROVAL_REQUEST
+            subject = f"Approval Required: {from_stage} → {to_stage}"
+            body = f"An approval is required to transition from '{from_stage}' to '{to_stage}'.\n\n"
+            if reason:
+                body += f"Reason: {reason}\n\n"
+            if requester:
+                body += f"Requested by: {requester}\n"
+            body += f"Workflow ID: {workflow_id}\n"
+            body += f"Gate ID: {gate_id}\n"
+            priority = Priority.HIGH
+        elif action == "approved":
+            msg_type = MessageType.APPROVAL_APPROVED
+            subject = f"Approved: {from_stage} → {to_stage}"
+            body = f"The transition from '{from_stage}' to '{to_stage}' has been approved.\n\n"
+            if requester:
+                body += f"Approved by: {requester}\n"
+            body += f"Workflow ID: {workflow_id}\n"
+            body += f"Gate ID: {gate_id}\n"
+            priority = Priority.NORMAL
+        else:  # rejected
+            msg_type = MessageType.APPROVAL_REJECTED
+            subject = f"Rejected: {from_stage} → {to_stage}"
+            body = f"The transition from '{from_stage}' to '{to_stage}' has been rejected.\n\n"
+            if reason:
+                body += f"Reason: {reason}\n"
+            if requester:
+                body += f"Rejected by: {requester}\n"
+            body += f"Workflow ID: {workflow_id}\n"
+            body += f"Gate ID: {gate_id}\n"
+            priority = Priority.HIGH
+
+        return self.send(
+            from_dept=from_dept,
+            to_dept=to_dept,
+            type=msg_type,
+            subject=subject,
+            body=body,
+            priority=priority,
+            gate_id=gate_id,
+            workflow_id=workflow_id,
+            from_stage=from_stage,
+            to_stage=to_stage,
+        )
+
+
+# Singleton instance
+_mail_service: Optional[DepartmentMailService] = None
+
+
+def get_mail_service(db_path: str = ".quantmind/department_mail.db") -> DepartmentMailService:
+    """
+    Get or create the singleton DepartmentMailService instance.
+
+    Args:
+        db_path: Path to the SQLite database file
+
+    Returns:
+        The DepartmentMailService singleton instance
+    """
+    global _mail_service
+    if _mail_service is None:
+        _mail_service = DepartmentMailService(db_path)
+    return _mail_service
+
+
+def reset_mail_service() -> None:
+    """
+    Reset the mail service singleton. Useful for testing.
+    """
+    global _mail_service
+    if _mail_service is not None:
+        _mail_service.close()
+        _mail_service = None

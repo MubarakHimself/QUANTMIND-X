@@ -201,7 +201,7 @@ const createStrategyFile = tool(
   }: {
     strategyName: string;
     content: string;
-    fileType: "nprd" | "trd" | "mql5";
+    fileType: "video_ingest" | "trd" | "mql5";
     store?: BaseStore;
     namespace?: MemoryNamespace;
   }) => {
@@ -226,11 +226,11 @@ const createStrategyFile = tool(
   },
   {
     name: "create_strategy_file",
-    description: "Create a new strategy file (NPRD, TRD, or MQL5). Stores the file content in memory.",
+    description: "Create a new strategy file (VideoIngest, TRD, or MQL5). Stores the file content in memory.",
     schema: z.object({
       strategyName: z.string().describe("Name of the strategy"),
       content: z.string().describe("File content"),
-      fileType: z.enum(["nprd", "trd", "mql5"]).describe("Type of file to create"),
+      fileType: z.enum(["video_ingest", "trd", "mql5"]).describe("Type of file to create"),
     }),
   }
 );
@@ -331,7 +331,7 @@ const listFiles = tool(
     store,
     namespace,
   }: {
-    fileType?: "nprd" | "trd" | "mql5" | "all";
+    fileType?: "video_ingest" | "trd" | "mql5" | "all";
     store?: BaseStore;
     namespace?: MemoryNamespace;
   }) => {
@@ -369,10 +369,10 @@ const listFiles = tool(
   },
   {
     name: "list_files",
-    description: "List all strategy files (NPRD, TRD, MQL5) in the user's workspace",
+    description: "List all strategy files (VideoIngest, TRD, MQL5) in the user's workspace",
     schema: z.object({
       fileType: z
-        .enum(["nprd", "trd", "mql5", "all"])
+        .enum(["video_ingest", "trd", "mql5", "all"])
         .optional()
         .describe("Filter by file type (default: all)"),
     }),
@@ -481,13 +481,13 @@ const COPILOT_SYSTEM_PROMPT = `You are the QuantMindX Copilot - an intelligent o
 Your responsibilities:
 - Help users manage broker connections (MT5, cTrader, Match-Trader)
 - Guide users through the strategy development workflow
-- Assist with file operations (NPRD, TRD, MQL5 files)
+- Assist with file operations (VideoIngest, TRD, MQL5 files)
 - Orchestrate strategy deployment to brokers
 - Manage user preferences and settings
 - Coordinate with Analyst and QuantCode agents when needed
 
 Workflow Guidelines:
-1. When users want to create a strategy, guide them to create an NPRD first
+1. When users want to create a strategy, guide them to create a VideoIngest first
 2. For strategy analysis, delegate to the Analyst agent
 3. For MQL5 code generation, delegate to the QuantCode agent
 4. Always explain what you're doing when using tools
@@ -506,7 +506,7 @@ Tool Usage Best Practices:
 - Suggest next steps based on current state
 
 When delegating to other agents:
-- Analyst agent: NPRD → TRD conversion, strategy analysis
+- Analyst agent: VideoIngest → TRD conversion, strategy analysis
 - QuantCode agent: TRD → MQL5 code generation
 
 Be helpful, clear, and proactive in guiding users through their trading workflow.`;

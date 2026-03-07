@@ -144,12 +144,55 @@ class BrokerWebSocketService {
   private reconnectDelay = 1000;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private wsUrl: string;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private heartbeatInterval = 30000; // 30 seconds
+  private pongTimeout: ReturnType<typeof setTimeout> | null = null;
+  private pongTimeoutDuration = 10000;
+  private lastPongTime = 0;
 
   constructor() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.hostname;
     const port = import.meta.env.VITE_API_PORT || '8000';
     this.wsUrl = `${protocol}//${host}:${port}/api/brokers/ws`;
+  }
+
+  /**
+   * Start heartbeat to keep connection alive.
+   */
+  private _startHeartbeat(): void {
+    this._stopHeartbeat();
+
+    this.heartbeatTimer = setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ action: 'ping' }));
+
+        if (this.pongTimeout) {
+          clearTimeout(this.pongTimeout);
+        }
+
+        this.pongTimeout = setTimeout(() => {
+          console.warn('[BrokerWS] No pong received, connection may be dead');
+          if (this.ws) {
+            this.ws.close(1000, 'Heartbeat timeout');
+          }
+        }, this.pongTimeoutDuration);
+      }
+    }, this.heartbeatInterval);
+  }
+
+  /**
+   * Stop heartbeat timer.
+   */
+  private _stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+    if (this.pongTimeout) {
+      clearTimeout(this.pongTimeout);
+      this.pongTimeout = null;
+    }
   }
 
   connect(): void {
@@ -166,11 +209,30 @@ class BrokerWebSocketService {
         console.log('Broker WebSocket connected');
         connectionState.set('connected');
         this.reconnectAttempts = 0;
+        this.lastPongTime = Date.now();
+        this._startHeartbeat();
       };
 
       this.ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+
+          // Handle pong response
+          if (data.type === 'pong') {
+            this.lastPongTime = Date.now();
+            if (this.pongTimeout) {
+              clearTimeout(this.pongTimeout);
+              this.pongTimeout = null;
+            }
+            return;
+          }
+
+          // Handle server-initiated ping - respond with pong
+          if (data.type === 'ping') {
+            this.ws.send(JSON.stringify({ action: 'pong' }));
+            return;
+          }
+
           this.handleMessage(data);
         } catch (error) {
           console.error('Failed to parse broker message:', error);
@@ -179,6 +241,7 @@ class BrokerWebSocketService {
 
       this.ws.onclose = () => {
         connectionState.set('disconnected');
+        this._stopHeartbeat();
         this.scheduleReconnect();
       };
 
@@ -457,6 +520,7 @@ class BrokerWebSocketService {
   }
 
   disconnect(): void {
+    this._stopHeartbeat();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
     }

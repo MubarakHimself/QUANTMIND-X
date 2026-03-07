@@ -438,5 +438,5 @@ export const agentChats: Readable<(agent: AgentType) => Chat[]> = derived(
 export const agentGreetings: Record<AgentType, string> = {
   copilot: "Hello! I'm the QuantMind Copilot. I can help analyze strategies, run backtests, and manage bots.",
   quantcode: "I'm QuantCode. I can help write MQ5 code, debug EAs, and optimize parameters.",
-  analyst: "I'm the Analyst. I analyze NPRD outputs and help interpret trading patterns."
+  analyst: "I'm the Analyst. I analyze VideoIngest outputs and help interpret trading patterns."
 };

@@ -101,8 +101,8 @@
 
             <!-- File Indicators -->
             <div class="file-indicators">
-              {#if strategy.has_nprd}
-                <span class="file-tag nprd">NPRD</span>
+              {#if strategy.has_video_ingest}
+                <span class="file-tag video_ingest">Video Ingest</span>
               {/if}
               {#if strategy.has_trd}
                 <span class="file-tag trd">TRD</span>
@@ -286,8 +286,8 @@
     color: white;
   }
 
-  .file-tag.nprd {
-    background-color: var(--file-nprd, #8b5cf6);
+  .file-tag.video_ingest {
+    background-color: var(--file-video-ingest, #8b5cf6);
   }
 
   .file-tag.trd {

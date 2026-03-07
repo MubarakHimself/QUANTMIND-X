@@ -177,32 +177,26 @@
     };
   }
 
-  function viewHistory(asset: SharedAsset) {
+  async function viewHistory(asset: SharedAsset) {
     selectedAsset = asset;
-    // Mock history data
-    assetHistory = [
-      {
-        version: asset.version,
-        checksum: asset.checksum,
-        created_at: asset.updated_at,
-        created_by: asset.created_by,
-        change_description: 'Current version'
-      },
-      {
-        version: '1.1.0',
-        checksum: 'old-checksum-1',
-        created_at: '2024-01-10T10:00:00Z',
-        created_by: 'QuantCode',
-        change_description: 'Fixed bug in calculation'
-      },
-      {
-        version: '1.0.0',
-        checksum: 'old-checksum-2',
-        created_at: '2024-01-05T09:00:00Z',
-        created_by: 'user',
-        change_description: 'Initial release'
+    try {
+      const res = await fetch(`http://localhost:8000/api/assets/${asset.id}/history`);
+      if (res.ok) {
+        assetHistory = await res.json();
+      } else {
+        // If API fails, show only current version
+        assetHistory = [{
+          version: asset.version,
+          checksum: asset.checksum,
+          created_at: asset.updated_at,
+          created_by: asset.created_by,
+          change_description: 'Current version'
+        }];
       }
-    ];
+    } catch (e) {
+      console.error('Failed to load asset history:', e);
+      assetHistory = [];
+    }
     historyModalOpen = true;
   }
 
@@ -243,7 +237,7 @@
   }
 
   function openInEditor(asset: SharedAsset) {
-    // Create a mock file object for the editor
+    // Create a file object for the editor
     const fileForEditor = {
       id: asset.id,
       name: asset.name,

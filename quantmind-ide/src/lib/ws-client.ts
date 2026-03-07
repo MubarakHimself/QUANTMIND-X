@@ -127,13 +127,18 @@ export class WebSocketClient {
   private ws: WebSocket | null = null;
   private url: string;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
+  private maxReconnectAttempts = 10;
   private reconnectDelay = 1000; // Start with 1 second
   private maxReconnectDelay = 30000; // Max 30 seconds
   private handlers: Map<string, Set<MessageHandler>> = new Map();
   private isConnecting = false;
   private isDisconnecting = false;
   private subscriptionTopics: Set<string> = new Set();
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private heartbeatInterval = 30000; // 30 seconds heartbeat
+  private lastPongTime = 0;
+  private pongTimeout: ReturnType<typeof setTimeout> | null = null;
+  private pongTimeoutDuration = 10000; // 10 seconds to receive pong
 
   constructor(url: string) {
     this.url = url;
@@ -160,7 +165,11 @@ export class WebSocketClient {
           this.isConnecting = false;
           this.reconnectAttempts = 0;
           this.reconnectDelay = 1000;
+          this.lastPongTime = Date.now();
           console.log('[WS] Connected to', this.url);
+
+          // Start heartbeat
+          this._startHeartbeat();
 
           // Re-subscribe to topics
           for (const topic of this.subscriptionTopics) {
@@ -173,6 +182,23 @@ export class WebSocketClient {
         this.ws.onmessage = (event) => {
           try {
             const message = JSON.parse(event.data) as WebSocketMessage;
+
+            // Handle pong response
+            if (message.type === 'pong') {
+              this.lastPongTime = Date.now();
+              if (this.pongTimeout) {
+                clearTimeout(this.pongTimeout);
+                this.pongTimeout = null;
+              }
+              return;
+            }
+
+            // Handle server-initiated ping - respond with pong
+            if (message.type === 'ping') {
+              this.send({ action: 'pong' });
+              return;
+            }
+
             this._handleMessage(message);
           } catch (e) {
             console.error('[WS] Failed to parse message:', e);
@@ -187,6 +213,7 @@ export class WebSocketClient {
 
         this.ws.onclose = (event) => {
           this.isConnecting = false;
+          this._stopHeartbeat();
           console.log('[WS] Disconnected:', event.code, event.reason);
 
           // Attempt reconnection if not intentionally disconnecting
@@ -202,10 +229,79 @@ export class WebSocketClient {
   }
 
   /**
+   * Start heartbeat to keep connection alive.
+   */
+  private _startHeartbeat(): void {
+    this._stopHeartbeat();
+
+    this.heartbeatTimer = setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        // Send ping
+        this.send({ action: 'ping' });
+
+        // Set timeout for pong response
+        if (this.pongTimeout) {
+          clearTimeout(this.pongTimeout);
+        }
+
+        this.pongTimeout = setTimeout(() => {
+          // No pong received within timeout - force reconnect
+          console.warn('[WS] No pong received, connection may be dead');
+          if (this.ws) {
+            this.ws.close(1000, 'Heartbeat timeout');
+          }
+        }, this.pongTimeoutDuration);
+      }
+    }, this.heartbeatInterval);
+  }
+
+  /**
+   * Stop heartbeat timer.
+   */
+  private _stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+    if (this.pongTimeout) {
+      clearTimeout(this.pongTimeout);
+      this.pongTimeout = null;
+    }
+  }
+
+  /**
+   * Set heartbeat interval (in milliseconds).
+   * @param interval - Interval in ms (default: 30000)
+   */
+  setHeartbeatInterval(interval: number): void {
+    this.heartbeatInterval = interval;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this._startHeartbeat();
+    }
+  }
+
+  /**
+   * Set pong timeout duration (in milliseconds).
+   * @param duration - Duration in ms (default: 10000)
+   */
+  setPongTimeout(duration: number): void {
+    this.pongTimeoutDuration = duration;
+  }
+
+  /**
+   * Set maximum reconnection attempts.
+   * @param max - Maximum attempts (default: 10)
+   */
+  setMaxReconnectAttempts(max: number): void {
+    this.maxReconnectAttempts = max;
+  }
+
+  /**
    * Disconnect from WebSocket server.
    */
   disconnect(): void {
     this.isDisconnecting = true;
+    this._stopHeartbeat();
 
     if (this.ws) {
       this.ws.close();
@@ -285,6 +381,52 @@ export class WebSocketClient {
    */
   getState(): number {
     return this.ws ? this.ws.readyState : WebSocket.CLOSED;
+  }
+
+  /**
+   * Get connection state as string.
+   */
+  getStateString(): string {
+    const state = this.getState();
+    switch (state) {
+      case WebSocket.CONNECTING:
+        return 'connecting';
+      case WebSocket.OPEN:
+        return 'connected';
+      case WebSocket.CLOSING:
+        return 'closing';
+      case WebSocket.CLOSED:
+        return 'disconnected';
+      default:
+        return 'unknown';
+    }
+  }
+
+  /**
+   * Check if currently reconnecting.
+   */
+  isReconnecting(): boolean {
+    return this.reconnectAttempts > 0 && this.reconnectAttempts < this.maxReconnectAttempts;
+  }
+
+  /**
+   * Get current reconnect attempt count.
+   */
+  getReconnectAttempts(): number {
+    return this.reconnectAttempts;
+  }
+
+  /**
+   * Manually trigger a reconnect.
+   */
+  reconnect(): void {
+    this._stopHeartbeat();
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    this.reconnectAttempts = 0;
+    this._attemptReconnect();
   }
 
   private _handleMessage(message: WebSocketMessage): void {

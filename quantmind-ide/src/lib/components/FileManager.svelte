@@ -90,123 +90,15 @@
       if (response.ok) {
         fileTree = await response.json();
         expandToPath(currentPath);
+      } else {
+        console.error('Failed to load file tree:', response.status);
+        fileTree = [];
       }
     } catch (e) {
       console.error('Failed to load file tree:', e);
-      loadMockFileTree();
+      fileTree = [];
     }
     isLoading = false;
-  }
-
-  function loadMockFileTree() {
-    fileTree = [
-      {
-        id: 'root-mql5',
-        name: 'mql5',
-        type: 'folder',
-        path: '/mql5',
-        expanded: true,
-        children: [
-          {
-            id: 'mql5-experts',
-            name: 'Experts',
-            type: 'folder',
-            path: '/mql5/Experts',
-            children: [
-              {
-                id: 'ea-sma-cross',
-                name: 'SMA_Cross.mq5',
-                type: 'file',
-                path: '/mql5/Experts/SMA_Cross.mq5',
-                metadata: {
-                  size: 12456,
-                  created_at: '2024-01-10T10:00:00Z',
-                  updated_at: '2024-01-15T14:30:00Z'
-                }
-              },
-              {
-                id: 'ea-rsi-oscillator',
-                name: 'RSI_Oscillator.mq5',
-                type: 'file',
-                path: '/mql5/Experts/RSI_Oscillator.mq5',
-                metadata: {
-                  size: 15678,
-                  created_at: '2024-01-12T09:00:00Z',
-                  updated_at: '2024-01-18T16:45:00Z'
-                }
-              }
-            ]
-          },
-          {
-            id: 'mql5-indicators',
-            name: 'Indicators',
-            type: 'folder',
-            path: '/mql5/Indicators',
-            children: [
-              {
-                id: 'ind-adaptive-rsi',
-                name: 'AdaptiveRSI.mqh',
-                type: 'file',
-                path: '/mql5/Indicators/AdaptiveRSI.mqh',
-                metadata: {
-                  size: 4567,
-                  created_at: '2024-01-05T11:00:00Z',
-                  updated_at: '2024-01-20T10:15:00Z'
-                }
-              }
-            ]
-          },
-          {
-            id: 'mql5-scripts',
-            name: 'Scripts',
-            type: 'folder',
-            path: '/mql5/Scripts',
-            children: []
-          }
-        ]
-      },
-      {
-        id: 'root-python',
-        name: 'python',
-        type: 'folder',
-        path: '/python',
-        children: [
-          {
-            id: 'py-strategies',
-            name: 'strategies',
-            type: 'folder',
-            path: '/python/strategies',
-            children: [
-              {
-                id: 'py-mean-reversion',
-                name: 'mean_reversion.py',
-                type: 'file',
-                path: '/python/strategies/mean_reversion.py',
-                metadata: {
-                  size: 8901,
-                  created_at: '2024-01-08T14:00:00Z',
-                  updated_at: '2024-01-19T11:30:00Z'
-                }
-              }
-            ]
-          }
-        ]
-      },
-      {
-        id: 'root-data',
-        name: 'data',
-        type: 'folder',
-        path: '/data',
-        children: []
-      },
-      {
-        id: 'root-config',
-        name: 'config',
-        type: 'folder',
-        path: '/config',
-        children: []
-      }
-    ];
   }
 
   function expandToPath(path: string) {

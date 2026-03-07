@@ -152,6 +152,15 @@ DEFAULT_MCP_SERVERS = [
         },
         "auto_connect": False,
     },
+    {
+        "server_id": "notebooklm",
+        "name": "NotebookLM MCP",
+        "description": "NotebookLM integration for project grounding and cross-session memory",
+        "command": "npx",
+        "args": ["-y", "notebooklm-mcp-cli"],
+        "env": {},
+        "auto_connect": False,
+    },
 ]
 
 
@@ -594,3 +603,255 @@ async def set_auto_connect(
         "auto_connect": enabled,
         "message": f"Auto-connect {'enabled' if enabled else 'disabled'} for {server_id}"
     }
+
+
+# ============================================================================
+# NotebookLM Project Grounding Endpoints
+# ============================================================================
+
+class NotebookGroundingRequest(BaseModel):
+    """Request for grounding NotebookLM with project context."""
+    project_path: str = "."
+    notebook_name: Optional[str] = None
+    include_files: List[str] = []
+    exclude_patterns: List[str] = ["*.pyc", "__pycache__", ".git", "node_modules", "venv", ".venv"]
+    max_files: int = 50
+
+
+class NotebookQueryRequest(BaseModel):
+    """Request for querying a NotebookLM notebook."""
+    notebook_id: str
+    query: str
+    context: Optional[str] = None
+
+
+class NotebookGroundingResponse(BaseModel):
+    """Response for grounding operation."""
+    success: bool
+    notebook_id: Optional[str] = None
+    sources_added: List[str] = []
+    message: str
+
+
+@router.post("/notebooklm/ground", response_model=NotebookGroundingResponse)
+async def ground_notebooklm_with_project(request: NotebookGroundingRequest):
+    """
+    Ground NotebookLM with project context for project-specific AI assistance.
+
+    This endpoint:
+    1. Scans the project directory for relevant files
+    2. Creates or uses an existing NotebookLM notebook
+    3. Adds project files as sources to the notebook
+    4. Enables cross-session memory through NotebookLM
+    """
+    import glob
+    import os
+
+    project_path = os.path.abspath(request.project_path)
+
+    if not os.path.exists(project_path):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Project path does not exist: {project_path}"
+        )
+
+    # Find files to add
+    files_to_add = []
+
+    if request.include_files:
+        # Use specified files
+        for pattern in request.include_files:
+            matched = glob.glob(os.path.join(project_path, pattern))
+            files_to_add.extend(matched)
+    else:
+        # Auto-discover relevant files
+        extensions = ["*.py", "*.md", "*.json", "*.yaml", "*.yml", "*.txt", "*.ts", "*.js"]
+        for ext in extensions:
+            pattern = os.path.join(project_path, "**", ext)
+            matched = glob.glob(pattern, recursive=True)
+            # Filter out excluded patterns
+            for f in matched:
+                excluded = False
+                for exclude in request.exclude_patterns:
+                    if exclude.replace("*", "") in f:
+                        excluded = True
+                        break
+                if not excluded and len(files_to_add) < request.max_files:
+                    files_to_add.append(f)
+
+    # Use the existing NotebookLM client
+    try:
+        from src.mcp.notebooklm_server import get_notebooklm_client
+        client = get_notebooklm_client()
+
+        # Create or get notebook
+        notebook_name = request.notebook_name or f"QuantMindX_Project_{os.path.basename(project_path)}"
+
+        # Try to find existing notebook or create new
+        existing_notebooks = await client.list_notebooks()
+        notebook_id = None
+
+        for nb in existing_notebooks.get("notebooks", []):
+            if notebook_name in nb:
+                notebook_id = nb.split(":")[-1].strip() if ":" in nb else nb
+                break
+
+        if not notebook_id:
+            result = await client.create_notebook(notebook_name)
+            notebook_id = result.get("notebook_id", "")
+
+        # Add sources
+        sources_added = []
+        for file_path in files_to_add[:10]:  # Limit to 10 sources
+            try:
+                await client.add_source(file_path, notebook_id)
+                sources_added.append(file_path)
+            except Exception as e:
+                logger.warning(f"Failed to add source {file_path}: {e}")
+
+        return NotebookGroundingResponse(
+            success=True,
+            notebook_id=notebook_id,
+            sources_added=sources_added,
+            message=f"Grounded {len(sources_added)} sources in NotebookLM"
+        )
+
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail="NotebookLM client not available. Install notebooklm-mcp-cli."
+        )
+    except Exception as e:
+        logger.error(f"NotebookLM grounding failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Grounding failed: {str(e)}"
+        )
+
+
+@router.post("/notebooklm/query", response_model=Dict[str, Any])
+async def query_notebooklm(request: NotebookQueryRequest):
+    """
+    Query a NotebookLM notebook with project-specific context.
+
+    This enables AI assistants to use NotebookLM as a knowledge base
+    for project context and cross-session memory.
+    """
+    try:
+        from src.mcp.notebooklm_server import get_notebooklm_client
+        client = get_notebooklm_client()
+
+        # Build query with optional context
+        full_query = request.query
+        if request.context:
+            full_query = f"Context: {request.context}\n\nQuestion: {request.query}"
+
+        result = await client.query_notebook(request.notebook_id, full_query)
+
+        return {
+            "success": True,
+            "response": result.get("response", ""),
+            "notebook_id": request.notebook_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail="NotebookLM client not available. Install notebooklm-mcp-cli."
+        )
+    except Exception as e:
+        logger.error(f"NotebookLM query failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Query failed: {str(e)}"
+        )
+
+
+@router.get("/notebooklm/notebooks", response_model=Dict[str, Any])
+async def list_notebooklm_notebooks():
+    """
+    List all available notebooks in NotebookLM.
+    """
+    try:
+        from src.mcp.notebooklm_server import get_notebooklm_client
+        client = get_notebooklm_client()
+
+        result = await client.list_notebooks()
+
+        return {
+            "success": True,
+            "notebooks": result.get("notebooks", []),
+        }
+
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail="NotebookLM client not available. Install notebooklm-mcp-cli."
+        )
+    except Exception as e:
+        logger.error(f"Failed to list notebooks: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list notebooks: {str(e)}"
+        )
+
+
+@router.post("/notebooklm/notebooks", response_model=Dict[str, Any])
+async def create_notebooklm_notebook(name: str = Query(...)):
+    """
+    Create a new NotebookLM notebook.
+    """
+    try:
+        from src.mcp.notebooklm_server import get_notebooklm_client
+        client = get_notebooklm_client()
+
+        result = await client.create_notebook(name)
+
+        return {
+            "success": True,
+            "notebook_id": result.get("notebook_id", ""),
+            "name": name,
+        }
+
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail="NotebookLM client not available. Install notebooklm-mcp-cli."
+        )
+    except Exception as e:
+        logger.error(f"Failed to create notebook: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create notebook: {str(e)}"
+        )
+
+
+@router.post("/notebooklm/audio", response_model=Dict[str, Any])
+async def create_notebooklm_audio(notebook_id: str = Query(...)):
+    """
+    Create an audio overview from a NotebookLM notebook.
+    """
+    try:
+        from src.mcp.notebooklm_server import get_notebooklm_client
+        client = get_notebooklm_client()
+
+        result = await client.create_audio(notebook_id)
+
+        return {
+            "success": True,
+            "audio_created": result.get("audio_created", ""),
+            "notebook_id": notebook_id,
+        }
+
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail="NotebookLM client not available. Install notebooklm-mcp-cli."
+        )
+    except Exception as e:
+        logger.error(f"Failed to create audio: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create audio: {str(e)}"
+        )

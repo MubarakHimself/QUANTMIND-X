@@ -72,10 +72,14 @@ services:
       - ./config:/app/config:ro
       - ./workspaces:/app/workspaces
       - claude-mem-data:/home/trader/.claude-mem
+      # Mount CLI auth tokens for Gemini and Qwen
+      - ~/.gemini:/home/trader/.gemini:ro
+      - ~/.qwen:/home/trader/.qwen:ro
     environment:
       - QUANTMIND_ENV=production
       - QUANTMIND_VERSION=1.0.0
       - PROMETHEUS_PORT=9090
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-tauri://localhost,tauri://127.0.0.1,http://localhost:1420,http://localhost:5173,http://localhost:3000,http://127.0.0.1:1420,http://127.0.0.1:5173,http://127.0.0.1:3000,https://app.quantmindx.com,https://www.quantmindx.com,https://quantmindx.com}
       - GRAFANA_PROMETHEUS_URL=${GRAFANA_PROMETHEUS_URL}
       - GRAFANA_LOKI_URL=${GRAFANA_LOKI_URL}
       - GRAFANA_INSTANCE_ID=${GRAFANA_INSTANCE_ID}

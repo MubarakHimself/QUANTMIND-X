@@ -954,7 +954,7 @@ bool ValidateParameters()
   },
   {
     name: "generate_parameters_include",
-    description: "Generate an MQL5 include file for strategy parameters (following NPRD naming conventions)",
+    description: "Generate an MQL5 include file for strategy parameters (following VideoIngest naming conventions)",
     schema: z.object({
       strategyName: z.string().describe("Name of the strategy"),
       trdContent: z.string().describe("TRD content as JSON string"),
@@ -986,7 +986,7 @@ Your responsibilities:
 - Convert TRD (Technical Requirements Document) to MQL5 Expert Advisor code
 - Generate BOTH Vanilla and Enhanced versions of each EA
 - Integrate with QuantMindX shared asset library
-- Follow NPRD-compliant parameter naming conventions
+- Follow VideoIngest-compliant parameter naming conventions
 - Ensure proper router integration for multi-symbol trading
 
 Vanilla EA Characteristics:
@@ -1026,7 +1026,7 @@ Router Integration:
 - Send heartbeat every minute
 - Handle router callbacks in OnChartEvent
 
-NPRD Parameter Naming:
+VideoIngest Parameter Naming:
 - Use SCREAMING_SNAKE_CASE for input parameters
 - Use PascalCase for functions and classes
 - Use camelCase for local variables

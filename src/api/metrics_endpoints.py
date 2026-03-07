@@ -17,6 +17,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from src.api.pagination import PaginatedResponse, DEFAULT_LIMIT, DEFAULT_OFFSET, MAX_LIMIT
+
 # Import AlertManager for centralized alert management
 try:
     from src.router.alert_manager import get_alert_manager, AlertManager
@@ -424,12 +426,14 @@ async def get_tick_stream():
     return get_tick_stream_metrics()
 
 
-@router.get("/alerts", response_model=List[AlertData])
+@router.get("/alerts", response_model=PaginatedResponse[AlertData])
 async def get_alerts(
     severity: Optional[str] = Query(None, description="Filter by severity"),
-    include_acknowledged: bool = Query(False, description="Include acknowledged alerts")
+    include_acknowledged: bool = Query(False, description="Include acknowledged alerts"),
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="Maximum items to return"),
+    offset: int = Query(DEFAULT_OFFSET, ge=0, description="Number of items to skip")
 ):
-    """Get alerts with optional filtering."""
+    """Get alerts with optional filtering and pagination."""
     alerts = list(_active_alerts.values())
 
     if severity:
@@ -438,7 +442,16 @@ async def get_alerts(
     if not include_acknowledged:
         alerts = [a for a in alerts if not a.acknowledged]
 
-    return sorted(alerts, key=lambda x: x.timestamp, reverse=True)
+    sorted_alerts = sorted(alerts, key=lambda x: x.timestamp, reverse=True)
+    total = len(sorted_alerts)
+    paginated_alerts = sorted_alerts[offset:offset + limit]
+
+    return PaginatedResponse.create(
+        items=paginated_alerts,
+        total=total,
+        limit=limit,
+        offset=offset
+    )
 
 
 @router.post("/alerts/{alert_id}/acknowledge")

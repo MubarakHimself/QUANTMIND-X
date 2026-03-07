@@ -9,7 +9,7 @@ import { writable, derived, get } from 'svelte/store';
 import type { Readable, Writable } from 'svelte/store';
 
 // Department types
-export type DepartmentId = 'analysis' | 'research' | 'risk' | 'execution' | 'portfolio';
+export type DepartmentId = 'development' | 'research' | 'risk' | 'trading' | 'portfolio';
 
 export type DepartmentInfo = {
   id: DepartmentId;
@@ -21,9 +21,9 @@ export type DepartmentInfo = {
 
 // Department definitions
 export const DEPARTMENTS: Record<DepartmentId, DepartmentInfo> = {
-  analysis: {
-    id: 'analysis',
-    name: 'Analysis',
+  development: {
+    id: 'development',
+    name: 'Development',
     icon: 'BarChart2',
     color: '#3b82f6',
     description: 'Market analysis and signal generation',
@@ -42,9 +42,9 @@ export const DEPARTMENTS: Record<DepartmentId, DepartmentInfo> = {
     color: '#ef4444',
     description: 'Risk management and position sizing',
   },
-  execution: {
-    id: 'execution',
-    name: 'Execution',
+  trading: {
+    id: 'trading',
+    name: 'Trading',
     icon: 'Zap',
     color: '#f97316',
     description: 'Order execution and routing',

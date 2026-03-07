@@ -124,7 +124,7 @@ class StrategyAPIHandler:
                     name=folder.name.replace("_", " "),
                     status=status,
                     created_at=created_at,
-                    has_nprd=(folder / "nprd").exists(),
+                    has_video_ingest=(folder / "video_ingest").exists(),
                     has_trd=(folder / "trd").exists(),
                     has_ea=(folder / "ea").exists(),
                     has_backtest=(folder / "backtest").exists()
@@ -151,15 +151,15 @@ class StrategyAPIHandler:
                 pass
 
         # Gather folder contents
-        nprd_data = None
-        if (folder / "nprd").exists():
-            nprd_data = {
-                "files": [f.name for f in (folder / "nprd").iterdir() if f.is_file()]
+        video_ingest_data = None
+        if (folder / "video_ingest").exists():
+            video_ingest_data = {
+                "files": [f.name for f in (folder / "video_ingest").iterdir() if f.is_file()]
             }
-            metadata_file = folder / "nprd" / "metadata.json"
+            metadata_file = folder / "video_ingest" / "metadata.json"
             if metadata_file.exists():
                 with open(metadata_file) as f:
-                    nprd_data["metadata"] = json.load(f)
+                    video_ingest_data["metadata"] = json.load(f)
 
         trd_data = None
         if (folder / "trd").exists():
@@ -188,7 +188,7 @@ class StrategyAPIHandler:
             name=strategy_id.replace("_", " "),
             status=status,
             created_at=datetime.fromtimestamp(folder.stat().st_ctime).isoformat(),
-            nprd=nprd_data,
+            video_ingest=video_ingest_data,
             trd=trd_data,
             ea=ea_data,
             backtests=backtests
@@ -200,7 +200,7 @@ class StrategyAPIHandler:
         folder = STRATEGIES_DIR / folder_name
 
         # Create folder structure
-        (folder / "nprd").mkdir(parents=True, exist_ok=True)
+        (folder / "video_ingest").mkdir(parents=True, exist_ok=True)
         (folder / "trd").mkdir(exist_ok=True)
         (folder / "ea").mkdir(exist_ok=True)
         (folder / "backtest").mkdir(exist_ok=True)

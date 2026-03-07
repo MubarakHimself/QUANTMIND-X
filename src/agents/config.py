@@ -224,8 +224,8 @@ class AgentConfig:
             "analyst": [
                 "research_market_data",
                 "extract_insights",
-                "parse_nprd",
-                "validate_nprd",
+                "parse_video_ingest",
+                "validate_video_ingest",
                 "generate_trd",
                 "analyze_backtest",
                 "compare_strategies",

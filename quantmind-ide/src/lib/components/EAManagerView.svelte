@@ -1,13 +1,32 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { createEventDispatcher } from 'svelte';
-  import { 
-    Bot, FolderOpen, ChevronRight, ChevronDown, Play, Pause, 
+  import {
+    Bot, FolderOpen, ChevronRight, ChevronDown, Play, Pause,
     Settings, Trash2, Tag, Filter, Search, CheckCircle, XCircle,
     Clock, AlertTriangle, ArrowRight, FileText, History, User,
-    Star, Shield, Eye, Download, Upload
+    Star, Shield, Eye, Download, Upload, Plus, Home, X
   } from 'lucide-svelte';
+  import Breadcrumbs from './Breadcrumbs.svelte';
+  import { navigationStore } from '../stores/navigationStore';
 
   const dispatch = createEventDispatcher();
+
+  // Breadcrumb items
+  const breadcrumbItems = [
+    { label: 'EA Management', path: '/ea' }
+  ];
+
+  function handleBreadcrumbNavigate(path: string) {
+    navigationStore.navigateToPath(path);
+  }
+
+  // Video ingest state
+  let showVideoIngestModal = false;
+  let videoUrl = '';
+  let strategyName = '';
+  let isProcessing = false;
+  let processingJobs: Array<{ id: string; name: string; status: string; progress: number }> = [];
 
   // Bot lifecycle status
   type BotStatus = 'development' | 'review' | 'primal' | 'pending' | 'quarantine' | 'live';
@@ -30,8 +49,83 @@
     backtestStatus: 'passed' | 'failed' | 'pending';
   }
 
-  // Tag definitions with colors
-  const tags = [
+  // Tag definitions with colors - loaded from API
+  interface TagDefinition {
+    id: string;
+    label: string;
+    color: string;
+    description: string;
+  }
+
+  let availableTags: TagDefinition[] = [];
+  let propFirmTags: string[] = [];
+
+  // Load tags from API
+  async function loadTags() {
+    try {
+      const res = await fetch('http://localhost:8000/api/ea/tags');
+      if (res.ok) {
+        const data = await res.json();
+        availableTags = data.available_tags || [];
+        propFirmTags = data.prop_firm_tags || [];
+      }
+    } catch (e) {
+      console.error('Failed to load tags:', e);
+      // Fallback to default tags
+      availableTags = [
+        { id: 'scalper', label: 'Scalper', color: '#3b82f6', description: 'Short-term trades' },
+        { id: 'swing', label: 'Swing', color: '#8b5cf6', description: 'Medium-term trades' },
+        { id: 'trend', label: 'Trend', color: '#06b6d4', description: 'Trend following' },
+        { id: 'mean-reversion', label: 'Mean Reversion', color: '#ec4899', description: 'Reversal strategy' },
+        { id: 'breakout', label: 'Breakout', color: '#f59e0b', description: 'Breakout strategy' },
+        { id: 'grid', label: 'Grid', color: '#10b981', description: 'Grid trading' },
+      ];
+    }
+  }
+
+  // Add tag to a bot
+  async function addTagToBot(botName: string, tagId: string) {
+    try {
+      const res = await fetch(`http://localhost:8000/api/ea/tags/${botName}/add?tag=${encodeURIComponent(tagId)}`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        // Update the bot's tags in the local state
+        bots = bots.map(b =>
+          b.name === botName ? { ...b, tags: data.tags } : b
+        );
+      }
+    } catch (e) {
+      console.error('Failed to add tag:', e);
+    }
+  }
+
+  // Remove tag from a bot
+  async function removeTagFromBot(botName: string, tagId: string) {
+    try {
+      const res = await fetch(`http://localhost:8000/api/ea/tags/${botName}/remove?tag=${encodeURIComponent(tagId)}`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        // Update the bot's tags in the local state
+        bots = bots.map(b =>
+          b.name === botName ? { ...b, tags: data.tags } : b
+        );
+      }
+    } catch (e) {
+      console.error('Failed to remove tag:', e);
+    }
+  }
+
+  // Check if tag is a prop firm tag
+  function isPropFirmTag(tagId: string): boolean {
+    return tagId.startsWith('@');
+  }
+
+  // Default tags fallback
+  const defaultTags: TagDefinition[] = [
     { id: 'primal', label: 'Primal', color: '#10b981', description: 'Production ready' },
     { id: 'pending', label: 'Pending', color: '#f59e0b', description: 'Awaiting review' },
     { id: 'quarantine', label: 'Quarantine', color: '#ef4444', description: 'Temporarily disabled' },
@@ -41,6 +135,9 @@
     { id: 'mean-reversion', label: 'Mean Reversion', color: '#ec4899', description: 'Reversal strategy' }
   ];
 
+  // Computed tags - use API tags if loaded, otherwise default
+  $: tags = availableTags.length > 0 ? availableTags : defaultTags;
+
   // Filter state
   let searchQuery = '';
   let selectedTags: string[] = [];
@@ -48,68 +145,73 @@
   let sortBy: 'name' | 'status' | 'modified' = 'name';
   let showFilters = false;
 
-  // Mock data
-  let bots: Bot[] = [
-    {
-      id: '1',
-      name: 'ICT Scalper EURUSD',
-      symbol: 'EURUSD',
-      status: 'primal',
-      tags: ['primal', 'scalper'],
-      version: '2.1.0',
-      lastModified: new Date(Date.now() - 86400000),
-      author: 'QuantMind Team',
-      performance: { winRate: 0.72, profitFactor: 1.85, maxDrawdown: 0.12, sharpeRatio: 1.92 },
-      backtestStatus: 'passed'
-    },
-    {
-      id: '2',
-      name: 'SMC Reversal GBPUSD',
-      symbol: 'GBPUSD',
-      status: 'review',
-      tags: ['pending'],
-      version: '1.5.0',
-      lastModified: new Date(Date.now() - 172800000),
-      author: 'Dev Team',
-      performance: { winRate: 0.65, profitFactor: 1.62, maxDrawdown: 0.15, sharpeRatio: 1.68 },
-      backtestStatus: 'passed'
-    },
-    {
-      id: '3',
-      name: 'Breakthrough Hunter',
-      symbol: 'EURUSD',
-      status: 'development',
-      tags: ['scalper', 'trend'],
-      version: '0.9.0',
-      lastModified: new Date(Date.now() - 3600000),
-      author: 'Algo Team',
-      performance: { winRate: 0.58, profitFactor: 1.35, maxDrawdown: 0.18, sharpeRatio: 1.42 },
-      backtestStatus: 'pending'
-    },
-    {
-      id: '4',
-      name: 'Mean Reversion USDJPY',
-      symbol: 'USDJPY',
-      status: 'quarantine',
-      tags: ['quarantine', 'mean-reversion'],
-      version: '1.2.0',
-      lastModified: new Date(Date.now() - 604800000),
-      author: 'QuantMind Team',
-      performance: { winRate: 0.48, profitFactor: 0.92, maxDrawdown: 0.25, sharpeRatio: 0.85 },
-      backtestStatus: 'failed'
+  // Data loaded from API
+  let bots: Bot[] = [];
+
+  // Load bots from API
+  async function loadBots() {
+    try {
+      const res = await fetch('http://localhost:8000/api/ea/bots');
+      if (res.ok) {
+        bots = await res.json();
+      }
+    } catch (e) {
+      console.error('Failed to load bots:', e);
     }
-  ];
+  }
+
+  onMount(() => {
+    loadBots();
+    loadReviewHistory();
+    loadTags();
+  });
 
   // Review state
   let showReviewPanel = false;
   let selectedBotForReview: Bot | null = null;
   let reviewComment = '';
 
-  // Review history
-  let reviewHistory: Array<{botId: string, botName: string, action: string, reviewer: string, date: Date, comment: string}> = [
-    { botId: '1', botName: 'ICT Scalper EURUSD', action: 'promoted_to_primal', reviewer: 'Senior Trader', date: new Date(Date.now() - 86400000 * 7), comment: 'Excellent backtest results, promoting to primal.' },
-    { botId: '2', botName: 'SMC Reversal GBPUSD', action: 'submitted_for_review', reviewer: 'Dev Team', date: new Date(Date.now() - 172800000), comment: 'Ready for review after final testing.' }
-  ];
+  // Tag manager state
+  let showTagManager = false;
+  let selectedBotForTags: Bot | null = null;
+
+  function openTagManager(bot: Bot) {
+    selectedBotForTags = bot;
+    showTagManager = true;
+  }
+
+  function closeTagManager() {
+    showTagManager = false;
+    selectedBotForTags = null;
+  }
+
+  async function toggleTag(tagId: string) {
+    if (!selectedBotForTags) return;
+
+    const hasTag = selectedBotForTags.tags.includes(tagId);
+    if (hasTag) {
+      await removeTagFromBot(selectedBotForTags.name, tagId);
+    } else {
+      await addTagToBot(selectedBotForTags.name, tagId);
+    }
+    // Refresh selected bot
+    selectedBotForTags = bots.find(b => b.name === selectedBotForTags?.name) || null;
+  }
+
+  // Review history loaded from API
+  let reviewHistory: Array<{botId: string, botName: string, action: string, reviewer: string, date: Date, comment: string}> = [];
+
+  // Load review history from API
+  async function loadReviewHistory() {
+    try {
+      const res = await fetch('http://localhost:8000/api/ea/reviews');
+      if (res.ok) {
+        reviewHistory = await res.json();
+      }
+    } catch (e) {
+      console.error('Failed to load review history:', e);
+    }
+  }
 
   // Filter and sort
   $: filteredBots = bots
@@ -200,9 +302,73 @@
   function formatDate(date: Date): string {
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
+
+  // Video ingest functions
+  function openVideoIngest() {
+    showVideoIngestModal = true;
+  }
+
+  function closeVideoIngest() {
+    showVideoIngestModal = false;
+    videoUrl = '';
+    strategyName = '';
+  }
+
+  async function submitVideoIngest() {
+    if (!videoUrl || !strategyName) {
+      alert('Please enter both YouTube URL and Strategy Name');
+      return;
+    }
+
+    isProcessing = true;
+
+    try {
+      const res = await fetch('http://localhost:8000/api/video-ingest/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: videoUrl, strategy_name: strategyName })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        processingJobs = [
+          ...processingJobs,
+          { id: data.job_id, name: strategyName, status: 'processing', progress: 0 }
+        ];
+        videoUrl = '';
+        strategyName = '';
+        // Close modal after submission
+        showVideoIngestModal = false;
+      } else {
+        const error = await res.text();
+        alert(`Failed to start processing: ${error}`);
+      }
+    } catch (e) {
+      console.error('Video ingest error:', e);
+      alert('Failed to start video processing');
+    } finally {
+      isProcessing = false;
+    }
+  }
+
+  function getJobStatusColor(status: string): string {
+    const colors: Record<string, string> = {
+      processing: '#f59e0b',
+      completed: '#10b981',
+      failed: '#ef4444',
+      pending: '#6b7280'
+    };
+    return colors[status] || '#6b7280';
+  }
 </script>
 
 <div class="ea-manager">
+  <!-- Breadcrumbs -->
+  <Breadcrumbs
+    items={breadcrumbItems}
+    onNavigate={handleBreadcrumbNavigate}
+  />
+
   <!-- Header -->
   <div class="manager-header">
     <div class="header-left">
@@ -230,6 +396,10 @@
         <span class="stat-label">Quarantine</span>
       </div>
     </div>
+    <button class="video-ingest-btn" on:click={openVideoIngest}>
+      <Upload size={14} />
+      Video Ingest
+    </button>
   </div>
 
   <!-- Toolbar -->
@@ -303,9 +473,17 @@
           {#each bot.tags as tag}
             {@const tagInfo = tags.find(t => t.id === tag)}
             {#if tagInfo}
-              <span class="tag" style="--tag-color: {tagInfo.color}">{tagInfo.label}</span>
+              <span class="tag" style="--tag-color: {tagInfo.color}" class:prop-firm={isPropFirmTag(tag)}>
+                {tagInfo.label}
+                <button class="tag-remove" on:click|stopPropagation={() => removeTagFromBot(bot.name, tag)}>×</button>
+              </span>
+            {:else}
+              <span class="tag unknown">{tag}</span>
             {/if}
           {/each}
+          <button class="tag-add-btn" on:click|stopPropagation={() => openTagManager(bot)}>
+            <Plus size={10} /> Add Tag
+          </button>
         </div>
 
         <!-- Performance -->
@@ -423,6 +601,138 @@
               <CheckCircle size={14} />
               <span>Approve to Primal</span>
             </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Video Ingest Modal -->
+  {#if showVideoIngestModal}
+    <div class="modal-overlay" on:click={closeVideoIngest}>
+      <div class="modal video-ingest-modal" on:click|stopPropagation>
+        <div class="modal-header">
+          <h3>Video Ingest</h3>
+          <button class="close-btn" on:click={closeVideoIngest}><X size={18} /></button>
+        </div>
+
+        <div class="modal-content">
+          <p class="ingest-description">
+            Enter a YouTube URL to extract trading strategies from video content.
+            The video will be processed and analyzed to identify potential trading patterns.
+          </p>
+
+          <div class="form-group">
+            <label for="videoUrl">YouTube URL</label>
+            <input
+              id="videoUrl"
+              type="text"
+              bind:value={videoUrl}
+              placeholder="https://www.youtube.com/watch?v=..."
+              disabled={isProcessing}
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="strategyName">Strategy Name</label>
+            <input
+              id="strategyName"
+              type="text"
+              bind:value={strategyName}
+              placeholder="Enter a name for this strategy"
+              disabled={isProcessing}
+            />
+          </div>
+
+          {#if processingJobs.length > 0}
+            <div class="processing-jobs">
+              <h4>Processing Jobs</h4>
+              {#each processingJobs as job}
+                <div class="job-item">
+                  <div class="job-info">
+                    <span class="job-name">{job.name}</span>
+                    <span class="job-status" style="color: {getJobStatusColor(job.status)}">
+                      {job.status}
+                    </span>
+                  </div>
+                  <div class="job-progress">
+                    <div class="progress-bar" style="width: {job.progress}%"></div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+
+          <div class="modal-actions">
+            <button class="btn cancel" on:click={closeVideoIngest} disabled={isProcessing}>
+              Cancel
+            </button>
+            <button class="btn submit" on:click={submitVideoIngest} disabled={isProcessing || !videoUrl || !strategyName}>
+              {#if isProcessing}
+                Processing...
+              {:else}
+                Start Processing
+              {/if}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Tag Manager Modal -->
+  {#if showTagManager && selectedBotForTags}
+    <div class="modal-overlay" on:click={closeTagManager}>
+      <div class="modal tag-manager-modal" on:click|stopPropagation>
+        <div class="modal-header">
+          <h3>Manage Tags: {selectedBotForTags.name}</h3>
+          <button class="close-btn" on:click={closeTagManager}><XCircle size={18} /></button>
+        </div>
+
+="modal-content">
+        <div class="tag-manager-content">
+          <!-- Strategy Tags -->
+          <div class="tag-section">
+            <h4>Strategy Tags</h4>
+            <div class="tag-grid">
+              {#each tags.filter(t => !isPropFirmTag(t.id)) as tag}
+                {@const isSelected = selectedBotForTags.tags.includes(tag.id)}
+                <button
+                  class="tag-option"
+                  class:selected={isSelected}
+                  style="--tag-color: {tag.color}"
+                  on:click={() => toggleTag(tag.id)}
+                >
+                  <span class="tag-check">{isSelected ? '✓' : ''}</span>
+                  <span class="tag-label">{tag.label}</span>
+                  <span class="tag-desc">{tag.description}</span>
+                </button>
+              {/each}
+            </div>
+          </div>
+
+          <!-- Prop Firm Tags -->
+          <div class="tag-section">
+            <h4>Prop Firm Tags</h4>
+            <div class="tag-grid">
+              {#each tags.filter(t => isPropFirmTag(t.id)) as tag}
+                {@const isSelected = selectedBotForTags.tags.includes(tag.id)}
+                <button
+                  class="tag-option prop-firm"
+                  class:selected={isSelected}
+                  style="--tag-color: {tag.color}"
+                  on:click={() => toggleTag(tag.id)}
+                >
+                  <span class="tag-check">{isSelected ? '✓' : ''}</span>
+                  <span class="tag-label">{tag.label}</span>
+                  <span class="tag-desc">{tag.description}</span>
+                </button>
+              {/each}
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button class="btn done" on:click={closeTagManager}>Done</button>
           </div>
         </div>
       </div>
@@ -1012,5 +1322,318 @@
     font-size: 12px;
     color: var(--text-secondary);
     font-style: italic;
+  }
+
+  /* Video Ingest Button */
+  .video-ingest-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: var(--accent-primary);
+    border: none;
+    border-radius: 8px;
+    color: var(--bg-primary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .video-ingest-btn:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+  }
+
+  /* Video Ingest Modal */
+  .video-ingest-modal {
+    max-width: 500px;
+  }
+
+  .modal-content {
+    padding: 20px;
+  }
+
+  .ingest-description {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+  }
+
+  .form-group label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+
+  .form-group input {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    box-sizing: border-box;
+  }
+
+  .form-group input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+  }
+
+  .form-group input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .processing-jobs {
+    margin: 20px 0;
+    padding: 16px;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+  }
+
+  .processing-jobs h4 {
+    margin: 0 0 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .job-item {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .job-item:last-child {
+    border-bottom: none;
+  }
+
+  .job-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .job-name {
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+
+  .job-status {
+    font-size: 11px;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+
+  .job-progress {
+    height: 4px;
+    background: var(--bg-secondary);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-bar {
+    height: 100%;
+    background: var(--accent-primary);
+    transition: width 0.3s ease;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+  }
+
+  .modal-actions .btn {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .modal-actions .btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .modal-actions .cancel {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+  }
+
+  .modal-actions .submit {
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+  }
+
+  .modal-actions .submit:hover:not(:disabled) {
+    filter: brightness(1.1);
+  }
+
+  /* Tag Manager Modal */
+  .tag-manager-modal {
+    max-width: 500px;
+  }
+
+  .tag-manager-modal .modal-content {
+    padding: 20px;
+  }
+
+  .tag-section {
+    margin-bottom: 20px;
+  }
+
+  .tag-section h4 {
+    margin: 0 0 12px;
+    font-size: 12px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+  }
+
+  .tag-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .tag-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+  }
+
+  .tag-option:hover {
+    border-color: var(--tag-color);
+    background: color-mix(in srgb, var(--tag-color) 10%, transparent);
+  }
+
+  .tag-option.selected {
+    border-color: var(--tag-color);
+    background: color-mix(in srgb, var(--tag-color) 15%, transparent);
+  }
+
+  .tag-option.prop-firm {
+    border-left: 3px solid var(--tag-color);
+  }
+
+  .tag-check {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    font-size: 12px;
+    color: var(--tag-color);
+  }
+
+  .tag-option.selected .tag-check {
+    background: var(--tag-color);
+    color: white;
+  }
+
+  .tag-label {
+    flex: 1;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .tag-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .modal-actions .done {
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+  }
+
+  /* Tag on EA Card */
+  .ea-tags {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .ea-tags .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-size: 10px;
+    background: color-mix(in srgb, var(--tag-color) 20%, transparent);
+    color: var(--tag-color);
+  }
+
+  .ea-tags .tag.prop-firm {
+    border: 1px dashed var(--tag-color);
+  }
+
+  .ea-tags .tag.unknown {
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+    border: 1px dashed var(--border-subtle);
+  }
+
+  .tag-remove {
+    display: none;
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0;
+    margin-left: 2px;
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  .ea-tags .tag:hover .tag-remove {
+    display: inline;
+  }
+
+  .tag-add-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: transparent;
+    border: 1px dashed var(--border-subtle);
+    border-radius: 8px;
+    font-size: 10px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .tag-add-btn:hover {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
   }
 </style>

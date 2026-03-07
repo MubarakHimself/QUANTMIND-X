@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { createEventDispatcher } from 'svelte';
-  import { PlayCircle, ShieldAlert, Newspaper, FileText, Activity, Bot, Wallet, TrendingUp, ExternalLink } from 'lucide-svelte';
+  import { PlayCircle, ShieldAlert, Newspaper, FileText, Activity, Bot, Wallet, TrendingUp, ExternalLink, ArrowRightLeft } from 'lucide-svelte';
   import KillSwitchView from './KillSwitchView.svelte';
   import NewsView from './NewsView.svelte';
   import TradeJournalView from './TradeJournalView.svelte';
@@ -9,6 +9,7 @@
   import MultiTimeframeRegimePanel from './MultiTimeframeRegimePanel.svelte';
   import TradingViewChart from './TradingViewChart.svelte';
   import { navigationStore } from '../stores/navigationStore';
+  import { accountStore, activeAccount, accounts, type BrokerAccount } from '../stores/accountStore';
   import { createTradingClient } from '$lib/ws-client';
   import type { WebSocketClient } from '$lib/ws-client';
   import { PUBLIC_API_BASE } from '$env/static/public';
@@ -42,14 +43,37 @@
   };
   
   let bots: Array<{id: string, name: string, state: string, symbol: string}> = [];
-  let brokerAccounts: Array<{broker_id: string, broker_name: string, balance: number, equity: number, connected: boolean}> = [];
+  let brokerAccounts: Array<BrokerAccount> = [];
+  let selectedBook = 'all';
   let wsClient: WebSocketClient | null = null;
   let isConnected = false;
+  let selectedAccountId = '';
+
+  // Subscribe to account store
+  $: activeAccountData = $activeAccount;
+  $: accountList = $accounts;
+
+  // Update selectedAccountId when active account changes
+  $: if (activeAccountData) {
+    selectedAccountId = activeAccountData.account_id;
+  }
+
+  // Handle account switch
+  async function handleAccountSwitch(event: Event) {
+    const select = event.target as HTMLSelectElement;
+    const accountId = select.value;
+    if (accountId) {
+      await accountStore.switchAccount(accountId);
+    }
+  }
 
   onMount(async () => {
     try {
       // Build absolute URL for REST calls (use apiBase or default to same origin)
       const baseUrl = apiBase || window.location.origin;
+
+      // Initialize account store
+      await accountStore.initialize();
 
       // Fetch initial data from REST API (using existing backend routes)
       const [statusRes, botsRes, accountsRes] = await Promise.all([
@@ -122,6 +146,18 @@
       currency: 'USD'
     }).format(value);
   }
+
+  $: filteredAccounts = selectedBook === 'all'
+    ? brokerAccounts
+    : brokerAccounts.filter(a => (a.account_type || 'personal') === selectedBook);
+
+  function getBookColor(type: string | undefined): string {
+    return type === 'prop_firm' ? '#f97316' : '#a855f7';
+  }
+
+  function getBookLabel(type: string | undefined): string {
+    return type === 'prop_firm' ? 'Prop Firm' : 'Personal';
+  }
 </script>
 
 <div class="live-trading-container">
@@ -142,6 +178,34 @@
     {#if activeView === 'dashboard'}
       <!-- Live Trading Dashboard content -->
       <div class="live-dashboard">
+        <!-- Account Switcher -->
+        <div class="account-switcher">
+          <div class="account-switcher-label">
+            <ArrowRightLeft size={16} />
+            <span>Active Account</span>
+          </div>
+          <select
+            class="account-select"
+            bind:value={selectedAccountId}
+            on:change={handleAccountSwitch}
+          >
+            <option value="">Select Account</option>
+            {#each accountList as account}
+              <option value={account.account_id}>
+                {account.broker_name} ({account.account_id}) - {formatCurrency(account.balance)}
+              </option>
+            {/each}
+          </select>
+          {#if activeAccountData}
+            <div class="active-account-info">
+              <span class="account-status" class:connected={activeAccountData.connected}>
+                {activeAccountData.connected ? 'Connected' : 'Disconnected'}
+              </span>
+              <span class="account-equity">Equity: {formatCurrency(activeAccountData.equity)}</span>
+            </div>
+          {/if}
+        </div>
+
         <div class="stats-row">
           <div class="stat-card">
             <Bot size={24} />
@@ -191,12 +255,38 @@
         </div>
 
         <div class="broker-section">
-          <h3>Broker Accounts</h3>
+          <div class="broker-header">
+            <h3>Broker Accounts</h3>
+            <div class="book-filter">
+              <label>Book:</label>
+              <select bind:value={selectedBook}>
+                <option value="all">All Accounts</option>
+                <option value="personal">Personal</option>
+                <option value="prop_firm">Prop Firm</option>
+              </select>
+            </div>
+          </div>
           <div class="account-cards">
-            {#if brokerAccounts.length > 0}
-              {#each brokerAccounts as account}
-                <div class="account-card">
-                  <span class="broker-name">{account.broker_name}</span>
+            {#if filteredAccounts.length > 0}
+              {#each filteredAccounts as account}
+                <div
+                  class="account-card"
+                  class:active={account.is_active}
+                  on:click={() => { if (account.account_id) accountStore.switchAccount(account.account_id); }}
+                  role="button"
+                  tabindex="0"
+                  on:keypress={(e) => { if (e.key === 'Enter' && account.account_id) accountStore.switchAccount(account.account_id); }}
+                >
+                  <div class="account-card-header">
+                    <span class="broker-name">{account.broker_name}</span>
+                    {#if account.is_active}
+                      <span class="active-badge">Active</span>
+                    {:else if account.account_type}
+                      <span class="book-badge" style="background: {getBookColor(account.account_type)}20; color: {getBookColor(account.account_type)}">
+                        {getBookLabel(account.account_type)}
+                      </span>
+                    {/if}
+                  </div>
                   <div class="balance-row">
                     <span>Balance: {formatCurrency(account.balance)}</span>
                     <span>Equity: {formatCurrency(account.equity)}</span>
@@ -207,7 +297,7 @@
                   </button>
                 </div>
               {/each}
-            {:else}
+            {:else if brokerAccounts.length === 0}
               <div class="account-card">
                 <span class="broker-name">No accounts configured</span>
                 <div class="balance-row">
@@ -217,6 +307,13 @@
                   <ExternalLink size={12} />
                   Add Account
                 </button>
+              </div>
+            {:else}
+              <div class="account-card">
+                <span class="broker-name">No {selectedBook === 'prop_firm' ? 'Prop Firm' : 'Personal'} accounts</span>
+                <div class="balance-row">
+                  <span>No accounts match the selected filter</span>
+                </div>
               </div>
             {/if}
           </div>
@@ -351,6 +448,75 @@
     gap: 20px;
   }
 
+  /* Account Switcher Styles */
+  .account-switcher {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    flex-wrap: wrap;
+  }
+
+  .account-switcher-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .account-select {
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    min-width: 200px;
+  }
+
+  .account-select:hover {
+    border-color: var(--accent-primary);
+  }
+
+  .account-select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+  }
+
+  .active-account-info {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-left: auto;
+  }
+
+  .account-status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    background: rgba(107, 114, 128, 0.2);
+    color: var(--text-muted);
+  }
+
+  .account-status.connected {
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+  }
+
+  .account-equity {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
   .stats-row {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -426,8 +592,72 @@
 
   .broker-section h3 {
     font-size: 14px;
-    margin: 0 0 12px;
+    margin: 0;
     color: var(--text-primary);
+  }
+
+  .broker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .book-filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .book-filter label {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .book-filter select {
+    padding: 6px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .book-badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+  }
+
+  .account-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .active-badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+    text-transform: uppercase;
+  }
+
+  .account-card.active {
+    border-color: #10b981;
+    box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3);
+    cursor: pointer;
+  }
+
+  .account-card:hover:not(.active) {
+    border-color: var(--accent-primary);
+    cursor: pointer;
   }
 
   .account-cards {

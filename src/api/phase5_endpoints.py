@@ -662,10 +662,42 @@ def create_phase5_api_app():
         version="1.0.0"
     )
 
-    # CORS for Tauri
+    # CORS for Tauri - configurable via environment variable
+    # Default: allow common development origins
+    import os
+    cors_origins_env = os.getenv("CORS_ALLOWED_ORIGINS", "")
+    if cors_origins_env:
+        # Parse comma-separated origins from environment
+        cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+    else:
+        # Default allowed origins for development and production
+        cors_origins = [
+            # Tauri local development
+            "tauri://localhost",
+            "tauri://127.0.0.1",
+            # Vite/React development servers
+            "http://localhost:1420",
+            "http://localhost:5173",
+            "http://localhost:3000",
+            "http://localhost:5174",
+            "http://localhost:4173",
+            # IP-based local development
+            "http://127.0.0.1:1420",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:3000",
+            # Production URLs
+            "https://app.quantmindx.com",
+            "https://www.quantmindx.com",
+            "https://quantmindx.com",
+            # Allow local network access for development
+            "http://192.168.1.100:1420",
+            "http://192.168.1.100:5173",
+            "http://192.168.1.100:3000",
+        ]
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["tauri://localhost", "http://localhost:1420", "http://localhost:5173"],
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"]

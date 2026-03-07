@@ -24,7 +24,7 @@ async def pre_analyst_hook(task: Dict[str, Any]) -> Dict[str, Any]:
     """
     Pre-execution hook for Analyst agent.
     
-    Validates NPRD input and loads relevant TRD templates.
+    Validates VideoIngest input and loads relevant TRD templates.
     
     Args:
         task: Task dictionary with payload
@@ -38,28 +38,28 @@ async def pre_analyst_hook(task: Dict[str, Any]) -> Dict[str, Any]:
     messages = payload.get("messages", [])
     context = payload.get("context", {})
     
-    # Validate that we have NPRD content
-    nprd_content = context.get("nprd_content")
-    if not nprd_content and messages:
+    # Validate that we have VideoIngest content
+    video_ingest_content = context.get("video_ingest_content")
+    if not video_ingest_content and messages:
         # Try to extract from messages
         for msg in messages:
             if msg.get("role") == "user" and len(msg.get("content", "")) > 100:
-                nprd_content = msg.get("content")
+                video_ingest_content = msg.get("content")
                 break
     
-    if nprd_content:
-        # Basic NPRD validation
+    if video_ingest_content:
+        # Basic VideoIngest validation
         required_sections = ["strategy", "requirements"]
         has_required = any(
-            section.lower() in nprd_content.lower() 
+            section.lower() in video_ingest_content.lower() 
             for section in required_sections
         )
         
         if not has_required:
-            logger.warning("NPRD may be missing required sections")
-            context["validation_warnings"] = ["NPRD missing recommended sections: strategy, requirements"]
+            logger.warning("VideoIngest may be missing required sections")
+            context["validation_warnings"] = ["VideoIngest missing recommended sections: strategy, requirements"]
         
-        context["nprd_validated"] = True
+        context["video_ingest_validated"] = True
     
     # Load TRD template reference
     trd_template_path = Path("/app/docs/templates/trd_template.md")

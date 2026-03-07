@@ -41,7 +41,7 @@
 
   // Mail compose state
   let showMailCompose = false;
-  let mailTo: DepartmentId = "analysis";
+  let mailTo: DepartmentId = "development";
   let mailSubject = "";
   let mailBody = "";
   let mailPriority: "low" | "normal" | "high" | "urgent" = "normal";
@@ -225,10 +225,10 @@
 
   // Quick delegation actions
   const quickDelegations: Array<{ label: string; dept: DepartmentId; task: string }> = [
-    { label: "Analyze Market", dept: "analysis", task: "Perform market analysis on current conditions" },
+    { label: "Analyze Market", dept: "development", task: "Perform market analysis on current conditions" },
     { label: "Run Backtest", dept: "research", task: "Run backtest on active strategy" },
     { label: "Check Risk", dept: "risk", task: "Generate risk exposure report" },
-    { label: "Order Status", dept: "execution", task: "Check status of all orders" },
+    { label: "Order Status", dept: "trading", task: "Check status of all orders" },
     { label: "Portfolio Review", dept: "portfolio", task: "Generate portfolio review" },
   ];
 

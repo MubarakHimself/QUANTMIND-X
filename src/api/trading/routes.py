@@ -61,6 +61,12 @@ async def get_backtest_results(backtest_id: str):
     return backtest_handler.get_backtest_results(backtest_id)
 
 
+@router.get("/backtest/status/{backtest_id}")
+async def get_backtest_status(backtest_id: str):
+    """Get the status of a running or completed backtest."""
+    return backtest_handler.get_backtest_status(backtest_id)
+
+
 # -----------------------------------------------------------------------------
 # Data Management Endpoints
 # -----------------------------------------------------------------------------

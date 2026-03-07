@@ -10,6 +10,7 @@ import json
 import logging
 from typing import Dict, List, Optional, Any
 from pathlib import Path
+from datetime import datetime
 
 from src.agents.departments.types import (
     Department,
@@ -347,6 +348,72 @@ class FloorManager:
         )
 
         return message
+
+    def get_departments(self) -> List[Dict[str, Any]]:
+        """Get all department configurations with personality info."""
+        result = []
+        for dept, config in self.departments.items():
+            # Get personality if available
+            personality = None
+            if config.personality:
+                personality = {
+                    "name": config.personality.name,
+                    "tagline": config.personality.tagline,
+                    "traits": config.personality.traits,
+                    "communication_style": config.personality.communication_style,
+                    "strengths": config.personality.strengths,
+                    "weaknesses": config.personality.weaknesses,
+                    "color": config.personality.color,
+                    "icon": config.personality.icon,
+                }
+
+            # Count pending mail for this department
+            pending = len(self.mail_service.check_inbox(dept.value, unread_only=True, limit=100))
+
+            result.append({
+                "id": dept.value,
+                "name": dept.value.capitalize(),
+                "agent_type": config.agent_type,
+                "system_prompt": config.system_prompt[:200] + "..." if len(config.system_prompt) > 200 else config.system_prompt,
+                "sub_agents": config.sub_agents,
+                "memory_namespace": config.memory_namespace,
+                "model_tier": get_model_tier(dept),
+                "max_workers": config.max_workers,
+                "pending_tasks": pending,
+                "status": "active",
+                "personality": personality,
+            })
+        return result
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get floor manager status."""
+        return {
+            "status": "active",
+            "model_tier": self.model_tier,
+            "departments": {
+                dept.value: {
+                    "id": dept.value,
+                    "name": dept.value.capitalize(),
+                    "agent_type": config.agent_type,
+                    "sub_agents": config.sub_agents,
+                    "memory_namespace": config.memory_namespace,
+                    "model_tier": get_model_tier(dept),
+                    "max_workers": config.max_workers,
+                    "pending_tasks": len(self.mail_service.check_inbox(dept.value, unread_only=True, limit=100)),
+                    "status": "active",
+                }
+                for dept, config in self.departments.items()
+            },
+            "stats": {
+                "total_departments": len(self.departments),
+                "total_agents": sum(config.max_workers for config in self.departments.values()),
+                "pending_mail": sum(
+                    len(self.mail_service.check_inbox(dept.value, unread_only=True, limit=100))
+                    for dept in self.departments
+                ),
+            },
+            "timestamp": datetime.now().isoformat(),
+        }
 
     def close(self):
         """Clean up resources."""

@@ -148,6 +148,9 @@ class MetricsWebSocketService {
   private reconnectDelay = 1000;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingInterval: ReturnType<typeof setInterval> | null = null;
+  private pongTimeout: ReturnType<typeof setTimeout> | null = null;
+  private pongTimeoutDuration = 10000;
+  private lastPongTime = 0;
 
   private wsUrl: string;
 
@@ -219,7 +222,19 @@ class MetricsWebSocketService {
         break;
 
       case 'pong':
-        // Heartbeat response
+        // Heartbeat response - update last pong time
+        this.lastPongTime = Date.now();
+        if (this.pongTimeout) {
+          clearTimeout(this.pongTimeout);
+          this.pongTimeout = null;
+        }
+        break;
+
+      case 'ping':
+        // Handle server-initiated ping - respond with pong
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ action: 'pong' }));
+        }
         break;
 
       default:
@@ -324,9 +339,22 @@ class MetricsWebSocketService {
   }
 
   private startPing(): void {
+    this.lastPongTime = Date.now();
     this.pingInterval = setInterval(() => {
       if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: 'ping' }));
+        this.ws.send(JSON.stringify({ action: 'ping' }));
+
+        // Set timeout for pong response
+        if (this.pongTimeout) {
+          clearTimeout(this.pongTimeout);
+        }
+
+        this.pongTimeout = setTimeout(() => {
+          console.warn('[MetricsWS] No pong received, connection may be dead');
+          if (this.ws) {
+            this.ws.close(1000, 'Heartbeat timeout');
+          }
+        }, this.pongTimeoutDuration);
       }
     }, 30000); // Ping every 30 seconds
   }
@@ -335,6 +363,10 @@ class MetricsWebSocketService {
     if (this.pingInterval) {
       clearInterval(this.pingInterval);
       this.pingInterval = null;
+    }
+    if (this.pongTimeout) {
+      clearTimeout(this.pongTimeout);
+      this.pongTimeout = null;
     }
   }
 

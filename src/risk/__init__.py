@@ -11,12 +11,16 @@ __version__ = "1.0.0"
 # Import physics sensors
 from .physics import (
     IsingRegimeSensor,
+    IsingSensorConfig,
+    IsingSystem,
     ChaosSensor,
     CorrelationSensor,
 )
 
 __all__ = [
     "IsingRegimeSensor",
+    "IsingSensorConfig",
+    "IsingSystem",
     "ChaosSensor",
     "CorrelationSensor",
 ]

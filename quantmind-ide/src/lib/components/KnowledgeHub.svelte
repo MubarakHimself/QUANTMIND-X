@@ -60,6 +60,19 @@
   let searchQuery = "";
   let searchResults: any[] = [];
 
+  // Sync state
+  let syncStatus: {
+    status: string;
+    last_sync: string | null;
+    articles_synced: number;
+    errors: string[];
+    scraper_available: boolean;
+    source_available: boolean;
+    existing_articles: number;
+  } | null = null;
+  let syncLoading = false;
+  let syncing = false;
+
   // Update breadcrumbs when namespace changes
   $: if (selectedNamespace) {
     navigationStore.navigateToFolder(
@@ -108,6 +121,59 @@
     } catch (e) {
       console.error("Failed to fetch namespaces:", e);
     }
+  }
+
+  // Fetch sync status
+  async function fetchSyncStatus() {
+    syncLoading = true;
+    try {
+      const response = await fetch("/api/knowledge/sync/status");
+      if (response.ok) {
+        const data = await response.json();
+        syncStatus = data;
+      }
+    } catch (e) {
+      console.error("Failed to fetch sync status:", e);
+    } finally {
+      syncLoading = false;
+    }
+  }
+
+  // Trigger manual sync
+  async function triggerSync() {
+    syncing = true;
+    try {
+      const response = await fetch("/api/knowledge/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batch_size: 10, start_index: 0 }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        // Poll for sync completion
+        await pollSyncStatus();
+      }
+    } catch (e) {
+      console.error("Failed to trigger sync:", e);
+    } finally {
+      syncing = false;
+    }
+  }
+
+  // Poll sync status until complete
+  async function pollSyncStatus() {
+    const maxAttempts = 30;
+    let attempts = 0;
+    while (attempts < maxAttempts) {
+      await fetchSyncStatus();
+      if (syncStatus?.status === "completed" || syncStatus?.status === "failed" || syncStatus?.status === "idle") {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      attempts++;
+    }
+    // Refresh articles after sync
+    await fetchArticles();
   }
 
   // Handle file upload
@@ -264,7 +330,7 @@
 
   // Lifecycle
   onMount(async () => {
-    await Promise.all([fetchDocuments(), fetchNamespaces(), fetchArticles()]);
+    await Promise.all([fetchDocuments(), fetchNamespaces(), fetchArticles(), fetchSyncStatus()]);
     loading = false;
   });
 </script>
@@ -275,6 +341,66 @@
     <h2>Knowledge Hub</h2>
     <p class="subtitle">Upload and index PDF documents for AI-powered search</p>
   </div>
+
+  <!-- Sync Status Panel -->
+  {#if syncStatus}
+    <div class="sync-status-panel" in:slide>
+      <div class="sync-header">
+        <div class="sync-info">
+          <span class="sync-title">Knowledge Sync</span>
+          <span class="sync-status-badge" class:syncing={syncStatus.status === 'syncing'} class:error={syncStatus.status === 'failed'}>
+            {#if syncStatus.status === 'syncing'}
+              <span class="spinner-small"></span> Syncing...
+            {:else if syncStatus.status === 'failed'}
+              Failed
+            {:else if syncStatus.status === 'completed'}
+              Completed
+            {:else}
+              Idle
+            {/if}
+          </span>
+        </div>
+        <button
+          class="sync-btn"
+          on:click={triggerSync}
+          disabled={syncing || syncLoading}
+          title="Sync knowledge articles"
+        >
+          {#if syncing}
+            <span class="spinner-small"></span> Syncing...
+          {:else}
+            Sync Now
+          {/if}
+        </button>
+      </div>
+      <div class="sync-details">
+        <div class="sync-stat">
+          <span class="stat-label">Articles:</span>
+          <span class="stat-value">{syncStatus.existing_articles || 0}</span>
+        </div>
+        <div class="sync-stat">
+          <span class="stat-label">Last Sync:</span>
+          <span class="stat-value">
+            {#if syncStatus.sync_state?.last_sync}
+              {new Date(syncStatus.sync_state.last_sync).toLocaleString()}
+            {:else}
+              Never
+            {/if}
+          </span>
+        </div>
+        <div class="sync-stat">
+          <span class="stat-label">Last Synced:</span>
+          <span class="stat-value">{syncStatus.sync_state?.articles_synced || 0} articles</span>
+        </div>
+        {#if syncStatus.errors && syncStatus.errors.length > 0}
+          <div class="sync-errors">
+            <span class="error-label">Errors:</span>
+            <span class="error-value">{syncStatus.errors.join(', ')}</span>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
 
   <!-- Error Display -->
   {#if error}
@@ -477,6 +603,133 @@
     margin: 8px 0 0;
     color: var(--text-secondary, #a6adc8);
     font-size: 0.875rem;
+  }
+
+  /* Sync Status Panel */
+  .sync-status-panel {
+    background: var(--bg-secondary, #1e1e2e);
+    border: 1px solid var(--border-color, #313244);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+
+  .sync-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .sync-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .sync-title {
+    font-weight: 600;
+    color: var(--text-primary, #cdd6f4);
+    font-size: 0.875rem;
+  }
+
+  .sync-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    background: rgba(137, 180, 250, 0.15);
+    color: var(--accent, #89b4fa);
+  }
+
+  .sync-status-badge.syncing {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+  }
+
+  .sync-status-badge.error {
+    background: rgba(243, 139, 168, 0.15);
+    color: #f38ba8;
+  }
+
+  .sync-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--accent, #89b4fa);
+    color: var(--bg-primary, #1e1e2e);
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .sync-btn:hover:not(:disabled) {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+
+  .sync-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .sync-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 0.8rem;
+  }
+
+  .sync-stat {
+    display: flex;
+    gap: 6px;
+  }
+
+  .stat-label {
+    color: var(--text-secondary, #a6adc8);
+  }
+
+  .stat-value {
+    color: var(--text-primary, #cdd6f4);
+    font-weight: 500;
+  }
+
+  .sync-errors {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color, #313244);
+  }
+
+  .error-label {
+    color: #f38ba8;
+  }
+
+  .error-value {
+    color: #f38ba8;
+    font-size: 0.75rem;
+  }
+
+  .spinner-small {
+    width: 12px;
+    height: 12px;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 
   .error-banner {

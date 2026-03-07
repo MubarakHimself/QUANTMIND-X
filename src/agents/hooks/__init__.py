@@ -1,7 +1,8 @@
 """
 Advanced Hook System for QuantMindX Agents
 
-This module provides both the legacy agent hooks and the new advanced hook system.
+This module provides both the legacy agent hooks, the advanced hook system,
+and the department-aware hooks.
 
 Legacy Hooks (from hooks.py):
 - pre_analyst_hook, post_analyst_hook
@@ -15,6 +16,14 @@ Advanced Hooks (from advanced_hooks.py):
 - HookType enum for all lifecycle events
 - HookRegistry for centralized hook management
 - HookContext for rich context passing
+
+Department-Aware Hooks (from department_hooks.py):
+- DepartmentHookType enum with department-specific hooks
+- DepartmentHookContext with department field
+- DepartmentHookCondition with department filters
+- DepartmentHookRegistry for department-aware hooks
+- register_department_hook for registering department hooks
+- for_department decorator for department-specific hooks
 """
 
 # Import legacy hooks from the original hooks.py file
@@ -56,6 +65,35 @@ from .advanced_hooks import (
     execute_hooks,
 )
 
+# Import department-aware hooks
+from .department_hooks import (
+    DepartmentHookType,
+    DepartmentHookContext,
+    DepartmentHookCondition,
+    DepartmentHookResult,
+    DepartmentHook,
+    DepartmentHookRegistry,
+    get_department_registry,
+    register_department_hook,
+    execute_department_hooks,
+    pre_department_task_hook,
+    post_department_task_hook,
+    department_error_hook,
+    department_memory_hook,
+    for_department,
+    for_all_departments,
+    Department,
+)
+
+# Import workflow integration utilities
+from .workflow_integration import (
+    DepartmentHookExecutor,
+    get_hook_executor,
+    pre_task_for_department,
+    post_task_for_department,
+    error_handler_for_department,
+)
+
 __all__ = [
     # Legacy hooks
     "pre_analyst_hook",
@@ -79,4 +117,27 @@ __all__ = [
     "get_global_registry",
     "register_hook",
     "execute_hooks",
+    # Department-aware hooks
+    "DepartmentHookType",
+    "DepartmentHookContext",
+    "DepartmentHookCondition",
+    "DepartmentHookResult",
+    "DepartmentHook",
+    "DepartmentHookRegistry",
+    "get_department_registry",
+    "register_department_hook",
+    "execute_department_hooks",
+    "pre_department_task_hook",
+    "post_department_task_hook",
+    "department_error_hook",
+    "department_memory_hook",
+    "for_department",
+    "for_all_departments",
+    "Department",
+    # Workflow integration
+    "DepartmentHookExecutor",
+    "get_hook_executor",
+    "pre_task_for_department",
+    "post_task_for_department",
+    "error_handler_for_department",
 ]

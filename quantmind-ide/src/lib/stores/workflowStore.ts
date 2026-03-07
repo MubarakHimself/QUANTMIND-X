@@ -8,7 +8,25 @@ import { writable, derived, get } from 'svelte/store';
 import type { Readable, Writable } from 'svelte/store';
 
 // Types
-export type WorkflowStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+export type WorkflowTemplate =
+  | 'video_ingest_full'
+  | 'trd_to_ea'
+  | 'video_ingest_ea';
+
+export const WORKFLOW_TEMPLATES: Record<WorkflowTemplate, { label: string; description: string }> = {
+  video_ingest_full: {
+    label: 'VideoIngest → TRD → EA → Backtest → PaperTrade',
+    description: 'Full pipeline from video to backtested EA',
+  },
+  trd_to_ea: {
+    label: 'TRD → EA → Backtest',
+    description: 'Generate EA from TRD and run backtest',
+  },
+  video_ingest_ea: {
+    label: 'VideoIngest → TRD → EA',
+    description: 'Generate EA from video (skip backtest)',
+  },
+};
 export type StepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 
 export interface WorkflowStep {
@@ -97,24 +115,55 @@ export const workflowStore = {
   subscribe: workflowState.subscribe,
 
   /**
-   * Start NPRD to EA workflow
+   * Start VideoIngest to EA workflow (full pipeline)
    */
-  async startNPRDToEA(nprdContent: string, metadata?: Record<string, any>): Promise<string | null> {
+  async startVideoIngestToEA(videoIngestContent: string, metadata?: Record<string, any>): Promise<string | null> {
+    return this.startWorkflowFromTemplate('video_ingest_full', { video_ingest_content: videoIngestContent, metadata });
+  },
+
+  /**
+   * Start TRD to EA workflow (skips video ingest processing)
+   */
+  async startTRDToEA(trdContent: string, metadata?: Record<string, any>): Promise<string | null> {
+    return this.startWorkflowFromTemplate('trd_to_ea', { trd_content: trdContent, metadata });
+  },
+
+  /**
+ from template
+   * Start workflow   */
+  async startWorkflowFromTemplate(
+    template: WorkflowTemplate,
+    data: { video_ingest_content?: string; trd_content?: string; metadata?: Record<string, any> }
+  ): Promise<string | null> {
     workflowState.update((s) => ({ ...s, loading: true, error: null }));
 
     try {
-      const response = await fetch('/api/workflows/nprd-to-ea', {
+      let endpoint = '/api/workflows/video-ingest-to-ea';
+      let workflowType = 'video_ingest_to_ea';
+
+      if (template === 'trd_to_ea') {
+        endpoint = '/api/workflows/trd-to-ea';
+        workflowType = 'trd_to_ea';
+      } else if (template === 'video_ingest_ea') {
+        // For partial pipeline, use video-ingest-to-ea with metadata to indicate skip backtest
+        endpoint = '/api/workflows/video-ingest-to-ea';
+        workflowType = 'video_ingest_to_ea';
+        if (data.metadata) {
+          data.metadata.skip_backtest = true;
+        } else {
+          data.metadata = { skip_backtest: true };
+        }
+      }
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nprd_content: nprdContent,
-          metadata,
-        }),
+        body: JSON.stringify(data),
       });
 
       if (!response.ok) throw new Error('Failed to start workflow');
 
-      const data = await response.json();
+      const result = await response.json();
 
       // Add to active workflows
       workflowState.update((s) => ({
@@ -123,13 +172,13 @@ export const workflowStore = {
         activeWorkflows: [
           ...s.activeWorkflows,
           {
-            workflow_id: data.workflow_id,
-            workflow_type: 'nprd_to_ea',
-            status: data.status,
+            workflow_id: result.workflow_id,
+            workflow_type: workflowType,
+            status: result.status,
             current_step_index: 0,
             progress_percent: 0,
             steps: [],
-            input_data: { nprd_content: nprdContent },
+            input_data: data,
             intermediate_results: {},
             final_result: {},
             created_at: new Date().toISOString(),
@@ -137,7 +186,7 @@ export const workflowStore = {
         ],
       }));
 
-      return data.workflow_id;
+      return result.workflow_id;
     } catch (err) {
       workflowState.update((s) => ({
         ...s,

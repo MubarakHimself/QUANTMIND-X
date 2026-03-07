@@ -1,12 +1,17 @@
 <script lang="ts">
   import { fade, slide } from 'svelte/transition';
   import { onMount } from 'svelte';
-  import { Plus, Trash2, RefreshCw, Server, Check, X, AlertCircle, ExternalLink, Loader2, Terminal, Globe } from 'lucide-svelte';
+  import { Plus, Trash2, RefreshCw, Server, Check, X, AlertCircle, ExternalLink, Loader2, Terminal, Globe, Zap, AlertTriangle, Wifi, WifiOff } from 'lucide-svelte';
   import { settingsStore } from '../../../stores/settingsStore';
   import type { MCPServer } from '../../../stores/settingsStore';
   import { API_CONFIG } from '$lib/config/api';
 
   const API_BASE = API_CONFIG.API_BASE;
+
+  // Error state for each server
+  let serverErrors: Record<string, { message: string; timestamp: Date } | null> = {};
+  let connectingServers: Set<string> = new Set();
+  let showErrorDetails: Record<string, boolean> = {};
 
   // Default server templates
   const DEFAULT_SERVERS = [
@@ -66,6 +71,7 @@
   // Reactive state
   $: mcpServers = $settingsStore.mcpServers;
   $: connectedCount = mcpServers.filter(s => s.status === 'connected').length;
+  $: errorCount = Object.values(serverErrors).filter(Boolean).length;
 
   // Fetch servers from backend on mount
   onMount(async () => {
@@ -86,8 +92,12 @@
     }
   });
 
-  // Connect to server via API
+  // Connect to server via API with error handling
   async function connectServer(server: MCPServer) {
+    connectingServers.add(server.id);
+    connectingServers = connectingServers;
+    serverErrors[server.id] = null;
+
     if (backendAvailable) {
       try {
         const response = await fetch(`${API_BASE}/mcp/servers/${server.id}/connect`, {
@@ -95,19 +105,35 @@
         });
         if (response.ok) {
           settingsStore.updateMCPServer(server.id, { status: 'connected' });
+        } else {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.message || `HTTP ${response.status}: Connection failed`);
         }
-      } catch (e) {
+      } catch (e: any) {
         console.error('Failed to connect via API:', e);
-        // Fallback to local
-        settingsStore.updateMCPServer(server.id, { status: 'connected' });
+        serverErrors[server.id] = {
+          message: e.message || 'Failed to connect to server',
+          timestamp: new Date()
+        };
+        settingsStore.updateMCPServer(server.id, { status: 'error' });
+      } finally {
+        connectingServers.delete(server.id);
+        connectingServers = connectingServers;
       }
     } else {
+      // Local mode - simulate connection
+      await new Promise(resolve => setTimeout(resolve, 500));
       settingsStore.updateMCPServer(server.id, { status: 'connected' });
+      connectingServers.delete(server.id);
+      connectingServers = connectingServers;
     }
   }
 
   // Disconnect from server via API
   async function disconnectServer(server: MCPServer) {
+    connectingServers.add(server.id);
+    connectingServers = connectingServers;
+
     if (backendAvailable) {
       try {
         const response = await fetch(`${API_BASE}/mcp/servers/${server.id}/disconnect`, {
@@ -119,10 +145,31 @@
       } catch (e) {
         console.error('Failed to disconnect via API:', e);
         settingsStore.updateMCPServer(server.id, { status: 'disconnected' });
+      } finally {
+        connectingServers.delete(server.id);
+        connectingServers = connectingServers;
       }
     } else {
       settingsStore.updateMCPServer(server.id, { status: 'disconnected' });
+      connectingServers.delete(server.id);
+      connectingServers = connectingServers;
     }
+  }
+
+  // Retry connection
+  function retryConnection(server: MCPServer) {
+    serverErrors[server.id] = null;
+    connectServer(server);
+  }
+
+  // Dismiss error
+  function dismissError(serverId: string) {
+    serverErrors[serverId] = null;
+  }
+
+  // Toggle error details
+  function toggleErrorDetails(serverId: string) {
+    showErrorDetails[serverId] = !showErrorDetails[serverId];
   }
   
   // Add new server
@@ -196,8 +243,30 @@
     switch (status) {
       case 'connected': return 'var(--accent-success)';
       case 'error': return 'var(--accent-danger)';
+      case 'connecting': return 'var(--accent-warning)';
       default: return 'var(--text-muted)';
     }
+  }
+
+  // Get status icon
+  function getStatusIcon(status: string) {
+    switch (status) {
+      case 'connected': return Wifi;
+      case 'error': return AlertTriangle;
+      case 'connecting': return Loader2;
+      default: return WifiOff;
+    }
+  }
+
+  // Check if server is connecting
+  function isConnecting(serverId: string): boolean {
+    return connectingServers.has(serverId);
+  }
+
+  // Format error timestamp
+  function formatErrorTime(date?: Date): string {
+    if (!date) return '';
+    return new Date(date).toLocaleTimeString();
   }
   
   // Format last connected
@@ -228,6 +297,12 @@
         <Server size={12} />
         {mcpServers.length} total
       </span>
+      {#if errorCount > 0}
+        <span class="stat error">
+          <AlertCircle size={12} />
+          {errorCount} error{errorCount > 1 ? 's' : ''}
+        </span>
+      {/if}
       <span class="stat" class:success={backendAvailable}>
         {#if loading}
           <Loader2 size={10} class="spin" />
@@ -251,7 +326,7 @@
       </div>
     {:else}
       {#each mcpServers as server (server.id)}
-        <div class="server-card" class:connected={server.status === 'connected'}>
+        <div class="server-card" class:connected={server.status === 'connected'} class:error={server.status === 'error'}>
           <div class="server-header">
             <div class="server-info">
               <div class="server-name">
@@ -261,11 +336,31 @@
               <span class="server-url">{server.url}</span>
             </div>
             <div class="server-status" style="color: {getStatusColor(server.status)}">
-              <span class="status-dot"></span>
-              {server.status}
+              {#if isConnecting(server.id)}
+                <Loader2 size={12} class="spin" />
+              {:else}
+                <svelte:component this={getStatusIcon(server.status)} size={12} />
+              {/if}
+              <span class="status-text">{server.status === 'connecting' ? 'Connecting...' : server.status}</span>
             </div>
           </div>
-          
+
+          <!-- Error Display -->
+          {#if serverErrors[server.id]}
+            <div class="server-error" transition:slide>
+              <div class="error-header">
+                <AlertTriangle size={12} />
+                <span>Connection Error</span>
+                <button class="error-dismiss" on:click={() => dismissError(server.id)}>x</button>
+              </div>
+              <div class="error-message">{serverErrors[server.id]?.message}</div>
+              <div class="error-time">{formatErrorTime(serverErrors[server.id]?.timestamp)}</div>
+              <button class="btn small retry-btn" on:click={() => retryConnection(server)}>
+                <Zap size={10} /> Retry
+              </button>
+            </div>
+          {/if}
+
           {#if server.capabilities.length > 0}
             <div class="server-capabilities">
               {#each server.capabilities as cap}
@@ -273,41 +368,46 @@
               {/each}
             </div>
           {/if}
-          
+
           <div class="server-meta">
             <span class="meta-item">Last connected: {formatLastConnected(server.lastConnected)}</span>
             <label class="auto-connect">
-              <input 
-                type="checkbox" 
+              <input
+                type="checkbox"
                 checked={server.autoConnect}
                 on:change={() => settingsStore.updateMCPServer(server.id, { autoConnect: !server.autoConnect })}
               />
               Auto-connect
             </label>
           </div>
-          
+
           <div class="server-actions">
-            <button 
+            <button
               class="btn secondary small"
               on:click={() => handleToggleConnection(server)}
+              disabled={isConnecting(server.id)}
             >
-              {#if server.status === 'connected'}
+              {#if isConnecting(server.id)}
+                <Loader2 size={12} class="spin" /> Connecting...
+              {:else if server.status === 'connected'}
                 <X size={12} /> Disconnect
               {:else}
                 <Check size={12} /> Connect
               {/if}
             </button>
-            <button 
+            <button
               class="btn secondary small"
               on:click={() => handleRefreshServer(server)}
               title="Refresh capabilities"
+              disabled={isConnecting(server.id)}
             >
               <RefreshCw size={12} />
             </button>
-            <button 
+            <button
               class="btn secondary small danger"
               on:click={() => handleRemoveServer(server.id)}
               title="Remove server"
+              disabled={isConnecting(server.id)}
             >
               <Trash2 size={12} />
             </button>
@@ -508,6 +608,11 @@
     background: rgba(16, 185, 129, 0.1);
   }
 
+  .stat.error {
+    color: var(--accent-danger);
+    background: rgba(239, 68, 68, 0.1);
+  }
+
   :global(.spin) {
     animation: spin 1s linear infinite;
   }
@@ -561,6 +666,11 @@
   .server-card.connected {
     border-color: var(--accent-success);
   }
+
+  .server-card.error {
+    border-color: var(--accent-danger);
+    background: rgba(239, 68, 68, 0.05);
+  }
   
   .server-header {
     display: flex;
@@ -597,7 +707,63 @@
     font-weight: 500;
     text-transform: capitalize;
   }
-  
+
+  .status-text {
+    text-transform: capitalize;
+  }
+
+  .server-error {
+    padding: 10px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 6px;
+    margin: 8px 0;
+  }
+
+  .error-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent-danger);
+    margin-bottom: 6px;
+  }
+
+  .error-dismiss {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 4px;
+  }
+
+  .error-dismiss:hover {
+    color: var(--text-primary);
+  }
+
+  .error-message {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    font-family: monospace;
+  }
+
+  .error-time {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+
+  .retry-btn {
+    background: var(--accent-primary) !important;
+    color: var(--bg-primary) !important;
+    font-size: 10px !important;
+    padding: 4px 8px !important;
+  }
+
   .status-dot {
     width: 6px;
     height: 6px;
