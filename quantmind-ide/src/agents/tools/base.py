@@ -32,7 +32,7 @@ class ToolCategory(str, Enum):
     FILE_OPERATIONS = "file_operations"
     DEPLOYMENT = "deployment"
     ANALYSIS = "analysis"
-    NPRD_TRD = "nprd_trd"
+    VIDEO_INGEST_TRD = "video_ingest_trd"
     QUANTCODE = "quantcode"
     BROKER = "broker"
     WORKFLOW = "workflow"

@@ -2,7 +2,7 @@
 Workflow and Queue Tools for QuantMind agents.
 
 These tools provide workflow and queue management:
-- trigger_analyst: Trigger Analyst agent with NPRD
+- trigger_analyst: Trigger Analyst agent with VideoIngest
 - trigger_quantcode: Trigger QuantCode agent with TRD
 - get_workflow_status: Get current workflow status
 - cancel_workflow: Cancel running workflow
@@ -39,7 +39,7 @@ from ..queue import (
     get_queue_manager,
 )
 from ..workflows.state import get_workflow_store
-from ..workflows.nprd_to_ea import create_nprd_to_ea_workflow
+from ..workflows.video_ingest_to_ea import create_video_ingest_to_ea_workflow
 
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 # Input Schemas
 class TriggerAnalystInput(BaseModel):
     """Input for trigger_analyst tool."""
-    nprd_content: str = Field(description="NPRD content to process")
+    video_ingest_content: str = Field(description="VideoIngest content to process")
     workspace_path: Optional[str] = Field(default=None, description="Workspace path")
     auto_proceed: bool = Field(default=True, description="Auto-proceed to QuantCode")
 
@@ -104,11 +104,11 @@ class RetryTaskInput(BaseModel):
     tags=["workflow", "analyst", "trigger"],
 )
 class TriggerAnalystTool(QuantMindTool):
-    """Trigger Analyst agent with NPRD."""
+    """Trigger Analyst agent with VideoIngest."""
 
     name: str = "trigger_analyst"
-    description: str = """Trigger the Analyst agent to process an NPRD.
-    Parses and validates the NPRD, then generates a TRD.
+    description: str = """Trigger the Analyst agent to process a VideoIngest.
+    Parses and validates the VideoIngest, then generates a TRD.
     Can optionally auto-proceed to QuantCode for code generation."""
 
     args_schema: type[BaseModel] = TriggerAnalystInput
@@ -117,25 +117,25 @@ class TriggerAnalystTool(QuantMindTool):
 
     def execute(
         self,
-        nprd_content: str,
+        video_ingest_content: str,
         workspace_path: Optional[str] = None,
         auto_proceed: bool = True,
         **kwargs
     ) -> ToolResult:
         """Execute analyst trigger."""
         # Create workflow
-        workflow = create_nprd_to_ea_workflow(workspace_path)
+        workflow = create_video_ingest_to_ea_workflow(workspace_path)
 
         # Run workflow (async)
         try:
-            result = asyncio.run(workflow.run(nprd_content))
+            result = asyncio.run(workflow.run(video_ingest_content))
         except RuntimeError:
             # Already in async context
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future = executor.submit(
                     asyncio.run,
-                    workflow.run(nprd_content)
+                    workflow.run(video_ingest_content)
                 )
                 result = future.result()
 

@@ -1,8 +1,8 @@
 """
-NPRD to EA Workflow.
+VideoIngest to EA Workflow.
 
-Implements the automatic pipeline from Natural Product Requirements
-Document to compiled Expert Advisor.
+Implements the automatic pipeline from Video Ingest
+(Requirements Document) to compiled Expert Advisor.
 """
 
 from __future__ import annotations
@@ -26,23 +26,23 @@ from .state import (
     get_workflow_store,
 )
 from ..agents.tools.registry import tool_registry, AgentType as ToolAgentType
-from ..agents.tools.nprd_trd import ParseNPRDTool, ValidateNPRDTool, GenerateTRDTool
+from ..agents.tools.video_ingest_trd import ParseVideoIngestTool, ValidateVideoIngestTool, GenerateTRDTool
 from ..agents.tools.quantcode import GenerateMQL5Tool, CompileMQL5Tool
 
 
 logger = logging.getLogger(__name__)
 
 
-# Define the steps for NPRD → EA workflow
-NPRD_TO_EA_STEPS = [
+# Define the steps for VideoIngest → EA workflow
+VIDEO_INGEST_TO_EA_STEPS = [
     {
-        "name": "parse_nprd",
-        "description": "Parse the Natural Product Requirements Document",
+        "name": "parse_video_ingest",
+        "description": "Parse the Video Ingest Document",
         "agent_type": AgentType.ANALYST,
     },
     {
-        "name": "validate_nprd",
-        "description": "Validate NPRD structure and completeness",
+        "name": "validate_video_ingest",
+        "description": "Validate VideoIngest structure and completeness",
         "agent_type": AgentType.ANALYST,
     },
     {
@@ -68,13 +68,13 @@ NPRD_TO_EA_STEPS = [
 ]
 
 
-class NPRDToEATWorkflow:
+class VideoIngestToEAWorkflow:
     """
-    Workflow for converting NPRD to EA.
+    Workflow for converting VideoIngest to EA.
 
     Steps:
-    1. Parse NPRD
-    2. Validate NPRD
+    1. Parse VideoIngest
+    2. Validate VideoIngest
     3. Generate TRD
     4. Generate MQL5 code
     5. Validate syntax
@@ -91,45 +91,45 @@ class NPRDToEATWorkflow:
         self._store = get_workflow_store()
 
         # Initialize tools
-        self._parse_nprd = ParseNPRDTool()
-        self._validate_nprd = ValidateNPRDTool()
+        self._parse_video_ingest = ParseVideoIngestTool()
+        self._validate_video_ingest = ValidateVideoIngestTool()
         self._generate_trd = GenerateTRDTool()
         self._generate_mql5 = GenerateMQL5Tool()
         self._compile_ea = CompileMQL5Tool()
 
         if workspace_path:
-            self._parse_nprd.set_workspace(workspace_path)
-            self._validate_nprd.set_workspace(workspace_path)
+            self._parse_video_ingest.set_workspace(workspace_path)
+            self._validate_video_ingest.set_workspace(workspace_path)
             self._generate_trd.set_workspace(workspace_path)
             self._generate_mql5.set_workspace(workspace_path)
             self._compile_ea.set_workspace(workspace_path)
 
     def create_state(
         self,
-        nprd_content: str,
+        video_ingest_content: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> WorkflowState:
         """
         Create initial workflow state.
 
         Args:
-            nprd_content: The NPRD content
+            video_ingest_content: The VideoIngest content
             metadata: Additional metadata
 
         Returns:
             Initialized workflow state
         """
         state = WorkflowState(
-            workflow_type="nprd_to_ea",
+            workflow_type="video_ingest_to_ea",
             auto_continue=self.auto_continue,
             input_data={
-                "nprd_content": nprd_content,
+                "video_ingest_content": video_ingest_content,
                 **(metadata or {}),
             },
         )
 
         # Add steps
-        for i, step_def in enumerate(NPRD_TO_EA_STEPS):
+        for i, step_def in enumerate(VIDEO_INGEST_TO_EA_STEPS):
             step = WorkflowStep(
                 step_id=f"step_{i+1}_{step_def['name']}",
                 name=step_def["name"],
@@ -143,20 +143,20 @@ class NPRDToEATWorkflow:
 
     async def run(
         self,
-        nprd_content: str,
+        video_ingest_content: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> WorkflowResult:
         """
         Run the complete workflow.
 
         Args:
-            nprd_content: The NPRD content
+            video_ingest_content: The VideoIngest content
             metadata: Additional metadata
 
         Returns:
             Workflow result
         """
-        state = self.create_state(nprd_content, metadata)
+        state = self.create_state(video_ingest_content, metadata)
 
         try:
             # Start workflow
@@ -218,26 +218,26 @@ class NPRDToEATWorkflow:
         logger.info(f"Executing step: {step.name}")
 
         try:
-            if step.name == "parse_nprd":
-                result = self._parse_nprd.execute(
-                    nprd_content=state.input_data.get("nprd_content")
+            if step.name == "parse_video_ingest":
+                result = self._parse_video_ingest.execute(
+                    video_ingest_content=state.input_data.get("video_ingest_content")
                 )
                 step.complete(result.data)
-                state.set_intermediate("parsed_nprd", result.data)
+                state.set_intermediate("parsed_video_ingest", result.data)
 
-            elif step.name == "validate_nprd":
-                result = self._validate_nprd.execute(
-                    nprd_content=state.input_data.get("nprd_content")
+            elif step.name == "validate_video_ingest":
+                result = self._validate_video_ingest.execute(
+                    video_ingest_content=state.input_data.get("video_ingest_content")
                 )
                 step.complete(result.data)
-                state.set_intermediate("nprd_validation", result.data)
+                state.set_intermediate("video_ingest_validation", result.data)
 
                 if not result.data.get("is_valid"):
-                    return {"success": False, "error": "NPRD validation failed"}
+                    return {"success": False, "error": "VideoIngest validation failed"}
 
             elif step.name == "generate_trd":
                 result = self._generate_trd.execute(
-                    nprd_content=state.input_data.get("nprd_content")
+                    video_ingest_content=state.input_data.get("video_ingest_content")
                 )
                 step.complete(result.data)
                 state.set_intermediate("trd", result.data)
@@ -319,9 +319,9 @@ class NPRDToEATWorkflow:
         from typing import TypedDict
 
         class GraphState(TypedDict):
-            nprd_content: str
-            parsed_nprd: Dict[str, Any]
-            nprd_validation: Dict[str, Any]
+            video_ingest_content: str
+            parsed_video_ingest: Dict[str, Any]
+            video_ingest_validation: Dict[str, Any]
             trd: Dict[str, Any]
             mql5_code: str
             syntax_validation: Dict[str, Any]
@@ -334,15 +334,15 @@ class NPRDToEATWorkflow:
 
         # Add nodes
         async def parse_node(state: GraphState) -> GraphState:
-            result = self._parse_nprd.execute(nprd_content=state["nprd_content"])
-            return {**state, "parsed_nprd": result.data}
+            result = self._parse_video_ingest.execute(video_ingest_content=state["video_ingest_content"])
+            return {**state, "parsed_video_ingest": result.data}
 
         async def validate_node(state: GraphState) -> GraphState:
-            result = self._validate_nprd.execute(nprd_content=state["nprd_content"])
-            return {**state, "nprd_validation": result.data}
+            result = self._validate_video_ingest.execute(video_ingest_content=state["video_ingest_content"])
+            return {**state, "video_ingest_validation": result.data}
 
         async def trd_node(state: GraphState) -> GraphState:
-            result = self._generate_trd.execute(nprd_content=state["nprd_content"])
+            result = self._generate_trd.execute(video_ingest_content=state["video_ingest_content"])
             return {**state, "trd": result.data}
 
         async def mql5_node(state: GraphState) -> GraphState:
@@ -358,16 +358,16 @@ class NPRDToEATWorkflow:
                 "ea_path": result.data.get("output_path", ""),
             }
 
-        workflow.add_node("parse_nprd", parse_node)
-        workflow.add_node("validate_nprd", validate_node)
+        workflow.add_node("parse_video_ingest", parse_node)
+        workflow.add_node("validate_video_ingest", validate_node)
         workflow.add_node("generate_trd", trd_node)
         workflow.add_node("generate_mql5", mql5_node)
         workflow.add_node("compile_ea", compile_node)
 
         # Add edges
-        workflow.set_entry_point("parse_nprd")
-        workflow.add_edge("parse_nprd", "validate_nprd")
-        workflow.add_edge("validate_nprd", "generate_trd")
+        workflow.set_entry_point("parse_video_ingest")
+        workflow.add_edge("parse_video_ingest", "validate_video_ingest")
+        workflow.add_edge("validate_video_ingest", "generate_trd")
         workflow.add_edge("generate_trd", "generate_mql5")
         workflow.add_edge("generate_mql5", "compile_ea")
         workflow.add_edge("compile_ea", END)
@@ -375,22 +375,22 @@ class NPRDToEATWorkflow:
         return workflow.compile()
 
 
-def create_nprd_to_ea_workflow(
+def create_video_ingest_to_ea_workflow(
     workspace_path: Optional[str] = None,
-) -> NPRDToEATWorkflow:
-    """Create an NPRD to EA workflow."""
-    return NPRDToEATWorkflow(workspace_path=workspace_path)
+) -> VideoIngestToEAWorkflow:
+    """Create an VideoIngest to EA workflow."""
+    return VideoIngestToEAWorkflow(workspace_path=workspace_path)
 
 
-async def run_nprd_to_ea_workflow(
-    nprd_content: str,
+async def run_video_ingest_to_ea_workflow(
+    video_ingest_content: str,
     workspace_path: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> WorkflowResult:
     """
-    Run the NPRD to EA workflow.
+    Run the VideoIngest to EA workflow.
 
     Convenience function for one-shot execution.
     """
-    workflow = create_nprd_to_ea_workflow(workspace_path)
-    return await workflow.run(nprd_content, metadata)
+    workflow = create_video_ingest_to_ea_workflow(workspace_path)
+    return await workflow.run(video_ingest_content, metadata)

@@ -1,12 +1,12 @@
 """
-Custom exceptions for NPRD system.
+Custom exceptions for VideoIngest system.
 
-This module defines all exception types used throughout the NPRD video processing pipeline.
+This module defines all exception types used throughout the VideoIngest video processing pipeline.
 """
 
 
 class VideoIngestError(Exception):
-    """Base exception for all NPRD errors."""
+    """Base exception for all VideoIngest errors."""
     pass
 
 

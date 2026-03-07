@@ -1,4 +1,4 @@
-"""NPRD (Neutral Processing & Reality Documentation) System
+"""Video Ingest System
 
 A dumb video processing tool that extracts unbiased, objective data from videos.
 No trading knowledge, no strategy inference, no downstream awareness.

@@ -1,11 +1,11 @@
 """
-NPRD/TRD Tools for QuantMind agents.
+VideoIngest/TRD Tools for QuantMind agents.
 
-These tools handle Natural Product Requirements Document (NPRD) and
+These tools handle Video Ingest and
 Technical Requirements Document (TRD) processing:
-- parse_nprd: Parse and extract NPRD structure
-- validate_nprd: Validate NPRD structure and content
-- generate_trd: Generate TRD from NPRD
+- parse_video_ingest: Parse and extract VideoIngest structure
+- validate_video_ingest: Validate VideoIngest structure and content
+- generate_trd: Generate TRD from VideoIngest
 """
 
 from __future__ import annotations
@@ -35,8 +35,8 @@ from .registry import AgentType
 logger = logging.getLogger(__name__)
 
 
-class NPRDSection(str, Enum):
-    """Standard NPRD sections."""
+class VideoIngestSection(str, Enum):
+    """Standard VideoIngest sections."""
     OVERVIEW = "overview"
     OBJECTIVES = "objectives"
     TRADING_LOGIC = "trading_logic"
@@ -62,11 +62,11 @@ class TRDSection(str, Enum):
 
 
 @dataclass
-class ParsedNPRD:
-    """Parsed NPRD structure."""
+class ParsedVideoIngest:
+    """Parsed VideoIngest structure."""
     title: str
     version: str
-    sections: Dict[NPRDSection, Dict[str, Any]]
+    sections: Dict[VideoIngestSection, Dict[str, Any]]
     raw_content: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
     issues: List[str] = field(default_factory=list)
@@ -77,21 +77,21 @@ class GeneratedTRD:
     """Generated TRD structure."""
     title: str
     version: str
-    source_nprd_version: str
+    source_video_ingest_version: str
     sections: Dict[TRDSection, Dict[str, Any]]
     content: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
-class ParseNPRDInput(BaseModel):
-    """Input schema for parse_nprd tool."""
-    nprd_content: Optional[str] = Field(
+class ParseVideoIngestInput(BaseModel):
+    """Input schema for parse_video_ingest tool."""
+    video_ingest_content: Optional[str] = Field(
         default=None,
-        description="Raw NPRD content as string"
+        description="Raw VideoIngest content as string"
     )
     file_path: Optional[str] = Field(
         default=None,
-        description="Path to NPRD file (alternative to nprd_content)"
+        description="Path to VideoIngest file (alternative to video_ingest_content)"
     )
     format: str = Field(
         default="markdown",
@@ -99,10 +99,10 @@ class ParseNPRDInput(BaseModel):
     )
 
 
-class ValidateNPRDInput(BaseModel):
-    """Input schema for validate_nprd tool."""
-    nprd_content: str = Field(
-        description="NPRD content to validate"
+class ValidateVideoIngestInput(BaseModel):
+    """Input schema for validate_video_ingest tool."""
+    video_ingest_content: str = Field(
+        description="VideoIngest content to validate"
     )
     strict: bool = Field(
         default=False,
@@ -116,8 +116,8 @@ class ValidateNPRDInput(BaseModel):
 
 class GenerateTRDInput(BaseModel):
     """Input schema for generate_trd tool."""
-    nprd_content: str = Field(
-        description="Parsed NPRD content"
+    video_ingest_content: str = Field(
+        description="Parsed VideoIngest content"
     )
     template: Optional[str] = Field(
         default=None,
@@ -137,50 +137,50 @@ class GenerateTRDInput(BaseModel):
     agent_types=[AgentType.ANALYST],
     tags=["nprd", "trd", "requirements", "parsing"],
 )
-class ParseNPRDTool(QuantMindTool):
-    """Parse Natural Product Requirements Document."""
+class ParseVideoIngestTool(QuantMindTool):
+    """Parse Video Ingest (Requirements Document)."""
 
-    name: str = "parse_nprd"
-    description: str = """Parse and extract structure from a Natural Product Requirements Document.
+    name: str = "parse_video_ingest"
+    description: str = """Parse and extract structure from a Video Ingest (Requirements Document).
     Supports markdown, JSON, and YAML formats.
     Extracts sections, objectives, trading logic, and parameters."""
 
-    args_schema: type[BaseModel] = ParseNPRDInput
-    category: ToolCategory = ToolCategory.NPRD_TRD
+    args_schema: type[BaseModel] = ParseVideoIngestInput
+    category: ToolCategory = ToolCategory.VIDEO_INGEST_TRD
     priority: ToolPriority = ToolPriority.HIGH
 
     def execute(
         self,
-        nprd_content: Optional[str] = None,
+        video_ingest_content: Optional[str] = None,
         file_path: Optional[str] = None,
         format: str = "markdown",
         **kwargs
     ) -> ToolResult:
-        """Execute NPRD parsing."""
+        """Execute VideoIngest parsing."""
         # Get content
         if file_path:
             validated_path = self.validate_workspace_path(file_path)
             if not validated_path.exists():
                 raise ToolError(
-                    f"NPRD file '{file_path}' does not exist",
+                    f"VideoIngest file '{file_path}' does not exist",
                     tool_name=self.name,
                     error_code="FILE_NOT_FOUND"
                 )
-            nprd_content = validated_path.read_text(encoding="utf-8")
-        elif not nprd_content:
+            video_ingest_content = validated_path.read_text(encoding="utf-8")
+        elif not video_ingest_content:
             raise ToolError(
-                "Either nprd_content or file_path must be provided",
+                "Either video_ingest_content or file_path must be provided",
                 tool_name=self.name,
                 error_code="NO_CONTENT"
             )
 
         # Parse based on format
         if format == "json":
-            parsed = self._parse_json(nprd_content)
+            parsed = self._parse_json(video_ingest_content)
         elif format == "yaml":
-            parsed = self._parse_yaml(nprd_content)
+            parsed = self._parse_yaml(video_ingest_content)
         else:
-            parsed = self._parse_markdown(nprd_content)
+            parsed = self._parse_markdown(video_ingest_content)
 
         return ToolResult.ok(
             data={
@@ -197,14 +197,14 @@ class ParseNPRDTool(QuantMindTool):
             }
         )
 
-    def _parse_markdown(self, content: str) -> ParsedNPRD:
-        """Parse markdown format NPRD."""
-        sections: Dict[NPRDSection, Dict[str, Any]] = {}
+    def _parse_markdown(self, content: str) -> ParsedVideoIngest:
+        """Parse markdown format VideoIngest."""
+        sections: Dict[VideoIngestSection, Dict[str, Any]] = {}
         issues: List[str] = []
 
         # Extract title
         title_match = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
-        title = title_match.group(1) if title_match else "Untitled NPRD"
+        title = title_match.group(1) if title_match else "Untitled VideoIngest"
 
         # Extract version
         version_match = re.search(r"Version:\s*([\d.]+)", content, re.IGNORECASE)
@@ -220,13 +220,13 @@ class ParseNPRDTool(QuantMindTool):
             end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
             section_content = content[start:end].strip()
 
-            # Map to NPRD section
+            # Map to VideoIngest section
             try:
-                section_enum = NPRDSection(section_title)
+                section_enum = VideoIngestSection(section_title)
             except ValueError:
                 # Try to find closest match
                 section_enum = None
-                for s in NPRDSection:
+                for s in VideoIngestSection:
                     if s.value.replace("_", " ") in section_title:
                         section_enum = s
                         break
@@ -239,7 +239,7 @@ class ParseNPRDTool(QuantMindTool):
             else:
                 issues.append(f"Unknown section: {section_title}")
 
-        return ParsedNPRD(
+        return ParsedVideoIngest(
             title=title,
             version=version,
             sections=sections,
@@ -247,8 +247,8 @@ class ParseNPRDTool(QuantMindTool):
             issues=issues,
         )
 
-    def _parse_json(self, content: str) -> ParsedNPRD:
-        """Parse JSON format NPRD."""
+    def _parse_json(self, content: str) -> ParsedVideoIngest:
+        """Parse JSON format VideoIngest."""
         try:
             data = json.loads(content)
         except json.JSONDecodeError as e:
@@ -261,11 +261,11 @@ class ParseNPRDTool(QuantMindTool):
         sections = {}
         for key, value in data.get("sections", {}).items():
             try:
-                sections[NPRDSection(key)] = value
+                sections[VideoIngestSection(key)] = value
             except ValueError:
                 pass
 
-        return ParsedNPRD(
+        return ParsedVideoIngest(
             title=data.get("title", "Untitled"),
             version=data.get("version", "1.0.0"),
             sections=sections,
@@ -273,8 +273,8 @@ class ParseNPRDTool(QuantMindTool):
             metadata=data.get("metadata", {}),
         )
 
-    def _parse_yaml(self, content: str) -> ParsedNPRD:
-        """Parse YAML format NPRD."""
+    def _parse_yaml(self, content: str) -> ParsedVideoIngest:
+        """Parse YAML format VideoIngest."""
         # Would require PyYAML
         raise ToolError(
             "YAML parsing not yet implemented",
@@ -294,52 +294,52 @@ class ParseNPRDTool(QuantMindTool):
     agent_types=[AgentType.ANALYST],
     tags=["nprd", "validation", "requirements"],
 )
-class ValidateNPRDTool(QuantMindTool):
-    """Validate NPRD structure and content."""
+class ValidateVideoIngestTool(QuantMindTool):
+    """Validate VideoIngest structure and content."""
 
-    name: str = "validate_nprd"
-    description: str = """Validate NPRD structure, completeness, and content quality.
+    name: str = "validate_video_ingest"
+    description: str = """Validate VideoIngest structure, completeness, and content quality.
     Checks for required sections, valid parameters, and logical consistency.
     Returns validation result with issues and suggestions."""
 
-    args_schema: type[BaseModel] = ValidateNPRDInput
-    category: ToolCategory = ToolCategory.NPRD_TRD
+    args_schema: type[BaseModel] = ValidateVideoIngestInput
+    category: ToolCategory = ToolCategory.VIDEO_INGEST_TRD
     priority: ToolPriority = ToolPriority.HIGH
 
-    # Required sections for valid NPRD
+    # Required sections for valid VideoIngest
     REQUIRED_SECTIONS = [
-        NPRDSection.OVERVIEW,
-        NPRDSection.OBJECTIVES,
-        NPRDSection.TRADING_LOGIC,
-        NPRDSection.RISK_MANAGEMENT,
+        VideoIngestSection.OVERVIEW,
+        VideoIngestSection.OBJECTIVES,
+        VideoIngestSection.TRADING_LOGIC,
+        VideoIngestSection.RISK_MANAGEMENT,
     ]
 
     # Recommended sections
     RECOMMENDED_SECTIONS = [
-        NPRDSection.ENTRY_CONDITIONS,
-        NPRDSection.EXIT_CONDITIONS,
-        NPRDSection.PARAMETERS,
-        NPRDSection.PERFORMANCE_TARGETS,
+        VideoIngestSection.ENTRY_CONDITIONS,
+        VideoIngestSection.EXIT_CONDITIONS,
+        VideoIngestSection.PARAMETERS,
+        VideoIngestSection.PERFORMANCE_TARGETS,
     ]
 
     def execute(
         self,
-        nprd_content: str,
+        video_ingest_content: str,
         strict: bool = False,
         check_completeness: bool = True,
         **kwargs
     ) -> ToolResult:
-        """Execute NPRD validation."""
+        """Execute VideoIngest validation."""
         issues: List[Dict[str, Any]] = []
         warnings: List[Dict[str, Any]] = []
         suggestions: List[str] = []
 
         # Parse content first
-        parse_tool = ParseNPRDTool(workspace_path=self._workspace_path)
-        parse_result = parse_tool.execute(nprd_content=nprd_content)
+        parse_tool = ParseVideoIngestTool(workspace_path=self._workspace_path)
+        parse_result = parse_tool.execute(video_ingest_content=video_ingest_content)
         parsed_data = parse_result.data
 
-        present_sections = set(NPRDSection(s) for s in parsed_data.get("sections", {}).keys())
+        present_sections = set(VideoIngestSection(s) for s in parsed_data.get("sections", {}).keys())
 
         # Check required sections
         if check_completeness:
@@ -375,10 +375,10 @@ class ValidateNPRDTool(QuantMindTool):
 
         # Generate suggestions
         if issues:
-            suggestions.append("Add all required sections to complete the NPRD")
-        if not any(s in present_sections for s in [NPRDSection.ENTRY_CONDITIONS, NPRDSection.EXIT_CONDITIONS]):
+            suggestions.append("Add all required sections to complete the VideoIngest")
+        if not any(s in present_sections for s in [VideoIngestSection.ENTRY_CONDITIONS, VideoIngestSection.EXIT_CONDITIONS]):
             suggestions.append("Define clear entry and exit conditions")
-        if NPRDSection.PARAMETERS not in present_sections:
+        if VideoIngestSection.PARAMETERS not in present_sections:
             suggestions.append("Add a parameters section to make the strategy configurable")
 
         is_valid = len([i for i in issues if i.get("severity") == "error"]) == 0
@@ -398,8 +398,8 @@ class ValidateNPRDTool(QuantMindTool):
         )
 
     def _calculate_completeness(self, parsed_data: Dict) -> float:
-        """Calculate NPRD completeness score (0-100)."""
-        all_sections = list(NPRDSection)
+        """Calculate VideoIngest completeness score (0-100)."""
+        all_sections = list(VideoIngestSection)
         present = len(parsed_data.get("sections", {}))
         return round((present / len(all_sections)) * 100, 1)
 
@@ -409,29 +409,29 @@ class ValidateNPRDTool(QuantMindTool):
     tags=["trd", "generation", "requirements"],
 )
 class GenerateTRDTool(QuantMindTool):
-    """Generate Technical Requirements Document from NPRD."""
+    """Generate Technical Requirements Document from VideoIngest."""
 
     name: str = "generate_trd"
-    description: str = """Generate a Technical Requirements Document from a validated NPRD.
+    description: str = """Generate a Technical Requirements Document from a validated VideoIngest.
     Transforms natural language requirements into technical specifications.
     Includes architecture design, component breakdown, and implementation hints."""
 
     args_schema: type[BaseModel] = GenerateTRDInput
-    category: ToolCategory = ToolCategory.NPRD_TRD
+    category: ToolCategory = ToolCategory.VIDEO_INGEST_TRD
     priority: ToolPriority = ToolPriority.HIGH
 
     def execute(
         self,
-        nprd_content: str,
+        video_ingest_content: str,
         template: Optional[str] = None,
         include_code_hints: bool = True,
         target_framework: str = "mql5",
         **kwargs
     ) -> ToolResult:
         """Execute TRD generation."""
-        # Parse NPRD first
-        parse_tool = ParseNPRDTool(workspace_path=self._workspace_path)
-        parse_result = parse_tool.execute(nprd_content=nprd_content)
+        # Parse VideoIngest first
+        parse_tool = ParseVideoIngestTool(workspace_path=self._workspace_path)
+        parse_result = parse_tool.execute(video_ingest_content=video_ingest_content)
         parsed_nprd = parse_result.data
 
         # Generate TRD sections
@@ -452,7 +452,7 @@ class GenerateTRDTool(QuantMindTool):
             data={
                 "title": f"TRD: {parsed_nprd.get('title', 'Untitled')}",
                 "version": "1.0.0",
-                "source_nprd_version": parsed_nprd.get("version", "1.0.0"),
+                "source_video_ingest_version": parsed_nprd.get("version", "1.0.0"),
                 "sections": trd_sections,
                 "content": trd_content,
             },
@@ -469,7 +469,7 @@ class GenerateTRDTool(QuantMindTool):
         include_code_hints: bool,
         target_framework: str
     ) -> Dict[str, Any]:
-        """Generate TRD sections from parsed NPRD."""
+        """Generate TRD sections from parsed VideoIngest."""
         nprd_sections = parsed_nprd.get("sections", {})
 
         trd_sections = {}
@@ -485,7 +485,7 @@ class GenerateTRDTool(QuantMindTool):
         components = []
 
         # Signal Generator
-        trading_logic = nprd_sections.get(NPRDSection.TRADING_LOGIC.value, {})
+        trading_logic = nprd_sections.get(VideoIngestSection.TRADING_LOGIC.value, {})
         components.append({
             "name": "SignalGenerator",
             "purpose": "Generate entry and exit signals based on trading logic",
@@ -504,7 +504,7 @@ class GenerateTRDTool(QuantMindTool):
         })
 
         # Risk Manager
-        risk_mgmt = nprd_sections.get(NPRDSection.RISK_MANAGEMENT.value, {})
+        risk_mgmt = nprd_sections.get(VideoIngestSection.RISK_MANAGEMENT.value, {})
         components.append({
             "name": "RiskManager",
             "purpose": "Enforce risk limits and position sizing",
@@ -535,7 +535,7 @@ class GenerateTRDTool(QuantMindTool):
 
         # Algorithms section
         trd_sections[TRDSection.ALGORITHMS.value] = {
-            "signal_generation": "Implement trading logic from NPRD",
+            "signal_generation": "Implement trading logic from VideoIngest",
             "position_sizing": "Calculate position size based on risk parameters",
             "stop_loss": "Calculate stop loss based on ATR or fixed percentage",
         }
@@ -565,7 +565,7 @@ bool CheckEntrySignal(int signalType) {
     double ma = iMA(_Symbol, PERIOD_CURRENT, 14, 0, MODE_SMA, PRICE_CLOSE);
     double currentPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
-    // Check conditions based on NPRD logic
+    // Check conditions based on VideoIngest logic
     if (signalType == SIGNAL_BUY && currentPrice > ma) {
         return true;
     }
@@ -589,7 +589,7 @@ def check_entry_signal(signal_type: str, df: pd.DataFrame) -> bool:
     # Calculate indicators
     df['ma'] = df['close'].rolling(14).mean()
 
-    # Check conditions based on NPRD logic
+    # Check conditions based on VideoIngest logic
     if signal_type == 'BUY':
         return df['close'].iloc[-1] > df['ma'].iloc[-1]
     return False
@@ -609,7 +609,7 @@ def check_entry_signal(signal_type: str, df: pd.DataFrame) -> bool:
 ## {parsed_nprd.get('title', 'Untitled')}
 
 **Version**: 1.0.0
-**Source NPRD Version**: {parsed_nprd.get('version', '1.0.0')}
+**Source VideoIngest Version**: {parsed_nprd.get('version', '1.0.0')}
 **Target Framework**: {target_framework}
 **Generated**: {datetime.now().isoformat()}
 
@@ -655,11 +655,11 @@ Components: {', '.join(trd_sections.get('architecture', {}).get('components', []
 
 # Export all tools
 __all__ = [
-    "ParseNPRDTool",
-    "ValidateNPRDTool",
+    "ParseVideoIngestTool",
+    "ValidateVideoIngestTool",
     "GenerateTRDTool",
-    "ParsedNPRD",
+    "ParsedVideoIngest",
     "GeneratedTRD",
-    "NPRDSection",
+    "VideoIngestSection",
     "TRDSection",
 ]

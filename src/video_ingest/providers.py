@@ -1,5 +1,5 @@
 """
-Model provider interface for NPRD system.
+Model provider interface for VideoIngest system.
 
 This module defines the abstract interface for AI model providers (Gemini CLI, Qwen-VL)
 that analyze video content to generate transcripts and visual descriptions.
@@ -1063,7 +1063,7 @@ class OpenRouterProvider(ModelProvider):
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://quantmindx.ai",  # Optional, for rankings
-            "X-Title": "QuantMindX NPRD Processor",  # Optional, for rankings
+            "X-Title": "QuantMindX VideoIngest Processor",  # Optional, for rankings
         }
         
         payload = {

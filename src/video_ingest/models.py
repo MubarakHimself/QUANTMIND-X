@@ -1,7 +1,7 @@
 """
-Data models for NPRD system.
+Data models for VideoIngest system.
 
-These models define the core data structures used throughout the NPRD video processing pipeline.
+These models define the core data structures used throughout the VideoIngest video processing pipeline.
 """
 
 from dataclasses import dataclass, field, asdict
@@ -44,7 +44,7 @@ class TimelineClip:
 @dataclass
 class TimelineOutput:
     """
-    Complete timeline output from NPRD processing.
+    Complete timeline output from VideoIngest processing.
 
     Contains metadata about the video and an array of timeline clips.
     """
@@ -255,7 +255,7 @@ class RateLimit:
 @dataclass
 class VideoIngestConfig:
     """
-    Global configuration for NPRD system.
+    Global configuration for VideoIngest system.
     
     Loaded from environment variables and configuration files.
     """
@@ -277,29 +277,29 @@ class VideoIngestConfig:
     qwen_requests_per_day: int = 2000
     
     # Cache settings
-    cache_dir: Path = Path("data/nprd/cache")
+    cache_dir: Path = Path("data/video_ingest/cache")
     cache_max_size_gb: int = 50
     cache_max_age_days: int = 30
-    
+
     # Job queue settings
     max_concurrent_jobs: int = 3
-    job_db_path: Path = Path("data/nprd/jobs.db")
-    
+    job_db_path: Path = Path("data/video_ingest/jobs.db")
+
     # Output settings
-    output_dir: Path = Path("docs/knowledge/nprd_outputs")
-    
+    output_dir: Path = Path("docs/knowledge/video_ingest_outputs")
+
     # Processing settings
     default_frame_interval: int = 30
     default_audio_bitrate: str = "128k"
     default_audio_channels: int = 1
-    
+
     # Retry settings
     max_retry_attempts: int = 3
     base_retry_delay: float = 1.0  # seconds
-    
+
     # Logging
     log_level: str = "INFO"
-    log_file: Optional[Path] = Path("data/nprd/nprd.log")
+    log_file: Optional[Path] = Path("data/video_ingest/video_ingest.log")
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -348,22 +348,22 @@ class VideoIngestConfig:
             # Rate limits
             qwen_requests_per_day=int(os.getenv("QWEN_REQUESTS_PER_DAY", "2000")),
             # Cache settings
-            cache_dir=Path(os.getenv("NPRD_CACHE_DIR", "data/nprd/cache")),
-            cache_max_size_gb=int(os.getenv("NPRD_CACHE_MAX_SIZE_GB", "50")),
-            cache_max_age_days=int(os.getenv("NPRD_CACHE_MAX_AGE_DAYS", "30")),
+            cache_dir=Path(os.getenv("VideoIngest_CACHE_DIR", "data/video_ingest/cache")),
+            cache_max_size_gb=int(os.getenv("VideoIngest_CACHE_MAX_SIZE_GB", "50")),
+            cache_max_age_days=int(os.getenv("VideoIngest_CACHE_MAX_AGE_DAYS", "30")),
             # Job queue settings
-            max_concurrent_jobs=int(os.getenv("NPRD_MAX_CONCURRENT_JOBS", "3")),
-            job_db_path=Path(os.getenv("NPRD_JOB_DB_PATH", "data/nprd/jobs.db")),
+            max_concurrent_jobs=int(os.getenv("VideoIngest_MAX_CONCURRENT_JOBS", "3")),
+            job_db_path=Path(os.getenv("VideoIngest_JOB_DB_PATH", "data/video_ingest/jobs.db")),
             # Output settings
-            output_dir=Path(os.getenv("NPRD_OUTPUT_DIR", "docs/knowledge/nprd_outputs")),
+            output_dir=Path(os.getenv("VideoIngest_OUTPUT_DIR", "docs/knowledge/video_ingest_outputs")),
             # Processing settings
-            default_frame_interval=int(os.getenv("NPRD_FRAME_INTERVAL", "30")),
-            default_audio_bitrate=os.getenv("NPRD_AUDIO_BITRATE", "128k"),
-            default_audio_channels=int(os.getenv("NPRD_AUDIO_CHANNELS", "1")),
+            default_frame_interval=int(os.getenv("VideoIngest_FRAME_INTERVAL", "30")),
+            default_audio_bitrate=os.getenv("VideoIngest_AUDIO_BITRATE", "128k"),
+            default_audio_channels=int(os.getenv("VideoIngest_AUDIO_CHANNELS", "1")),
             # Retry settings
-            max_retry_attempts=int(os.getenv("NPRD_MAX_RETRY_ATTEMPTS", "3")),
-            base_retry_delay=float(os.getenv("NPRD_BASE_RETRY_DELAY", "1.0")),
+            max_retry_attempts=int(os.getenv("VideoIngest_MAX_RETRY_ATTEMPTS", "3")),
+            base_retry_delay=float(os.getenv("VideoIngest_BASE_RETRY_DELAY", "1.0")),
             # Logging
-            log_level=os.getenv("NPRD_LOG_LEVEL", "INFO"),
-            log_file=Path(os.getenv("NPRD_LOG_FILE", "data/nprd/nprd.log")) if os.getenv("NPRD_LOG_FILE") else None,
+            log_level=os.getenv("VideoIngest_LOG_LEVEL", "INFO"),
+            log_file=Path(os.getenv("VideoIngest_LOG_FILE", "data/video_ingest/video_ingest.log")) if os.getenv("VideoIngest_LOG_FILE") else None,
         )

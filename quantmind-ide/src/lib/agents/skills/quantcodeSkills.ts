@@ -13,17 +13,17 @@ import type { Skill, SkillContext } from './index';
 // ============================================================================
 
 /**
- * Generate MQL5 code from NPRD or TRD
+ * Generate MQL5 code from VideoIngest or TRD
  */
 const generateMQL5: Skill = {
   id: 'quantcode_generate_mql5',
   name: 'Generate MQL5 Code',
-  description: 'Generate complete MQL5 Expert Advisor code from NPRD or TRD specifications. Includes signal logic, risk management, trade execution, and error handling.',
+  description: 'Generate complete MQL5 Expert Advisor code from VideoIngest or TRD specifications. Includes signal logic, risk management, trade execution, and error handling.',
   agents: ['quantcode'],
   category: 'code_generation',
   requirements: ['OpenAI API or Anthropic API for code generation'],
   schema: z.object({
-    specification: z.any().describe('NPRD or TRD specification object'),
+    specification: z.any().describe('VideoIngest or TRD specification object'),
     template: z.string().optional().describe('Use a specific code template (default: standard EA)'),
     includeComments: z.boolean().default(true).describe('Include detailed code comments'),
     optimize: z.boolean().default(true).describe('Optimize generated code for performance'),

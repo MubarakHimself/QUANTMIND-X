@@ -1,5 +1,5 @@
 """
-NPRD Processing Pipeline.
+VideoIngest Processing Pipeline.
 
 This module provides the main VideoIngestProcessor class that orchestrates the entire video
 processing pipeline: download → frame extraction → audio extraction → AI analysis.
@@ -117,7 +117,7 @@ class ProcessingResult:
 
 class VideoIngestProcessor:
     """
-    Main NPRD processing pipeline orchestrator.
+    Main VideoIngest processing pipeline orchestrator.
     
     This class coordinates the entire video processing workflow:
     1. Download video from URL
@@ -146,10 +146,10 @@ class VideoIngestProcessor:
         rate_limiter: Optional[RateLimiter] = None,
     ):
         """
-        Initialize NPRD Processor.
+        Initialize VideoIngest Processor.
         
         Args:
-            config: NPRD configuration (uses defaults if not provided)
+            config: VideoIngest configuration (uses defaults if not provided)
             downloader: Video downloader instance
             frame_extractor: Frame extractor instance
             audio_extractor: Audio extractor instance
@@ -321,7 +321,7 @@ class VideoIngestProcessor:
             return cached_result
         
         # Create temporary working directory
-        work_dir = Path(tempfile.mkdtemp(prefix=f"nprd_{job_id}_"))
+        work_dir = Path(tempfile.mkdtemp(prefix=f"video_ingest_{job_id}_"))
         
         try:
             # Step 1: Download video

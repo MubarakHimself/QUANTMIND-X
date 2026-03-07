@@ -1,7 +1,7 @@
 """
-NPRD REST API Server.
+VideoIngest REST API Server.
 
-This module provides a FastAPI-based REST API for the NPRD video processing system.
+This module provides a FastAPI-based REST API for the VideoIngest video processing system.
 
 Endpoints:
 - POST /jobs - Submit a new video processing job
@@ -189,7 +189,7 @@ def get_job_queue() -> JobQueueManager:
 
 
 def get_processor() -> VideoIngestProcessor:
-    """Get NPRD processor."""
+    """Get VideoIngest processor."""
     global _processor
     if _processor is None:
         _processor = VideoIngestProcessor(config=get_config())
@@ -200,7 +200,7 @@ def get_processor() -> VideoIngestProcessor:
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
-    logger.info("Starting NPRD API server...")
+    logger.info("Starting VideoIngest API server...")
     
     # Initialize components
     config = get_config()
@@ -215,19 +215,19 @@ async def lifespan(app: FastAPI):
     # Start job queue
     job_queue.start()
     
-    logger.info("NPRD API server started")
+    logger.info("VideoIngest API server started")
     
     yield
     
     # Shutdown
-    logger.info("Shutting down NPRD API server...")
+    logger.info("Shutting down VideoIngest API server...")
     job_queue.stop(wait=True)
-    logger.info("NPRD API server stopped")
+    logger.info("VideoIngest API server stopped")
 
 
 # Create FastAPI app
 app = FastAPI(
-    title="NPRD API",
+    title="VideoIngest API",
     description="Video Processing Pipeline API",
     version="1.0.0",
     lifespan=lifespan,
@@ -272,10 +272,10 @@ async def config_error_handler(request, exc):
 
 
 @app.exception_handler(VideoIngestError)
-async def nprd_error_handler(request, exc):
+async def video_ingest_error_handler(request, exc):
     return JSONResponse(
         status_code=500,
-        content={"error": "NPRD Error", "detail": str(exc), "code": "NPRD_ERROR"}
+        content={"error": "VideoIngest Error", "detail": str(exc), "code": "VideoIngest_ERROR"}
     )
 
 
@@ -287,7 +287,7 @@ async def nprd_error_handler(request, exc):
 async def root():
     """Root endpoint with API info."""
     return {
-        "name": "NPRD API",
+        "name": "VideoIngest API",
         "version": "1.0.0",
         "description": "Video Processing Pipeline API",
         "docs": "/docs",
@@ -616,7 +616,7 @@ async def submit_playlist_jobs(request: PlaylistJobSubmitRequest):
 
 @app.get("/config", response_model=ConfigResponse)
 async def get_configuration():
-    """Get current NPRD configuration."""
+    """Get current VideoIngest configuration."""
     try:
         config = get_config()
         

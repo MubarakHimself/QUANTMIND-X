@@ -30,7 +30,7 @@ def sample_gate_data(sample_workflow_id):
     """Create sample approval gate data."""
     return {
         "workflow_id": sample_workflow_id,
-        "workflow_type": "nprd_to_ea",
+        "workflow_type": "video_ingest_to_ea",
         "from_stage": "quantcode",
         "to_stage": "compilation",
         "gate_type": "stage_transition",

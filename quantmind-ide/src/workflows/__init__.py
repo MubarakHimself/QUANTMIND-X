@@ -10,10 +10,10 @@ from .state import (
     WorkflowStatus,
     WorkflowResult,
 )
-from .nprd_to_ea import (
-    NPRDToEATWorkflow,
-    create_nprd_to_ea_workflow,
-    run_nprd_to_ea_workflow,
+from .video_ingest_to_ea import (
+    VideoIngestToEAWorkflow,
+    create_video_ingest_to_ea_workflow,
+    run_video_ingest_to_ea_workflow,
 )
 
 __all__ = [
@@ -21,7 +21,7 @@ __all__ = [
     "WorkflowStep",
     "WorkflowStatus",
     "WorkflowResult",
-    "NPRDToEATWorkflow",
-    "create_nprd_to_ea_workflow",
-    "run_nprd_to_ea_workflow",
+    "VideoIngestToEAWorkflow",
+    "create_video_ingest_to_ea_workflow",
+    "run_video_ingest_to_ea_workflow",
 ]

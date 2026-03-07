@@ -126,12 +126,12 @@ class WorkflowState:
 
     Tracks:
     - Current step and progress
-    - Intermediate results (NPRD, TRD, MQL5 code)
+    - Intermediate results (VideoIngest, TRD, MQL5 code)
     - Metadata and timing
     """
     # Identity
     workflow_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    workflow_type: str = "nprd_to_ea"
+    workflow_type: str = "video_ingest_to_ea"
 
     # Status
     status: WorkflowStatus = WorkflowStatus.PENDING

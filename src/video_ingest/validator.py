@@ -1,7 +1,7 @@
 """
 Timeline JSON Validator.
 
-This module provides validation for Timeline JSON output from NPRD processing.
+This module provides validation for Timeline JSON output from VideoIngest processing.
 
 Validates:
 - JSON structure validity

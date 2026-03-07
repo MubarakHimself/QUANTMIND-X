@@ -28,6 +28,31 @@
   let activeAgent = "copilot";
   let message = "";
   let showDelegationUI = false;
+
+  // Skills state
+  let availableSkills: Array<{ id: string; name: string; description: string; enabled: boolean }> = [];
+  let selectedSkill: string = "";
+  let skillsLoading = false;
+
+  // Fetch available skills from API
+  async function fetchSkills() {
+    skillsLoading = true;
+    try {
+      const res = await fetch(`${API_BASE}/settings/skills`);
+      if (res.ok) {
+        availableSkills = await res.json();
+      }
+    } catch (e) {
+      console.error("Failed to fetch skills:", e);
+    } finally {
+      skillsLoading = false;
+    }
+  }
+
+  // Initialize skills on mount
+  onMount(() => {
+    fetchSkills();
+  });
   let selectedDepartmentForDelegation: Department | null = null;
   let isDelegating = false;
   let delegationResult: { success: boolean; message: string } | null = null;
@@ -268,6 +293,7 @@
               .map((m) => ({ role: m.role, content: m.content })),
             model: aiSettings.model,
             api_keys: apiKeys,
+            skill_id: selectedSkill || null,
           }),
         });
 
@@ -319,8 +345,8 @@
     if (lower.includes("backtest")) {
       return "I can run backtests in three modes:\n\n**Mode A** - EA only (fixed lot)\n**Mode B** - EA + Kelly sizing\n**Mode C** - EA + Full System (Kelly + Governor)\n\nWhich strategy folder would you like to backtest?";
     }
-    if (lower.includes("nprd") || lower.includes("video")) {
-      return "To process a new NPRD:\n\n1. Go to **EA Management** in the sidebar\n2. Click **New Strategy**\n3. Paste the YouTube URL\n\nThe Gemini CLI will transcribe and analyze the video, creating a new strategy folder.";
+    if (lower.includes("video") || lower.includes("video-ingest")) {
+      return "To process a new VideoIngest:\n\n1. Go to **EA Management** in the sidebar\n2. Click **New Strategy**\n3. Paste the YouTube URL\n\nThe Gemini CLI will transcribe and analyze the video, creating a new strategy folder.";
     }
     if (lower.includes("bot") || lower.includes("trading")) {
       return "You currently have **3 bots** active. Click the **Active** count in the status bar or the **Kill Switch** to manage live trading.\n\nFrom there you can:\n- Pause/resume individual bots\n- Quarantine problematic EAs\n- Trigger emergency kill all";
@@ -329,7 +355,7 @@
       return "Current risk settings:\n\n- **Kelly Factor**: 0.85\n- **Balance Zone**: Growth Tier\n- **House Money**: +$12 today\n- **Squad Limit**: 8 bots max\n\nThe system automatically adjusts position sizing based on regime and daily performance.";
     }
 
-    return "I understand. How can I help you with your trading system today? I can assist with:\n\n- Processing NPRDs from YouTube videos\n- Running backtests (Mode A/B/C)\n- Managing live bots\n- Analyzing strategy performance";
+    return "I understand. How can I help you with your trading system today? I can assist with:\n\n- Processing VideoIngests from YouTube videos\n- Running backtests (Mode A/B/C)\n- Managing live bots\n- Analyzing strategy performance";
   }
 
   function switchAgent(agentId: string) {
@@ -350,7 +376,7 @@
       case "quantcode":
         return "I'm QuantCode, specialized in EA development. I can convert TRDs into MQL5 code, optimize strategies, and run backtests.";
       case "analyst":
-        return "I'm the Analyst agent. I convert NPRDs into Technical Requirements Documents, correlating with your knowledge base and shared assets.";
+        return "I'm the Analyst agent. I convert VideoIngests into Technical Requirements Documents, correlating with your knowledge base and shared assets.";
       default:
         return "How can I assist you?";
     }
@@ -697,6 +723,19 @@
           <Briefcase size={14} />
           <span>Delegate</span>
         </button>
+        <!-- Skill Selector -->
+        <div class="skill-selector">
+          <select
+            bind:value={selectedSkill}
+            class="skill-select"
+            title="Select a skill"
+          >
+            <option value="">No Skill</option>
+            {#each availableSkills as skill}
+              <option value={skill.id}>{skill.name}</option>
+            {/each}
+          </select>
+        </div>
         <button
           class="action-btn"
           title="Model Config"
@@ -1154,6 +1193,28 @@
   .input-actions {
     display: flex;
     gap: 6px;
+    align-items: center;
+  }
+
+  .skill-selector {
+    display: flex;
+    align-items: center;
+  }
+
+  .skill-select {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    padding: 4px 8px;
+    border-radius: 2px;
+    font-size: 11px;
+    cursor: pointer;
+    max-width: 100px;
+  }
+
+  .skill-select:focus {
+    border-color: var(--accent-primary);
+    outline: none;
   }
 
   .action-btn {

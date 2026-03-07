@@ -17,10 +17,10 @@ from ..workflows.state import (
     WorkflowStatus,
     get_workflow_store,
 )
-from ..workflows.nprd_to_ea import (
-    NPRDToEATWorkflow,
-    create_nprd_to_ea_workflow,
-    run_nprd_to_ea_workflow,
+from ..workflows.video_ingest_to_ea import (
+    VideoIngestToEAWorkflow,
+    create_video_ingest_to_ea_workflow,
+    run_video_ingest_to_ea_workflow,
 )
 from ..agents.queue import (
     QueueManager,
@@ -36,9 +36,9 @@ router = APIRouter(prefix="/api", tags=["workflow", "queue"])
 
 
 # Request Models
-class NPRDToEARequest(BaseModel):
-    """Request to start NPRD to EA workflow."""
-    nprd_content: str
+class VideoIngestToEARequest(BaseModel):
+    """Request to start VideoIngest to EA workflow."""
+    video_ingest_content: str
     workspace_path: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
 
@@ -55,24 +55,24 @@ class AddTaskRequest(BaseModel):
 
 # Workflow Endpoints
 
-@router.post("/workflows/nprd-to-ea")
-async def start_nprd_to_ea_workflow(
-    request: NPRDToEARequest,
+@router.post("/workflows/video-ingest-to-ea")
+async def start_video_ingest_to_ea_workflow(
+    request: VideoIngestToEARequest,
     background_tasks: BackgroundTasks,
 ) -> Dict[str, Any]:
     """
-    Start NPRD to EA workflow.
+    Start VideoIngest to EA workflow.
 
-    Processes NPRD through Analyst to generate TRD,
+    Processes VideoIngest through Analyst to generate TRD,
     then through QuantCode to generate MQL5 EA.
     """
-    workflow = create_nprd_to_ea_workflow(request.workspace_path)
-    state = workflow.create_state(request.nprd_content, request.metadata)
+    workflow = create_video_ingest_to_ea_workflow(request.workspace_path)
+    state = workflow.create_state(request.video_ingest_content, request.metadata)
 
     # Run in background
     async def run_workflow():
         try:
-            await workflow.run(request.nprd_content, request.metadata)
+            await workflow.run(request.video_ingest_content, request.metadata)
         except Exception as e:
             logger.error(f"Workflow error: {e}")
 

@@ -40,16 +40,16 @@
 
   // Department icons mapping
   const departmentIcons: Record<DepartmentId, typeof BarChart2> = {
-    analysis: BarChart2,
+    development: BarChart2,
     research: FlaskConical,
     risk: Shield,
-    execution: Zap,
+    trading: Zap,
     portfolio: Briefcase,
   };
 
   // Quick actions for each department
   const quickActions: Record<DepartmentId, Array<{ label: string; prompt: string }>> = {
-    analysis: [
+    development: [
       { label: "Analyze Market", prompt: "Analyze the current market conditions for EURUSD" },
       { label: "Signal Check", prompt: "Check for any active trading signals" },
       { label: "Trend Analysis", prompt: "Perform trend analysis on major pairs" },
@@ -64,7 +64,7 @@
       { label: "Position Check", prompt: "Check all open positions and risk levels" },
       { label: "Kelly Sizing", prompt: "Calculate Kelly-optimal position sizes" },
     ],
-    execution: [
+    trading: [
       { label: "Order Status", prompt: "Check status of pending orders" },
       { label: "Routing Check", prompt: "Verify broker connections and routing" },
       { label: "Execution Report", prompt: "Generate execution quality report" },

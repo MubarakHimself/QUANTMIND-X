@@ -1,7 +1,7 @@
 """
-NPRD Command Line Interface.
+VideoIngest Command Line Interface.
 
-This module provides a Click-based CLI for the NPRD video processing system.
+This module provides a Click-based CLI for the VideoIngest video processing system.
 
 Commands:
 - process: Process a single video URL
@@ -69,7 +69,7 @@ def get_config() -> VideoIngestConfig:
 
 
 def create_processor(config: VideoIngestConfig) -> VideoIngestProcessor:
-    """Create NPRD processor with configuration."""
+    """Create VideoIngest processor with configuration."""
     return VideoIngestProcessor(config=config)
 
 
@@ -135,11 +135,11 @@ def format_timeline(timeline: TimelineOutput, format_type: str = "json") -> str:
 @click.group()
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 @click.option("--config-file", "-c", type=click.Path(exists=True), help="Path to config file")
-@click.version_option(version="1.0.0", prog_name="nprd")
+@click.version_option(version="1.0.0", prog_name="video-ingest")
 @click.pass_context
 def cli(ctx, verbose: bool, config_file: Optional[str]):
     """
-    NPRD - Video Processing Pipeline
+    VideoIngest - Video Processing Pipeline
     
     Extract transcripts and visual descriptions from videos using AI.
     """
@@ -176,9 +176,9 @@ def process(
     Process a single video URL.
     
     Examples:
-        nprd process https://youtube.com/watch?v=xxx
-        nprd process https://youtube.com/watch?v=xxx -o output.json
-        nprd process https://youtube.com/watch?v=xxx --provider gemini
+        video-ingest process https://youtube.com/watch?v=xxx
+        video-ingest process https://youtube.com/watch?v=xxx -o output.json
+        video-ingest process https://youtube.com/watch?v=xxx --provider gemini
     """
     try:
         config = get_config()
@@ -201,7 +201,7 @@ def process(
             queue = create_job_queue(config)
             job_id = queue.submit_job(url, options)
             click.echo(f"Job submitted: {job_id}")
-            click.echo(f"Check status with: nprd status {job_id}")
+            click.echo(f"Check status with: video-ingest status {job_id}")
             sys.exit(EXIT_SUCCESS)
         
         # Process synchronously
@@ -274,8 +274,8 @@ def batch(
     The input file should contain one URL per line.
     
     Examples:
-        nprd batch urls.txt -d output/
-        nprd batch urls.txt -d output/ --concurrent 5
+        video-ingest batch urls.txt -d output/
+        video-ingest batch urls.txt -d output/ --concurrent 5
     """
     try:
         config = get_config()
@@ -319,7 +319,7 @@ def batch(
                     sys.exit(EXIT_ERROR)
         
         click.echo(f"\nSubmitted {len(job_ids)} jobs")
-        click.echo(f"Check status with: nprd jobs")
+        click.echo(f"Check status with: video-ingest jobs")
         click.echo(f"Results will be written to: {output_path}")
         
         sys.exit(EXIT_SUCCESS)
@@ -353,8 +353,8 @@ def playlist(
     Process all videos in a playlist.
     
     Examples:
-        nprd playlist https://youtube.com/playlist?list=xxx -d output/
-        nprd playlist https://youtube.com/playlist?list=xxx --extract-only
+        video-ingest playlist https://youtube.com/playlist?list=xxx -d output/
+        video-ingest playlist https://youtube.com/playlist?list=xxx --extract-only
     """
     try:
         config = get_config()
@@ -391,7 +391,7 @@ def playlist(
         job_ids = processor.create_playlist_jobs(url, queue, options)
         
         click.echo(f"\nSubmitted {len([j for j in job_ids if j])} jobs")
-        click.echo(f"Check status with: nprd jobs")
+        click.echo(f"Check status with: video-ingest jobs")
         click.echo(f"Results will be written to: {output_path}")
         
         sys.exit(EXIT_SUCCESS)
@@ -417,8 +417,8 @@ def status(ctx, job_id: str, watch: bool, interval: int):
     Check the status of a job.
     
     Examples:
-        nprd status job_abc123
-        nprd status job_abc123 --watch
+        video-ingest status job_abc123
+        video-ingest status job_abc123 --watch
     """
     import time
     
@@ -462,9 +462,9 @@ def jobs(ctx, filter_status: Optional[str], limit: int, output_format: str):
     List all jobs.
     
     Examples:
-        nprd jobs
-        nprd jobs --status pending
-        nprd jobs --format json
+        video-ingest jobs
+        video-ingest jobs --status pending
+        video-ingest jobs --format json
     """
     try:
         config = get_config()
@@ -518,15 +518,15 @@ def jobs(ctx, filter_status: Optional[str], limit: int, output_format: str):
 @click.pass_context
 def config(ctx, show: bool, set_value: tuple, output_format: str):
     """
-    Show or update NPRD configuration.
+    Show or update VideoIngest configuration.
     
     Examples:
-        nprd config --show
-        nprd config --show --format json
-        nprd config --set NPRD_MAX_CONCURRENT_JOBS 5
+        video-ingest config --show
+        video-ingest config --show --format json
+        video-ingest config --set VideoIngest_MAX_CONCURRENT_JOBS 5
     """
     try:
-        nprd_config = get_config()
+        video_ingest_config = get_config()
         
         if set_value:
             click.echo(click.style("Note: Setting configuration values via CLI is not persisted.", fg="yellow"))
@@ -537,12 +537,12 @@ def config(ctx, show: bool, set_value: tuple, output_format: str):
             sys.exit(EXIT_SUCCESS)
         
         # Default behavior: show configuration
-        config_dict = nprd_config.to_dict()
+        config_dict = video_ingest_config.to_dict()
         
         if output_format == "json":
             click.echo(json.dumps(config_dict, indent=2))
         else:
-            click.echo("NPRD Configuration")
+            click.echo("VideoIngest Configuration")
             click.echo("=" * 50)
             
             # Group by category
@@ -579,8 +579,8 @@ def result(ctx, job_id: str, output: Optional[str], output_format: str):
     Get the result of a completed job.
     
     Examples:
-        nprd result job_abc123
-        nprd result job_abc123 -o output.json
+        video-ingest result job_abc123
+        video-ingest result job_abc123 -o output.json
     """
     try:
         config = get_config()
@@ -621,7 +621,7 @@ def result(ctx, job_id: str, output: Optional[str], output_format: str):
 
 
 def main():
-    """Main entry point for NPRD CLI."""
+    """Main entry point for VideoIngest CLI."""
     cli(obj={})
 
 

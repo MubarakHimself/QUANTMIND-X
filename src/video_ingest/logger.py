@@ -1,7 +1,7 @@
 """
-NPRD Logging System.
+VideoIngest Logging System.
 
-This module provides structured logging for the NPRD system with support for:
+This module provides structured logging for the VideoIngest system with support for:
 - Job submission logging (URL, timestamp)
 - State transition logging
 - Processing time logging
@@ -22,7 +22,7 @@ import threading
 
 
 class LogLevel(str, Enum):
-    """Log levels for NPRD logging."""
+    """Log levels for VideoIngest logging."""
     DEBUG = "DEBUG"
     INFO = "INFO"
     WARNING = "WARNING"
@@ -32,9 +32,9 @@ class LogLevel(str, Enum):
 @dataclass
 class LogEntry:
     """
-    Structured log entry for NPRD events.
+    Structured log entry for VideoIngest events.
     
-    Provides consistent structure for all NPRD log events, enabling
+    Provides consistent structure for all VideoIngest log events, enabling
     easy parsing and analysis.
     """
     timestamp: str
@@ -65,9 +65,9 @@ class LogEntry:
 
 class VideoIngestLogger:
     """
-    Structured logger for NPRD system.
+    Structured logger for VideoIngest system.
     
-    Provides consistent logging for all NPRD events with support for:
+    Provides consistent logging for all VideoIngest events with support for:
     - Multiple output destinations (console, file, callback)
     - Structured log entries (JSON format)
     - Event-specific logging methods
@@ -90,14 +90,14 @@ class VideoIngestLogger:
     
     def __init__(
         self,
-        name: str = "nprd",
+        name: str = "video_ingest",
         level: LogLevel = LogLevel.INFO,
         log_file: Optional[Path] = None,
         json_format: bool = True,
         callback: Optional[callable] = None,
     ):
         """
-        Initialize NPRD Logger.
+        Initialize VideoIngest Logger.
         
         Args:
             name: Logger name
@@ -776,11 +776,11 @@ _default_logger: Optional[VideoIngestLogger] = None
 
 
 def get_logger(
-    name: str = "nprd",
+    name: str = "video_ingest",
     **kwargs
 ) -> VideoIngestLogger:
     """
-    Get or create the default NPRD logger.
+    Get or create the default VideoIngest logger.
     
     Args:
         name: Logger name

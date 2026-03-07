@@ -199,13 +199,26 @@ class VideoIngestTool:
         # Wait for rate limit
         rate_limiter.acquire()
 
-        # Build Qwen command - include video path in prompt
-        cmd = [
-            "qwen",
-            "-m", "qwen3-vl-235b-a22b-thinking",
-            "-p", f"Analyze this video file: {video_path}\n\n{prompt}",
-            "-y"  # yolo mode
-        ]
+        # Build Qwen command - use captions for faster processing
+        captions_file = video_path.parent / "captions.en.vtt"
+        if captions_file.exists():
+            # Read captions and limit to 15K chars for faster processing
+            caption_text = captions_file.read_text()[:15000]
+            full_prompt = f"Analyze this video transcript:\n{caption_text}\n\n{prompt}"
+            cmd = [
+                "qwen",
+                "-m", "qwen3-vl-235b-a22b-thinking",
+                "-p", full_prompt,
+                "-y"
+            ]
+        else:
+            # Fall back to video file
+            cmd = [
+                "qwen",
+                "-m", "qwen3-vl-235b-a22b-thinking",
+                "-p", f"Analyze this video file: {video_path}\n\n{prompt}",
+                "-y"
+            ]
 
         result = subprocess.run(
             cmd,

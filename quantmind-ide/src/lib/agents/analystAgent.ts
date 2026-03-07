@@ -1,12 +1,12 @@
 /**
- * Analyst Agent - NPRD to TRD Conversion Agent
+ * Analyst Agent - VideoIngest to TRD Conversion Agent
  *
- * Purpose: Convert NPRD (Natural Product Requirements Document) to TRD (Technical Requirements Document)
+ * Purpose: Convert VideoIngest to TRD (Technical Requirements Document)
  * Memory namespace: memories/analyst
  *
  * This agent handles:
- * - YouTube strategy analysis → NPRD creation
- * - NPRD → TRD conversion (creates Vanilla + Enhanced versions)
+ * - YouTube strategy analysis -> VideoIngest creation
+ * - VideoIngest -> TRD conversion (creates Vanilla + Enhanced versions)
  * - Strategy analysis and optimization recommendations
  * - Trading pattern recognition
  */
@@ -80,8 +80,8 @@ const AnalystStateAnnotation = Annotation.Root({
     default: () => ({}),
   }),
 
-  // NPRD content being processed
-  nprdContent: Annotation<string | null>({
+  // VideoIngest content being processed
+  videoIngestContent: Annotation<string | null>({
     reducer: (_, b) => b,
     default: () => null,
   }),
@@ -100,13 +100,13 @@ const AnalystStateAnnotation = Annotation.Root({
 });
 
 // ============================================================================
-// ANALYST TOOLS - Specialized tools for NPRD to TRD conversion
+// ANALYST TOOLS - Specialized tools for VideoIngest to TRD conversion
 // ============================================================================
 
 /**
- * Create NPRD from YouTube strategy description
+ * Create VideoIngest from YouTube strategy description
  */
-const createNPRD = tool(
+const createVideoIngest = tool(
   async ({
     strategyName,
     description,
@@ -120,8 +120,8 @@ const createNPRD = tool(
     store?: BaseStore;
     namespace?: MemoryNamespace;
   }) => {
-    // Generate NPRD structure
-    const nprd = {
+    // Generate VideoIngest structure
+    const videoIngest ={
       name: strategyName,
       version: "1.0.0",
       created: new Date().toISOString(),
@@ -153,13 +153,13 @@ const createNPRD = tool(
       },
     };
 
-    // Store NPRD in memory
+    // Store VideoIngest in memory
     if (store && namespace) {
       await storeSemanticMemory.invoke({
         subject: `strategy-${strategyName}`,
-        predicate: "has-nprd",
-        object: JSON.stringify(nprd),
-        context: "NPRD created from strategy description",
+        predicate: "has-video-ingest",
+        object: JSON.stringify(videoIngest),
+        context: "VideoIngest created from strategy description",
         store,
         namespace,
       });
@@ -167,13 +167,13 @@ const createNPRD = tool(
 
     return JSON.stringify({
       success: true,
-      message: `NPRD created for ${strategyName}`,
-      nprd,
+      message: `VideoIngest created for ${strategyName}`,
+      videoIngest,
     });
   },
   {
-    name: "create_nprd",
-    description: "Create a Natural Product Requirements Document (NPRD) from a strategy description (e.g., from YouTube video).",
+    name: "create_video_ingest",
+    description: "Create a Video Ingest Document from a strategy description (e.g., from YouTube video).",
     schema: z.object({
       strategyName: z.string().describe("Name of the trading strategy"),
       description: z.string().describe("Detailed description of the strategy logic"),
@@ -183,30 +183,30 @@ const createNPRD = tool(
 );
 
 /**
- * Convert NPRD to TRD (Vanilla version)
+ * Convert VideoIngest to TRD (Vanilla version)
  */
 const convertToVanillaTRD = tool(
   async ({
     strategyName,
-    nprdContent,
+    videoIngestContent,
     store,
     namespace,
   }: {
     strategyName: string;
-    nprdContent: string;
+    videoIngestContent: string;
     store?: BaseStore;
     namespace?: MemoryNamespace;
   }) => {
-    // Parse NPRD
-    const nprd = JSON.parse(nprdContent);
+    // Parse VideoIngest
+    const videoIngest =JSON.parse(videoIngestContent);
 
     // Generate Vanilla TRD - basic implementation without enhancements
     const vanillaTRD = {
       name: strategyName,
-      version: `${nprd.version}-vanilla`,
+      version: `${videoIngest.version}-vanilla`,
       variant: "vanilla",
       created: new Date().toISOString(),
-      parentNPRD: nprd.name,
+      parentVideoIngest: videoIngest.name,
       sections: {
         implementation: {
           approach: "basic",
@@ -221,19 +221,19 @@ const convertToVanillaTRD = tool(
         },
         entryLogic: {
           type: "basic",
-          conditions: nprd.sections?.entryConditions || {},
+          conditions: videoIngest.sections?.entryConditions || {},
         },
         exitLogic: {
           type: "basic",
-          conditions: nprd.sections?.exitConditions || {},
+          conditions: videoIngest.sections?.exitConditions || {},
         },
         riskManagement: {
           type: "fixed-lot",
           lotSize: 0.01,
-          stopLoss: nprd.sections?.riskManagement?.stopLoss || 50,
-          takeProfit: nprd.sections?.riskManagement?.takeProfit || 100,
+          stopLoss: videoIngest.sections?.riskManagement?.stopLoss || 50,
+          takeProfit: videoIngest.sections?.riskManagement?.takeProfit || 100,
         },
-        indicators: nprd.sections?.indicators || [],
+        indicators: videoIngest.sections?.indicators || [],
         parameters: {
           magicNumber: Math.floor(Math.random() * 900000) + 100000,
           maxSlippage: 3,
@@ -261,39 +261,39 @@ const convertToVanillaTRD = tool(
   },
   {
     name: "convert_to_vanilla_trd",
-    description: "Convert an NPRD to a Vanilla TRD (basic implementation without QuantMindX enhancements).",
+    description: "Convert an VideoIngest to a Vanilla TRD (basic implementation without QuantMindX enhancements).",
     schema: z.object({
       strategyName: z.string().describe("Name of the strategy"),
-      nprdContent: z.string().describe("NPRD content as JSON string"),
+      videoIngestContent: z.string().describe("VideoIngest content as JSON string"),
     }),
   }
 );
 
 /**
- * Convert NPRD to Enhanced TRD (with QuantMindX features)
+ * Convert VideoIngest to Enhanced TRD (with QuantMindX features)
  */
 const convertToEnhancedTRD = tool(
   async ({
     strategyName,
-    nprdContent,
+    videoIngestContent,
     store,
     namespace,
   }: {
     strategyName: string;
-    nprdContent: string;
+    videoIngestContent: string;
     store?: BaseStore;
     namespace?: MemoryNamespace;
   }) => {
-    // Parse NPRD
-    const nprd = JSON.parse(nprdContent);
+    // Parse VideoIngest
+    const videoIngest =JSON.parse(videoIngestContent);
 
     // Generate Enhanced TRD - with all QuantMindX features
     const enhancedTRD = {
       name: strategyName,
-      version: `${nprd.version}-enhanced`,
+      version: `${videoIngest.version}-enhanced`,
       variant: "enhanced",
       created: new Date().toISOString(),
-      parentNPRD: nprd.name,
+      parentVideoIngest: videoIngest.name,
       sections: {
         implementation: {
           approach: "enhanced",
@@ -304,12 +304,12 @@ const convertToEnhancedTRD = tool(
             "Circuit breaker (pause trading after consecutive losses)",
             "Router integration for multi-symbol trading",
             "Shared asset library integration",
-            "NPRD-compliant parameter naming",
+            "VideoIngest-compliant parameter naming",
           ],
         },
         entryLogic: {
           type: "enhanced",
-          conditions: nprd.sections?.entryConditions || {},
+          conditions: videoIngest.sections?.entryConditions || {},
           filters: [
             "Spread filter (max spread check)",
             "Session filter (trading hours)",
@@ -318,7 +318,7 @@ const convertToEnhancedTRD = tool(
         },
         exitLogic: {
           type: "enhanced",
-          conditions: nprd.sections?.exitConditions || {},
+          conditions: videoIngest.sections?.exitConditions || {},
           features: [
             "Trailing stop loss",
             "Breakeven trigger",
@@ -355,7 +355,7 @@ const convertToEnhancedTRD = tool(
             pauseDuration: "1H",
           },
         },
-        indicators: nprd.sections?.indicators || [],
+        indicators: videoIngest.sections?.indicators || [],
         sharedAssets: {
           useKellySizer: true,
           useRiskGovernor: true,
@@ -390,10 +390,10 @@ const convertToEnhancedTRD = tool(
   },
   {
     name: "convert_to_enhanced_trd",
-    description: "Convert an NPRD to an Enhanced TRD with QuantMindX features (Kelly, tiered risk, house-money, circuit breaker).",
+    description: "Convert an VideoIngest to an Enhanced TRD with QuantMindX features (Kelly, tiered risk, house-money, circuit breaker).",
     schema: z.object({
       strategyName: z.string().describe("Name of the strategy"),
-      nprdContent: z.string().describe("NPRD content as JSON string"),
+      videoIngestContent: z.string().describe("VideoIngest content as JSON string"),
     }),
   }
 );
@@ -566,7 +566,7 @@ const getStrategyTemplates = tool(
   },
   {
     name: "get_strategy_templates",
-    description: "Get available strategy templates for NPRD creation",
+    description: "Get available strategy templates for VideoIngest creation",
     schema: z.object({}),
   }
 );
@@ -576,7 +576,7 @@ const getStrategyTemplates = tool(
  */
 export function createAnalystTools() {
   return [
-    createNPRD,
+    createVideoIngest,
     convertToVanillaTRD,
     convertToEnhancedTRD,
     analyzeStrategy,
@@ -589,17 +589,17 @@ export function createAnalystTools() {
 // ANALYST SYSTEM PROMPT
 // ============================================================================
 
-const ANALYST_SYSTEM_PROMPT = `You are the QuantMindX Analyst - an expert in trading strategy analysis and NPRD to TRD conversion.
+const ANALYST_SYSTEM_PROMPT = `You are the QuantMindX Analyst - an expert in trading strategy analysis and VideoIngest to TRD conversion.
 
 Your responsibilities:
-- Convert strategy descriptions (from YouTube, videos, text) into NPRD format
-- Convert NPRD to TRD (BOTH Vanilla and Enhanced versions)
+- Convert strategy descriptions (from YouTube, videos, text) into VideoIngest format
+- Convert VideoIngest to TRD (BOTH Vanilla and Enhanced versions)
 - Analyze strategies for potential issues and risks
 - Compare Vanilla vs Enhanced implementations
 - Recommend improvements and optimizations
 
-NPRD to TRD Workflow:
-1. First, create an NPRD from the strategy description
+VideoIngest to TRD Workflow:
+1. First, create a VideoIngest from the strategy description
 2. Then convert to Vanilla TRD (basic implementation)
 3. Also convert to Enhanced TRD (with QuantMindX features)
 4. Analyze both versions and provide recommendations
@@ -620,7 +620,7 @@ Enhanced TRD Characteristics:
 - Circuit breaker (pause after consecutive losses)
 - Router integration for multi-symbol trading
 - Shared asset library usage
-- NPRD-compliant parameter naming
+- VideoIngest-compliant parameter naming
 
 TRD Structure:
 - Implementation approach (basic vs enhanced)
@@ -631,7 +631,7 @@ TRD Structure:
 - Parameters for MQL5 code generation
 
 Memory Usage:
-- Store NPRDs and TRDs as semantic memories
+- Store VideoIngests and TRDs as semantic memories
 - Remember successful conversion patterns as episodic memories
 - Learn from analysis results to improve recommendations
 

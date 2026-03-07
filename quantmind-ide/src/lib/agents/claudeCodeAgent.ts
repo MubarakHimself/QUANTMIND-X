@@ -19,7 +19,7 @@ export interface AgentMessage {
 export interface AgentContext {
   mission_id?: string;
   trd_path?: string;
-  nprd_content?: string;
+  video_ingest_content?: string;
   mode?: 'PLAN' | 'ASK' | 'BUILD';
   [key: string]: any;
 }

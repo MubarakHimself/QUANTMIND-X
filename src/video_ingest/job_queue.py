@@ -1,5 +1,5 @@
 """
-Job Queue Manager for NPRD system.
+Job Queue Manager for VideoIngest system.
 
 This module provides job queue management with SQLite persistence, concurrent processing,
 and automatic recovery after system restarts.
@@ -47,7 +47,7 @@ class JobQueueManager:
         Initialize Job Queue Manager.
         
         Args:
-            config: NPRD configuration with database path and concurrency settings
+            config: VideoIngest configuration with database path and concurrency settings
         """
         self.config = config
         self.db_path = config.job_db_path
@@ -427,7 +427,7 @@ class JobQueueManager:
         self._shutdown = False
         self._executor = ThreadPoolExecutor(
             max_workers=self.max_concurrent,
-            thread_name_prefix="nprd_job_"
+            thread_name_prefix="video_ingest_job_"
         )
         
         logger.info("JobQueueManager started")

@@ -1,7 +1,7 @@
 /**
  * Analyst Skills - Trading strategy analysis capabilities
  *
- * These skills provide strategy analysis, NPRD parsing, TRD generation,
+ * These skills provide strategy analysis, VideoIngest parsing, TRD generation,
  * and performance evaluation for the Analyst agent.
  */
 
@@ -158,27 +158,27 @@ const compareStrategies: Skill = {
 };
 
 // ============================================================================
-// NPRD PARSING SKILLS
+// VIDEO INGEST PARSING SKILLS
 // ============================================================================
 
 /**
- * Parse an NPRD (Natural Product Requirements Document)
+ * Parse a VideoIngest Document
  */
-const parseNPRD: Skill = {
-  id: 'analyst_parse_nprd',
-  name: 'Parse NPRD',
-  description: 'Parse a Natural Product Requirements Document to extract strategy logic, entry/exit conditions, risk parameters, and technical indicators.',
+const parseVideoIngest: Skill = {
+  id: 'analyst_parse_video_ingest',
+  name: 'Parse VideoIngest',
+  description: 'Parse a VideoIngest document to extract strategy logic, entry risk parameters, and/exit conditions, technical indicators.',
   agents: ['analyst'],
-  category: 'nprd',
+  category: 'video_ingest',
   schema: z.object({
-    nprdContent: z.string().describe('NPRD document content as text'),
-    extractSections: z.array(z.string()).default(['strategy', 'entry', 'exit', 'risk', 'indicators']).describe('Sections to extract'),
-    validateSyntax: z.boolean().default(true).describe('Validate NPRD syntax and structure')
+    videoIngestContent: z.string().describe('VideoIngest document    extractSections: z.array(z.string content as text'),
+()).default(['strategy', 'entry', 'exit', 'risk', 'indicators']).describe('Sections to extract'),
+    validateSyntax: z.boolean().default(true).describe('Validate VideoIngest syntax and structure')
   }),
   examples: [
     {
       input: {
-        nprdContent: '# Strategy: Moving Average Crossover\n\n## Entry\nBuy when fast MA crosses above slow MA\n\n## Exit\nSell when fast MA crosses below slow MA\n\n## Risk\nStop loss: 50 pips\nTake profit: 100 pips',
+        videoIngestContent: '# Strategy: Moving Average Crossover\n\n## Entry\nBuy when fast MA crosses above slow MA\n\n## Exit\nSell when fast MA crosses below slow MA\n\n## Risk\nStop loss: 50 pips\nTake profit: 100 pips',
         extractSections: ['strategy', 'entry', 'exit', 'risk']
       },
       output: {
@@ -200,20 +200,20 @@ const parseNPRD: Skill = {
           unit: 'pips'
         }
       },
-      description: 'Parse moving average crossover NPRD'
+      description: 'Parse moving average crossover VideoIngest'
     }
   ],
   defaultEnabled: true,
-  execute: async ({ nprdContent, extractSections, validateSyntax }, context) => {
+  execute: async ({ videoIngestContent, extractSections, validateSyntax }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/nprd/parse', {
+      const response = await fetch('http://localhost:8000/api/video-ingest/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: nprdContent, sections: extractSections, validate: validateSyntax })
+        body: JSON.stringify({ content: videoIngestContent, sections: extractSections, validate: validateSyntax })
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to parse NPRD: ${response.statusText}`);
+        throw new Error(`Failed to parse VideoIngest: ${response.statusText}`);
       }
 
       const data = await response.json();
@@ -237,23 +237,23 @@ const parseNPRD: Skill = {
 };
 
 /**
- * Validate NPRD syntax
+ * Validate VideoIngest syntax
  */
-const validateNPRD: Skill = {
-  id: 'analyst_validate_nprd',
-  name: 'Validate NPRD',
-  description: 'Validate NPRD document syntax and structure against the QuantMindX NPRD specification.',
+const validateVideoIngest: Skill = {
+  id: 'analyst_validate_video_ingest',
+  name: 'Validate VideoIngest',
+  description: 'Validate VideoIngest document syntax and structure against the QuantMindX VideoIngest specification.',
   agents: ['analyst'],
-  category: 'nprd',
+  category: 'video_ingest',
   schema: z.object({
-    nprdContent: z.string().describe('NPRD document content to validate'),
-    specVersion: z.string().default('1.0').describe('NPRD specification version'),
+    videoIngestContent: z.string().describe('VideoIngest document content to validate'),
+    specVersion: z.string().default('1.0').describe('VideoIngest specification version'),
     strictMode: z.boolean().default(false).describe('Enable strict validation mode')
   }),
   examples: [
     {
       input: {
-        nprdContent: '# Strategy: My Strategy\n\n## Entry\nBuy when RSI < 30',
+        videoIngestContent: '# Strategy: My Strategy\n\n## Entry\nBuy when RSI < 30',
         specVersion: '1.0'
       },
       output: {
@@ -261,20 +261,20 @@ const validateNPRD: Skill = {
         warnings: ['Missing exit conditions', 'Missing risk parameters'],
         errors: []
       },
-      description: 'Validate NPRD document'
+      description: 'Validate VideoIngest document'
     }
   ],
   defaultEnabled: true,
-  execute: async ({ nprdContent, specVersion, strictMode }, context) => {
+  execute: async ({ videoIngestContent, specVersion, strictMode }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/nprd/validate', {
+      const response = await fetch('http://localhost:8000/api/video-ingest/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: nprdContent, version: specVersion, strict: strictMode })
+        body: JSON.stringify({ content: videoIngestContent, version: specVersion, strict: strictMode })
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to validate NPRD: ${response.statusText}`);
+        throw new Error(`Failed to validate VideoIngest: ${response.statusText}`);
       }
 
       const data = await response.json();
@@ -302,16 +302,16 @@ const validateNPRD: Skill = {
 // ============================================================================
 
 /**
- * Generate TRD (Technical Requirements Document) from NPRD
+ * Generate TRD (Technical Requirements Document) from VideoIngest
  */
 const generateTRD: Skill = {
   id: 'analyst_generate_trd',
   name: 'Generate TRD',
-  description: 'Generate a Technical Requirements Document from a parsed NPRD. Includes MQL5 code structure, parameter definitions, and implementation specifications.',
+  description: 'Generate a Technical Requirements Document from a parsed VideoIngest. Includes MQL5 code structure, parameter definitions, and implementation specifications.',
   agents: ['analyst'],
   category: 'trd',
   schema: z.object({
-    nprdData: z.any().describe('Parsed NPRD data object (from parseNPRD)'),
+    videoIngestData: z.any().describe('Parsed VideoIngest data object (from parseVideoIngest)'),
     includeCode: z.boolean().default(true).describe('Include MQL5 code skeleton'),
     includeTests: z.boolean().default(true).describe('Include test scenarios'),
     targetPlatform: z.string().default('MT5').describe('Target platform (MT5 or MT4)')
@@ -319,7 +319,7 @@ const generateTRD: Skill = {
   examples: [
     {
       input: {
-        nprdData: {
+        videoIngestData: {
           strategy: { name: 'MA Cross', type: 'trend_following' },
           entry: { long: 'fast MA > slow MA' },
           exit: { long: 'fast MA < slow MA' },
@@ -342,16 +342,16 @@ const generateTRD: Skill = {
           ]
         }
       },
-      description: 'Generate TRD from NPRD'
+      description: 'Generate TRD from VideoIngest'
     }
   ],
   defaultEnabled: true,
-  execute: async ({ nprdData, includeCode, includeTests, targetPlatform }, context) => {
+  execute: async ({ videoIngestData, includeCode, includeTests, targetPlatform }, context) => {
     try {
       const response = await fetch('http://localhost:8000/api/trd/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nprdData, includeCode, includeTests, targetPlatform })
+        body: JSON.stringify({ videoIngestData, includeCode, includeTests, targetPlatform })
       });
 
       if (!response.ok) {
@@ -523,9 +523,9 @@ export const analystSkills: Skill[] = [
   analyzeBacktest,
   compareStrategies,
 
-  // NPRD Parsing
-  parseNPRD,
-  validateNPRD,
+  // VideoIngest Parsing
+  parseVideoIngest,
+  validateVideoIngest,
 
   // TRD Generation
   generateTRD,

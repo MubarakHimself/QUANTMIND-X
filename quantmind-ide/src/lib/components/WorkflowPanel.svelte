@@ -8,6 +8,8 @@
   import workflowStore, {
     type Workflow,
     type WorkflowStep,
+    type WorkflowTemplate,
+    WORKFLOW_TEMPLATES,
     activeWorkflows,
     selectedWorkflow,
     loading,
@@ -19,6 +21,9 @@
 
   // State
   let refreshInterval: number | null = null;
+  let showCreateModal = false;
+  let selectedTemplate: WorkflowTemplate = 'video_ingest_full';
+  let trdContent = '';
 
   // Computed
   $: hasActiveWorkflows = $activeWorkflows.length > 0;
@@ -73,6 +78,47 @@
     workflowStore.selectWorkflow(workflow);
   }
 
+  function openCreateModal() {
+    showCreateModal = true;
+    selectedTemplate = 'video_ingest_full';
+    trdContent = '';
+  }
+
+  function closeCreateModal() {
+    showCreateModal = false;
+  }
+
+  async function handleCreateWorkflow() {
+    if (selectedTemplate === 'trd_to_ea' && !trdContent.trim()) {
+      alert('Please enter TRD content');
+      return;
+    }
+
+    let workflowId: string | null = null;
+
+    if (selectedTemplate === 'trd_to_ea') {
+      workflowId = await workflowStore.startTRDToEA(trdContent);
+    } else {
+      // For video_ingest_full and video_ingest_ea, we need video content
+      // For demo purposes, we'll create a placeholder content
+      const placeholderContent = JSON.stringify({
+        title: 'Demo Strategy',
+        description: 'Strategy created from UI',
+        template: selectedTemplate,
+        created_at: new Date().toISOString(),
+      });
+      workflowId = await workflowStore.startWorkflowFromTemplate(selectedTemplate, {
+        video_ingest_content: placeholderContent,
+      });
+    }
+
+    if (workflowId) {
+      closeCreateModal();
+      // Refresh workflows to show the new one
+      workflowStore.fetchWorkflows();
+    }
+  }
+
   // Lifecycle
   onMount(() => {
     workflowStore.fetchWorkflows();
@@ -102,6 +148,12 @@
       {#if $loading}
         <span class="text-sm text-gray-500">Loading...</span>
       {/if}
+      <button
+        class="px-3 py-1 text-sm bg-green-600 rounded hover:bg-green-700"
+        on:click={openCreateModal}
+      >
+        + Create Workflow
+      </button>
       <button
         class="px-3 py-1 text-sm bg-blue-600 rounded hover:bg-blue-700"
         on:click={() => workflowStore.fetchWorkflows()}
@@ -227,7 +279,7 @@
     {:else}
       <div class="text-center text-gray-500 py-8">
         <p>No active workflows</p>
-        <p class="text-sm mt-1">Start a workflow from the NPRD panel</p>
+        <p class="text-sm mt-1">Start a workflow from the VideoIngest panel</p>
       </div>
     {/if}
   </div>
@@ -253,6 +305,65 @@
     </div>
   {/if}
 </div>
+
+<!-- Create Workflow Modal -->
+{#if showCreateModal}
+  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" on:click={closeCreateModal}>
+    <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md" on:click|stopPropagation>
+      <h3 class="text-lg font-semibold mb-4">Create New Workflow</h3>
+
+      <!-- Template Selection -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-400 mb-2">
+          Select Workflow Template
+        </label>
+        <select
+          bind:value={selectedTemplate}
+          class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white"
+        >
+          {#each Object.entries(WORKFLOW_TEMPLATES) as [key, template]}
+            <option value={key}>{template.label}</option>
+          {/each}
+        </select>
+        <p class="mt-1 text-sm text-gray-500">
+          {WORKFLOW_TEMPLATES[selectedTemplate]?.description}
+        </p>
+      </div>
+
+      <!-- TRD Content (only for TRD to EA template) -->
+      {#if selectedTemplate === 'trd_to_ea'}
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-400 mb-2">
+            TRD Content
+          </label>
+          <textarea
+            bind:value={trdContent}
+            rows="6"
+            placeholder="Paste your TRD (Trading Robot Description) content here..."
+            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white placeholder-gray-500"
+          ></textarea>
+        </div>
+      {/if}
+
+      <!-- Action Buttons -->
+      <div class="flex justify-end gap-3">
+        <button
+          class="px-4 py-2 text-sm bg-gray-600 rounded hover:bg-gray-700"
+          on:click={closeCreateModal}
+        >
+          Cancel
+        </button>
+        <button
+          class="px-4 py-2 text-sm bg-green-600 rounded hover:bg-green-700"
+          on:click={handleCreateWorkflow}
+          disabled={$loading}
+        >
+          {$loading ? 'Creating...' : 'Create Workflow'}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .workflow-panel {
