@@ -101,6 +101,7 @@
   // Loading states
   let isLoading = false;
   let isQueryRunning = false;
+  let operationError = "";
 
   // Search/filter
   let searchQuery = "";
@@ -121,12 +122,16 @@
 
   async function loadTables() {
     isLoading = true;
+    operationError = "";
     try {
       const data = await listDatabaseTables();
       tables = data.tables || [];
       applyFilters();
     } catch (e) {
       console.error("Failed to load tables:", e);
+      tables = [];
+      filteredTables = [];
+      operationError = "Failed to load database tables.";
     } finally {
       isLoading = false;
     }
@@ -138,6 +143,8 @@
       dbStats = await getDatabaseStats();
     } catch (e) {
       console.error("Failed to load database stats:", e);
+      dbStats = null;
+      operationError = operationError || "Failed to load database statistics.";
     }
   }
 
@@ -252,18 +259,13 @@
     if (!selectedTable) return;
 
     try {
+      operationError = "";
       await insertDatabaseRow(selectedTable.name, newRowData);
       await loadTableData(selectedTable.name, currentPage);
       insertModalOpen = false;
     } catch (e) {
       console.error("Failed to insert row:", e);
-      // For development, add locally
-      if (tableData) {
-        const newRow = { id: tableData.rows.length + 1, ...newRowData };
-        tableData.rows.push(newRow);
-        tableData.row_count++;
-      }
-      insertModalOpen = false;
+      operationError = "Failed to insert row.";
     }
   }
 
@@ -276,19 +278,13 @@
     if (!selectedTable || !editingRow) return;
 
     try {
+      operationError = "";
       await updateDatabaseRow(selectedTable.name, editingRow);
       await loadTableData(selectedTable.name, currentPage);
       editModalOpen = false;
     } catch (e) {
       console.error("Failed to update row:", e);
-      // For development, update locally
-      if (tableData) {
-        const index = tableData.rows.findIndex((r) => r.id === editingRow?.id);
-        if (index >= 0) {
-          tableData.rows[index] = editingRow;
-        }
-      }
-      editModalOpen = false;
+      operationError = "Failed to update row.";
     }
   }
 
@@ -298,19 +294,13 @@
     if (!confirm(`Delete ${selectedRows.size} row(s)?`)) return;
 
     try {
+      operationError = "";
       await deleteDatabaseRows(selectedTable.name, Array.from(selectedRows));
       await loadTableData(selectedTable.name, currentPage);
       selectedRows.clear();
     } catch (e) {
       console.error("Failed to delete rows:", e);
-      // For development, remove locally
-      if (tableData) {
-        tableData.rows = tableData.rows.filter(
-          (r) => !selectedRows.has(String(r.id)),
-        );
-        tableData.row_count -= selectedRows.size;
-      }
-      selectedRows.clear();
+      operationError = "Failed to delete selected rows.";
     }
   }
 
@@ -327,7 +317,7 @@
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error("Failed to export table:", e);
-      alert("Export failed");
+      operationError = "Failed to export table.";
     }
   }
 
@@ -343,7 +333,7 @@
       await loadTables(); // Update row counts
     } catch (e) {
       console.error("Failed to import table:", e);
-      alert("Import failed");
+      operationError = "Failed to import table.";
     }
   }
 
@@ -470,6 +460,10 @@
   <!-- Database Stats Banner -->
   <DatabaseStats stats={dbStats} />
 
+  {#if operationError}
+    <div class="operation-error">{operationError}</div>
+  {/if}
+
   <!-- Main Content -->
   <div class="db-content">
     <!-- Table List Sidebar -->
@@ -565,6 +559,16 @@
   }
 
   /* Main Content */
+  .operation-error {
+    margin: 12px 24px 0;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+    font-size: 13px;
+  }
+
   .db-content {
     flex: 1;
     display: flex;

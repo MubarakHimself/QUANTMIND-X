@@ -7,33 +7,21 @@
     RefreshCw, Settings as SettingsIcon, FolderOpen, Tag, Clock, Zap, Database
   } from 'lucide-svelte';
   import DatabaseView from './DatabaseView.svelte';
+  import {
+    createSharedAsset,
+    deleteSharedAsset,
+    getSharedAssetHistory,
+    listSharedAssets,
+    rollbackSharedAsset,
+  } from '$lib/services/sharedAssetsApi';
 
   const dispatch = createEventDispatcher();
 
   // Shared Asset Data Structure
-  interface SharedAsset {
-    id: string;
-    name: string;
-    category: 'Indicator' | 'Risk' | 'Utils';
-    version: string;
-    filesystem_path: string;
-    dependencies: string[];
-    checksum: string;
-    created_by: 'QuantCode' | 'user';
-    used_by_count: number;
-    created_at: string;
-    updated_at: string;
-    description?: string;
-  }
+  type SharedAsset = import('$lib/services/sharedAssetsApi').SharedAsset;
 
   // Asset History Entry
-  interface AssetHistory {
-    version: string;
-    checksum: string;
-    created_at: string;
-    created_by: 'QuantCode' | 'user';
-    change_description: string;
-  }
+  type AssetHistory = import('$lib/services/sharedAssetsApi').AssetHistory;
 
   // State
   let assets: SharedAsset[] = [];
@@ -63,6 +51,7 @@
 
   // Asset history
   let assetHistory: AssetHistory[] = [];
+  let assetError = '';
 
   // Permission settings
   let permissionSettings = {
@@ -76,16 +65,15 @@
   });
 
   async function loadAssets() {
+    assetError = '';
     try {
-      const res = await fetch('http://localhost:8000/api/assets/shared');
-      if (res.ok) {
-        assets = await res.json();
-        applyFilters();
-      }
+      assets = await listSharedAssets();
+      applyFilters();
     } catch (e) {
       console.error('Failed to load assets:', e);
       assets = [];
       applyFilters();
+      assetError = 'Failed to load shared assets.';
     }
   }
 
@@ -127,43 +115,32 @@
     if (!confirm(`Are you sure you want to delete "${asset.name}"?`)) return;
 
     try {
-      const res = await fetch(`http://localhost:8000/api/assets/${asset.id}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        assets = assets.filter(a => a.id !== asset.id);
-        applyFilters();
-      }
-    } catch (e) {
-      console.error('Failed to delete asset:', e);
-      // For development, remove locally
+      assetError = '';
+      await deleteSharedAsset(asset.id);
       assets = assets.filter(a => a.id !== asset.id);
       applyFilters();
+    } catch (e) {
+      console.error('Failed to delete asset:', e);
+      assetError = `Failed to delete asset "${asset.name}".`;
     }
   }
 
   async function createAsset() {
     if (!newAsset.name || !newAsset.code) {
-      alert('Please fill in all required fields');
+      assetError = 'Please fill in all required fields before creating an asset.';
       return;
     }
 
     try {
-      const res = await fetch('http://localhost:8000/api/assets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newAsset)
-      });
-      if (res.ok) {
-        const created = await res.json();
-        assets = [created, ...assets];
-        applyFilters();
-        addAssetModalOpen = false;
-        resetNewAssetForm();
-      }
+      assetError = '';
+      const created = await createSharedAsset(newAsset);
+      assets = [created, ...assets];
+      applyFilters();
+      addAssetModalOpen = false;
+      resetNewAssetForm();
     } catch (e) {
       console.error('Failed to create asset:', e);
-      alert('Failed to create asset. Please check the backend connection.');
+      assetError = 'Failed to create asset. Please check the backend connection.';
     }
   }
 
@@ -179,23 +156,13 @@
 
   async function viewHistory(asset: SharedAsset) {
     selectedAsset = asset;
+    assetError = '';
     try {
-      const res = await fetch(`http://localhost:8000/api/assets/${asset.id}/history`);
-      if (res.ok) {
-        assetHistory = await res.json();
-      } else {
-        // If API fails, show only current version
-        assetHistory = [{
-          version: asset.version,
-          checksum: asset.checksum,
-          created_at: asset.updated_at,
-          created_by: asset.created_by,
-          change_description: 'Current version'
-        }];
-      }
+      assetHistory = await getSharedAssetHistory(asset.id);
     } catch (e) {
       console.error('Failed to load asset history:', e);
       assetHistory = [];
+      assetError = `Failed to load history for asset "${asset.name}".`;
     }
     historyModalOpen = true;
   }
@@ -204,17 +171,13 @@
     if (!selectedAsset || !confirm(`Roll back "${selectedAsset.name}" to version ${version}?`)) return;
 
     try {
-      const res = await fetch(`http://localhost:8000/api/assets/${selectedAsset.id}/rollback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ version })
-      });
-      if (res.ok) {
-        await loadAssets();
-        historyModalOpen = false;
-      }
+      assetError = '';
+      await rollbackSharedAsset(selectedAsset.id, version);
+      await loadAssets();
+      historyModalOpen = false;
     } catch (e) {
       console.error('Failed to rollback:', e);
+      assetError = `Failed to roll back asset "${selectedAsset.name}" to version ${version}.`;
     }
   }
 
@@ -305,6 +268,13 @@
       <span>Database Manager</span>
     </button>
   </div>
+
+  {#if assetError}
+    <div class="asset-error-banner">
+      <AlertCircle size={16} />
+      <span>{assetError}</span>
+    </div>
+  {/if}
 
   {#if activeTab === 'database'}
     <!-- Database View -->
@@ -813,6 +783,19 @@
   }
 
   /* Header */
+  .asset-error-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 24px 0;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+    font-size: 13px;
+  }
+
   .assets-header {
     display: flex;
     justify-content: space-between;
