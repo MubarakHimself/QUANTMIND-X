@@ -37,14 +37,15 @@ except ImportError as e:
     logging.warning(f"Claude Orchestrator not available: {e}")
     CLAUDE_ORCHESTRATOR_AVAILABLE = False
 
-# Legacy Agent Workflows (fallback)
-try:
-    from src.agents.copilot import run_copilot_workflow
-    from src.agents.analyst import run_analyst_workflow
-    LEGACY_AGENTS_AVAILABLE = True
-except ImportError as e:
-    logging.warning(f"Legacy agents not available: {e}")
-    LEGACY_AGENTS_AVAILABLE = False
+# Legacy Agent Workflows (DEPRECATED - using Claude Orchestrator instead)
+# try:
+#     from src.agents.copilot import run_copilot_workflow
+#     from src.agents.analyst import run_analyst_workflow
+#     LEGACY_AGENTS_AVAILABLE = True
+# except ImportError as e:
+#     logging.warning(f"Legacy agents not available: {e}")
+#     LEGACY_AGENTS_AVAILABLE = False
+LEGACY_AGENTS_AVAILABLE = False  # Deprecated
 
 # SDK Orchestrator (preferred for Claude Code SDK integration)
 try:
