@@ -11,6 +11,8 @@ Routes messages to appropriate handlers based on detected intent:
 import logging
 from typing import List, Dict, Any, Optional
 
+import httpx
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -52,7 +54,7 @@ class WorkshopCopilotResponse:
     def __init__(
         self,
         reply: str,
-        delegation: Optional[str] = None,
+        delegation: Optional[Dict[str, Any]] = None,
         action_taken: Optional[str] = None
     ):
         self.reply = reply
@@ -102,7 +104,8 @@ def _classify_intent(message: str) -> str:
 class WorkshopCopilotService:
     """Service for handling Workshop Copilot messages."""
 
-    def __init__(self):
+    def __init__(self, floor_manager_url: str = "http://localhost:8000"):
+        self.floor_manager_url = floor_manager_url
         self.logger = logger
 
     async def handle_message(
