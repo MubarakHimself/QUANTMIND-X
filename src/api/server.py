@@ -82,6 +82,7 @@ try:
     from src.api.session_checkpoint_endpoints import router as checkpoint_router
     from src.api.trading_floor_endpoints import router as trading_floor_router
     from src.api.floor_manager_endpoints import router as floor_manager_router
+    from src.api.workshop_copilot_endpoints import router as workshop_copilot_router
     from src.api.video_to_ea_endpoints import router as video_to_ea_router
     from src.api.ide_knowledge import router as knowledge_router
     from src.api.batch_endpoints import router as batch_router
@@ -218,6 +219,7 @@ app.include_router(agent_session_router)
 app.include_router(checkpoint_router)
 app.include_router(trading_floor_router)
 app.include_router(floor_manager_router)
+app.include_router(workshop_copilot_router)
 app.include_router(video_to_ea_router)
 app.include_router(batch_router)
 app.include_router(evaluation_router)
