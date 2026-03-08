@@ -1,3 +1,16 @@
+<!--
+  DEPRECATED: This component is deprecated.
+
+  Legacy AgentPanel that exposed copilot, analyst, and quantcode agents.
+  These agents have been replaced by the department-based system.
+
+  - Use WorkshopView.svelte for the new department-based UI
+  - Use TradingFloorPanel.svelte for trading floor interactions
+  - Use CopilotPanel.svelte (Workshop Copilot) for AI assistance
+
+  This file will be removed in a future release.
+-->
+
 <script lang="ts">
   import { createEventDispatcher, onMount, tick } from 'svelte';
   import { Bot, Code, Wand2, Settings, History, Server, X, ChevronLeft, ChevronRight, Send, Paperclip, Loader, Key, FileText, Slash, ChevronDown, Plus, Trash2, Eye, EyeOff, Edit3, Clock, List, FolderOpen } from 'lucide-svelte';
