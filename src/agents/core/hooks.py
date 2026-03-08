@@ -1,4 +1,19 @@
 """
+DEPRECATED: This module is no longer maintained.
+
+This module was the core hook manager for the v2 agent stack.
+It has been replaced by the canonical hook system located at:
+    src/agents/hooks/department_hooks.py
+
+Please migrate to the new department-aware hook system for:
+- Better department awareness and filtering
+- Centralized registry management
+- Standardized hook types and conditions
+
+If you still need this functionality, consider using the new hooks system
+or importing from src/agents/hooks/department_hooks instead.
+
+---
 QuantMind Agent Hook Manager.
 The interface for "Service-Oriented" Agent communication.
 Ensures that Co-pilot interacts with Agents via standardized protocols.
