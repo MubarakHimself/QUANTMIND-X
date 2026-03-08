@@ -280,4 +280,4 @@ pytestdebug.log
 !CONTRIBUTING.md
 
 # Exclude docs directory from GitHub pushes
-docs/
+docs/.worktrees/
