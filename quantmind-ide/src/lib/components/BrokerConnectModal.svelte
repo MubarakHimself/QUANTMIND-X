@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import { Server, Key, Wallet, Check, X, Loader, Eye, EyeOff } from 'lucide-svelte';
+  import { connectTradingBroker, testTradingBroker } from '$lib/services/tradingApi';
 
   const dispatch = createEventDispatcher();
 
@@ -59,23 +60,15 @@
     connectionStatus = 'connecting';
 
     try {
-      const res = await fetch('http://localhost:8000/api/trading/broker/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          broker: selectedBroker.id,
-          credentials: { ...credentials, type: accountType }
-        })
+      await testTradingBroker<unknown>({
+        broker: selectedBroker.id,
+        credentials: { ...credentials, type: accountType }
       });
 
-      if (res.ok) {
-        connectionStatus = 'success';
-        setTimeout(() => {
-          dispatch('testSuccess', { broker: selectedBroker.id });
-        }, 1000);
-      } else {
-        connectionStatus = 'error';
-      }
+      connectionStatus = 'success';
+      setTimeout(() => {
+        dispatch('testSuccess', { broker: selectedBroker.id });
+      }, 1000);
     } catch (e) {
       connectionStatus = 'error';
       console.error('Connection test failed:', e);
@@ -88,20 +81,12 @@
     isConnecting = true;
 
     try {
-      const res = await fetch('http://localhost:8000/api/trading/broker/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          broker: selectedBroker.id,
-          credentials: { ...credentials, type: accountType }
-        })
+      const data = await connectTradingBroker<unknown>({
+        broker: selectedBroker.id,
+        credentials: { ...credentials, type: accountType }
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        dispatch('connected', { broker: selectedBroker.id, data });
-        close();
-      }
+      dispatch('connected', { broker: selectedBroker.id, data });
+      close();
     } catch (e) {
       console.error('Connection failed:', e);
     } finally {

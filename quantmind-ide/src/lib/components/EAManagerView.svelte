@@ -9,6 +9,14 @@
   } from 'lucide-svelte';
   import Breadcrumbs from './Breadcrumbs.svelte';
   import { navigationStore } from '../stores/navigationStore';
+  import {
+    addEaTag,
+    listEaBots,
+    listEaReviews,
+    listEaTags,
+    removeEaTag,
+    startVideoIngest,
+  } from '$lib/services/tradingApi';
 
   const dispatch = createEventDispatcher();
 
@@ -63,12 +71,9 @@
   // Load tags from API
   async function loadTags() {
     try {
-      const res = await fetch('http://localhost:8000/api/ea/tags');
-      if (res.ok) {
-        const data = await res.json();
-        availableTags = data.available_tags || [];
-        propFirmTags = data.prop_firm_tags || [];
-      }
+      const data = await listEaTags<{ available_tags?: TagDefinition[]; prop_firm_tags?: string[] }>();
+      availableTags = data.available_tags || [];
+      propFirmTags = data.prop_firm_tags || [];
     } catch (e) {
       console.error('Failed to load tags:', e);
       // Fallback to default tags
@@ -86,16 +91,10 @@
   // Add tag to a bot
   async function addTagToBot(botName: string, tagId: string) {
     try {
-      const res = await fetch(`http://localhost:8000/api/ea/tags/${botName}/add?tag=${encodeURIComponent(tagId)}`, {
-        method: 'POST'
-      });
-      if (res.ok) {
-        const data = await res.json();
-        // Update the bot's tags in the local state
-        bots = bots.map(b =>
-          b.name === botName ? { ...b, tags: data.tags } : b
-        );
-      }
+      const data = await addEaTag<{ tags: string[] }>(botName, tagId);
+      bots = bots.map(b =>
+        b.name === botName ? { ...b, tags: data.tags } : b
+      );
     } catch (e) {
       console.error('Failed to add tag:', e);
     }
@@ -104,16 +103,10 @@
   // Remove tag from a bot
   async function removeTagFromBot(botName: string, tagId: string) {
     try {
-      const res = await fetch(`http://localhost:8000/api/ea/tags/${botName}/remove?tag=${encodeURIComponent(tagId)}`, {
-        method: 'POST'
-      });
-      if (res.ok) {
-        const data = await res.json();
-        // Update the bot's tags in the local state
-        bots = bots.map(b =>
-          b.name === botName ? { ...b, tags: data.tags } : b
-        );
-      }
+      const data = await removeEaTag<{ tags: string[] }>(botName, tagId);
+      bots = bots.map(b =>
+        b.name === botName ? { ...b, tags: data.tags } : b
+      );
     } catch (e) {
       console.error('Failed to remove tag:', e);
     }
@@ -151,10 +144,7 @@
   // Load bots from API
   async function loadBots() {
     try {
-      const res = await fetch('http://localhost:8000/api/ea/bots');
-      if (res.ok) {
-        bots = await res.json();
-      }
+      bots = await listEaBots<Bot[]>();
     } catch (e) {
       console.error('Failed to load bots:', e);
     }
@@ -204,10 +194,8 @@
   // Load review history from API
   async function loadReviewHistory() {
     try {
-      const res = await fetch('http://localhost:8000/api/ea/reviews');
-      if (res.ok) {
-        reviewHistory = await res.json();
-      }
+      const reviews = await listEaReviews<Array<{botId: string, botName: string, action: string, reviewer: string, date: Date, comment: string}>>();
+      reviewHistory = reviews.map((entry) => ({ ...entry, date: new Date(entry.date) }));
     } catch (e) {
       console.error('Failed to load review history:', e);
     }
@@ -323,29 +311,17 @@
     isProcessing = true;
 
     try {
-      const res = await fetch('http://localhost:8000/api/video-ingest/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: videoUrl, strategy_name: strategyName })
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        processingJobs = [
-          ...processingJobs,
-          { id: data.job_id, name: strategyName, status: 'processing', progress: 0 }
-        ];
-        videoUrl = '';
-        strategyName = '';
-        // Close modal after submission
-        showVideoIngestModal = false;
-      } else {
-        const error = await res.text();
-        alert(`Failed to start processing: ${error}`);
-      }
+      const data = await startVideoIngest<{ job_id: string }>({ url: videoUrl, strategy_name: strategyName });
+      processingJobs = [
+        ...processingJobs,
+        { id: data.job_id, name: strategyName, status: 'processing', progress: 0 }
+      ];
+      videoUrl = '';
+      strategyName = '';
+      showVideoIngestModal = false;
     } catch (e) {
       console.error('Video ingest error:', e);
-      alert('Failed to start video processing');
+      alert(e instanceof Error ? e.message : 'Failed to start video processing');
     } finally {
       isProcessing = false;
     }

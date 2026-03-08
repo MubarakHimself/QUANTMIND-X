@@ -19,6 +19,15 @@
   import CorrelationsTab from './CorrelationsTab.svelte';
   import SettingsTab from './SettingsTab.svelte';
   import HmmTrainingStatus from './HmmTrainingStatus.svelte';
+  import {
+    getHmmTrainingStatus,
+    getRouterState,
+    runRouterAuction,
+    saveMt5Config as persistMt5Config,
+    startHmmTraining,
+    testMt5Connection as verifyMt5Connection,
+    toggleRouterState,
+  } from '$lib/services/tradingApi';
 
   const dispatch = createEventDispatcher();
 
@@ -171,30 +180,18 @@
     hmmTraining.jobId = '';
 
     try {
-      const res = await fetch('http://localhost:8000/api/hmm/train', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model_type: hmmConfig.modelType,
-          symbol: hmmConfig.symbol || null,
-          timeframe: hmmConfig.timeframe || null,
-          n_states: hmmConfig.nStates,
-          force_retrain: hmmConfig.forceRetrain
-        })
+      const data = await startHmmTraining<{ job_id: string; message: string }>({
+        model_type: hmmConfig.modelType,
+        symbol: hmmConfig.symbol || null,
+        timeframe: hmmConfig.timeframe || null,
+        n_states: hmmConfig.nStates,
+        force_retrain: hmmConfig.forceRetrain
       });
-
-      if (res.ok) {
-        const data = await res.json();
         hmmTraining.jobId = data.job_id;
         hmmTraining.message = data.message;
 
         // Poll for status
         pollTrainingStatus(data.job_id);
-      } else {
-        const error = await res.json();
-        hmmTraining.message = `Error: ${error.detail || 'Failed to start training'}`;
-        hmmTraining.isTraining = false;
-      }
     } catch (e) {
       hmmTraining.message = `Error: ${e instanceof Error ? e.message : 'Unknown error'}`;
       hmmTraining.isTraining = false;
@@ -204,21 +201,18 @@
   async function pollTrainingStatus(jobId: string) {
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(`http://localhost:8000/api/hmm/train/${jobId}/status`);
-        if (res.ok) {
-          const status = await res.json();
-          hmmTraining.progress = status.progress;
-          hmmTraining.message = status.message;
+        const status = await getHmmTrainingStatus<{ progress: number; message: string; status: string }>(jobId);
+        hmmTraining.progress = status.progress;
+        hmmTraining.message = status.message;
 
-          if (status.status === 'completed') {
+        if (status.status === 'completed') {
             hmmTraining.isTraining = false;
             hmmTraining.lastJob = { jobId, status: 'completed', message: 'Training completed successfully' };
             clearInterval(pollInterval);
-          } else if (status.status === 'failed') {
-            hmmTraining.isTraining = false;
-            hmmTraining.lastJob = { jobId, status: 'failed', message: status.message };
-            clearInterval(pollInterval);
-          }
+        } else if (status.status === 'failed') {
+          hmmTraining.isTraining = false;
+          hmmTraining.lastJob = { jobId, status: 'failed', message: status.message };
+          clearInterval(pollInterval);
         }
       } catch (e) {
         console.error('Failed to poll training status:', e);
@@ -244,20 +238,10 @@
     mt5Error = '';
     
     try {
-      const res = await fetch('http://localhost:8000/api/mt5/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(mt5Config)
-      });
-      
-      if (res.ok) {
-        mt5Connected = true;
-      } else {
-        mt5Error = 'Connection failed. Please check your credentials.';
-        mt5Connected = false;
-      }
+      await verifyMt5Connection<unknown>(mt5Config);
+      mt5Connected = true;
     } catch (e) {
-      mt5Error = 'Connection failed. Is the MT5 bridge running?';
+      mt5Error = e instanceof Error ? e.message : 'Connection failed. Please check your credentials.';
       mt5Connected = false;
     } finally {
       mt5Testing = false;
@@ -266,13 +250,17 @@
 
   async function saveMt5Config() {
     try {
-      await fetch('http://localhost:8000/api/mt5/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(mt5Config)
-      });
+      await persistMt5Config<unknown>(mt5Config);
     } catch (e) {
       console.error('Failed to save MT5 config:', e);
+    }
+  }
+
+  // Kelly Rankings
+      mt5Error = 'Connection failed. Is the MT5 bridge running?';
+      mt5Connected = false;
+    } finally {
+      mt5Testing = false;
     }
   }
 
@@ -312,11 +300,8 @@
 
   async function loadRouterState() {
     try {
-      const res = await fetch('http://localhost:8000/api/router/state');
-      if (res.ok) {
-        const data = await res.json();
-        routerState = { ...routerState, ...data };
-      }
+      const data = await getRouterState<Partial<typeof routerState>>();
+      routerState = { ...routerState, ...data };
     } catch (e) {
       console.error('Failed to load router state:', e);
     }
@@ -326,11 +311,7 @@
     routerState.active = !routerState.active;
 
     try {
-      await fetch('http://localhost:8000/api/router/toggle', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ active: routerState.active })
-      });
+      await toggleRouterState<unknown>(routerState.active);
     } catch (e) {
       console.error('Failed to toggle router:', e);
     }
@@ -338,13 +319,8 @@
 
   async function runAuction() {
     try {
-      const res = await fetch('http://localhost:8000/api/router/auction', {
-        method: 'POST'
-      });
-      if (res.ok) {
-        const result = await res.json();
-        auctionQueue = [result, ...auctionQueue].slice(0, 10);
-      }
+      const result = await runRouterAuction<any>();
+      auctionQueue = [result, ...auctionQueue].slice(0, 10);
     } catch (e) {
       console.error('Failed to run auction:', e);
     }

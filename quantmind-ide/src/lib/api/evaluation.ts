@@ -5,7 +5,9 @@
  * Wraps the backend endpoints defined in src/api/evaluation_endpoints.py
  */
 
-const API_BASE = 'http://localhost:8000/api';
+import { API_CONFIG } from '$lib/config/api';
+
+const API_BASE = API_CONFIG.API_BASE;
 
 /**
  * Generic fetch wrapper with error handling

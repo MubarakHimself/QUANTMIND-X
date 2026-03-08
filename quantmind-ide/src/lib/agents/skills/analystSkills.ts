@@ -7,6 +7,7 @@
 
 import { z } from 'zod';
 import type { Skill, SkillContext } from './index';
+import { postSkillJson } from '$lib/services/agentSkillApi';
 
 // ============================================================================
 // STRATEGY ANALYSIS SKILLS
@@ -52,17 +53,7 @@ const analyzeBacktest: Skill = {
   defaultEnabled: true,
   execute: async ({ backtestId, metrics, includeCharts, compareWith }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/analysis/backtest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ backtestId, metrics, includeCharts, compareWith })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to analyze backtest: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/analysis/backtest', { backtestId, metrics, includeCharts, compareWith });
 
       return {
         success: true,
@@ -126,17 +117,7 @@ const compareStrategies: Skill = {
   defaultEnabled: true,
   execute: async ({ strategies, metrics, symbol, timeframe, period }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/analysis/compare', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ strategies, metrics, symbol, timeframe, period })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to compare strategies: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/analysis/compare', { strategies, metrics, symbol, timeframe, period });
 
       return {
         success: true,
@@ -206,17 +187,7 @@ const parseVideoIngest: Skill = {
   defaultEnabled: true,
   execute: async ({ videoIngestContent, extractSections, validateSyntax }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/video-ingest/parse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: videoIngestContent, sections: extractSections, validate: validateSyntax })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to parse VideoIngest: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/video-ingest/parse', { content: videoIngestContent, sections: extractSections, validate: validateSyntax });
 
       return {
         success: true,
@@ -267,17 +238,7 @@ const validateVideoIngest: Skill = {
   defaultEnabled: true,
   execute: async ({ videoIngestContent, specVersion, strictMode }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/video-ingest/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: videoIngestContent, version: specVersion, strict: strictMode })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to validate VideoIngest: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/video-ingest/validate', { content: videoIngestContent, version: specVersion, strict: strictMode });
 
       return {
         success: true,
@@ -348,17 +309,7 @@ const generateTRD: Skill = {
   defaultEnabled: true,
   execute: async ({ videoIngestData, includeCode, includeTests, targetPlatform }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/trd/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoIngestData, includeCode, includeTests, targetPlatform })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to generate TRD: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/trd/generate', { videoIngestData, includeCode, includeTests, targetPlatform });
 
       return {
         success: true,
@@ -421,17 +372,7 @@ const evaluatePerformance: Skill = {
   defaultEnabled: true,
   execute: async ({ equityCurve, returns, benchmarkReturns, riskFreeRate, confidenceLevel }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/analysis/performance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ equityCurve, returns, benchmarkReturns, riskFreeRate, confidenceLevel })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to evaluate performance: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/analysis/performance', { equityCurve, returns, benchmarkReturns, riskFreeRate, confidenceLevel });
 
       return {
         success: true,
@@ -489,17 +430,7 @@ const generateOptimizationReport: Skill = {
   defaultEnabled: true,
   execute: async ({ optimizationId, topResults, includeCharts, format }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/analysis/optimization-report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ optimizationId, topResults, includeCharts, format })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to generate report: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/analysis/optimization-report', { optimizationId, topResults, includeCharts, format });
 
       return {
         success: true,

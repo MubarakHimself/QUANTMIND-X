@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
+  import { listKillSwitchBots, listKillSwitchHistory } from '$lib/services/tradingApi';
 
   // Simple toast notification system
   let toastMessage = "";
@@ -277,10 +278,7 @@
 
   async function loadBotData() {
     try {
-      const res = await fetch('http://localhost:8000/api/kill-switch/bots');
-      if (res.ok) {
-        bots = await res.json();
-      }
+      bots = await listKillSwitchBots<BotKillSwitchConfig[]>();
     } catch (e) {
       console.error('Failed to load bot data:', e);
     }
@@ -288,10 +286,7 @@
 
   async function loadKillSwitchHistory() {
     try {
-      const res = await fetch('http://localhost:8000/api/kill-switch/history');
-      if (res.ok) {
-        killSwitchHistory = await res.json();
-      }
+      killSwitchHistory = await listKillSwitchHistory<KillSwitchEvent[]>();
     } catch (e) {
       console.error('Failed to load kill switch history:', e);
     }

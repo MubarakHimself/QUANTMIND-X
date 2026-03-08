@@ -8,6 +8,7 @@
 import { z } from 'zod';
 import type { Skill, SkillContext } from './index';
 import { fileHistoryManager } from '../../services/fileHistoryManager';
+import { postSkillJson } from '$lib/services/agentSkillApi';
 
 // ============================================================================
 // FILE OPERATIONS SKILLS
@@ -42,17 +43,7 @@ const readFile: Skill = {
   execute: async ({ path, encoding }, context) => {
     try {
       // Fetch from backend API
-      const response = await fetch('http://localhost:8000/api/files/read', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, encoding })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to read file: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/files/read', { path, encoding });
 
       return {
         success: true,
@@ -102,30 +93,13 @@ const writeFile: Skill = {
       // Get previous content for history tracking
       let previousContent: string | undefined;
       try {
-        const readResponse = await fetch('http://localhost:8000/api/files/read', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path })
-        });
-        if (readResponse.ok) {
-          const readData = await readResponse.json();
-          previousContent = readData.content;
-        }
+        const readData = await postSkillJson<any>('/files/read', { path });
+        previousContent = readData.content;
       } catch {
         // File doesn't exist, that's okay
       }
 
-      const response = await fetch('http://localhost:8000/api/files/write', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, content, createBackup })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to write file: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/files/write', { path, content, createBackup });
 
       // Record the operation in file history
       const fileName = path.split('/').pop() || path;
@@ -184,17 +158,7 @@ const listFiles: Skill = {
   defaultEnabled: true,
   execute: async ({ path, extension, recursive }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/files/list', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, extension, recursive })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to list files: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/files/list', { path, extension, recursive });
 
       return {
         success: true,
@@ -256,17 +220,7 @@ const connectBroker: Skill = {
   defaultEnabled: true,
   execute: async (params, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/broker/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params)
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to connect: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/broker/connect', params);
 
       return {
         success: true,
@@ -319,17 +273,7 @@ const getAccountInfo: Skill = {
   defaultEnabled: true,
   execute: async ({ includePositions }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/broker/account', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ includePositions })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to get account info: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/broker/account', { includePositions });
 
       return {
         success: true,
@@ -385,17 +329,7 @@ const deployEA: Skill = {
   defaultEnabled: true,
   execute: async ({ eaPath, symbol, timeframe, parameters, autoStart }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/deployment/deploy-ea', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eaPath, symbol, timeframe, parameters, autoStart })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to deploy EA: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/deployment/deploy-ea', { eaPath, symbol, timeframe, parameters, autoStart });
 
       return {
         success: true,
@@ -441,17 +375,7 @@ const stopEA: Skill = {
   defaultEnabled: true,
   execute: async ({ chartId, eaHandle }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/deployment/stop-ea', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chartId, eaHandle })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to stop EA: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/deployment/stop-ea', { chartId, eaHandle });
 
       return {
         success: true,
@@ -504,17 +428,7 @@ const syncMT5: Skill = {
   defaultEnabled: true,
   execute: async ({ symbols, timeframe, daysBack, includePositions, includeOrders }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/sync/mt5', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbols, timeframe, daysBack, includePositions, includeOrders })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to sync MT5: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/sync/mt5', { symbols, timeframe, daysBack, includePositions, includeOrders });
 
       return {
         success: true,

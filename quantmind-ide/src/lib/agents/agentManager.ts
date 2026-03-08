@@ -3,6 +3,7 @@ import { writable, derived } from 'svelte/store';
 import type { Writable } from 'svelte/store';
 import { streamToStore, agentStreamStore, type TaskStreamState } from './agentStreamStore';
 import { streamAgent, type AgentMessage, type AgentContext, type AgentResult } from './claudeCodeAgent';
+import { postSkillJson } from '$lib/services/agentSkillApi';
 
 // Agent state schema
 export const AgentStateSchema = z.object({
@@ -274,27 +275,16 @@ When analyzing:
     // For now, use the backend API with provider information
     // Later will be replaced with LangGraph.js implementation
     try {
-      const res = await fetch('http://localhost:8000/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message,
-          agent: agentType,
-          context,
-          systemPrompt: config.systemPrompt,
-          temperature: config.temperature,
-          // Provider information
-          provider,
-          model,
-          maxTokens: config.maxTokens
-        })
+      return await postSkillJson('/chat', {
+        message,
+        agent: agentType,
+        context,
+        systemPrompt: config.systemPrompt,
+        temperature: config.temperature,
+        provider,
+        model,
+        maxTokens: config.maxTokens
       });
-
-      if (!res.ok) {
-        throw new Error(`Agent request failed: ${res.statusText}`);
-      }
-
-      return await res.json();
     } catch (e) {
       console.error('Agent invocation failed:', e);
       throw e;

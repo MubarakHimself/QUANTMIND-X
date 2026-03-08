@@ -7,6 +7,7 @@
 
 import { z } from 'zod';
 import type { Skill, SkillContext } from './index';
+import { postSkillJson } from '$lib/services/agentSkillApi';
 
 // ============================================================================
 // MQL5 CODE GENERATION SKILLS
@@ -54,17 +55,7 @@ const generateMQL5: Skill = {
   defaultEnabled: true,
   execute: async ({ specification, template, includeComments, optimize, version }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ specification, template, includeComments, optimize, version })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to generate MQL5: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/quantcode/generate', { specification, template, includeComments, optimize, version });
 
       return {
         success: true,
@@ -123,17 +114,7 @@ const generateComponent: Skill = {
   defaultEnabled: true,
   execute: async ({ componentType, description, parameters, dependencies }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/generate-component', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ componentType, description, parameters, dependencies })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to generate component: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/quantcode/generate-component', { componentType, description, parameters, dependencies });
 
       return {
         success: true,
@@ -192,17 +173,7 @@ const validateSyntax: Skill = {
   defaultEnabled: true,
   execute: async ({ code, checkStyle, strictMode, version }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, checkStyle, strictMode, version })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to validate syntax: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/quantcode/validate', { code, checkStyle, strictMode, version });
 
       return {
         success: true,
@@ -262,17 +233,7 @@ const fixSyntaxErrors: Skill = {
   defaultEnabled: true,
   execute: async ({ code, errors, preserveStyle }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/fix', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, errors, preserveStyle })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fix syntax: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/quantcode/fix', { code, errors, preserveStyle });
 
       return {
         success: true,
@@ -334,17 +295,7 @@ const compileMQL5: Skill = {
   defaultEnabled: true,
   execute: async ({ code, filename, includePath, optimization, strictMode }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/compile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, filename, includePath, optimization, strictMode })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to compile: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/quantcode/compile', { code, filename, includePath, optimization, strictMode });
 
       return {
         success: data.success,
@@ -415,17 +366,7 @@ const debugCode: Skill = {
   defaultEnabled: true,
   execute: async ({ code, issueDescription, checkMemory, checkConcurrency, deepAnalysis }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/debug', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, issueDescription, checkMemory, checkConcurrency, deepAnalysis })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to debug code: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/quantcode/debug', { code, issueDescription, checkMemory, checkConcurrency, deepAnalysis });
 
       return {
         success: true,
@@ -482,17 +423,7 @@ const optimizeCode: Skill = {
   defaultEnabled: true,
   execute: async ({ code, optimizationLevel, target, preserveReadability }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/optimize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, optimizationLevel, target, preserveReadability })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to optimize code: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/quantcode/optimize', { code, optimizationLevel, target, preserveReadability });
 
       return {
         success: true,
@@ -550,17 +481,7 @@ const generateDocumentation: Skill = {
   defaultEnabled: true,
   execute: async ({ code, format, includeExamples, includeDiagrams, targetAudience }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/document', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, format, includeExamples, includeDiagrams, targetAudience })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to generate documentation: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/quantcode/document', { code, format, includeExamples, includeDiagrams, targetAudience });
 
       return {
         success: true,
@@ -622,17 +543,7 @@ const lookupDocumentation: Skill = {
   defaultEnabled: true,
   execute: async ({ query, source, includeExamples }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/lookup-docs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, source, includeExamples })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to lookup documentation: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await postSkillJson<any>('/quantcode/lookup-docs', { query, source, includeExamples });
 
       return {
         success: true,

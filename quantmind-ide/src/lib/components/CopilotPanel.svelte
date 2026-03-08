@@ -20,10 +20,11 @@
   } from "lucide-svelte";
 
   import { delegateToFloor, DEPARTMENTS, type Department } from "../stores/departmentMailStore";
+  import { API_CONFIG } from '$lib/config/api';
 
   const dispatch = createEventDispatcher();
 
-  const API_BASE = "http://localhost:8000/api";
+  const API_BASE = API_CONFIG.API_BASE;
 
   let activeAgent = "copilot";
   let message = "";

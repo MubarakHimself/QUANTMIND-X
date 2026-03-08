@@ -10,6 +10,7 @@
   } from 'lucide-svelte';
 
   const dispatch = createEventDispatcher();
+  import { createTrd, getTrd, updateTrd } from '$lib/services/tradingApi';
 
   // TRD state
   export let trdId: string | null = null;
@@ -251,10 +252,7 @@
 
   async function loadTRD(id: string) {
     try {
-      const res = await fetch(`http://localhost:8000/api/trd/${id}`);
-      if (res.ok) {
-        trdData = await res.json();
-      }
+      trdData = await getTrd<typeof trdData>(id);
     } catch (e) {
       console.error('Failed to load TRD:', e);
     }
@@ -264,20 +262,12 @@
     trdData.modified = new Date().toISOString();
 
     try {
-      const url = trdId
-        ? `http://localhost:8000/api/trd/${trdId}`
-        : 'http://localhost:8000/api/trd';
-      const method = trdId ? 'PUT' : 'POST';
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(trdData)
-      });
-
-      if (res.ok) {
-        dispatch('saved', { trd: trdData });
+      if (trdId) {
+        await updateTrd<typeof trdData>(trdId, trdData);
+      } else {
+        await createTrd<typeof trdData>(trdData);
       }
+      dispatch('saved', { trd: trdData });
     } catch (e) {
       console.error('Failed to save TRD:', e);
     }
