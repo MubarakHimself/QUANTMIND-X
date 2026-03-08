@@ -190,16 +190,34 @@ class WorkshopCopilotService:
         Returns:
             WorkshopCopilotResponse delegating to floor manager
         """
-        # Placeholder for floor manager delegation
-        # In Task 5, this will delegate to the actual floor manager
-        self.logger.info(f"Delegating trading request to floor manager: {request.message}")
+        return await self._delegate_to_floor_manager(request.message)
 
-        return WorkshopCopilotResponse(
-            reply=f"I've received your trading request: '{request.message}'. "
-                 "Delegating to the Floor Manager for processing...",
-            delegation="floor_manager",
-            action_taken="trading_request"
-        )
+    async def _delegate_to_floor_manager(self, message: str) -> WorkshopCopilotResponse:
+        """Delegate a trading task to Floor Manager."""
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.floor_manager_url}/api/floor-manager/chat",
+                    json={"message": message},
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                data = response.json()
+                return WorkshopCopilotResponse(
+                    reply=data.get("reply", "Task delegated to Floor Manager"),
+                    action_taken="delegated_to_floor_manager",
+                    delegation={
+                        "type": "floor_manager",
+                        "department": data.get("delegated_department"),
+                        "task_id": data.get("task_id")
+                    }
+                )
+        except Exception as e:
+            logger.error(f"Failed to delegate to Floor Manager: {e}")
+            return WorkshopCopilotResponse(
+                reply=f"I understand you want to: {message}. The Floor Manager is currently unavailable.",
+                action_taken="error_delegating"
+            )
 
     async def _handle_workflow_request(
         self,
@@ -221,7 +239,7 @@ class WorkshopCopilotService:
         return WorkshopCopilotResponse(
             reply=f"I've received your workflow request: '{request.message}'. "
                  "Starting the appropriate department workflow...",
-            delegation="department_workflow",
+            delegation={"type": "department_workflow"},
             action_taken="workflow_request"
         )
 
@@ -233,9 +251,9 @@ class WorkshopCopilotService:
 _workshop_copilot_service: Optional[WorkshopCopilotService] = None
 
 
-def get_workshop_copilot_service() -> WorkshopCopilotService:
+def get_workshop_copilot_service(floor_manager_url: str = "http://localhost:8000") -> WorkshopCopilotService:
     """Get the Workshop Copilot service singleton."""
     global _workshop_copilot_service
     if _workshop_copilot_service is None:
-        _workshop_copilot_service = WorkshopCopilotService()
+        _workshop_copilot_service = WorkshopCopilotService(floor_manager_url)
     return _workshop_copilot_service
