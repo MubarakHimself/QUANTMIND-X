@@ -1,4 +1,11 @@
 """
+DEPRECATED: This module is deprecated.
+
+Use src.agents.departments.tool_registry instead.
+The department tool registry provides better integration with the department system.
+
+---
+
 Tool Registry for Agent Tools
 
 Provides centralized tool registration, retrieval, and metadata management
