@@ -68,6 +68,9 @@
   $: greeting = isCopilot ? copilotGreeting : floorManagerGreeting;
   $: agentName = isCopilot ? "QuantMind Copilot" : "Floor Manager";
   $: placeholderText = isCopilot ? "Ask QuantMind Copilot..." : "Ask the Floor Manager...";
+  $: apiEndpoint = isCopilot
+    ? `${API_BASE}/workshop/copilot/chat`
+    : `${API_BASE}/floor-manager/chat`;
   $: messages = [
     {
       id: "fm_welcome",
@@ -120,7 +123,7 @@
     scrollToBottom();
 
     try {
-      const response = await fetch(`${API_BASE}/floor-manager/chat`, {
+      const response = await fetch(apiEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
