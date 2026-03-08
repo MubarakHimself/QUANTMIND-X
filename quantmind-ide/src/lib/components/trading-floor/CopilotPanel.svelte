@@ -120,7 +120,7 @@
     scrollToBottom();
 
     try {
-      const response = await fetch(`${API_BASE}/chat/send`, {
+      const response = await fetch(`${API_BASE}/floor-manager/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
