@@ -128,6 +128,10 @@ def determine_target_agent(message: str, default_agent: str) -> str:
     Returns:
         Target agent type
     """
+    logger.warning(
+        "determine_target_agent is deprecated. "
+        "Use WorkshopCopilotService instead."
+    )
     if message.startswith("/deploy"):
         return "copilot"
     elif message.startswith("/analyze"):

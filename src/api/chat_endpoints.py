@@ -1,4 +1,8 @@
 """
+DEPRECATED: This module is deprecated.
+Use /api/workshop/copilot/* for Copilot queries
+Use /api/floor-manager/* for Floor Manager queries
+
 Chat API Endpoints
 
 Provides the backend for the QuantMind Copilot chat interface.
@@ -12,9 +16,17 @@ Business logic has been extracted to src.api.services.chat_service.
 
 import os
 import logging
+import warnings
 from typing import List, Dict, Any, Optional
 import json
 import asyncio
+
+warnings.warn(
+    "The /api/chat endpoints are deprecated. "
+    "Use /api/workshop/copilot/* or /api/floor-manager/* instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
