@@ -1,4 +1,12 @@
 """
+DEPRECATED: This agent is deprecated.
+
+The department-based system (floor_manager + department heads) is now canonical.
+Use /api/floor-manager/* endpoints instead.
+
+This file will be removed in a future release.
+"""
+"""
 QuantMind Copilot Agent Workflow
 
 Implements the QuantMind Copilot agent using LangGraph for EA deployment and monitoring.

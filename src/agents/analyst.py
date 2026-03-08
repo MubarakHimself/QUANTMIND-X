@@ -1,4 +1,12 @@
 """
+DEPRECATED: This agent is deprecated.
+
+The department-based system (floor_manager + department heads) is now canonical.
+Use /api/floor-manager/* endpoints instead.
+
+This file will be removed in a future release.
+"""
+"""
 Analyst Agent Workflow
 
 Implements the Analyst agent using LangGraph for market research and analysis.
