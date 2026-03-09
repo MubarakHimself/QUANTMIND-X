@@ -76,6 +76,9 @@ from .monitoring import (
 # Activity models
 from .activity import ActivityEvent
 
+# Chat models
+from .chat import ChatSession, ChatMessage
+
 # Session factory (import from engine package)
 from sqlalchemy.orm import sessionmaker
 from src.database import engine
@@ -141,4 +144,8 @@ __all__ = [
 
     # Activity
     'ActivityEvent',
+
+    # Chat
+    'ChatSession',
+    'ChatMessage',
 ]
