@@ -78,6 +78,7 @@ try:
         dept_router as memory_dept_router,
         unified_router as memory_unified_router,
     )
+    from src.api.graph_memory_endpoints import router as graph_memory_router
     from src.api.agent_session_endpoints import router as agent_session_router
     from src.api.session_checkpoint_endpoints import router as checkpoint_router
     from src.api.trading_floor_endpoints import router as trading_floor_router
@@ -215,6 +216,7 @@ app.include_router(model_router)
 app.include_router(memory_router)
 app.include_router(memory_dept_router)
 app.include_router(memory_unified_router)
+app.include_router(graph_memory_router)
 app.include_router(agent_session_router)
 app.include_router(checkpoint_router)
 app.include_router(trading_floor_router)
