@@ -63,9 +63,9 @@ class ChatSessionService:
         session_id: str,
         role: str,
         content: str,
-        artifacts: List[Dict] = None,
-        tool_calls: List[Dict] = None,
-        token_count: int = None
+        artifacts: Optional[List[Dict]] = None,
+        tool_calls: Optional[List[Dict]] = None,
+        token_count: Optional[int] = None
     ) -> ChatMessage:
         """Add a message to a session."""
         message_id = str(uuid.uuid4())
