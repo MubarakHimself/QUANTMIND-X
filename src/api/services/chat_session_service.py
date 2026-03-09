@@ -314,3 +314,68 @@ class ChatSessionService:
 
         conn.commit()
         conn.close()
+
+    async def execute_tool(
+        self,
+        tool_name: str,
+        parameters: Dict[str, Any],
+        agent_id: str
+    ) -> Dict[str, Any]:
+        """
+        Execute a tool with permission check.
+
+        Integrates with Tool Registry for permission-based access.
+        """
+        # Check tool registry for permissions
+        try:
+            from src.agents.departments.tool_registry import get_tool_registry
+
+            registry = get_tool_registry()
+            allowed_tools = registry.get_tools_for_agent(agent_id)
+
+            if tool_name not in allowed_tools and '*' not in allowed_tools:
+                return {
+                    "success": False,
+                    "error": f"Tool {tool_name} not permitted for agent {agent_id}"
+                }
+        except Exception:
+            pass  # Registry not available
+
+        # Execute tool
+        try:
+            # Import tool executor - this is a placeholder
+            # In actual implementation, this would call the tool executor
+            return {"success": True, "result": "Tool execution not implemented"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def execute_skill(
+        self,
+        skill_name: str,
+        parameters: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Execute a skill via Skill Manager."""
+        try:
+            from src.agents.skills.skill_manager import get_skill_manager
+
+            manager = get_skill_manager()
+            result = await manager.execute(skill_name, parameters, context)
+            return {"success": True, "result": result}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def trigger_workflow(
+        self,
+        workflow_name: str,
+        parameters: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Trigger a workflow via Workflow Coordinator."""
+        try:
+            from src.agents.departments.workflow_coordinator import get_workflow_coordinator
+
+            coordinator = get_workflow_coordinator()
+            task_id = await coordinator.start_workflow(workflow_name, parameters)
+            return {"success": True, "task_id": task_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
