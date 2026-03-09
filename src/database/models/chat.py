@@ -5,7 +5,7 @@ Contains models for chat sessions and messages - stored in HOT tier (SQLite).
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Text, DateTime, JSON, ForeignKey, Integer
+from sqlalchemy import Column, String, Text, DateTime, JSON, ForeignKey, Integer, Index
 from sqlalchemy.orm import relationship
 from ..models.base import Base
 
@@ -26,12 +26,17 @@ class ChatSession(Base):
         last_message_at: Timestamp of last message
     """
     __tablename__ = "chat_sessions"
+    __table_args__ = (
+        Index('ix_chat_sessions_user_id', 'user_id'),
+        Index('ix_chat_sessions_last_message_at', 'last_message_at'),
+        Index('ix_chat_sessions_user_agent', 'user_id', 'agent_type'),
+    )
 
     id = Column(String, primary_key=True)
-    agent_type = Column(String, nullable=False)  # 'workshop', 'floor-manager', 'department'
-    agent_id = Column(String, nullable=False)    # 'copilot', 'research', etc.
-    title = Column(String)
-    user_id = Column(String)
+    agent_type = Column(String(50), nullable=False)  # 'workshop', 'floor-manager', 'department'
+    agent_id = Column(String(50), nullable=False)    # 'copilot', 'research', etc.
+    title = Column(String(200))
+    user_id = Column(String(50))
     context = Column(JSON, default=dict)
     session_metadata = Column(JSON, default=dict)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
