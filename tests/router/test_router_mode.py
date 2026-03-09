@@ -105,3 +105,14 @@ def test_default_router_mode_is_auction():
     # Default should sort by score
     assert selected[0].bot_id == "bot1"  # score 9.0
     assert selected[1].bot_id == "bot2"  # score 8.0
+
+
+def test_select_bots_for_auction_empty_list():
+    """Should return empty list when no bots provided."""
+    commander = Commander()
+    commander.router_mode = "auction"
+
+    bots = []
+    selected = commander.select_bots_for_auction(bots)
+
+    assert selected == []
