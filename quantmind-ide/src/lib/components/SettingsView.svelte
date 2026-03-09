@@ -201,6 +201,13 @@
     maxRiskPerTrade: 0.05
   };
 
+  // Router settings
+  let routerSettings = {
+    active: true,
+    mode: 'auction' as 'auction' | 'priority' | 'round-robin',
+    auctionInterval: 5000
+  };
+
   // Database settings
   let dbSettings = {
     connectionType: 'sqlite',
@@ -547,6 +554,13 @@
         riskSettings = { ...riskSettings, ...data };
       }
 
+      // Load router settings
+      const routerRes = await fetch('http://localhost:8000/api/router/state');
+      if (routerRes.ok) {
+        const data = await routerRes.json();
+        routerSettings = { ...routerSettings, ...data };
+      }
+
       const dbRes = await fetch('http://localhost:8000/api/settings/database');
       if (dbRes.ok) {
         const data = await dbRes.json();
@@ -583,6 +597,11 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(riskSettings)
+        }),
+        fetch('http://localhost:8000/api/router/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(routerSettings)
         })
       ]);
 

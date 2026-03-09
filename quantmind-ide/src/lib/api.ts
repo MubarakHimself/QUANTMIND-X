@@ -372,6 +372,51 @@ export async function getTradingMetrics(): Promise<TradingMetrics> {
   return apiFetch<TradingMetrics>('/metrics/trading');
 }
 
+// =============================================================================
+// Risk Settings Endpoints
+// =============================================================================
+
+export interface RiskSettings {
+  houseMoneyEnabled: boolean;
+  houseMoneyThreshold: number;
+  dailyLossLimit: number;
+  maxDrawdown: number;
+  riskMode: 'fixed' | 'dynamic' | 'conservative';
+  propFirmPreset: 'ftmo' | 'the5ers' | 'fundingpips' | 'custom';
+  balanceZones: {
+    danger: number;
+    growth: number;
+    scaling: number;
+    guardian: number | typeof Infinity;
+  };
+  maxRiskPerTrade: number;
+}
+
+export async function getRiskSettings(): Promise<RiskSettings> {
+  return apiFetch<RiskSettings>('/settings/risk');
+}
+
+export async function saveRiskSettings(settings: RiskSettings): Promise<void> {
+  return apiFetch('/settings/risk', {
+    method: 'POST',
+    body: JSON.stringify(settings)
+  });
+}
+
+// =============================================================================
+// Router Settings Endpoints
+// =============================================================================
+
+export interface RouterSettings {
+  active: boolean;
+  mode: 'auction' | 'priority' | 'round-robin';
+  auctionInterval: number;
+}
+
+export async function getRouterSettings(): Promise<RouterSettings> {
+  return apiFetch<RouterSettings>('/router/state');
+}
+
 // Export WebSocket client creation functions
 export {
   createBacktestClient,

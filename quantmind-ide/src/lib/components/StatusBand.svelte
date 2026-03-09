@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { Bot, DollarSign, Percent } from 'lucide-svelte';
-  import { getAllSessions, getMarketState, getTradingMetrics } from '$lib/api';
+  import { Bot, DollarSign, Percent, Shield, Route } from 'lucide-svelte';
+  import { getAllSessions, getMarketState, getTradingMetrics, getRiskSettings, getRouterSettings } from '$lib/api';
 
   // State
   let loading = true;
@@ -10,6 +10,10 @@
   let activeBots = 0;
   let dailyPnl = 0;
   let winRate = 0;
+
+  // Risk and Router settings
+  let riskMode: 'fixed' | 'dynamic' | 'conservative' = 'dynamic';
+  let routerMode: 'auction' | 'priority' | 'round-robin' = 'auction';
 
   let refreshInterval: ReturnType<typeof setInterval>;
 
@@ -50,6 +54,28 @@
         activeBots = metricsData.active_bots || 0;
         dailyPnl = metricsData.daily_pnl || 0;
         winRate = (metricsData.win_rate || 0) * 100;
+      }
+
+      // Fetch risk settings
+      try {
+        const riskData = await getRiskSettings();
+        if (riskData && riskData.riskMode) {
+          riskMode = riskData.riskMode;
+        }
+      } catch (e) {
+        // Risk settings may not be available, use default
+        console.debug('StatusBand: Risk settings not available');
+      }
+
+      // Fetch router settings
+      try {
+        const routerData = await getRouterSettings();
+        if (routerData && routerData.mode) {
+          routerMode = routerData.mode;
+        }
+      } catch (e) {
+        // Router settings may not be available, use default
+        console.debug('StatusBand: Router settings not available');
       }
     } catch (e) {
       console.error('StatusBand: Failed to fetch data', e);
@@ -94,6 +120,26 @@
     const sign = pnl >= 0 ? '+' : '';
     return `${sign}$${pnl.toFixed(2)}`;
   }
+
+  // Helper: Format risk mode for display
+  function formatRiskMode(mode: string): string {
+    const labels: Record<string, string> = {
+      fixed: 'Fixed',
+      dynamic: 'Dynamic',
+      conservative: 'Conservative'
+    };
+    return labels[mode] || mode;
+  }
+
+  // Helper: Format router mode for display
+  function formatRouterMode(mode: string): string {
+    const labels: Record<string, string> = {
+      auction: 'Auction',
+      priority: 'Priority',
+      'round-robin': 'Round Robin'
+    };
+    return labels[mode] || mode;
+  }
 </script>
 
 <div class="status-band">
@@ -132,6 +178,19 @@
     <div class="metric">
       <Percent size={14} />
       <span>{winRate.toFixed(0)}% WR</span>
+    </div>
+  </div>
+
+  <div class="divider">|</div>
+
+  <div class="mode-indicators">
+    <div class="mode-item" title="Risk Mode">
+      <Shield size={14} />
+      <span>Risk: {formatRiskMode(riskMode)}</span>
+    </div>
+    <div class="mode-item" title="Router Mode">
+      <Route size={14} />
+      <span>Router: {formatRouterMode(routerMode)}</span>
     </div>
   </div>
   {/if}
@@ -210,5 +269,17 @@
 
   .metric.loss {
     color: var(--accent-danger, #ef4444);
+  }
+
+  .mode-indicators {
+    display: flex;
+    gap: 16px;
+  }
+
+  .mode-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-secondary, #d1d5db);
   }
 </style>
