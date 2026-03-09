@@ -137,12 +137,15 @@ class EnhancedGovernor(Governor):
             self._house_money_multiplier_up = settings.houseMoneyMultiplierUp
             self._house_money_multiplier_down = settings.houseMoneyMultiplierDown
             self._default_risk_per_trade = settings.defaultRiskPerTrade
+            # Risk mode: fixed, dynamic, conservative
+            self.risk_mode = getattr(settings, 'riskMode', 'dynamic')
         else:
             # Fallback defaults (backwards compatible)
             self._house_money_threshold = 0.05  # 5% threshold
             self._house_money_multiplier_up = 1.5
             self._house_money_multiplier_down = 0.5
             self._default_risk_per_trade = 0.02  # 2% default risk
+            self.risk_mode = 'dynamic'
 
         # Load daily state if account_id provided and database is available
         if account_id and self._db_available:
@@ -372,6 +375,48 @@ class EnhancedGovernor(Governor):
         # Update house money state in database if account_id available and DB is enabled
         if self.account_id and self._db_available:
             self._update_house_money_state(current_balance, current_pnl, preservation_mode)
+
+    def _calculate_kelly_fraction(self, win_rate: float, payoff_ratio: float) -> float:
+        """
+        Calculate Kelly fraction based on risk mode.
+
+        Risk mode determines how Kelly is applied:
+        - fixed: Always use default risk percentage, ignore Kelly
+        - dynamic: Use Kelly calculation with fraction (normal behavior)
+        - conservative: Cap at 50% of default risk
+
+        Args:
+            win_rate: Trade win rate (0.0 to 1.0)
+            payoff_ratio: Reward to risk ratio (avg_win / avg_loss)
+
+        Returns:
+            Kelly fraction based on risk mode
+        """
+        # Calculate raw Kelly: f = (p * (b + 1) - 1) / b
+        # where p = win_rate, b = payoff_ratio
+        raw_kelly = (win_rate * (payoff_ratio + 1) - 1) / payoff_ratio
+        raw_kelly = max(0, raw_kelly)  # Can't be negative
+
+        # Get Kelly fraction from calculator config
+        kelly_fraction_setting = self.kelly_calculator.config.kelly_fraction if self.kelly_calculator else 0.5
+
+        if self.risk_mode == "fixed":
+            # Always use default risk percentage, ignore Kelly
+            return self._default_risk_per_trade
+
+        elif self.risk_mode == "conservative":
+            # Cap at 50% of default risk
+            conservative_limit = self._default_risk_per_trade * 0.5
+            kelly_adjusted = raw_kelly * kelly_fraction_setting
+            return min(kelly_adjusted, conservative_limit)
+
+        elif self.risk_mode == "dynamic":
+            # Normal Kelly calculation with fraction
+            kelly_adjusted = raw_kelly * kelly_fraction_setting
+            return min(kelly_adjusted, self._default_risk_per_trade)
+
+        # Default fallback (dynamic behavior)
+        return min(raw_kelly * kelly_fraction_setting, self._default_risk_per_trade)
 
     def _get_pip_value(self, symbol: str, broker: str = 'mt5_default') -> float:
         """
