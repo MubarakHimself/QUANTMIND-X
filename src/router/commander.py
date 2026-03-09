@@ -102,6 +102,29 @@ class Commander:
         
         # Lifecycle Manager scheduler (runs daily at 3:00 AM UTC)
         self._scheduler: Optional[Any] = None
+
+    def check_drawdown_limits(
+        self,
+        account_book: str,
+        prop_firm_name: Optional[str],
+        current_drawdown: float
+    ) -> tuple[bool, str]:
+        """Check if trade should be blocked due to drawdown limits.
+
+        Args:
+            account_book: "personal" or "prop_firm"
+            prop_firm_name: Name of prop firm (required if account_book is "prop_firm")
+            current_drawdown: Current drawdown as decimal (e.g., 0.04 for 4%)
+
+        Returns:
+            Tuple of (should_block: bool, reason: str)
+                - should_block: True if trade should be blocked
+                - reason: Explanation if blocked, empty string otherwise
+        """
+        from src.risk.prop_firm_overlay import PropFirmRiskOverlay
+
+        overlay = PropFirmRiskOverlay(firm_name=prop_firm_name)
+        return overlay.should_block_trade(account_book, prop_firm_name, current_drawdown)
         if APSCHEDULER_AVAILABLE:
             self._setup_lifecycle_scheduler()
     

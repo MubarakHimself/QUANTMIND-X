@@ -84,6 +84,39 @@ class PropFirmRiskOverlay:
         self.recovery_start_drawdown = 0.0
         self.current_drawdown = 0.0
 
+    def should_block_trade(
+        self,
+        account_book: str,
+        prop_firm_name: Optional[str],
+        current_drawdown: float
+    ) -> tuple[bool, str]:
+        """Check if trade should be blocked due to drawdown limits.
+
+        Args:
+            account_book: "personal" or "prop_firm"
+            prop_firm_name: Name of prop firm (required if account_book is "prop_firm")
+            current_drawdown: Current drawdown as decimal (e.g., 0.04 for 4%)
+
+        Returns:
+            Tuple of (should_block: bool, reason: str)
+                - should_block: True if trade should be blocked
+                - reason: Explanation if blocked, empty string otherwise
+        """
+        # Get effective limits
+        limits = self.apply_risk_limits(
+            account_book=account_book,
+            max_drawdown=DEFAULT_PERSONAL_LIMITS["max_drawdown"],
+            daily_loss=DEFAULT_PERSONAL_LIMITS["daily_loss"],
+            profit_target=DEFAULT_PERSONAL_LIMITS["profit_target"]
+        )
+
+        max_drawdown = limits["effective_max_drawdown"]
+
+        if current_drawdown >= max_drawdown:
+            return True, f"Max drawdown {current_drawdown:.1%} exceeds limit {max_drawdown:.1%}"
+
+        return False, ""
+
     def apply_risk_limits(
         self,
         account_book: str,
