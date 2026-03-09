@@ -46,6 +46,9 @@ class ConnectionManager:
         await websocket.accept()
         self.active_connections.add(websocket)
         logger.info(f"WebSocket connected. Total: {len(self.active_connections)}")
+
+        # Start heartbeat on first connection (lazy initialization when event loop is running)
+        self._ensure_heartbeat_running()
     
     def disconnect(self, websocket: WebSocket):  # type: ignore
         """Remove WebSocket connection."""
@@ -116,11 +119,21 @@ class ConnectionManager:
             for ws in disconnected:
                 self.disconnect(ws)
 
-    def start_heartbeat(self):
-        """Start the heartbeat task."""
+    def _ensure_heartbeat_running(self):
+        """Ensure heartbeat is running (lazy initialization when event loop exists)."""
         if self._heartbeat_task is None or self._heartbeat_task.done():
-            self._heartbeat_task = asyncio.create_task(self._send_heartbeat())
-            logger.info("WebSocket heartbeat started")
+            try:
+                # Only create task if there's a running event loop
+                loop = asyncio.get_running_loop()
+                self._heartbeat_task = loop.create_task(self._send_heartbeat())
+                logger.info("WebSocket heartbeat started")
+            except RuntimeError:
+                # No running event loop - will start on first connection
+                pass
+
+    def start_heartbeat(self):
+        """Start the heartbeat task (for manual/lifespan initialization)."""
+        self._ensure_heartbeat_running()
 
     def stop_heartbeat(self):
         """Stop the heartbeat task."""
@@ -152,8 +165,8 @@ def create_websocket_endpoints(app):
         logger.warning("FastAPI not available, skipping WebSocket endpoints")
         return
 
-    # Start heartbeat
-    manager.start_heartbeat()
+    # Heartbeat is lazy-initialized on first WebSocket connection
+    # This avoids "no running event loop" error at import time
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):  # type: ignore
