@@ -593,6 +593,134 @@ async def get_session(session_id: str):
 @router.get("/sessions", response_model=List[SessionResponse])
 async def list_sessions(user_id: Optional[str] = None, agent_type: Optional[str] = None):
     """List chat sessions."""
-    # TODO: Implement filtering by user_id and agent_type
-    # For now, return empty list as placeholder
-    return []
+    sessions = await _session_service.list_sessions(user_id=user_id, agent_type=agent_type)
+    return [
+        SessionResponse(
+            id=s.id,
+            agent_type=s.agent_type,
+            agent_id=s.agent_id,
+            title=s.title,
+            user_id=s.user_id,
+            created_at=s.created_at.isoformat() if s.created_at else datetime.now(timezone.utc).isoformat(),
+            updated_at=s.updated_at.isoformat() if s.updated_at else datetime.now(timezone.utc).isoformat()
+        )
+        for s in sessions
+    ]
+
+
+# =============================================================================
+# Per-Agent Chat Endpoints
+# =============================================================================
+
+
+class ChatMessageRequest(BaseModel):
+    """Request model for per-agent chat messages."""
+    message: str
+    session_id: Optional[str] = None
+    stream: bool = False
+
+
+class ChatMessageResponse(BaseModel):
+    """Response model for per-agent chat messages."""
+    session_id: str
+    message_id: str
+    reply: str
+    artifacts: List[dict] = []
+    action_taken: Optional[str] = None
+    delegation: Optional[str] = None
+
+
+@router.post("/workshop/message", response_model=ChatMessageResponse)
+async def workshop_chat(request: ChatMessageRequest):
+    """Chat with Workshop Copilot."""
+    session_id = request.session_id
+    if not session_id:
+        session = await _session_service.create_session(
+            agent_type="workshop",
+            agent_id="copilot",
+            user_id="anonymous"
+        )
+        session_id = session.id
+
+    # Add user message
+    await _session_service.add_message(
+        session_id=session_id,
+        role="user",
+        content=request.message
+    )
+
+    # TODO: Process with Workshop Copilot service (placeholder)
+    reply = "Workshop Copilot: I received your message."
+
+    # Add assistant message
+    assistant_msg = await _session_service.add_message(
+        session_id=session_id,
+        role="assistant",
+        content=reply
+    )
+
+    return ChatMessageResponse(
+        session_id=session_id,
+        message_id=assistant_msg.id,
+        reply=reply
+    )
+
+
+@router.post("/floor-manager/message", response_model=ChatMessageResponse)
+async def floor_manager_chat(request: ChatMessageRequest):
+    """Chat with Floor Manager."""
+    session_id = request.session_id
+    if not session_id:
+        session = await _session_service.create_session(
+            agent_type="floor-manager",
+            agent_id="floor-manager",
+            user_id="anonymous"
+        )
+        session_id = session.id
+
+    await _session_service.add_message(session_id=session_id, role="user", content=request.message)
+
+    # TODO: Delegate to Floor Manager service (placeholder)
+    reply = "Floor Manager: Message received."
+
+    assistant_msg = await _session_service.add_message(
+        session_id=session_id, role="assistant", content=reply
+    )
+
+    return ChatMessageResponse(
+        session_id=session_id,
+        message_id=assistant_msg.id,
+        reply=reply
+    )
+
+
+@router.post("/departments/{dept}/message", response_model=ChatMessageResponse)
+async def department_chat(dept: str, request: ChatMessageRequest):
+    """Chat with a department agent."""
+    valid_depts = ["research", "development", "risk", "trading", "portfolio"]
+    if dept not in valid_depts:
+        raise HTTPException(status_code=400, detail=f"Invalid department: {dept}")
+
+    session_id = request.session_id
+    if not session_id:
+        session = await _session_service.create_session(
+            agent_type="department",
+            agent_id=dept,
+            user_id="anonymous"
+        )
+        session_id = session.id
+
+    await _session_service.add_message(session_id=session_id, role="user", content=request.message)
+
+    # TODO: Delegate to department service (placeholder)
+    reply = f"Department {dept}: Message received."
+
+    assistant_msg = await _session_service.add_message(
+        session_id=session_id, role="assistant", content=reply
+    )
+
+    return ChatMessageResponse(
+        session_id=session_id,
+        message_id=assistant_msg.id,
+        reply=reply
+    )
