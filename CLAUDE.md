@@ -1,4 +1,4 @@
-# Claude Code Configuration - Claude Flow V3
+# Claude Code Configuration - QUANTMINDX
 
 ## Behavioral Rules (Always Enforced)
 
@@ -7,7 +7,6 @@
 - ALWAYS prefer editing an existing file to creating a new one
 - NEVER proactively create documentation files (*.md) or README files unless explicitly requested
 - NEVER save working files, text/mds, or tests to the root folder
-- Never continuously check status after spawning a swarm — wait for results
 - ALWAYS read a file before editing it
 - NEVER commit secrets, credentials, or .env files
 
@@ -29,14 +28,6 @@
 - Prefer TDD London School (mock-first) for new code
 - Use event sourcing for state changes
 - Ensure input validation at system boundaries
-
-### Project Config
-
-- **Topology**: hierarchical-mesh
-- **Max Agents**: 15
-- **Memory**: hybrid
-- **HNSW**: Enabled
-- **Neural**: Enabled
 
 ## Build & Test
 
@@ -60,214 +51,39 @@ npm run lint
 - NEVER commit .env files or any file containing secrets
 - Always validate user input at system boundaries
 - Always sanitize file paths to prevent directory traversal
-- Run `npx ruflo@latest security scan` after security-related changes
 
 ## Concurrency: 1 MESSAGE = ALL RELATED OPERATIONS
 
 - All operations MUST be concurrent/parallel in a single message
-- Use Claude Code's Task tool for spawning agents, not just MCP
+- Use Claude Code's Task tool for spawning agents
 - ALWAYS batch ALL todos in ONE TodoWrite call (5-10+ minimum)
 - ALWAYS spawn ALL agents in ONE message with full instructions via Task tool
 - ALWAYS batch ALL file reads/writes/edits in ONE message
 - ALWAYS batch ALL Bash commands in ONE message
 
-## Swarm Orchestration
+## Agent Spawning
 
-**IMPORTANT: If MCP tools fail, use CLI directly**
-
-1. Initialize swarm FIRST:
-   ```bash
-   npx ruflo@latest swarm init
-   ```
-
-2. Spawn agents via CLI:
-   ```bash
-   npx ruflo@latest agent spawn --type coder --name coder-1
-   npx ruflo@latest agent spawn --type reviewer --name reviewer-1
-   ```
-
-3. Check status:
-   ```bash
-   npx ruflo@latest agent list
-   npx ruflo@latest swarm status
-   ```
-
-- MUST initialize the swarm using CLI tools when starting complex tasks
-- If MCP `agent_spawn` fails with "Invalid tool parameters", fall back to CLI
-- MUST call CLI tools AND Task tool in ONE message for complex work
-
-### 3-Tier Model Routing (ADR-026)
-
-| Tier | Handler | Latency | Cost | Use Cases |
-|------|---------|---------|------|-----------|
-| **1** | Agent Booster (WASM) | <1ms | $0 | Simple transforms (var→const, add types) — Skip LLM |
-| **2** | Haiku | ~500ms | $0.0002 | Simple tasks, low complexity (<30%) |
-| **3** | Sonnet/Opus | 2-5s | $0.003-0.015 | Complex reasoning, architecture, security (>30%) |
-
-- Always check for `[AGENT_BOOSTER_AVAILABLE]` or `[TASK_MODEL_RECOMMENDATION]` before spawning agents
-- Use Edit tool directly when `[AGENT_BOOSTER_AVAILABLE]`
-
-## Swarm Configuration & Anti-Drift
-
-- ALWAYS use hierarchical topology for coding swarms
-- Keep maxAgents at 6-8 for tight coordination
-- Use specialized strategy for clear role boundaries
-- Use `raft` consensus for hive-mind (leader maintains authoritative state)
-- Run frequent checkpoints via `post-task` hooks
-- Keep shared memory namespace for all agents
+Use Claude Code's built-in Task tool for spawning agents:
 
 ```bash
-npx ruflo@latest swarm init --topology hierarchical --max-agents 8 --strategy specialized
+# Spawn agents via Task tool
+Task tool → spawn sub-agents for parallel work
 ```
 
-## Swarm Execution Rules
+## SPARC Methodology
 
-- ALWAYS use `run_in_background: true` for all agent Task calls
-- ALWAYS put ALL agent Task calls in ONE message for parallel execution
-- After spawning, STOP — do NOT add more tool calls or check status
-- Never poll TaskOutput or check swarm status — trust agents to return
-- When agent results arrive, review ALL results before proceeding
-
-## V3 CLI Commands
-
-### Core Commands
-
-| Command | Subcommands | Description |
-|---------|-------------|-------------|
-| `init` | 4 | Project initialization |
-| `agent` | 8 | Agent lifecycle management |
-| `swarm` | 6 | Multi-agent swarm coordination |
-| `memory` | 11 | AgentDB memory with HNSW search |
-| `task` | 6 | Task creation and lifecycle |
-| `session` | 7 | Session state management |
-| `hooks` | 17 | Self-learning hooks + 12 workers |
-| `hive-mind` | 6 | Byzantine fault-tolerant consensus |
-
-### Quick CLI Examples
+For structured development, use Claude Code Skills:
 
 ```bash
-npx ruflo@latest init --wizard
-npx ruflo@latest agent spawn -t coder --name my-coder
-npx ruflo@latest swarm init --v3-mode
-npx ruflo@latest memory search --query "authentication patterns"
-npx ruflo@latest doctor --fix
+# Use Skill tool for SPARC methodology
+Skill tool → sparc-coder
+Skill tool → sparc-coord
+Skill tool → architecture
+Skill tool → pseudocode
+Skill tool → refinement
 ```
-
-## Available Agent Types (Ruflo)
-
-Use these types with `npx ruflo@latest agent spawn --type <type>`:
-
-### Core Development
-`coder`, `reviewer`, `tester`, `researcher`
-
-### Architecture & Planning
-`architect`, `coordinator`, `analyst`
-
-### Security
-`security-architect`, `security-auditor`
-
-### Specialized
-`memory-specialist`, `performance-engineer`, `optimizer`
-
-### SPARC (Use Claude Code Skills Instead)
-SPARC methodology is available via Claude Code Skills:
-- Use `Skill` tool: `sparc-coder`, `sparc-coord`, `architecture`, `pseudocode`, `refinement`
-
-## How to Spawn Agents
-
-```bash
-# Initialize swarm first (REQUIRED before spawning)
-npx ruflo@latest swarm init
-
-# Spawn a single agent
-npx ruflo@latest agent spawn --type coder --name my-coder
-
-# Spawn multiple agents in parallel (use Task tool)
-# Put ALL spawn commands in ONE message for parallel execution
-
-# Check status
-npx ruflo@latest agent list
-npx ruflo@latest swarm status
-```
-
-## Memory Commands Reference
-
-```bash
-# Store (REQUIRED: --key, --value; OPTIONAL: --namespace, --ttl, --tags)
-npx ruflo@latest memory store --key "pattern-auth" --value "JWT with refresh" --namespace patterns
-
-# Search (REQUIRED: --query; OPTIONAL: --namespace, --limit, --threshold)
-npx ruflo@latest memory search --query "authentication patterns"
-
-# List (OPTIONAL: --namespace, --limit)
-npx ruflo@latest memory list --namespace patterns --limit 10
-
-# Retrieve (REQUIRED: --key; OPTIONAL: --namespace)
-npx ruflo@latest memory retrieve --key "pattern-auth" --namespace patterns
-```
-
-## Monitoring & Logging
-
-### Real-Time Agent Monitoring
-
-```bash
-# Watch all agent status (live updates)
-npx ruflo@latest status --watch
-
-# List all agents
-npx ruflo@latest agent list
-
-# Detailed agent status
-npx ruflo@latest agent status <agent-name>
-
-# Swarm status
-npx ruflo@latest swarm status
-```
-
-### Logs
-
-```bash
-# View all logs (live)
-npx ruflo@latest process logs --follow
-
-# View agent-specific logs
-npx ruflo@latest agent logs --name <agent-name>
-
-# Daemon logs
-tail -f .claude-flow/daemon.log
-```
-
-### Hooks (Self-Learning)
-
-```bash
-# Enable hooks for learning
-npx ruflo@latest hooks init
-
-# View metrics dashboard
-npx ruflo@latest hooks metrics
-
-# Check intelligence status
-npx ruflo@latest hooks intelligence --status
-
-# Background workers
-npx ruflo@latest hooks worker list
-```
-
-## Quick Setup
-
-```bash
-claude mcp add ruflo -- npx -y ruflo@latest
-npx ruflo@latest daemon start
-npx ruflo@latest doctor --fix
-```
-
-## Claude Code vs CLI Tools
-
-- Claude Code's Task tool handles ALL execution: agents, file ops, code generation, git
-- CLI tools handle coordination via Bash: swarm init, memory, hooks, routing
-- NEVER use CLI tools as a substitute for Task tool agents
 
 ## Support
 
-- Documentation: https://github.com/ruvnet/claude-flow
-- Issues: https://github.com/ruvnet/claude-flow/issues
+- Use Claude Code's built-in tools and skills
+- Check documentation at https://claude.com/claude-code
