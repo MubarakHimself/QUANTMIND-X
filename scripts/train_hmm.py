@@ -19,7 +19,6 @@ Usage:
 Reference: docs/architecture/components.md
 """
 
-import os
 import sys
 import json
 import logging
@@ -32,7 +31,6 @@ from typing import Dict, List, Optional, Tuple, Any
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 # Add project root to path
@@ -47,11 +45,10 @@ except ImportError:
 
 from src.risk.physics.hmm_features import (
     HMMFeatureExtractor, 
-    FeatureConfig,
     prepare_training_data,
     load_config_from_file
 )
-from src.database.models import HMMModel, HMMSyncStatus
+from src.database.models import HMMModel
 from src.database.engine import engine
 from src.database.duckdb_connection import DuckDBConnection
 
@@ -458,7 +455,7 @@ class HMMTrainer:
                 HMMModel.model_type == model_type,
                 HMMModel.symbol == symbol,
                 HMMModel.timeframe == timeframe,
-                HMMModel.is_active == True
+                HMMModel.is_active
             ).update({'is_active': False})
             
             # Create new model record
@@ -574,7 +571,7 @@ def main():
         else:
             model_path, version = trainer.train_per_symbol_timeframe(args.symbol, args.timeframe)
         
-        print(f"\nTraining completed successfully!")
+        print("\nTraining completed successfully!")
         print(f"Model saved: {model_path}")
         print(f"Version: {version}")
         
@@ -582,7 +579,7 @@ def main():
         if args.validate and trainer.current_model is not None:
             features, _ = trainer.load_training_data(args.symbol, args.timeframe)
             report = trainer.validate_model(trainer.current_model, features)
-            print(f"\nValidation report:")
+            print("\nValidation report:")
             for check in report['checks']:
                 status = "PASS" if check['passed'] else "FAIL"
                 print(f"  {check['name']}: {check['value']:.4f} (threshold: {check['threshold']}) [{status}]")

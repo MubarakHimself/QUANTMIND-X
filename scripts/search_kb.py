@@ -5,7 +5,6 @@ Usage: python scripts/search_kb.py "your search query"
 """
 
 import sys
-import json
 import chromadb
 from pathlib import Path
 

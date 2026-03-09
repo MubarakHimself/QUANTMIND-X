@@ -8,7 +8,6 @@ This script:
 3. Fixes common async test issues
 """
 
-import os
 import re
 import sys
 from pathlib import Path
@@ -169,11 +168,11 @@ def main():
                 total_issues += 1
             
             # Apply fixes
-            print(f"\n  Applying fixes...")
+            print("\n  Applying fixes...")
             
             # Fix long sleeps
             if fix_long_sleeps(test_file):
-                print(f"    ✓ Fixed long sleep operations")
+                print("    ✓ Fixed long sleep operations")
                 fixed_files.append(test_file)
             
             # Add timeouts to async tests
@@ -184,7 +183,7 @@ def main():
                         if test_file not in fixed_files:
                             fixed_files.append(test_file)
         else:
-            print(f"  ✓ No issues found")
+            print("  ✓ No issues found")
     
     print("\n" + "=" * 70)
     print("Summary")

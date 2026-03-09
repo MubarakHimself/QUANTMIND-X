@@ -35,13 +35,11 @@ Impact:
 import sys
 import logging
 import argparse
-from typing import Optional
 
 # Add parent directory to path for imports
 sys.path.insert(0, '/home/mubarkahimself/Desktop/QUANTMINDX')
 
 from src.router.broker_registry import BrokerRegistryManager
-from src.database.manager import DatabaseManager
 
 # Configure logging
 logging.basicConfig(

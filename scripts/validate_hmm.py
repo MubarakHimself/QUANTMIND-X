@@ -20,7 +20,6 @@ Usage:
 Reference: docs/architecture/components.md
 """
 
-import os
 import sys
 import json
 import logging
@@ -28,24 +27,23 @@ import argparse
 import pickle
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, Optional, Tuple, Any
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
-    from hmmlearn import hmm
+    import hmmlearn  # noqa: F401
     HMMLEARN_AVAILABLE = True
 except ImportError:
     HMMLEARN_AVAILABLE = False
     print("WARNING: hmmlearn not installed. Install with: pip install hmmlearn")
 
-from src.risk.physics.hmm_features import HMMFeatureExtractor, FeatureConfig
+from src.risk.physics.hmm_features import HMMFeatureExtractor
 from src.risk.physics.ising_sensor import IsingRegimeSensor, IsingSensorConfig
 from src.database.models import HMMModel
 from src.database.engine import engine
@@ -137,7 +135,7 @@ class HMMValidator:
         session = self.Session()
         
         try:
-            query = session.query(HMMModel).filter(HMMModel.is_active == True)
+            query = session.query(HMMModel).filter(HMMModel.is_active)
             
             if version:
                 query = query.filter(HMMModel.version == version)
@@ -171,7 +169,7 @@ class HMMValidator:
         
         try:
             with DuckDBConnection() as conn:
-                query = f"""
+                query = """
                     SELECT symbol, timeframe, timestamp, open, high, low, close, volume
                     FROM market_data
                     WHERE timestamp >= NOW() - INTERVAL '30 days'
@@ -547,12 +545,12 @@ def main():
         print("HMM MODEL VALIDATION REPORT")
         print("=" * 60)
         print(f"\nModel: {model.n_components} states, {features.shape[1]} features")
-        print(f"\nQuality Validation:")
+        print("\nQuality Validation:")
         for check in report['quality_validation']['checks']:
             status = "PASS" if check['passed'] else "FAIL"
             print(f"  [{status}] {check['name']}: {check['description']}")
         
-        print(f"\nIsing Comparison:")
+        print("\nIsing Comparison:")
         print(f"  Agreement: {report['ising_comparison']['agreement_pct']:.1f}%")
         agreement_check = report['ising_comparison']['agreement_check']
         status = "PASS" if agreement_check['passed'] else "FAIL"

@@ -90,7 +90,7 @@ def init_git_repository():
 !.gitignore
 """
     gitignore_path.write_text(gitignore_content)
-    print(f"   Created: generated_bots/.gitignore")
+    print("   Created: generated_bots/.gitignore")
 
     # Create README
     readme_path = git_repo_path / "README.md"
@@ -137,12 +137,12 @@ Strategy: RSI Mean Reversion, Backtest: Sharpe=1.8, Drawdown=12%
 ```
 """
     readme_path.write_text(readme_content)
-    print(f"   Created: README.md")
+    print("   Created: README.md")
 
     # Create configuration directory
     config_path = git_repo_path / "configuration"
     config_path.mkdir(parents=True, exist_ok=True)
-    print(f"   Created: configuration/")
+    print("   Created: configuration/")
 
     # Initial commit
     print("\n5. Creating initial commit...")

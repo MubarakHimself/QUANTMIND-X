@@ -24,7 +24,7 @@ import time
 import subprocess
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -81,7 +81,7 @@ def fetch_old_data(days: int = 7) -> pd.DataFrame:
     cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
     
     with get_warm_connection() as conn:
-        query = f"""
+        query = """
             SELECT * FROM market_data
             WHERE timestamp < :cutoff_date
             ORDER BY symbol, timeframe, timestamp

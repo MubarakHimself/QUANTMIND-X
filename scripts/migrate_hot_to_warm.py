@@ -17,14 +17,12 @@ Environment:
 
 import os
 import sys
-import json
 import logging
 import argparse
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import List, Dict, Any, Optional
-from decimal import Decimal
+from typing import List, Dict, Any
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))

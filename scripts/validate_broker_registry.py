@@ -140,7 +140,7 @@ def validate_roboforex_prime(mgr: BrokerRegistryManager) -> bool:
         logger.error(f"  ❌ Commission: expected 0.0, got {commission_per_lot}")
         checks.append(False)
     else:
-        logger.info(f"  ✓ Commission: no commission")
+        logger.info("  ✓ Commission: no commission")
         checks.append(True)
     
     # Check pip values
@@ -188,7 +188,7 @@ def validate_mt5_default(mgr: BrokerRegistryManager) -> bool:
         logger.error("  ❌ Pip values not set")
         checks.append(False)
     else:
-        logger.info(f"  ✓ Pip values defined")
+        logger.info("  ✓ Pip values defined")
         checks.append(True)
     
     return all(checks)

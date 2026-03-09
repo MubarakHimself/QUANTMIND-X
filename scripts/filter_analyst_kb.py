@@ -85,7 +85,7 @@ def create_analyst_kb():
         response = input("Delete and recreate? (y/N): ").strip().lower()
         if response == 'y':
             client.delete_collection(ANALYST_COLLECTION)
-            print(f"Deleted existing collection.")
+            print("Deleted existing collection.")
         else:
             print("Aborted.")
             sys.exit(0)

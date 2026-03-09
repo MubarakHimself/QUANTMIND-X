@@ -7,7 +7,7 @@ import re
 import requests
 from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
-from urllib.parse import urljoin, urlparse, parse_qs
+from urllib.parse import urljoin
 import time
 from tqdm import tqdm
 
@@ -115,8 +115,6 @@ class MQL5CategoryCrawler:
     
     def build_page_url(self, base_url: str, page_num: int) -> str:
         """Build URL for specific page number"""
-        parsed = urlparse(base_url)
-        
         if 'page=' in base_url:
             # Replace existing page number
             return re.sub(r'page=\d+', f'page={page_num}', base_url)

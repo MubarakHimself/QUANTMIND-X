@@ -8,7 +8,7 @@ import time
 import json
 import random
 from pathlib import Path
-from typing import List, Dict
+from typing import Dict
 from datetime import datetime
 
 import requests
@@ -128,7 +128,7 @@ class SimpleMQL5Scraper:
             if article_body:
                 article_html = str(article_body)
             else:
-                print(f"   ⚠️ Could not find article body, using full page")
+                print("   ⚠️ Could not find article body, using full page")
                 article_html = response.text
             
             # Convert to markdown
@@ -189,7 +189,7 @@ scraped_at: {datetime.now().isoformat()}
         self.start_time = time.time()
         
         print(f"\n{'='*70}")
-        print(f"🚀 STARTING SIMPLE SCRAPER")
+        print("🚀 STARTING SIMPLE SCRAPER")
         print(f"{'='*70}")
         print(f"Batch size: {self.batch_size}")
         print(f"Start index: {self.start_index}")
@@ -216,7 +216,7 @@ scraped_at: {datetime.now().isoformat()}
         elapsed_minutes = elapsed_time / 60
         
         print(f"\n{'='*70}")
-        print(f"✨ SCRAPING COMPLETE")
+        print("✨ SCRAPING COMPLETE")
         print(f"{'='*70}")
         print(f"✅ Successfully scraped: {self.scraped_count}/{len(self.articles)}")
         print(f"❌ Failed: {len(self.failed_urls)}")
