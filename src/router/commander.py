@@ -125,9 +125,7 @@ class Commander:
 
         overlay = PropFirmRiskOverlay(firm_name=prop_firm_name)
         return overlay.should_block_trade(account_book, prop_firm_name, current_drawdown)
-        if APSCHEDULER_AVAILABLE:
-            self._setup_lifecycle_scheduler()
-    
+
     def _setup_lifecycle_scheduler(self):
         """Setup APScheduler for LifecycleManager daily checks."""
         try:
@@ -645,7 +643,6 @@ class Commander:
             # 5. Execute Trade via MT5 Adapter
             try:
                 from src.data.brokers.mt5_socket_adapter import MT5SocketAdapter
-                from src.risk.integrations.mt5.account import AccountInfo
 
                 # Check Drawdown Limits before executing trade
                 account_book = execution_params.get('account_book', 'personal')
