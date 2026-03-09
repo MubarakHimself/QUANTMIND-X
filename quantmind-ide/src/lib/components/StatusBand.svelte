@@ -1,8 +1,11 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { Bot, DollarSign, Percent } from 'lucide-svelte';
+  import { API_CONFIG } from '$lib/config/api';
+  import { getAllSessions, getMarketState, getTradingMetrics } from '$lib/api';
 
   // State
+  let loading = true;
   let sessions: Record<string, { active: boolean; name: string }> = {};
   let regime = 'UNKNOWN';
   let activeBots = 0;
@@ -11,14 +14,15 @@
 
   let refreshInterval: ReturnType<typeof setInterval>;
 
-  // API endpoints - using direct fetch for now
-  const API_BASE = 'http://localhost:8000/api';
-  const SESSIONS_API = `${API_BASE}/sessions/all`;
-  const MARKET_API = `${API_BASE}/router/market`;
-  const METRICS_API = `${API_BASE}/metrics/trading`;
+  // Use centralized API configuration
+  const API_BASE = API_CONFIG.API_BASE;
+
+  // Explicit session order for deterministic display
+  const SESSION_ORDER = ['ASIAN', 'LONDON', 'NEW_YORK', 'OVERLAP'];
 
   onMount(async () => {
     await fetchData();
+    loading = false;
     refreshInterval = setInterval(fetchData, 5000); // Refresh every 5 seconds
   });
 
@@ -28,30 +32,29 @@
 
   async function fetchData() {
     try {
-      // Fetch sessions
-      const sessionsRes = await fetch(SESSIONS_API);
-      if (sessionsRes.ok) sessions = await sessionsRes.json();
+      // Fetch sessions using helper
+      const sessionsData = await getAllSessions();
+      if (sessionsData) sessions = sessionsData;
 
-      // Fetch market (includes regime)
-      const marketRes = await fetch(MARKET_API);
-      if (marketRes.ok) {
-        const market = await marketRes.json();
+      // Fetch market state using helper
+      const marketData = await getMarketState();
+      if (marketData) {
         // Extract regime from the nested structure
-        if (market.regime) {
-          regime = determineRegime(market.regime);
+        if (marketData.regime) {
+          regime = determineRegime(marketData.regime);
         }
       }
 
-      // Fetch trading metrics
-      const metricsRes = await fetch(METRICS_API);
-      if (metricsRes.ok) {
-        const metrics = await metricsRes.json();
-        activeBots = metrics.active_bots || 0;
-        dailyPnl = metrics.daily_pnl || 0;
-        winRate = (metrics.win_rate || 0) * 100;
+      // Fetch trading metrics using helper
+      const metricsData = await getTradingMetrics();
+      if (metricsData) {
+        activeBots = metricsData.active_bots || 0;
+        dailyPnl = metricsData.daily_pnl || 0;
+        winRate = (metricsData.win_rate || 0) * 100;
       }
     } catch (e) {
       console.error('StatusBand: Failed to fetch data', e);
+      loading = false;
     }
   }
 
@@ -95,16 +98,19 @@
 </script>
 
 <div class="status-band">
-  <div class="sessions">
-    {#each Object.entries(sessions) as [key, session]}
-      {#if key !== 'CLOSED'}
-        <div class="session-item" class:active={session.active}>
-          <span class="dot" style="background: {getSessionColor(session.active)}"></span>
-          <span class="session-name">{key}</span>
-        </div>
-      {/if}
-    {/each}
-  </div>
+  {#if loading}
+    <span class="loading">Loading...</span>
+  {:else}
+    <div class="sessions">
+      {#each SESSION_ORDER as sessionKey}
+        {#if sessions[sessionKey] && sessionKey !== 'CLOSED'}
+          <div class="session-item" class:active={sessions[sessionKey].active}>
+            <span class="dot" style="background: {getSessionColor(sessions[sessionKey].active)}"></span>
+            <span class="session-name">{sessionKey}</span>
+          </div>
+        {/if}
+      {/each}
+    </div>
 
   <div class="divider">|</div>
 
@@ -129,6 +135,7 @@
       <span>{winRate.toFixed(0)}% WR</span>
     </div>
   </div>
+  {/if}
 </div>
 
 <style>
@@ -142,6 +149,11 @@
     font-size: 12px;
     color: var(--text-secondary, #d1d5db);
     overflow-x: auto;
+  }
+
+  .loading {
+    color: var(--text-muted, #6b7280);
+    font-style: italic;
   }
 
   .sessions {
