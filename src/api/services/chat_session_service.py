@@ -154,3 +154,45 @@ class ChatSessionService:
             raise
         finally:
             db.close()
+
+    async def build_session_context(self, session_id: str) -> Dict[str, Any]:
+        """
+        Build context for a chat session from history and memory.
+
+        HOT: Recent messages from SQLite
+        WARM: Search memory facade for relevant context (if available)
+        """
+        # Get recent messages (HOT tier)
+        messages = await self.get_messages(session_id, limit=20)
+
+        # Format history
+        history = [
+            {"role": msg.role, "content": msg.content}
+            for msg in messages
+        ]
+
+        # Get session for context
+        session = await self.get_session(session_id)
+
+        # Try to get memory context (WARM tier via UnifiedMemoryFacade)
+        memory_context = []
+        try:
+            from src.agents.memory.unified_memory_facade import get_memory_facade
+            memory = get_memory_facade()
+
+            if history:
+                last_message = history[-1]["content"]
+                # Search memory for relevant context
+                results = await memory.search(last_message, limit=3)
+                memory_context = results
+        except Exception:
+            pass  # Memory not available
+
+        return {
+            "session_id": session_id,
+            "agent_type": session.agent_type if session else None,
+            "agent_id": session.agent_id if session else None,
+            "context": session.context if session else {},
+            "history": history,
+            "memory": memory_context
+        }
