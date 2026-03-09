@@ -321,11 +321,62 @@ export async function getBacktestStatus(backtestId: string): Promise<{ status: s
     return apiFetch(`/v1/backtest/status/${backtestId}`);
 }
 
+// =============================================================================
+// Status Band Endpoints
+// =============================================================================
+
+export interface SessionStatus {
+  active: boolean;
+  name: string;
+}
+
+export interface SessionsResponse {
+  [key: string]: SessionStatus;
+}
+
+export interface MarketRegime {
+  quality: number;
+  trend: string;
+  chaos: number;
+  volatility: string;
+}
+
+export interface MarketResponse {
+  regime: MarketRegime;
+  symbols?: Array<{
+    symbol: string;
+    price: number;
+    change: number;
+    spread: number;
+  }>;
+}
+
+export interface TradingMetrics {
+  tick_latency_ms: number;
+  active_bots: number;
+  active_positions: number;
+  daily_pnl: number;
+  total_trades: number;
+  win_rate: number;
+}
+
+export async function getAllSessions(): Promise<SessionsResponse> {
+  return apiFetch<SessionsResponse>('/sessions/all');
+}
+
+export async function getMarketState(): Promise<MarketResponse> {
+  return apiFetch<MarketResponse>('/router/market');
+}
+
+export async function getTradingMetrics(): Promise<TradingMetrics> {
+  return apiFetch<TradingMetrics>('/metrics/trading');
+}
+
 // Export WebSocket client creation functions
 export {
-    createBacktestClient,
-    createTradingClient,
-    createWebSocketClient
+  createBacktestClient,
+  createTradingClient,
+  createWebSocketClient
 } from './ws-client';
 
 // =============================================================================
