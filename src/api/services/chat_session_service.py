@@ -114,3 +114,43 @@ class ChatSessionService:
             return messages
         finally:
             db.close()
+
+    async def list_sessions(
+        self,
+        user_id: Optional[str] = None,
+        agent_type: Optional[str] = None,
+        limit: int = 100
+    ) -> List[ChatSession]:
+        """List sessions with optional filtering."""
+        db = Session()
+        try:
+            query = db.query(ChatSession)
+
+            if user_id:
+                query = query.filter(ChatSession.user_id == user_id)
+            if agent_type:
+                query = query.filter(ChatSession.agent_type == agent_type)
+
+            sessions = query.order_by(ChatSession.updated_at.desc()).limit(limit).all()
+
+            for session in sessions:
+                db.expunge(session)
+            return sessions
+        finally:
+            db.close()
+
+    async def delete_session(self, session_id: str) -> bool:
+        """Delete a session and all its messages."""
+        db = Session()
+        try:
+            session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+            if not session:
+                return False
+            db.delete(session)
+            db.commit()
+            return True
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()

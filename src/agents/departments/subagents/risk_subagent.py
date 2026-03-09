@@ -8,10 +8,47 @@ and drawdown monitoring.
 Model: Haiku (fast, low-cost for worker tasks)
 """
 
+import logging
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from datetime import datetime
 import math
+
+logger = logging.getLogger(__name__)
+
+
+# Risk assessment system prompt for LLM
+RISK_ASSESSMENT_SYSTEM_PROMPT = """You are an expert risk analyst for a quantitative trading system.
+
+Your task is to analyze and assess risk for trades and positions. You provide READ-ONLY analysis
+and recommendations - you do not make trading decisions.
+
+## Risk Analysis Guidelines:
+1. Analyze position risk based on provided parameters
+2. Assess exposure and concentration risk
+3. Evaluate correlation and sector risk
+4. Check against risk limits and thresholds
+5. Provide clear risk scores and recommendations
+6. Consider worst-case scenarios and stress cases
+7. Identify potential risk factors and mitigation suggestions
+
+## Risk Metrics to Consider:
+- Position size relative to account
+- Exposure per symbol and sector
+- Correlation with existing positions
+- Volatility and VaR
+- Drawdown potential
+- Leverage utilization
+
+## Output Format:
+Always provide structured risk assessments with:
+- Risk level (LOW, MEDIUM, HIGH, CRITICAL)
+- Risk factors identified
+- Mitigation recommendations
+- Key metrics summary
+
+Remember: You provide analysis only - the trading system makes decisions based on your assessment.
+"""
 
 
 @dataclass
@@ -65,7 +102,9 @@ class RiskSubAgent:
         self.available_tools = available_tools or []
         self.risk_limits = risk_limits or RiskLimits()
         self.model_tier = "haiku"
+        self._llm_client = None
         self._initialize_tools()
+        self._initialize_llm()
 
     def _initialize_tools(self) -> Dict[str, Any]:
         """Initialize available tools for this agent."""
@@ -77,6 +116,9 @@ class RiskSubAgent:
             "check_drawdown": self.check_drawdown,
             "validate_trade": self.validate_trade,
             "calculate_exposure": self.calculate_exposure,
+            "assess_risk": self.assess_risk,
+            "check_limits": self.check_limits,
+            "generate_risk_report": self.generate_risk_report,
         }
 
         for tool_name in self.available_tools:
@@ -84,6 +126,361 @@ class RiskSubAgent:
                 tools[tool_name] = tool_registry[tool_name]
 
         return tools
+
+    def _initialize_llm(self) -> None:
+        """Initialize LLM client for risk analysis."""
+        try:
+            from anthropic import Anthropic
+            self._llm_client = Anthropic()
+            logger.info("RiskSubAgent: LLM client initialized")
+        except ImportError:
+            logger.warning("RiskSubAgent: Anthropic SDK not available")
+
+    def _call_llm(
+        self,
+        user_prompt: str,
+        system_prompt: str = RISK_ASSESSMENT_SYSTEM_PROMPT,
+    ) -> str:
+        """
+        Call LLM for risk analysis.
+
+        Args:
+            user_prompt: User's risk analysis request
+            system_prompt: System instructions
+
+        Returns:
+            LLM response text
+        """
+        if not self._llm_client:
+            raise RuntimeError("LLM client not initialized")
+
+        try:
+            response = self._llm_client.messages.create(
+                model="claude-3-5-haiku-20241022",  # Use Haiku for cost efficiency
+                max_tokens=2000,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+
+            return response.content[0].text
+
+        except Exception as e:
+            logger.error(f"RiskSubAgent: LLM call failed: {e}")
+            raise
+
+    def assess_risk(
+        self,
+        trade: Dict[str, Any],
+        portfolio: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Assess risk for a trade or position using LLM analysis.
+
+        Args:
+            trade: Trade parameters (symbol, side, volume, price, etc.)
+            portfolio: Current portfolio positions (optional)
+
+        Returns:
+            Risk assessment with LLM analysis
+        """
+        logger.info(f"RiskSubAgent: Assessing risk for {trade.get('symbol', 'UNKNOWN')}")
+
+        # Calculate baseline risk metrics
+        position_value = trade.get("volume", 0) * trade.get("price", 0) * 100000
+        account_balance = trade.get("account_balance", 10000)
+        position_percent = (position_value / account_balance) if account_balance > 0 else 0
+
+        # Build LLM prompt
+        user_prompt = f"""Analyze the risk for the following trade:
+
+**Trade Details:**
+- Symbol: {trade.get('symbol', 'N/A')}
+- Side: {trade.get('side', 'N/A')}
+- Volume: {trade.get('volume', 0)} lots
+- Entry Price: {trade.get('price', 0)}
+- Position Value: ${position_value:,.2f}
+- Position as % of Account: {position_percent:.2%}
+
+**Account Info:**
+- Balance: ${account_balance:,.2f}
+
+{f"**Current Portfolio:**\n{portfolio}" if portfolio else ""}
+
+Provide:
+1. Risk level (LOW, MEDIUM, HIGH, CRITICAL)
+2. Key risk factors
+3. Recommendations
+4. Risk score (0-100)
+"""
+
+        try:
+            analysis = self._call_llm(user_prompt=user_prompt)
+
+            return {
+                "analysis": analysis,
+                "position_value": round(position_value, 2),
+                "position_percent": round(position_percent, 4),
+                "symbol": trade.get("symbol"),
+                "status": "analyzed",
+            }
+
+        except Exception as e:
+            logger.error(f"RiskSubAgent: Risk assessment failed: {e}")
+            return {
+                "analysis": None,
+                "error": str(e),
+                "status": "error",
+            }
+
+    def check_limits(
+        self,
+        trade: Dict[str, Any],
+        current_positions: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Check if trade exceeds risk limits using LLM analysis.
+
+        Args:
+            trade: Trade parameters
+            current_positions: Current open positions
+
+        Returns:
+            Limit check results with LLM analysis
+        """
+        logger.info(f"RiskSubAgent: Checking limits for {trade.get('symbol', 'UNKNOWN')}")
+
+        # Get current limits
+        limits = {
+            "max_position_size": self.risk_limits.max_position_size,
+            "max_daily_loss": self.risk_limits.max_daily_loss,
+            "max_drawdown": self.risk_limits.max_drawdown,
+            "max_exposure_per_symbol": self.risk_limits.max_exposure_per_symbol,
+            "max_leverage": self.risk_limits.max_leverage,
+        }
+
+        # Calculate current exposure
+        total_exposure = 0.0
+        if current_positions:
+            for pos in current_positions:
+                volume = pos.get("volume", 0)
+                price = pos.get("entry_price", 1.0)
+                total_exposure += volume * price * 100000
+
+        # Add new trade exposure
+        new_volume = trade.get("volume", 0)
+        new_price = trade.get("price", 1.0)
+        new_exposure = new_volume * new_price * 100000
+        total_exposure += new_exposure
+
+        account_balance = trade.get("account_balance", 10000)
+        total_exposure_percent = (total_exposure / account_balance) if account_balance > 0 else 0
+
+        # Check individual limits
+        limit_checks = []
+
+        if new_volume > limits["max_position_size"]:
+            limit_checks.append({
+                "limit": "max_position_size",
+                "passed": False,
+                "current": new_volume,
+                "limit_value": limits["max_position_size"],
+                "message": f"Volume {new_volume} exceeds max {limits['max_position_size']}",
+            })
+        else:
+            limit_checks.append({
+                "limit": "max_position_size",
+                "passed": True,
+                "current": new_volume,
+                "limit_value": limits["max_position_size"],
+                "message": "Position size within limits",
+            })
+
+        if total_exposure_percent > limits["max_exposure_per_symbol"]:
+            limit_checks.append({
+                "limit": "max_exposure_per_symbol",
+                "passed": False,
+                "current": round(total_exposure_percent, 4),
+                "limit_value": limits["max_exposure_per_symbol"],
+                "message": f"Total exposure {total_exposure_percent:.2%} exceeds max {limits['max_exposure_per_symbol']:.1%}",
+            })
+        else:
+            limit_checks.append({
+                "limit": "max_exposure_per_symbol",
+                "passed": True,
+                "current": round(total_exposure_percent, 4),
+                "limit_value": limits["max_exposure_per_symbol"],
+                "message": "Exposure within limits",
+            })
+
+        # Get LLM analysis
+        user_prompt = f"""Analyze the limit check results for this trade:
+
+**Trade:**
+- Symbol: {trade.get('symbol')}
+- Volume: {trade.get('volume')} lots
+- New Exposure: ${new_exposure:,.2f}
+
+**Current Positions:** {len(current_positions or [])}
+**Total Exposure:** ${total_exposure:,.2f} ({total_exposure_percent:.2%} of account)
+
+**Risk Limits:**
+- Max Position Size: {limits['max_position_size']} lots
+- Max Exposure per Symbol: {limits['max_exposure_per_symbol']:.1%}
+- Max Leverage: {limits['max_leverage']}x
+
+**Limit Check Results:**
+{chr(10).join([f"- {check['limit']}: {'PASSED' if check['passed'] else 'FAILED'} - {check['message']}" for check in limit_checks])}
+
+Provide:
+1. Overall limit compliance status
+2. Additional risk considerations
+3. Recommendations for trade approval
+"""
+
+        try:
+            analysis = self._call_llm(user_prompt=user_prompt)
+
+            all_passed = all(check["passed"] for check in limit_checks)
+
+            return {
+                "analysis": analysis,
+                "passed": all_passed,
+                "limit_checks": limit_checks,
+                "total_exposure": round(total_exposure, 2),
+                "total_exposure_percent": round(total_exposure_percent, 4),
+                "limits": limits,
+                "status": "checked",
+            }
+
+        except Exception as e:
+            logger.error(f"RiskSubAgent: Limit check failed: {e}")
+            return {
+                "error": str(e),
+                "limit_checks": limit_checks,
+                "status": "error",
+            }
+
+    def generate_risk_report(
+        self,
+        positions: List[Dict[str, Any]],
+        account_balance: float,
+        peak_balance: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generate comprehensive risk analysis report using LLM.
+
+        Args:
+            positions: Current open positions
+            account_balance: Current account balance
+            peak_balance: Peak account balance (optional)
+
+        Returns:
+            Risk report with LLM analysis
+        """
+        logger.info(f"RiskSubAgent: Generating risk report for {len(positions)} positions")
+
+        # Calculate portfolio metrics
+        total_exposure = 0.0
+        exposure_by_symbol = {}
+        long_exposure = 0.0
+        short_exposure = 0.0
+
+        for pos in positions:
+            symbol = pos.get("symbol", "UNKNOWN")
+            volume = pos.get("volume", 0)
+            price = pos.get("entry_price", 1.0)
+            side = pos.get("side", "long")
+
+            position_value = volume * price * 100000
+            total_exposure += position_value
+
+            exposure_by_symbol[symbol] = exposure_by_symbol.get(symbol, 0) + position_value
+
+            if side.lower() == "long":
+                long_exposure += position_value
+            else:
+                short_exposure += position_value
+
+        # Calculate drawdown if peak provided
+        drawdown_percent = 0.0
+        if peak_balance and peak_balance > 0:
+            drawdown_percent = ((peak_balance - account_balance) / peak_balance) * 100
+
+        # Calculate portfolio metrics
+        total_exposure_ratio = (total_exposure / account_balance) if account_balance > 0 else 0
+        long_short_ratio = long_exposure / short_exposure if short_exposure > 0 else float('inf')
+
+        # Build portfolio summary for LLM
+        positions_summary = "\n".join([
+            f"- {pos.get('symbol')}: {pos.get('volume')} lots @ {pos.get('entry_price')} ({pos.get('side', 'long')})"
+            for pos in positions
+        ]) or "No open positions"
+
+        # Build LLM prompt
+        user_prompt = f"""Generate a comprehensive risk analysis report for this trading portfolio:
+
+**Account Summary:**
+- Current Balance: ${account_balance:,.2f}
+- Peak Balance: ${peak_balance:,.2f if peak_balance else 'N/A'}
+- Current Drawdown: {drawdown_percent:.2f}%
+- Max Drawdown Limit: {self.risk_limits.max_drawdown * 100}%
+
+**Portfolio Positions ({len(positions)} total):**
+{positions_summary}
+
+**Exposure Analysis:**
+- Total Exposure: ${total_exposure:,.2f}
+- Total Exposure Ratio: {total_exposure_ratio:.2%} of account
+- Long Exposure: ${long_exposure:,.2f}
+- Short Exposure: ${short_exposure:,.2f}
+- Long/Short Ratio: {long_short_ratio:.2f}
+
+**Risk Limits:**
+- Max Daily Loss: {self.risk_limits.max_daily_loss * 100}%
+- Max Drawdown: {self.risk_limits.max_drawdown * 100}%
+- Max Exposure per Symbol: {self.risk_limits.max_exposure_per_symbol * 100}%
+- Max Leverage: {self.risk_limits.max_leverage}x
+
+**Per-Symbol Exposure:**
+{chr(10).join([f"- {symbol}: ${value:,.2f} ({value/total_exposure*100:.1f}% of total)" for symbol, value in exposure_by_symbol.items()]) if exposure_by_symbol else "N/A"}
+
+Provide:
+1. Overall portfolio risk assessment
+2. Concentration and correlation risk analysis
+3. Current risk metric summary (VaR, drawdown, leverage)
+4. Risk warnings or concerns
+5. Recommendations for position management
+6. Risk score (0-100)
+"""
+
+        try:
+            analysis = self._call_llm(user_prompt=user_prompt)
+
+            return {
+                "report": analysis,
+                "summary": {
+                    "total_positions": len(positions),
+                    "total_exposure": round(total_exposure, 2),
+                    "total_exposure_ratio": round(total_exposure_ratio, 4),
+                    "long_exposure": round(long_exposure, 2),
+                    "short_exposure": round(short_exposure, 2),
+                    "drawdown_percent": round(drawdown_percent, 2),
+                    "exposure_by_symbol": {k: round(v, 2) for k, v in exposure_by_symbol.items()},
+                },
+                "limits": {
+                    "max_drawdown": self.risk_limits.max_drawdown * 100,
+                    "max_exposure_per_symbol": self.risk_limits.max_exposure_per_symbol * 100,
+                    "max_leverage": self.risk_limits.max_leverage,
+                },
+                "status": "generated",
+            }
+
+        except Exception as e:
+            logger.error(f"RiskSubAgent: Risk report generation failed: {e}")
+            return {
+                "error": str(e),
+                "status": "error",
+            }
 
     def calculate_position_size(
         self,

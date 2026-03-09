@@ -7,9 +7,107 @@ Responsible for order execution, fill tracking, and trade monitoring.
 Model: Haiku (fast, low-cost for worker tasks)
 """
 
+import json
+import logging
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+
+# Trading system prompts for LLM
+TRADING_SYSTEM_PROMPT = """You are an expert trading assistant for paper trading operations.
+
+Your role is to help with:
+1. Parsing natural language order requests into structured trade parameters
+2. Suggesting trades based on market analysis and risk parameters
+3. Explaining current positions and their status in plain language
+
+## Important Rules:
+- This is PAPER TRADING ONLY - no real money is involved
+- Always confirm that trades are simulated before executing
+- Consider risk management: position sizing, stop-loss, take-profit
+- Follow the user's risk tolerance and trading strategy
+- Never execute trades without user confirmation
+
+## Order Types:
+- market: Execute immediately at current price
+- limit: Execute at specified price or better
+- stop: Execute when price reaches specified level
+
+## Position Management:
+- Always suggest appropriate stop-loss and take-profit levels
+- Consider risk-to-reward ratio (minimum 1:2 recommended)
+- Monitor position size relative to account balance
+
+## Response Format:
+When parsing orders, return JSON with:
+- symbol: Trading pair (e.g., EURUSD, BTCUSD)
+- side: buy or sell
+- order_type: market, limit, or stop
+- volume: Position size in lots
+- price: Limit/stop price (if applicable)
+- stop_loss: Stop loss price
+- take_profit: Take profit price
+- reasoning: Brief explanation of the trade logic
+"""
+
+PARSE_ORDER_PROMPT = """Parse the following natural language trading request into structured order parameters.
+
+Return JSON with these fields:
+- symbol: Trading pair
+- side: buy or sell
+- order_type: market, limit, or stop
+- volume: Position size in lots (standard lot = 100,000 units)
+- price: Limit/stop price (for limit/stop orders)
+- stop_loss: Stop loss price
+- take_profit: Take profit price
+- reasoning: Brief explanation
+
+Example: "Buy 1 lot EURUSD at 1.0850 with stop at 1.0800 and take profit at 1.0950"
+-> {symbol: "EURUSD", side: "buy", order_type: "limit", volume: 1.0, price: 1.0850, stop_loss: 1.0800, take_profit: 1.0950, reasoning: "Long position at support level"}
+
+Request: {user_request}
+"""
+
+SUGGEST_TRADE_PROMPT = """Based on the following market analysis and current positions, suggest an appropriate trade.
+
+Current positions: {positions}
+Market data: {market_data}
+Risk parameters: {risk_params}
+
+Consider:
+1. Direction (buy/sell) based on trend and analysis
+2. Entry price level
+3. Stop loss placement
+4. Take profit target
+5. Position size based on risk parameters
+
+Return JSON with:
+- recommendation: "buy", "sell", or "no_trade"
+- symbol: Trading pair
+- entry_price: Suggested entry price
+- stop_loss: Stop loss price
+- take_profit: Take profit price
+- volume: Suggested volume in lots
+- reasoning: Explanation of the recommendation
+- risk_assessment: Risk level (low, medium, high)
+"""
+
+EXPLAIN_POSITION_PROMPT = """Explain the following trading position in simple, natural language.
+
+Position details: {position_details}
+
+Include:
+1. What the position is (long/short)
+2. Entry price and current status
+3. Profit/loss status
+4. Any stop loss or take profit levels
+5. Recommendation (hold, close, modify)
+
+Be clear that this is paper trading and no real money is involved.
+"""
 
 
 @dataclass
@@ -53,7 +151,9 @@ class TradingSubAgent:
         self.model_tier = "haiku"
         self._open_positions: Dict[str, Any] = {}
         self._pending_orders: List[Dict[str, Any]] = []
+        self._llm_client = None
         self._initialize_tools()
+        self._initialize_llm()
 
     def _initialize_tools(self) -> Dict[str, Any]:
         """Initialize available tools for this agent."""
@@ -66,6 +166,9 @@ class TradingSubAgent:
             "get_positions": self.get_positions,
             "get_orders": self.get_orders,
             "close_position": self.close_position,
+            "parse_order_request": self.parse_order_request,
+            "suggest_trade": self.suggest_trade,
+            "explain_position": self.explain_position,
         }
 
         for tool_name in self.available_tools:
@@ -73,6 +176,47 @@ class TradingSubAgent:
                 tools[tool_name] = tool_registry[tool_name]
 
         return tools
+
+    def _initialize_llm(self) -> None:
+        """Initialize LLM client for natural language processing."""
+        try:
+            from anthropic import Anthropic
+            self._llm_client = Anthropic()
+            logger.info("TradingSubAgent: LLM client initialized")
+        except ImportError:
+            logger.warning("TradingSubAgent: Anthropic SDK not available")
+
+    def _call_llm(
+        self,
+        user_prompt: str,
+        system_prompt: str = TRADING_SYSTEM_PROMPT,
+    ) -> str:
+        """
+        Call LLM for trading assistance.
+
+        Args:
+            user_prompt: User's request
+            system_prompt: System instructions
+
+        Returns:
+            LLM response text
+        """
+        if not self._llm_client:
+            raise RuntimeError("LLM client not initialized")
+
+        try:
+            response = self._llm_client.messages.create(
+                model="claude-3-5-haiku-20241022",  # Use Haiku for cost efficiency
+                max_tokens=2000,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+
+            return response.content[0].text
+
+        except Exception as e:
+            logger.error(f"TradingSubAgent: LLM call failed: {e}")
+            raise
 
     def execute_order(
         self,
@@ -373,4 +517,192 @@ class TradingSubAgent:
             "order_modification",
             "position_tracking",
             "trade_monitoring",
+            "parse_order_request",
+            "suggest_trade",
+            "explain_position",
         ]
+
+    def parse_order_request(self, user_request: str) -> Dict[str, Any]:
+        """
+        Parse natural language order request into structured parameters.
+
+        Args:
+            user_request: Natural language trading request
+
+        Returns:
+            Parsed order parameters as dict
+        """
+        logger.info(f"TradingSubAgent: Parsing order request: {user_request[:50]}...")
+
+        if not self._llm_client:
+            return {
+                "status": "error",
+                "error": "LLM client not available",
+            }
+
+        try:
+            user_prompt = PARSE_ORDER_PROMPT.format(user_request=user_request)
+
+            response = self._call_llm(
+                user_prompt=user_prompt,
+                system_prompt=TRADING_SYSTEM_PROMPT,
+            )
+
+            # Try to parse JSON from response
+            try:
+                # Find JSON in response
+                json_match = None
+                for pattern in [r'\{[\s\S]*\}', r'\[[\s\S]*\]']:
+                    json_match = response.strip()
+                    if json_match:
+                        break
+
+                parsed = json.loads(json_match) if json_match else {}
+
+                return {
+                    "status": "parsed",
+                    "order_params": parsed,
+                    "raw_response": response,
+                }
+            except json.JSONDecodeError:
+                # Return raw response if JSON parsing fails
+                return {
+                    "status": "parsed",
+                    "order_params": {},
+                    "raw_response": response,
+                    "warning": "Could not parse JSON from response",
+                }
+
+        except Exception as e:
+            logger.error(f"TradingSubAgent: Failed to parse order: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+            }
+
+    def suggest_trade(
+        self,
+        market_data: Optional[Dict[str, Any]] = None,
+        risk_params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Suggest a trade based on market analysis and risk parameters.
+
+        Args:
+            market_data: Current market conditions
+            risk_params: Risk management parameters
+
+        Returns:
+            Trade suggestion with entry, stop-loss, take-profit
+        """
+        logger.info("TradingSubAgent: Generating trade suggestion")
+
+        if not self._llm_client:
+            return {
+                "status": "error",
+                "error": "LLM client not available",
+            }
+
+        positions = self.get_positions()
+        market_data = market_data or {}
+        risk_params = risk_params or {
+            "max_risk_per_trade": 2.0,  # % of account
+            "min_risk_reward": 2.0,
+        }
+
+        try:
+            user_prompt = SUGGEST_TRADE_PROMPT.format(
+                positions=json.dumps(positions),
+                market_data=json.dumps(market_data),
+                risk_params=json.dumps(risk_params),
+            )
+
+            response = self._call_llm(
+                user_prompt=user_prompt,
+                system_prompt=TRADING_SYSTEM_PROMPT,
+            )
+
+            # Try to parse JSON from response
+            try:
+                # Find JSON in response
+                suggestion = {}
+                for line in response.split('\n'):
+                    line = line.strip()
+                    if line.startswith('{') and line.endswith('}'):
+                        suggestion = json.loads(line)
+                        break
+
+                return {
+                    "status": "suggested",
+                    "suggestion": suggestion,
+                    "raw_response": response,
+                }
+            except json.JSONDecodeError:
+                return {
+                    "status": "suggested",
+                    "suggestion": {},
+                    "raw_response": response,
+                    "warning": "Could not parse JSON from response",
+                }
+
+        except Exception as e:
+            logger.error(f"TradingSubAgent: Failed to suggest trade: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+            }
+
+    def explain_position(self, position_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Explain current position(s) in natural language.
+
+        Args:
+            position_id: Specific position ID to explain (optional)
+
+        Returns:
+            Position explanation in plain language
+        """
+        logger.info(f"TradingSubAgent: Explaining position: {position_id or 'all'}")
+
+        if not self._llm_client:
+            return {
+                "status": "error",
+                "error": "LLM client not available",
+            }
+
+        positions = self.get_positions()
+
+        if position_id:
+            position = self._open_positions.get(position_id)
+            if not position:
+                return {
+                    "status": "error",
+                    "error": f"Position {position_id} not found",
+                }
+            position_details = json.dumps(position)
+        else:
+            position_details = json.dumps(positions)
+
+        try:
+            user_prompt = EXPLAIN_POSITION_PROMPT.format(
+                position_details=position_details,
+            )
+
+            explanation = self._call_llm(
+                user_prompt=user_prompt,
+                system_prompt=TRADING_SYSTEM_PROMPT,
+            )
+
+            return {
+                "status": "explained",
+                "explanation": explanation,
+                "position_id": position_id,
+                "positions_count": positions.get("count", 0),
+            }
+
+        except Exception as e:
+            logger.error(f"TradingSubAgent: Failed to explain position: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+            }

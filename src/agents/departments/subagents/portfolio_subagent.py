@@ -7,9 +7,62 @@ Responsible for portfolio allocation, rebalancing, and performance tracking.
 Model: Haiku (fast, low-cost for worker tasks)
 """
 
+import logging
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+
+# Portfolio management system prompt for LLM
+PORTFOLIO_SYSTEM_PROMPT = """You are an expert portfolio manager specializing in forex trading.
+
+Your task is to analyze portfolio allocations, suggest rebalancing strategies,
+and generate performance reports based on the provided data.
+
+## Portfolio Analysis Guidelines:
+1. Consider risk management principles (position sizing, diversification)
+2. Analyze correlation between currency pairs
+3. Factor in volatility and potential drawdown
+4. Consider correlation with other open positions
+5. Provide actionable recommendations with specific numbers
+
+## Allocation Analysis:
+- Assess current weight vs target weight
+- Identify overweight/underweight positions
+- Consider risk-adjusted returns
+- Evaluate diversification benefits
+
+## Rebalancing Strategy:
+- Minimize trading costs
+- Consider tax implications
+- Maintain target risk profile
+- Use systematic rebalancing thresholds (e.g., 5% deviation)
+
+## Performance Metrics to Consider:
+- Total return
+- Risk-adjusted return (Sharpe ratio)
+- Maximum drawdown
+- Win rate
+- Profit factor
+- Risk of ruin
+
+Output clear, concise analysis with specific recommendations.
+"""
+
+
+# Performance report prompt
+PERFORMANCE_REPORT_PROMPT = """You are an expert portfolio analyst. Generate a comprehensive performance report.
+
+Include:
+1. Summary of portfolio performance
+2. Top performers and losers
+3. Risk metrics analysis
+4. Attribution breakdown
+5. Recommendations for improvement
+
+Be specific with numbers and percentages."""
 
 
 @dataclass
@@ -72,7 +125,50 @@ class PortfolioSubAgent:
         self.task = task or PortfolioTask(task_type="allocation")
         self.available_tools = available_tools or []
         self.model_tier = "haiku"
+        self._llm_client = None
         self._initialize_tools()
+        self._initialize_llm()
+
+    def _initialize_llm(self) -> None:
+        """Initialize LLM client for portfolio analysis."""
+        try:
+            from anthropic import Anthropic
+            self._llm_client = Anthropic()
+            logger.info("PortfolioSubAgent: LLM client initialized")
+        except ImportError:
+            logger.warning("PortfolioSubAgent: Anthropic SDK not available")
+
+    def _call_llm(
+        self,
+        user_prompt: str,
+        system_prompt: str = PORTFOLIO_SYSTEM_PROMPT,
+    ) -> str:
+        """
+        Call LLM to generate portfolio analysis.
+
+        Args:
+            user_prompt: User's request
+            system_prompt: System instructions
+
+        Returns:
+            Generated analysis text
+        """
+        if not self._llm_client:
+            raise RuntimeError("LLM client not initialized")
+
+        try:
+            response = self._llm_client.messages.create(
+                model="claude-3-5-haiku-20241022",  # Haiku for cost efficiency
+                max_tokens=2000,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+
+            return response.content[0].text
+
+        except Exception as e:
+            logger.error(f"PortfolioSubAgent: LLM call failed: {e}")
+            raise
 
     def _initialize_tools(self) -> Dict[str, Any]:
         """Initialize available tools for this agent."""
@@ -84,6 +180,10 @@ class PortfolioSubAgent:
             "track_performance": self.track_performance,
             "calculate_returns": self.calculate_returns,
             "optimize_weights": self.optimize_weights,
+            # LLM-powered methods
+            "analyze_allocation": self.analyze_allocation,
+            "suggest_rebalance": self.suggest_rebalance,
+            "generate_performance_report": self.generate_performance_report,
         }
 
         for tool_name in self.available_tools:
@@ -91,6 +191,290 @@ class PortfolioSubAgent:
                 tools[tool_name] = tool_registry[tool_name]
 
         return tools
+
+    def analyze_allocation(
+        self,
+        positions: List[Dict[str, Any]],
+        total_value: float,
+        analysis_focus: str = "general",
+    ) -> Dict[str, Any]:
+        """
+        Analyze portfolio allocation using LLM from natural language.
+
+        Args:
+            positions: List of open positions
+            total_value: Total portfolio value
+            analysis_focus: Focus area (general, risk, diversification, correlation)
+
+        Returns:
+            LLM-generated allocation analysis
+        """
+        logger.info(f"PortfolioSubAgent: Analyzing allocation with focus: {analysis_focus}")
+
+        if not self._llm_client:
+            return {
+                "status": "error",
+                "message": "LLM client not initialized",
+            }
+
+        try:
+            # Calculate basic allocation
+            allocation_data = self.get_allocation(positions, total_value)
+
+            # Format data for LLM
+            allocation_summary = self._format_allocation_for_llm(allocation_data)
+
+            user_prompt = f"""Analyze the following portfolio allocation:
+
+Total Portfolio Value: ${total_value:,.2f}
+
+Current Allocation:
+{allocation_summary}
+
+Focus area: {analysis_focus}
+
+Provide a detailed analysis including:
+1. Current allocation assessment
+2. Risk assessment
+3. Diversification analysis
+4. Specific recommendations"""
+
+            analysis = self._call_llm(
+                user_prompt=user_prompt,
+                system_prompt=PORTFOLIO_SYSTEM_PROMPT,
+            )
+
+            return {
+                "analysis": analysis,
+                "allocation": allocation_data,
+                "focus": analysis_focus,
+                "status": "analyzed",
+            }
+
+        except Exception as e:
+            logger.error(f"PortfolioSubAgent: Allocation analysis failed: {e}")
+            return {
+                "status": "error",
+                "message": str(e),
+            }
+
+    def _format_allocation_for_llm(self, allocation_data: Dict[str, Any]) -> str:
+        """Format allocation data for LLM consumption."""
+        lines = []
+        allocation = allocation_data.get("allocation", {})
+
+        for symbol, data in allocation.items():
+            weight = data.get("weight", 0) * 100
+            value = data.get("value", 0)
+            volume = data.get("volume", 0)
+            lines.append(f"  - {symbol}: {weight:.1f}% (${value:,.2f}, {volume:.2f} lots)")
+
+        return "\n".join(lines) if lines else "  No positions"
+
+    def suggest_rebalance(
+        self,
+        current_allocation: Dict[str, float],
+        target_allocation: Dict[str, float],
+        total_value: float,
+        reasoning: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Suggest portfolio rebalancing using LLM.
+
+        Args:
+            current_allocation: Current allocation weights (as decimals, e.g., 0.25)
+            target_allocation: Target allocation weights (as decimals)
+            total_value: Total portfolio value
+            reasoning: Optional reasoning or context for rebalancing
+
+        Returns:
+            LLM-generated rebalancing suggestions
+        """
+        logger.info("PortfolioSubAgent: Generating rebalancing suggestions")
+
+        if not self._llm_client:
+            return {
+                "status": "error",
+                "message": "LLM client not initialized",
+            }
+
+        try:
+            # Calculate basic rebalance
+            rebalance_data = self.calculate_rebalance(
+                current_allocation, target_allocation, total_value
+            )
+
+            # Format data for LLM
+            current_summary = self._format_weights_for_llm(current_allocation)
+            target_summary = self._format_weights_for_llm(target_allocation)
+
+            user_prompt = f"""Suggest portfolio rebalancing strategy:
+
+Total Portfolio Value: ${total_value:,.2f}
+
+Current Allocation:
+{current_summary}
+
+Target Allocation:
+{target_summary}
+
+Calculated Trades:
+{self._format_trades_for_llm(rebalance_data.get('rebalance_trades', []))}
+
+{f"Additional context: {reasoning}" if reasoning else ""}
+
+Provide:
+1. Summary of rebalancing needs
+2. Risk considerations
+3. Priority actions
+4. Timing recommendations"""
+
+            suggestions = self._call_llm(
+                user_prompt=user_prompt,
+                system_prompt=PORTFOLIO_SYSTEM_PROMPT,
+            )
+
+            return {
+                "suggestions": suggestions,
+                "rebalance_trades": rebalance_data,
+                "status": "suggested",
+            }
+
+        except Exception as e:
+            logger.error(f"PortfolioSubAgent: Rebalancing suggestion failed: {e}")
+            return {
+                "status": "error",
+                "message": str(e),
+            }
+
+    def _format_weights_for_llm(self, weights: Dict[str, float]) -> str:
+        """Format weights for LLM consumption."""
+        lines = []
+        for symbol, weight in weights.items():
+            pct = weight * 100
+            lines.append(f"  - {symbol}: {pct:.1f}%")
+        return "\n".join(lines) if lines else "  None"
+
+    def _format_trades_for_llm(self, trades: List[Dict[str, Any]]) -> str:
+        """Format trades for LLM consumption."""
+        if not trades:
+            return "  No trades needed"
+        lines = []
+        for trade in trades:
+            symbol = trade.get("symbol", "UNKNOWN")
+            side = trade.get("side", "buy")
+            volume = trade.get("volume", 0)
+            value = trade.get("trade_value", 0)
+            lines.append(f"  - {side.upper()} {symbol}: {volume:.2f} lots (${value:,.2f})")
+        return "\n".join(lines)
+
+    def generate_performance_report(
+        self,
+        positions: List[Dict[str, Any]],
+        period_start_value: float,
+        period_end_value: float,
+        equity_curve: Optional[List[float]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generate performance analysis report using LLM.
+
+        Args:
+            positions: Current positions
+            period_start_value: Value at start of period
+            period_end_value: Value at end of period
+            equity_curve: Optional historical equity values
+
+        Returns:
+            LLM-generated performance report
+        """
+        logger.info("PortfolioSubAgent: Generating performance report")
+
+        if not self._llm_client:
+            return {
+                "status": "error",
+                "message": "LLM client not initialized",
+            }
+
+        try:
+            # Calculate performance metrics
+            perf_data = self.track_performance(positions, period_start_value, period_end_value)
+
+            # Calculate returns if equity curve provided
+            returns_data = {}
+            if equity_curve and len(equity_curve) >= 2:
+                returns_data = self.calculate_returns(equity_curve)
+
+            # Format data for LLM
+            perf_summary = self._format_performance_for_llm(perf_data)
+            returns_summary = self._format_returns_for_llm(returns_data)
+
+            user_prompt = f"""Generate a comprehensive portfolio performance report:
+
+Period Performance:
+{perf_summary}
+
+Risk-Adjusted Returns:
+{returns_summary}
+
+Current Positions:
+{self._format_positions_for_llm(positions)}
+
+Provide:
+1. Executive summary
+2. Performance attribution
+3. Risk analysis
+4. Key insights
+5. Recommendations for improvement"""
+
+            report = self._call_llm(
+                user_prompt=user_prompt,
+                system_prompt=PERFORMANCE_REPORT_PROMPT,
+            )
+
+            return {
+                "report": report,
+                "performance": perf_data,
+                "returns": returns_data,
+                "status": "generated",
+            }
+
+        except Exception as e:
+            logger.error(f"PortfolioSubAgent: Performance report generation failed: {e}")
+            return {
+                "status": "error",
+                "message": str(e),
+            }
+
+    def _format_performance_for_llm(self, perf_data: Dict[str, Any]) -> str:
+        """Format performance data for LLM consumption."""
+        return f"""  Period Return: {perf_data.get('period_return', 0):.2f}%
+  Absolute Return: ${perf_data.get('absolute_return', 0):,.2f}
+  Total P&L: ${perf_data.get('total_pnl', 0):,.2f}
+  Start Value: ${perf_data.get('period_start_value', 0):,.2f}
+  End Value: ${perf_data.get('period_end_value', 0):,.2f}
+  Position Count: {perf_data.get('position_count', 0)}"""
+
+    def _format_returns_for_llm(self, returns_data: Dict[str, Any]) -> str:
+        """Format returns data for LLM consumption."""
+        if not returns_data:
+            return "  No returns data available"
+        return f"""  Total Return: {returns_data.get('total_return', 0):.2f}%
+  Avg Return: {returns_data.get('avg_return', 0):.4f}%
+  Volatility: {returns_data.get('volatility', 0):.2f}%
+  Sharpe Ratio: {returns_data.get('sharpe_ratio', 0):.2f}
+  Max Drawdown: {returns_data.get('max_drawdown', 0):.2f}%"""
+
+    def _format_positions_for_llm(self, positions: List[Dict[str, Any]]) -> str:
+        """Format positions for LLM consumption."""
+        lines = []
+        for pos in positions:
+            symbol = pos.get("symbol", "UNKNOWN")
+            volume = pos.get("volume", 0)
+            entry = pos.get("entry_price", 0)
+            current = pos.get("current_price", entry)
+            pnl = pos.get("pnl", 0)
+            lines.append(f"  - {symbol}: {volume:.2f} lots @ {entry:.5f} (current: {current:.5f}, P&L: ${pnl:,.2f})")
+        return "\n".join(lines) if lines else "  No positions"
 
     def get_allocation(
         self,
@@ -392,4 +776,8 @@ class PortfolioSubAgent:
             "performance_tracking",
             "returns_calculation",
             "portfolio_optimization",
+            # LLM-powered capabilities
+            "llm_allocation_analysis",
+            "llm_rebalance_suggestions",
+            "llm_performance_reporting",
         ]

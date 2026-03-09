@@ -27,6 +27,11 @@ from src.agents.departments.subagents.development_subagent import (
     DevelopmentSubAgent,
     DevelopmentTask,
 )
+from src.agents.departments.subagents.pinescript_subagent import (
+    PineScriptSubAgent,
+    PineScriptTask,
+    create_pinescript_agent,
+)
 
 __all__ = [
     "ResearchSubAgent",
@@ -41,4 +46,7 @@ __all__ = [
     "Position",
     "DevelopmentSubAgent",
     "DevelopmentTask",
+    "PineScriptSubAgent",
+    "PineScriptTask",
+    "create_pinescript_agent",
 ]

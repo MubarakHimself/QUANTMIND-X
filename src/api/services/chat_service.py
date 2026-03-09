@@ -465,6 +465,27 @@ async def execute_tool(
 # Pine Script Generation
 # =============================================================================
 
+# PineScriptSubAgent instance (lazy loaded)
+_pinescript_agent = None
+
+
+def _get_pinescript_agent():
+    """Get or create PineScriptSubAgent instance."""
+    global _pinescript_agent
+    if _pinescript_agent is None:
+        try:
+            from src.agents.departments.subagents import create_pinescript_agent
+            _pinescript_agent = create_pinescript_agent(
+                agent_id="pinescript-api",
+                task_type="generate"
+            )
+            logger.info("PineScriptSubAgent initialized")
+        except Exception as e:
+            logger.error(f"Failed to create PineScriptSubAgent: {e}")
+            return None
+    return _pinescript_agent
+
+
 async def generate_pine_script(query: str) -> Dict[str, Any]:
     """
     Generate Pine Script v5 code from natural language query.
@@ -477,22 +498,27 @@ async def generate_pine_script(query: str) -> Dict[str, Any]:
     """
     logger.info(f"Generating Pine Script for: {query[:100]}...")
 
-    # Try Claude Orchestrator first
-    if USE_CLAUDE_ORCHESTRATOR and CLAUDE_ORCHESTRATOR_AVAILABLE:
+    # Use PineScriptSubAgent
+    agent = _get_pinescript_agent()
+    if agent:
         try:
-            result = await invoke_claude_agent(
-                "pinescript",
-                f"Generate Pine Script v5 code for: {query}",
-            )
+            result = agent.generate(strategy_description=query, include_validation=True)
             return {
-                "pine_script": result["reply"],
-                "status": "complete",
-                "errors": []
+                "pine_script": result.get("code"),
+                "status": result.get("status", "complete"),
+                "is_valid": result.get("is_valid", False),
+                "errors": result.get("errors", []),
+                "warnings": result.get("warnings", []),
             }
         except Exception as e:
-            logger.error(f"Claude Orchestrator Pine Script error: {e}")
+            logger.error(f"PineScriptSubAgent generation error: {e}")
+            return {
+                "pine_script": None,
+                "status": "error",
+                "errors": [str(e)]
+            }
 
-    # Fallback to legacy agent
+    # Fallback: try old method if agent not available
     if PINESCRIPT_AGENT_AVAILABLE:
         try:
             result = generate_pine_script_from_query(query)
@@ -528,22 +554,27 @@ async def convert_mql5_to_pine(mql5_code: str) -> Dict[str, Any]:
     """
     logger.info("Converting MQL5 to Pine Script")
 
-    # Try Claude Orchestrator first
-    if USE_CLAUDE_ORCHESTRATOR and CLAUDE_ORCHESTRATOR_AVAILABLE:
+    # Use PineScriptSubAgent
+    agent = _get_pinescript_agent()
+    if agent:
         try:
-            result = await invoke_claude_agent(
-                "pinescript",
-                f"Convert this MQL5 code to Pine Script v5:\n\n```mql5\n{mql5_code}\n```",
-            )
+            result = agent.convert(mql5_code=mql5_code, include_validation=True)
             return {
-                "pine_script": result["reply"],
-                "status": "complete",
-                "errors": []
+                "pine_script": result.get("code"),
+                "status": result.get("status", "complete"),
+                "is_valid": result.get("is_valid", False),
+                "errors": result.get("errors", []),
+                "warnings": result.get("warnings", []),
             }
         except Exception as e:
-            logger.error(f"Claude Orchestrator conversion error: {e}")
+            logger.error(f"PineScriptSubAgent conversion error: {e}")
+            return {
+                "pine_script": None,
+                "status": "error",
+                "errors": [str(e)]
+            }
 
-    # Fallback to legacy agent
+    # Fallback: try old method
     if PINESCRIPT_AGENT_AVAILABLE:
         try:
             result = convert_mql5_to_pinescript(mql5_code)
@@ -564,6 +595,85 @@ async def convert_mql5_to_pine(mql5_code: str) -> Dict[str, Any]:
         "pine_script": None,
         "status": "error",
         "errors": ["Pine Script agent is not available. Please check server configuration."]
+    }
+
+
+async def validate_pine_script(pine_code: str) -> Dict[str, Any]:
+    """
+    Validate Pine Script v5 syntax.
+
+    Args:
+        pine_code: Pine Script source code
+
+    Returns:
+        Dict with validation results
+    """
+    logger.info("Validating Pine Script")
+
+    # Use PineScriptSubAgent
+    agent = _get_pinescript_agent()
+    if agent:
+        try:
+            result = agent.validate(pine_code)
+            return result
+        except Exception as e:
+            logger.error(f"PineScriptSubAgent validation error: {e}")
+            return {
+                "is_valid": False,
+                "errors": [str(e)],
+                "warnings": [],
+            }
+
+    # Fallback: use validation tools directly
+    try:
+        from src.agents.tools.pinescript_tools import validate_pine_script_syntax
+        return validate_pine_script_syntax(pine_code)
+    except Exception as e:
+        logger.error(f"Pine Script validation error: {e}")
+        return {
+            "is_valid": False,
+            "errors": [str(e)],
+            "warnings": [],
+        }
+
+
+async def refine_pine_script(pine_code: str, feedback: str) -> Dict[str, Any]:
+    """
+    Refine Pine Script code based on feedback.
+
+    Args:
+        pine_code: Current Pine Script code
+        feedback: Feedback/instructions for refinement
+
+    Returns:
+        Dict with refined code and validation results
+    """
+    logger.info(f"Refining Pine Script with feedback: {feedback[:50]}...")
+
+    # Use PineScriptSubAgent
+    agent = _get_pinescript_agent()
+    if agent:
+        try:
+            result = agent.refine(pine_code=pine_code, feedback=feedback)
+            return {
+                "pine_script": result.get("code"),
+                "status": result.get("status", "refined"),
+                "is_valid": result.get("is_valid", False),
+                "errors": result.get("errors", []),
+                "warnings": result.get("warnings", []),
+            }
+        except Exception as e:
+            logger.error(f"PineScriptSubAgent refine error: {e}")
+            return {
+                "pine_script": None,
+                "status": "error",
+                "errors": [str(e)],
+            }
+
+    return {
+        "pine_script": None,
+        "status": "error",
+        "errors": ["PineScriptSubAgent not available"],
     }
 
 
