@@ -512,13 +512,14 @@ class Commander:
     async def execute_signal(self, execution_params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute a TradingView webhook signal.
-        
+
         This method handles incoming TradingView alerts by:
         1. Validating the signal parameters
         2. Getting current market regime from Sentinel
         3. Finding suitable bot via auction
-        4. Executing trade via MT5 adapter
-        
+        4. Checking drawdown limits (blocks trade if exceeded)
+        5. Executing trade via MT5 adapter
+
         Args:
             execution_params: Dict containing signal parameters
                 - symbol: Trading symbol (required)
@@ -530,7 +531,9 @@ class Commander:
                 - stop_loss: Stop loss price (optional)
                 - take_profit: Take profit price (optional)
                 - comment: Trade comment (optional)
-                
+                - account_book: 'personal' or 'prop_firm' (optional, default: 'personal')
+                - prop_firm_name: Name of prop firm if account_book is 'prop_firm' (optional)
+
         Returns:
             Dict with execution result:
                 - status: 'success' or 'error'
@@ -638,11 +641,44 @@ class Commander:
             
             bot_id = selected_bot.get('bot_id', 'unknown')
             logger.info(f"Selected bot {bot_id} for signal execution")
-            
+
             # 5. Execute Trade via MT5 Adapter
             try:
                 from src.data.brokers.mt5_socket_adapter import MT5SocketAdapter
-                
+                from src.risk.integrations.mt5.account import AccountInfo
+
+                # Check Drawdown Limits before executing trade
+                account_book = execution_params.get('account_book', 'personal')
+                prop_firm_name = execution_params.get('prop_firm_name')
+
+                # Calculate current drawdown from account equity vs balance
+                current_drawdown = 0.0
+                try:
+                    # Try to get account info from MT5 adapter
+                    account_info = mt5_adapter.get_account_info()
+                    if account_info and account_info.balance > 0:
+                        # Drawdown is (balance - equity) / balance when equity < balance
+                        if account_info.equity < account_info.balance:
+                            current_drawdown = (account_info.balance - account_info.equity) / account_info.balance
+                except Exception as e:
+                    logger.warning(f"Could not calculate drawdown: {e}")
+
+                # Check if trade should be blocked due to drawdown limits
+                should_block, block_reason = self.check_drawdown_limits(
+                    account_book=account_book,
+                    prop_firm_name=prop_firm_name,
+                    current_drawdown=current_drawdown
+                )
+
+                if should_block:
+                    logger.warning(f"Trade blocked due to drawdown limits: {block_reason}")
+                    return {
+                        'status': 'error',
+                        'message': f'Trade blocked: {block_reason}',
+                        'bot_id': bot_id,
+                        'order_id': None
+                    }
+
                 # Map action to MT5 direction
                 direction = 'buy' if action in ['long'] else 'sell'
                 
