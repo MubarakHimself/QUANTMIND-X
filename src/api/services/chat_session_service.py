@@ -18,8 +18,8 @@ class ChatSessionService:
         agent_id: str,
         user_id: str,
         title: Optional[str] = None,
-        context: Dict[str, Any] = None,
-        metadata: Dict[str, Any] = None
+        context: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None
     ) -> ChatSession:
         """Create a new chat session."""
         session_id = str(uuid.uuid4())
@@ -71,28 +71,34 @@ class ChatSessionService:
         message_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
 
-        message = ChatMessage(
-            id=message_id,
-            session_id=session_id,
-            role=role,
-            content=content,
-            artifacts=artifacts or [],
-            tool_calls=tool_calls or [],
-            token_count=token_count,
-            created_at=now
-        )
-
         db = Session()
         try:
-            # Update session's last_message_at
+            # Validate session exists
             session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
-            if session:
-                session.last_message_at = now
+            if not session:
+                raise ValueError(f"Session {session_id} not found")
+
+            # Update session's last_message_at
+            session.last_message_at = now
+
+            message = ChatMessage(
+                id=message_id,
+                session_id=session_id,
+                role=role,
+                content=content,
+                artifacts=artifacts or [],
+                tool_calls=tool_calls or [],
+                token_count=token_count,
+                created_at=now
+            )
             db.add(message)
             db.commit()
             db.refresh(message)
             db.expunge(message)
             return message
+        except Exception:
+            db.rollback()
+            raise
         finally:
             db.close()
 
