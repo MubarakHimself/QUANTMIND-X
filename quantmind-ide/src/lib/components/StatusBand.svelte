@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { Bot, DollarSign, Percent } from 'lucide-svelte';
-  import { API_CONFIG } from '$lib/config/api';
   import { getAllSessions, getMarketState, getTradingMetrics } from '$lib/api';
 
   // State
@@ -14,15 +13,15 @@
 
   let refreshInterval: ReturnType<typeof setInterval>;
 
-  // Use centralized API configuration
-  const API_BASE = API_CONFIG.API_BASE;
-
   // Explicit session order for deterministic display
   const SESSION_ORDER = ['ASIAN', 'LONDON', 'NEW_YORK', 'OVERLAP'];
 
   onMount(async () => {
-    await fetchData();
-    loading = false;
+    try {
+      await fetchData();
+    } finally {
+      loading = false;
+    }
     refreshInterval = setInterval(fetchData, 5000); // Refresh every 5 seconds
   });
 
