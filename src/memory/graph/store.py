@@ -3,6 +3,7 @@
 This module provides the GraphMemoryStore class for storing and querying
 memory nodes and edges in a SQLite database.
 """
+import json
 import logging
 import sqlite3
 from datetime import datetime, timezone
@@ -112,6 +113,14 @@ class GraphMemoryStore:
             CREATE INDEX IF NOT EXISTS idx_edges_target
             ON edges(target_id)
         """)
+        self._conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_nodes_node_type
+            ON nodes(node_type)
+        """)
+        self._conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_nodes_tier
+            ON nodes(tier)
+        """)
 
         self._conn.commit()
 
@@ -148,7 +157,7 @@ class GraphMemoryStore:
                 node.agent_id,
                 node.session_id,
                 node.role,
-                ",".join(node.tags) if node.tags else "",
+                json.dumps(node.tags) if node.tags else "[]",
                 node.importance,
                 node.relevance_score,
                 node.access_count,
@@ -220,7 +229,7 @@ class GraphMemoryStore:
                 node.agent_id,
                 node.session_id,
                 node.role,
-                ",".join(node.tags) if node.tags else "",
+                json.dumps(node.tags) if node.tags else "[]",
                 node.importance,
                 node.relevance_score,
                 node.access_count,
@@ -405,7 +414,7 @@ class GraphMemoryStore:
             agent_id=row["agent_id"],
             session_id=row["session_id"],
             role=row["role"],
-            tags=row["tags"].split(",") if row["tags"] else [],
+            tags=json.loads(row["tags"]) if row["tags"] else [],
             importance=row["importance"],
             relevance_score=row["relevance_score"],
             access_count=row["access_count"],

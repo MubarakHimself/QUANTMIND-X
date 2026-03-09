@@ -5,6 +5,10 @@ Provides native memory management for semantic, episodic, and procedural memory.
 LangMem has been removed in favor of native implementations.
 """
 
+from src.memory.graph import GraphMemoryFacade, get_graph_memory
+
 __all__ = [
-    # Memory components can be imported directly from their modules
+    # Graph-based memory system
+    "GraphMemoryFacade",
+    "get_graph_memory",
 ]
