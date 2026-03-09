@@ -19,6 +19,7 @@ from src.router.governor import Governor, RiskMandate
 if TYPE_CHECKING:
     from src.database.models import PropFirmAccount, DailySnapshot, HouseMoneyState, BrokerRegistry
     from src.router.sentinel import RegimeReport
+    from src.api.settings_endpoints import RiskSettings
 
 try:
     from src.database.models import PropFirmAccount, DailySnapshot, HouseMoneyState, BrokerRegistry
@@ -104,13 +105,19 @@ class EnhancedGovernor(Governor):
         account_id: Prop firm account ID for tracking
     """
 
-    def __init__(self, account_id: Optional[str] = None, config: Optional[EnhancedKellyConfig] = None):
+    def __init__(
+        self,
+        account_id: Optional[str] = None,
+        config: Optional[EnhancedKellyConfig] = None,
+        settings: Optional['RiskSettings'] = None
+    ):
         """
         Initialize Enhanced Governor with Kelly Calculator.
 
         Args:
             account_id: Optional prop firm account ID for house money tracking
             config: Optional Kelly configuration
+            settings: Optional RiskSettings for configurable risk parameters
         """
         super().__init__()
 
@@ -121,14 +128,33 @@ class EnhancedGovernor(Governor):
         self._broker_id = 'mt5_default'  # Default broker ID
         self._db_available = DB_AVAILABLE
 
+        # Store settings for risk parameter configuration
+        self._settings = settings
+
+        # Extract risk settings with fallback defaults for backwards compatibility
+        if settings:
+            self._house_money_threshold = settings.houseMoneyThreshold
+            self._house_money_multiplier_up = settings.houseMoneyMultiplierUp
+            self._house_money_multiplier_down = settings.houseMoneyMultiplierDown
+            self._default_risk_per_trade = settings.defaultRiskPerTrade
+        else:
+            # Fallback defaults (backwards compatible)
+            self._house_money_threshold = 0.05  # 5% threshold
+            self._house_money_multiplier_up = 1.5
+            self._house_money_multiplier_down = 0.5
+            self._default_risk_per_trade = 0.02  # 2% default risk
+
         # Load daily state if account_id provided and database is available
         if account_id and self._db_available:
             self._load_daily_state(account_id)
 
+        # Log initialization with settings info
+        settings_info = "with custom settings" if settings else "with defaults"
         logger.info(
             f"EnhancedGovernor initialized for account {account_id}, "
             f"house_money_multiplier={self.house_money_multiplier}, "
-            f"db_available={self._db_available}"
+            f"db_available={self._db_available}, "
+            f"{settings_info}"
         )
 
     def calculate_risk(
@@ -306,10 +332,10 @@ class EnhancedGovernor(Governor):
         """
         Update house money multiplier based on running P&L.
 
-        Risk multiplier logic:
-        - 1.5x when up > 5% (trade with house money)
-        - 1.0x when within ±3% (normal trading)
-        - 0.5x when down > 3% (preservation mode)
+        Risk multiplier logic (configurable via settings):
+        - houseMoneyMultiplierUp when up > houseMoneyThreshold (trade with house money)
+        - 1.0x when within normal range (normal trading)
+        - houseMoneyMultiplierDown when down > preservation threshold (preservation mode)
 
         Args:
             current_balance: Current account balance
@@ -322,16 +348,22 @@ class EnhancedGovernor(Governor):
         pnl_pct = (current_balance - self._daily_start_balance) / self._daily_start_balance
         current_pnl = current_balance - self._daily_start_balance
 
-        if pnl_pct > 0.05:
-            # Up more than 5% - increase risk (house money)
-            self.house_money_multiplier = 1.5
+        # Use settings-based thresholds and multipliers with fallback defaults
+        threshold_up = getattr(self, '_house_money_threshold', 0.05)
+        threshold_down = -0.03  # Down threshold remains at 3% for preservation mode
+        multiplier_up = getattr(self, '_house_money_multiplier_up', 1.5)
+        multiplier_down = getattr(self, '_house_money_multiplier_down', 0.5)
+
+        if pnl_pct > threshold_up:
+            # Up more than threshold - increase risk (house money)
+            self.house_money_multiplier = multiplier_up
             preservation_mode = False
-            logger.info(f"House Money ACTIVE: +{pnl_pct*100:.1f}% - Risk multiplier: 1.5x")
-        elif pnl_pct < -0.03:
-            # Down more than 3% - decrease risk (preservation mode)
-            self.house_money_multiplier = 0.5
+            logger.info(f"House Money ACTIVE: +{pnl_pct*100:.1f}% - Risk multiplier: {multiplier_up}x")
+        elif pnl_pct < threshold_down:
+            # Down more than threshold - decrease risk (preservation mode)
+            self.house_money_multiplier = multiplier_down
             preservation_mode = True
-            logger.warning(f"Preservation Mode: {pnl_pct*100:.1f}% - Risk multiplier: 0.5x")
+            logger.warning(f"Preservation Mode: {pnl_pct*100:.1f}% - Risk multiplier: {multiplier_down}x")
         else:
             # Normal range
             self.house_money_multiplier = 1.0

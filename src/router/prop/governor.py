@@ -3,12 +3,15 @@ The Prop Governor (Extension)
 Inherits from Base Governor and adds Prop Firm "Survival Logic".
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, TYPE_CHECKING
 from src.router.governor import Governor, RiskMandate
 from src.router.prop.state import PropState
 from src.database.engine import get_session
 from src.database.models import PropFirmAccount, RiskTierTransition
 from datetime import datetime, timezone
+
+if TYPE_CHECKING:
+    from src.api.settings_endpoints import RiskSettings
 
 class PropGovernor(Governor):
     """
@@ -17,19 +20,28 @@ class PropGovernor(Governor):
     2. News Guard Override (Hard Stop).
     3. V8: Tiered Risk Engine - Tier Transition Detection and Logging.
     """
-    def __init__(self, account_id: str):
+    def __init__(self, account_id: str, settings: Optional['RiskSettings'] = None):
         super().__init__()  # Init Base (VaR, Swarm)
         self.prop_state = PropState(account_id)
         self.account_id = account_id
-        
-        # Prop Rules (Configurable)
-        self.daily_loss_limit_pct = 0.05   # 5% Max Daily Loss
-        self.hard_stop_buffer = 0.01       # 1% Safety Buffer (Stop at 4%)
-        self.effective_limit = self.daily_loss_limit_pct - self.hard_stop_buffer # 0.04
-        
+
+        # Prop Rules (Configurable via settings)
+        # daily_loss_limit_pct: settings.dailyLossLimit is in percent (e.g., 5.0), convert to decimal (0.05)
+        self.daily_loss_limit_pct = settings.dailyLossLimit / 100 if settings else 0.05
+        self.hard_stop_buffer = settings.hardStopBuffer if settings else 0.01
+        self.effective_limit = self.daily_loss_limit_pct - self.hard_stop_buffer
+
         # V8: Tiered Risk Engine - Tier Thresholds
-        self.growth_tier_ceiling = 1000.0   # $1,000
-        self.scaling_tier_ceiling = 5000.0  # $5,000
+        # Use settings.balanceZones if available, otherwise fall back to defaults
+        if settings and settings.balanceZones:
+            self.growth_tier_ceiling = settings.balanceZones.get("growth", 1000.0)
+            self.scaling_tier_ceiling = settings.balanceZones.get("scaling", 5000.0)
+        else:
+            self.growth_tier_ceiling = 1000.0   # $1,000
+            self.scaling_tier_ceiling = 5000.0  # $5,000
+
+        # Max risk per trade (from settings if available)
+        self.max_risk_per_trade = settings.maxRiskPerTrade if settings else None
         
         # Track current tier for transition detection
         self._current_tier = None
@@ -73,7 +85,12 @@ class PropGovernor(Governor):
 
         # 1. INHERIT: Get Base Risk (Tier 1 & 2)
         mandate = super().calculate_risk(regime_report, trade_proposal)
-        
+
+        # 1b. Apply max risk per trade limit if configured
+        if self.max_risk_per_trade is not None and mandate.risk_pct > self.max_risk_per_trade:
+            mandate.risk_pct = self.max_risk_per_trade
+            mandate.notes = f"{(mandate.notes or '')} Capped at max_risk_per_trade: {self.max_risk_per_trade:.2%}"
+
         # 2. V8: Check for tier transitions
         self._check_and_log_tier_transition(current_balance)
         

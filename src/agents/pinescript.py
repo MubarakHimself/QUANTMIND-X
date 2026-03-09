@@ -1,21 +1,28 @@
 """
-Pine Script Agent for LangGraph
+Pine Script Agent - DEPRECATED
 
-Generates Pine Script v5 code from natural language descriptions.
-Supports strategy generation, MQL5 conversion, and syntax validation.
+Use floor_manager /api/floor-manager endpoints instead.
+This module used LangGraph which has been removed.
 
 **Validates: Property 17: Pine Script Agent**
 """
 
-import re
 import logging
-from typing import TypedDict, Annotated, List, Dict, Any, Optional
-from langchain_core.messages import BaseMessage
-from langgraph.graph.message import add_messages
-from langgraph.graph import StateGraph, END
 
-from src.agents.state import AgentState
-from src.agents.llm_provider import get_llm
+logger = logging.getLogger(__name__)
+
+# Deprecation warning
+logger.warning(
+    "pinescript.py is deprecated. "
+    "Use /api/floor-manager endpoints with 'development' department instead."
+)
+
+
+def get_llm(*args, **kwargs):
+    """Deprecated - use floor_manager instead."""
+    raise NotImplementedError(
+        "pinescript module is deprecated. Use /api/floor-manager instead."
+    )
 
 # Import Pine Script tools for validation and conversion
 from src.agents.tools.pinescript_tools import (

@@ -23,13 +23,32 @@ from typing import Any, Dict, List, Optional, AsyncGenerator
 from dotenv import load_dotenv
 load_dotenv()
 
-from src.agents.sdk_config import (
-    get_provider_config,
-    get_model_for_tier,
-    get_thinking_config,
-    SDKAgentConfig,
-    load_system_prompt,
-)
+# SDK config removed - using department system instead
+# Stub implementations for backward compatibility
+def get_provider_config() -> Dict[str, Any]:
+    """Deprecated - returns empty config. Use floor_manager instead."""
+    return {}
+
+
+def get_model_for_tier(tier: str = "standard") -> str:
+    """Deprecated - returns default model."""
+    return "claude-3-5-sonnet-20241022"
+
+
+def get_thinking_config() -> Dict[str, Any]:
+    """Deprecated - returns empty config."""
+    return {}
+
+
+class SDKAgentConfig:
+    """Deprecated - use department system instead."""
+    pass
+
+
+def load_system_prompt(name: str) -> str:
+    """Deprecated - use floor_manager instead."""
+    return ""
+
 from src.agents.memory import AgentMemory
 from src.agents.checkpoint import (
     CheckpointManager,

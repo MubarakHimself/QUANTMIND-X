@@ -1,7 +1,8 @@
 """
-Agent Registry for Factory-Created Agents
+Agent Registry - DEPRECATED
 
-Provides centralized registry for managing multiple factory-created agents.
+Use floor_manager /api/floor-manager endpoints instead.
+This module used the factory-based agent system which has been removed.
 
 **Validates: Phase 3.1 - Agent Registry**
 """
@@ -12,7 +13,17 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import threading
 
-from src.agents.compiled_agent import CompiledAgent
+logger = logging.getLogger(__name__)
+
+logger.warning(
+    "registry.py is deprecated. "
+    "Use /api/floor-manager endpoints instead."
+)
+
+
+class CompiledAgent:
+    """Deprecated - use floor_manager instead."""
+    pass
 
 logger = logging.getLogger(__name__)
 

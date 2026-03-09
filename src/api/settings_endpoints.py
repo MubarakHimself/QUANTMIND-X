@@ -70,6 +70,16 @@ class RiskSettings(BaseModel):
         "scaling": 5000,
         "guardian": 999999999  # Use large number instead of inf
     }
+    # New risk calculation fields
+    maxPortfolioRisk: float = 0.20
+    correlationThreshold: float = 0.80
+    demoRiskMultiplier: float = 1.5
+    houseMoneyMultiplierUp: float = 1.5
+    houseMoneyMultiplierDown: float = 0.5
+    hardStopBuffer: float = 0.01
+    maxRiskPerTrade: float = 0.05
+    defaultRiskPerTrade: float = 0.02
+    propFirmPreset: str = "custom"
 
 class DatabaseSettings(BaseModel):
     sqlitePath: str = "./data/quantmind.db"
@@ -106,6 +116,30 @@ def load_settings() -> Dict[str, Any]:
 def save_settings(settings: Dict[str, Any]):
     with open(SETTINGS_FILE, 'w') as f:
         json.dump(settings, f, indent=2)
+
+
+# Risk Settings - standalone function for importing by other modules
+def load_risk_settings() -> RiskSettings:
+    """
+    Load and return the current risk settings from the settings file.
+
+    This function can be imported by other modules to access risk settings
+    without requiring the FastAPI router to be running.
+
+    Usage:
+        from src.api.settings_endpoints import load_risk_settings, RiskSettings
+
+        settings = load_risk_settings()
+        max_risk = settings.maxPortfolioRisk
+
+    Returns:
+        RiskSettings: The current risk settings loaded from file,
+                      or default values if file doesn't exist.
+    """
+    settings = load_settings()
+    risk_data = settings.get("risk", RiskSettings().dict())
+    return RiskSettings(**risk_data)
+
 
 # General Settings
 @router.get("/general")

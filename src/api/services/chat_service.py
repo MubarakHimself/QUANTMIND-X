@@ -1,11 +1,8 @@
 """
-Chat Service
+Chat Service - DEPRECATED
 
-Business logic for the QuantMind Copilot chat interface.
-Handles message processing, agent invocation, and tool execution.
-
-This module contains the core business logic extracted from chat_endpoints.py.
-Endpoints should remain thin, delegating to this service.
+Use /api/floor-manager endpoints instead.
+This module used the legacy agent system which has been removed.
 """
 
 import os
@@ -17,43 +14,42 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 from datetime import datetime
 
-# Pine Script agent imports
-try:
-    from src.agents.pinescript import (
-        generate_pine_script_from_query,
-        convert_mql5_to_pinescript
+logging.warning(
+    "chat_service is deprecated. Use /api/floor-manager endpoints instead."
+)
+
+# All legacy agents are now deprecated
+PINESCRIPT_AGENT_AVAILABLE = False
+CLAUDE_ORCHESTRATOR_AVAILABLE = False
+LEGACY_AGENTS_AVAILABLE = False
+SDK_ORCHESTRATOR_AVAILABLE = False
+
+# Stub imports to prevent import errors
+def get_orchestrator(*args, **kwargs):
+    raise NotImplementedError(
+        "Claude Orchestrator is deprecated. Use /api/floor-manager instead."
     )
-    PINESCRIPT_AGENT_AVAILABLE = True
-except ImportError as e:
-    logging.warning(f"Pine Script agent not available: {e}")
-    PINESCRIPT_AGENT_AVAILABLE = False
 
-# Claude Orchestrator imports
-try:
-    from src.agents.claude_orchestrator import get_orchestrator, ClaudeOrchestrator
-    from src.agents.claude_config import get_agent_config, get_all_agent_ids
-    CLAUDE_ORCHESTRATOR_AVAILABLE = True
-except ImportError as e:
-    logging.warning(f"Claude Orchestrator not available: {e}")
-    CLAUDE_ORCHESTRATOR_AVAILABLE = False
 
-# Legacy Agent Workflows (DEPRECATED - using Claude Orchestrator instead)
-# try:
-#     from src.agents.copilot import run_copilot_workflow
-#     from src.agents.analyst import run_analyst_workflow
-#     LEGACY_AGENTS_AVAILABLE = True
-# except ImportError as e:
-#     logging.warning(f"Legacy agents not available: {e}")
-#     LEGACY_AGENTS_AVAILABLE = False
-LEGACY_AGENTS_AVAILABLE = False  # Deprecated
+class ClaudeOrchestrator:
+    """Deprecated - use FloorManager instead."""
+    pass
 
-# SDK Orchestrator (preferred for Claude Code SDK integration)
-try:
-    from src.agents.sdk_orchestrator import get_sdk_orchestrator
-    SDK_ORCHESTRATOR_AVAILABLE = True
-except ImportError as e:
-    logging.warning(f"SDK Orchestrator not available: {e}")
-    SDK_ORCHESTRATOR_AVAILABLE = False
+
+def get_agent_config(*args, **kwargs):
+    raise NotImplementedError(
+        "Agent config is deprecated. Use /api/floor-manager instead."
+    )
+
+
+def get_all_agent_ids():
+    return []
+
+
+def get_sdk_orchestrator(*args, **kwargs):
+    raise NotImplementedError(
+        "SDK Orchestrator is deprecated. Use /api/floor-manager instead."
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +57,12 @@ logger = logging.getLogger(__name__)
 # Configuration
 # =============================================================================
 
-USE_CLAUDE_ORCHESTRATOR = os.getenv("QUANTMIND_USE_CLAUDE", "true").lower() == "true"
-USE_SDK_ORCHESTRATOR = os.getenv("USE_SDK_ORCHESTRATOR", "true").lower() == "true"
+USE_CLAUDE_ORCHESTRATOR = False  # Deprecated
+USE_SDK_ORCHESTRATOR = False  # Deprecated
+# Valid agent types - deprecated, use floor_manager instead
 VALID_AGENT_TYPES = ["copilot", "analyst", "quantcode", "pinescript", "router", "executor"]
+# New agent types via floor_manager
+VALID_DEPARTMENTS = ["development", "research", "risk", "trading", "portfolio"]
 
 
 # =============================================================================

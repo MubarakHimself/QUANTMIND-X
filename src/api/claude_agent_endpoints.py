@@ -1,21 +1,51 @@
 """
-Claude Agent v2 API Endpoints
+Claude Agent v2 API Endpoints - DEPRECATED
 
-Provides REST and WebSocket endpoints for the Claude-powered agent stack.
-Replaces the LangGraph-based invocation with Claude CLI subprocess orchestration.
+Use /api/floor-manager endpoints instead.
+This module used the legacy orchestrator which has been removed.
 
 **Phase 6.1 - Claude Agent Endpoints**
 """
 
 import logging
+import warnings
 from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 import asyncio
 import json
 
-from src.agents.claude_orchestrator import get_orchestrator, ClaudeOrchestrator
-from src.agents.claude_config import get_agent_config, get_all_agent_ids, ClaudeAgentConfig
+warnings.warn(
+    "claude_agent_endpoints is deprecated. Use /api/floor-manager instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
+
+# Stub implementations
+def get_orchestrator(*args, **kwargs):
+    raise NotImplementedError(
+        "Claude Orchestrator is deprecated. Use /api/floor-manager instead."
+    )
+
+
+class ClaudeOrchestrator:
+    """Deprecated - use FloorManager instead."""
+    pass
+
+
+def get_agent_config(*args, **kwargs):
+    """Deprecated - use floor_manager instead."""
+    return None
+
+
+def get_all_agent_ids():
+    """Deprecated - use floor_manager instead."""
+    return []
+
+
+class ClaudeAgentConfig:
+    """Deprecated - use department configs instead."""
+    pass
 
 logger = logging.getLogger(__name__)
 

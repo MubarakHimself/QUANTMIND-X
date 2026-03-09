@@ -55,9 +55,10 @@ class Governor:
     - Fee kill switch (blocks trades when fees exceed expected profit)
     """
     
-    def __init__(self):
-        self.max_portfolio_risk = 0.20  # 20% Hard Cap
-        self.correlation_threshold = 0.80
+    def __init__(self, settings: Optional[object] = None):
+        self._settings = settings
+        self.max_portfolio_risk = settings.maxPortfolioRisk if settings else 0.20  # 20% Hard Cap
+        self.correlation_threshold = settings.correlationThreshold if settings else 0.80
         
         # Initialize EnhancedKellyCalculator for fee-aware position sizing
         try:
@@ -102,6 +103,9 @@ class Governor:
         # Mode-specific risk adjustments
         # Demo mode: More aggressive risk limits (3% vs 2% for live)
         demo_risk_multiplier = 1.5 if mode == "demo" else 1.0
+        # Allow settings to override demo risk multiplier
+        if hasattr(self, '_settings') and self._settings:
+            demo_risk_multiplier = self._settings.demoRiskMultiplier if hasattr(self._settings, 'demoRiskMultiplier') else demo_risk_multiplier
 
         # 1. Physics-Based Throttling
         # If Chaos is High, we clamp the entire swarm.

@@ -197,7 +197,8 @@
       growth: 1000,
       scaling: 5000,
       guardian: Infinity
-    }
+    },
+    maxRiskPerTrade: 0.05
   };
 
   // Database settings

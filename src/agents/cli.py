@@ -1,29 +1,29 @@
+"""
+CLI - DEPRECATED
+
+Use /api/floor-manager endpoints instead.
+"""
+
 import click
 import asyncio
 from rich.console import Console
 from rich.markdown import Markdown
 
-from src.agents.implementations.quant_code import create_quant_code_agent
-from src.agents.implementations.analyst import create_analyst_agent
-
 console = Console()
 
-# DEPRECATED: Legacy copilot removed. Use Workshop Copilot API instead.
-def _deprecated_copilot():
-    """DEPRECATED: Use /api/workshop/copilot/chat instead."""
-    from rich.table import Table
-    table = Table(title="Deprecated: Legacy Copilot")
-    table.add_column("Command", style="cyan")
-    table.add_column("Description", style="magenta")
-    table.add_row("copilot", "DEPRECATED - Use Workshop Copilot API")
-    table.add_row("/api/workshop/copilot/chat", "New endpoint")
-    console.print(table)
-    return None
 
+def _deprecated_agent():
+    """DEPRECATED: Use /api/floor-manager endpoints instead."""
+    raise NotImplementedError(
+        "Legacy agent CLI is deprecated. Use /api/floor-manager instead."
+    )
+
+
+# All agents are now deprecated
 AGENTS = {
-    "quantcode": create_quant_code_agent,
-    "analyst": create_analyst_agent,
-    "copilot": _deprecated_copilot
+    "quantcode": _deprecated_agent,
+    "analyst": _deprecated_agent,
+    "copilot": _deprecated_agent
 }
 
 @click.group()

@@ -36,6 +36,7 @@ from src.router.multi_timeframe_sentinel import MultiTimeframeSentinel, Timefram
 from src.router.progressive_kill_switch import ProgressiveKillSwitch, get_progressive_kill_switch
 from src.router.bot_manifest import BotManifest, StrategyType
 from src.api.websocket_endpoints import broadcast_regime_update
+from src.api.settings_endpoints import load_risk_settings
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +204,9 @@ class StrategyRouter:
         # Core Sentient Loop components
         self.sentinel = Sentinel()
 
+        # Load risk settings
+        self._risk_settings = load_risk_settings()
+
         # Multi-timeframe sentinel (Comment 1: instantiate and share with Commander)
         self._use_multi_timeframe = use_multi_timeframe
         if use_multi_timeframe:
@@ -222,13 +226,13 @@ class StrategyRouter:
         if account_type == 'prop_firm' and account_id:
             try:
                 from src.router.prop.governor import PropGovernor
-                self.governor = PropGovernor(account_id)
+                self.governor = PropGovernor(account_id, settings=self._risk_settings)
                 logger.info(f"StrategyRouter: PropGovernor activated for prop_firm account '{account_id}'")
             except Exception as e:
                 logger.error(f"StrategyRouter: Failed to load PropGovernor for account '{account_id}': {e}. Falling back to EnhancedGovernor.")
-                self.governor = EnhancedGovernor(account_id=account_id) if use_kelly_governor else Governor()
+                self.governor = EnhancedGovernor(account_id=account_id, settings=self._risk_settings) if use_kelly_governor else Governor()
         elif use_kelly_governor:
-            self.governor = EnhancedGovernor(account_id=account_id)
+            self.governor = EnhancedGovernor(account_id=account_id, settings=self._risk_settings)
             logger.info(f"StrategyRouter: EnhancedGovernor (Kelly) activated for account '{account_id}'")
         else:
             self.governor = Governor()

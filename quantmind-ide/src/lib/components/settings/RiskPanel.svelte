@@ -29,6 +29,26 @@
   function updateRiskSettings(field: string, value: any) {
     dispatch('updateRiskSettings', { field, value });
   }
+
+  // Auto-apply preset values when prop firm preset changes
+  function handlePresetChange(event: Event) {
+    const select = event.target as HTMLSelectElement;
+    const preset = select.value as keyof typeof PROP_FIRM_PRESETS;
+
+    // Dispatch preset change
+    dispatch('updateRiskSettings', { field: 'propFirmPreset', value: preset });
+
+    // Auto-apply preset values to risk settings
+    if (preset !== 'custom' && PROP_FIRM_PRESETS[preset]) {
+      const presetValues = PROP_FIRM_PRESETS[preset];
+      // Apply max risk
+      dispatch('updateRiskSettings', { field: 'maxRiskPerTrade', value: presetValues.maxRisk / 100 });
+      // Apply daily loss limit
+      dispatch('updateRiskSettings', { field: 'dailyLossLimit', value: presetValues.dailyLoss });
+      // Apply max drawdown (total loss)
+      dispatch('updateRiskSettings', { field: 'maxDrawdown', value: presetValues.totalLoss });
+    }
+  }
 </script>
 
 <div class="panel">
@@ -86,7 +106,7 @@
     <label>Prop Firm Preset</label>
     <div class="setting-row">
       <span>Select Preset</span>
-      <select bind:value={riskSettings.propFirmPreset} class="select-input" on:change={(e) => updateRiskSettings('propFirmPreset', e.currentTarget.value)}>
+      <select bind:value={riskSettings.propFirmPreset} class="select-input" on:change={handlePresetChange}>
         <option value="ftmo">FTMO</option>
         <option value="the5ers">The5ers</option>
         <option value="fundingpips">FundingPips</option>

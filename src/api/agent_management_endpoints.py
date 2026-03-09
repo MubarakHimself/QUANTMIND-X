@@ -7,18 +7,53 @@ Provides REST API endpoints for managing factory-created agents.
 """
 
 import logging
+import warnings
 from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from src.agents.config import AgentConfig
-from src.agents.factory import get_factory
-from src.agents.registry import get_registry
-from src.agents.health import get_health_checker, AgentHealthChecker
-from src.agents.di_container import get_container
-from src.agents.compiled_agent import CompiledAgent
-from src.agents.observers.logging_observer import LoggingObserver
-from src.agents.observers.prometheus_observer import PrometheusObserver
+
+# Deprecated - using floor_manager instead
+warnings.warn(
+    "agent_management_endpoints is deprecated. Use /api/floor-manager instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
+
+# Stub implementations for backward compatibility
+def get_factory():
+    """Deprecated - use floor_manager instead."""
+    raise NotImplementedError(
+        "Factory-based agent management is deprecated. Use /api/floor-manager endpoints."
+    )
+
+
+def get_registry():
+    """Deprecated - use floor_manager instead."""
+    raise NotImplementedError(
+        "Agent registry is deprecated. Use /api/floor-manager endpoints."
+    )
+
+
+def get_health_checker():
+    """Deprecated."""
+    pass
+
+
+class AgentHealthChecker:
+    """Deprecated."""
+    pass
+
+
+def get_container():
+    """Deprecated."""
+    pass
+
+
+class CompiledAgent:
+    """Deprecated - use floor_manager instead."""
+    pass
 
 logger = logging.getLogger(__name__)
 

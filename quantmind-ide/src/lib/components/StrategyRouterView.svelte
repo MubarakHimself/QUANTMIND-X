@@ -32,6 +32,13 @@
     activeAuctions: [] as Array<any>
   };
 
+  // Track initial load to avoid saving on first render
+  let initialLoadComplete = false;
+
+  // Track previous values to detect changes
+  let previousMode = routerState.mode;
+  let previousAuctionInterval = routerState.auctionInterval;
+
   // Market State
   let marketState = {
     regime: {
@@ -316,6 +323,10 @@
       if (res.ok) {
         const data = await res.json();
         routerState = { ...routerState, ...data };
+        // Mark initial load complete after first fetch
+        if (!initialLoadComplete) {
+          initialLoadComplete = true;
+        }
       }
     } catch (e) {
       console.error('Failed to load router state:', e);
@@ -334,6 +345,32 @@
     } catch (e) {
       console.error('Failed to toggle router:', e);
     }
+  }
+
+  async function saveRouterSettings() {
+    try {
+      await fetch('http://localhost:8000/api/router/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          active: routerState.active,
+          mode: routerState.mode,
+          auctionInterval: routerState.auctionInterval,
+          lastAuction: routerState.lastAuction?.toISOString() || null,
+          queuedSignals: routerState.queuedSignals.length,
+          activeAuctions: routerState.activeAuctions.length
+        })
+      });
+    } catch (e) {
+      console.error('Failed to save router settings:', e);
+    }
+  }
+
+  // Save router settings when mode or auctionInterval changes (after initial load)
+  $: if (initialLoadComplete && (routerState.mode !== previousMode || routerState.auctionInterval !== previousAuctionInterval)) {
+    previousMode = routerState.mode;
+    previousAuctionInterval = routerState.auctionInterval;
+    saveRouterSettings();
   }
 
   async function runAuction() {

@@ -6,7 +6,6 @@
     Bot,
     TestTube,
     PlayCircle,
-    Settings,
     Server,
     FileText,
     Edit3,
@@ -83,19 +82,6 @@
       </button>
     {/each}
   </div>
-
-  <div class="spacer"></div>
-
-  <div class="bottom-icons">
-    <button
-      class="activity-icon"
-      class:active={activeView === "settings"}
-      on:click={() => selectView("settings")}
-      title="Settings"
-    >
-      <Settings size={22} />
-    </button>
-  </div>
 </aside>
 
 <style>
@@ -144,12 +130,7 @@
     background: var(--accent-primary);
   }
 
-  .spacer {
-    flex: 1;
-  }
-
-  .top-icons,
-  .bottom-icons {
+  .top-icons {
     display: flex;
     flex-direction: column;
     gap: 4px;

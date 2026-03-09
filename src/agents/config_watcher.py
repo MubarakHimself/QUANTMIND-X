@@ -27,8 +27,10 @@ except ImportError:
 
 
 from src.agents.config import AgentConfig
-from src.agents.factory import get_factory
-from src.agents.registry import get_registry
+
+# Factory removed - using department system instead
+# from src.agents.factory import get_factory
+# from src.agents.registry import get_registry
 
 # Default config directory
 DEFAULT_CONFIG_DIR = "config/agents"
@@ -101,24 +103,26 @@ class ConfigWatcher:
     ):
         """
         Initialize the config watcher.
-        
+
         Args:
             config_dir: Directory to watch for config files
             registry: Agent registry
-            factory: Agent factory
+            factory: Deprecated - use department system instead
+
+        Note: Factory-based config watching is deprecated.
+        Use floor_manager with department configurations instead.
         """
         self.config_dir = config_dir
-        self.registry = registry or get_registry()
-        self.factory = factory or get_factory()
-        
+        self.registry = None  # Deprecated
+        self.factory = None  # Deprecated - use floor_manager
+
         self._observer: Optional[Any] = None
         self._is_running = False
-        
-        if not WATCHDOG_AVAILABLE:
-            logger.warning(
-                "ConfigWatcher requires 'watchdog' library. "
-                "Install with: pip install watchdog"
-            )
+
+        logger.info(
+            "ConfigWatcher is deprecated. "
+            "Use floor_manager /api/floor-manager endpoints instead."
+        )
         
         logger.info(f"ConfigWatcher initialized for: {config_dir}")
     
@@ -207,7 +211,8 @@ class ConfigWatcher:
             
             # Create new agent
             logger.info(f"Creating new agent from config: {agent_id}")
-            agent = self.factory.create(config)
+            logger.warning("Factory-based agent creation is deprecated")
+            # agent = self.factory.create(config)  # Deprecated
             
             # Register new agent
             self.registry.register(agent)

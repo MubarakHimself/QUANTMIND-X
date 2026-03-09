@@ -185,6 +185,16 @@ async def toggle_router(active: bool = None) -> Dict[str, Any]:
         state["active"] = active
     return {"success": True, "active": state["active"]}
 
+@router.post("/settings")
+async def save_router_settings(settings: RouterState) -> Dict[str, Any]:
+    """Save router settings."""
+    # For now, just return success - in production this would persist
+    return {
+        "success": True,
+        "mode": settings.mode,
+        "auctionInterval": settings.auctionInterval
+    }
+
 @router.get("/market")
 async def get_market_state() -> Dict[str, Any]:
     """Get current market state including regime and symbols."""
