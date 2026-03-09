@@ -357,6 +357,10 @@ class BotManifest:
     total_trades: int = 0
     win_rate: float = 0.0
 
+    # Router mode selection fields
+    priority: int = 0  # Priority value for priority mode (higher = selected first)
+    score: float = 0.0  # Score for auction mode (higher = selected first)
+
     # Session preferences (ICT-style filtering)
     preferred_conditions: Optional[PreferredConditions] = None
     
@@ -403,6 +407,8 @@ class BotManifest:
             "last_trade_at": self.last_trade_at.isoformat() if self.last_trade_at else None,
             "total_trades": self.total_trades,
             "win_rate": self.win_rate,
+            "priority": self.priority,
+            "score": self.score,
             "tags": self.tags,
             # V3: Trading mode and promotion fields
             "trading_mode": self.trading_mode.value,
@@ -483,6 +489,8 @@ class BotManifest:
             last_trade_at=datetime.fromisoformat(data["last_trade_at"]) if data.get("last_trade_at") else None,
             total_trades=data.get("total_trades", 0),
             win_rate=data.get("win_rate", 0.0),
+            priority=data.get("priority", 0),
+            score=data.get("score", 0.0),
             tags=data.get("tags", []),
             preferred_conditions=preferred_conditions,
             # V3: Trading mode and promotion fields

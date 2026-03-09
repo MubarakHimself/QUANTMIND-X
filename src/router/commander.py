@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 from datetime import datetime, timezone
 from src.router.session_detector import SessionDetector, TradingSession
+from src.router.bot_manifest import BotManifest
 
 from src.router.dynamic_bot_limits import DynamicBotLimiter
 from src.router.routing_matrix import RoutingMatrix
@@ -86,6 +87,10 @@ class Commander:
             logger.info(f"Commander: Using {governor_class_name} governor (enhanced_sizing={self._use_enhanced_sizing})")
         self.active_bots: Dict = {}  # Legacy support
         self.regime_map: Dict = self._load_regime_map()
+
+        # Router mode selection: auction (default), priority, round_robin
+        self.router_mode: str = "auction"
+        self._last_selected_index: int = -1  # For round_robin mode
         
         # Regime → Strategy Type mapping
         self.regime_strategy_map = {
@@ -102,6 +107,53 @@ class Commander:
         
         # Lifecycle Manager scheduler (runs daily at 3:00 AM UTC)
         self._scheduler: Optional[Any] = None
+
+    def set_router_mode(self, mode: str) -> None:
+        """Set the router mode for bot selection.
+
+        Args:
+            mode: One of 'auction', 'priority', 'round_robin'
+                - auction: Sort by score (highest first) - default behavior
+                - priority: Sort by priority value (highest first)
+                - round_robin: Rotate through bots equally
+
+        Raises:
+            ValueError: If mode is not valid
+        """
+        valid_modes = ["auction", "priority", "round_robin"]
+        if mode not in valid_modes:
+            raise ValueError(f"Invalid router mode: {mode}. Must be one of {valid_modes}")
+        self.router_mode = mode
+        logger.info(f"Commander: Router mode set to '{mode}'")
+
+    def select_bots_for_auction(self, bots: List["BotManifest"]) -> List["BotManifest"]:
+        """Select bots for auction based on the current router mode.
+
+        Args:
+            bots: List of BotManifest objects to select from
+
+        Returns:
+            List of BotManifest objects sorted/selected based on router mode
+        """
+        if not bots:
+            return []
+
+        if self.router_mode == "auction":
+            # Current behavior: sort by score descending
+            return sorted(bots, key=lambda b: b.score, reverse=True)
+
+        elif self.router_mode == "priority":
+            # Sort by priority value (highest first), ignore score
+            return sorted(bots, key=lambda b: b.priority, reverse=True)
+
+        elif self.router_mode == "round_robin":
+            # Equal opportunity: rotate through bots
+            next_index = (self._last_selected_index + 1) % len(bots)
+            self._last_selected_index = next_index
+            return [bots[next_index]]
+
+        # Fallback: return as-is
+        return bots
 
     def check_drawdown_limits(
         self,

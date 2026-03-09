@@ -175,7 +175,16 @@ def get_mock_house_money() -> Dict[str, Any]:
 @router.get("/state")
 async def get_router_state() -> RouterState:
     """Get current router state."""
-    return RouterState(**get_mock_router_state())
+    # Get real router mode from settings
+    from src.api.settings_endpoints import load_risk_settings
+    risk_settings = load_risk_settings()
+    router_mode = getattr(risk_settings, 'routerMode', 'auction')
+
+    # Get other state from mock (or real implementation if available)
+    mock_state = get_mock_router_state()
+    mock_state["mode"] = router_mode
+
+    return RouterState(**mock_state)
 
 @router.post("/toggle")
 async def toggle_router(active: bool = None) -> Dict[str, Any]:
