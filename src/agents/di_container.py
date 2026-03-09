@@ -19,7 +19,7 @@ from src.agents.llm_provider import (
     ProviderType,
     AGENT_MODELS,
 )
-from src.agents.tool_registry import ToolRegistry, global_tool_registry
+from src.agents.departments.tool_registry import get_tool_registry, ToolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +202,7 @@ class DependencyContainer:
             return self._tool_registries[config.agent_type]
         
         # Get global registry for agent type
-        registry = global_tool_registry.get_registry(config.agent_type)
+        registry = get_tool_registry()
         
         # Load tools if not already loaded
         if registry.tool_count == 0:
