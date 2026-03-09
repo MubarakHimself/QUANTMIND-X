@@ -19,6 +19,7 @@
     ConnectionPanel,
     SecurityPanel
   } from './settings';
+  import { getRouterSettings, saveRouterSettings } from '$lib/api';
 
   const dispatch = createEventDispatcher();
 
@@ -555,10 +556,11 @@
       }
 
       // Load router settings
-      const routerRes = await fetch('http://localhost:8000/api/router/state');
-      if (routerRes.ok) {
-        const data = await routerRes.json();
-        routerSettings = { ...routerSettings, ...data };
+      try {
+        const routerData = await getRouterSettings();
+        routerSettings = { ...routerSettings, ...routerData };
+      } catch (e) {
+        console.error('Failed to load router settings:', e);
       }
 
       const dbRes = await fetch('http://localhost:8000/api/settings/database');
@@ -598,11 +600,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(riskSettings)
         }),
-        fetch('http://localhost:8000/api/router/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(routerSettings)
-        })
+        saveRouterSettings(routerSettings)
       ]);
 
       dispatch('settingsSaved');

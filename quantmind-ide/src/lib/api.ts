@@ -417,6 +417,13 @@ export async function getRouterSettings(): Promise<RouterSettings> {
   return apiFetch<RouterSettings>('/router/state');
 }
 
+export async function saveRouterSettings(settings: RouterSettings): Promise<void> {
+  return apiFetch('/router/settings', {
+    method: 'POST',
+    body: JSON.stringify(settings)
+  });
+}
+
 // Export WebSocket client creation functions
 export {
   createBacktestClient,
