@@ -41,6 +41,8 @@ from src.api.services.chat_service import (
     execute_tool,
     generate_pine_script,
     convert_mql5_to_pine,
+    validate_pine_script,
+    refine_pine_script,
     SDK_ORCHESTRATOR_AVAILABLE,
     CLAUDE_ORCHESTRATOR_AVAILABLE,
     VALID_AGENT_TYPES,
@@ -103,6 +105,19 @@ class PineScriptResponse(BaseModel):
     pine_script: Optional[str] = None
     status: str
     errors: List[str] = []
+    is_valid: Optional[bool] = None
+    warnings: Optional[List[str]] = None
+
+
+class PineScriptValidateRequest(BaseModel):
+    """Request model for validating Pine Script."""
+    pine_code: str
+
+
+class PineScriptRefineRequest(BaseModel):
+    """Request model for refining Pine Script."""
+    pine_code: str
+    feedback: str
 
 
 class ToolExecutionRequest(BaseModel):
@@ -466,5 +481,118 @@ async def convert_mql5_to_pinescript_endpoint(request: PineScriptConvertRequest)
     return PineScriptResponse(
         pine_script=result.get("pine_script"),
         status=result.get("status", "complete"),
-        errors=result.get("errors", [])
+        errors=result.get("errors", []),
+        is_valid=result.get("is_valid"),
+        warnings=result.get("warnings", [])
     )
+
+
+@router.post("/pinescript/validate", response_model=PineScriptResponse)
+async def validate_pine_script_endpoint(request: PineScriptValidateRequest):
+    """Validate Pine Script v5 syntax."""
+    result = await validate_pine_script(request.pine_code)
+
+    return PineScriptResponse(
+        pine_script=request.pine_code,
+        status="validated",
+        is_valid=result.get("is_valid", False),
+        errors=result.get("errors", []),
+        warnings=result.get("warnings", [])
+    )
+
+
+@router.post("/pinescript/refine", response_model=PineScriptResponse)
+async def refine_pine_script_endpoint(request: PineScriptRefineRequest):
+    """Refine Pine Script code based on feedback."""
+    result = await refine_pine_script(request.pine_code, request.feedback)
+
+    return PineScriptResponse(
+        pine_script=result.get("pine_script"),
+        status=result.get("status", "refined"),
+        is_valid=result.get("is_valid"),
+        errors=result.get("errors", []),
+        warnings=result.get("warnings", [])
+    )
+
+
+# =============================================================================
+# Chat Session CRUD Endpoints
+# =============================================================================
+
+import uuid
+from datetime import datetime, timezone
+from typing import List, Optional, Dict, Any
+
+from src.api.services.chat_session_service import ChatSessionService
+
+
+# Create service instance
+_session_service = ChatSessionService()
+
+
+class CreateSessionRequest(BaseModel):
+    """Request to create a new chat session."""
+    agent_type: str
+    agent_id: str
+    user_id: str
+    title: Optional[str] = None
+    context: Dict[str, Any] = {}
+    metadata: Dict[str, Any] = {}
+
+
+class SessionResponse(BaseModel):
+    """Response model for chat session."""
+    id: str
+    agent_type: str
+    agent_id: str
+    title: str
+    user_id: str
+    created_at: str
+    updated_at: str
+
+
+@router.post("/sessions", response_model=SessionResponse)
+async def create_session(request: CreateSessionRequest):
+    """Create a new chat session."""
+    session = await _session_service.create_session(
+        agent_type=request.agent_type,
+        agent_id=request.agent_id,
+        user_id=request.user_id,
+        title=request.title,
+        context=request.context,
+        metadata=request.metadata
+    )
+    return SessionResponse(
+        id=session.id,
+        agent_type=session.agent_type,
+        agent_id=session.agent_id,
+        title=session.title,
+        user_id=session.user_id,
+        created_at=session.created_at.isoformat() if session.created_at else datetime.now(timezone.utc).isoformat(),
+        updated_at=session.updated_at.isoformat() if session.updated_at else datetime.now(timezone.utc).isoformat()
+    )
+
+
+@router.get("/sessions/{session_id}", response_model=SessionResponse)
+async def get_session(session_id: str):
+    """Get a chat session by ID."""
+    session = await _session_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return SessionResponse(
+        id=session.id,
+        agent_type=session.agent_type,
+        agent_id=session.agent_id,
+        title=session.title,
+        user_id=session.user_id,
+        created_at=session.created_at.isoformat() if session.created_at else datetime.now(timezone.utc).isoformat(),
+        updated_at=session.updated_at.isoformat() if session.updated_at else datetime.now(timezone.utc).isoformat()
+    )
+
+
+@router.get("/sessions", response_model=List[SessionResponse])
+async def list_sessions(user_id: Optional[str] = None, agent_type: Optional[str] = None):
+    """List chat sessions."""
+    # TODO: Implement filtering by user_id and agent_type
+    # For now, return empty list as placeholder
+    return []
