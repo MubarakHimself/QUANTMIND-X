@@ -85,23 +85,20 @@ class ClaudeAgentConfig:
             dir_path.mkdir(parents=True, exist_ok=True)
 
 
-# Import hooks after definition to avoid circular imports
+# Legacy agent hooks - these agents are deprecated, return empty hooks
 def _get_analyst_hooks():
-    """Lazy load analyst hooks to avoid circular imports."""
-    from src.agents.hooks import pre_analyst_hook, post_analyst_hook
-    return [pre_analyst_hook], [post_analyst_hook]
+    """DEPRECATED: Legacy analyst hooks removed."""
+    return [], []
 
 
 def _get_quantcode_hooks():
-    """Lazy load quantcode hooks to avoid circular imports."""
-    from src.agents.hooks import pre_quantcode_hook, post_quantcode_hook
-    return [pre_quantcode_hook], [post_quantcode_hook]
+    """DEPRECATED: Legacy quantcode hooks removed."""
+    return [], []
 
 
 def _get_copilot_hooks():
-    """Lazy load copilot hooks to avoid circular imports."""
-    from src.agents.hooks import pre_copilot_hook, post_copilot_hook
-    return [pre_copilot_hook], [post_copilot_hook]
+    """DEPRECATED: Legacy copilot hooks removed."""
+    return [], []
 
 
 def _get_default_hooks():
