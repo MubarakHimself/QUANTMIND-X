@@ -196,3 +196,121 @@ class ChatSessionService:
             "history": history,
             "memory": memory_context
         }
+
+    async def archive_old_sessions(self, days: int = 30) -> int:
+        """
+        Archive sessions older than specified days to cold storage.
+
+        Moves session data to cold_storage.db for long-term retention.
+        Returns count of archived sessions.
+        """
+        from datetime import timedelta
+        import json
+        from pathlib import Path
+        import sqlite3
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+        db = Session()
+        try:
+            old_sessions = db.query(ChatSession).filter(
+                ChatSession.last_message_at < cutoff
+            ).all()
+
+            archived_count = 0
+            for session in old_sessions:
+                # Get all messages for this session
+                messages = db.query(ChatMessage).filter(
+                    ChatMessage.session_id == session.id
+                ).all()
+
+                # Archive to cold storage
+                self._archive_to_cold_storage(session, messages)
+                archived_count += 1
+
+                # Delete from hot storage
+                db.delete(session)
+
+            db.commit()
+            return archived_count
+
+        finally:
+            db.close()
+
+    def _archive_to_cold_storage(self, session: ChatSession, messages: List[ChatMessage]):
+        """Archive session to cold storage (SQLite)."""
+        import json
+        from pathlib import Path
+        import sqlite3
+
+        # Use existing cold storage
+        cold_db_path = Path("data/departments/cold_storage.db")
+        cold_db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        conn = sqlite3.connect(str(cold_db_path))
+        cursor = conn.cursor()
+
+        # Create table if not exists
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS archived_chat_sessions (
+                id TEXT PRIMARY KEY,
+                agent_type TEXT,
+                agent_id TEXT,
+                title TEXT,
+                user_id TEXT,
+                context TEXT,
+                metadata TEXT,
+                created_at TEXT,
+                updated_at TEXT,
+                archived_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS archived_chat_messages (
+                id TEXT PRIMARY KEY,
+                session_id TEXT,
+                role TEXT,
+                content TEXT,
+                artifacts TEXT,
+                tool_calls TEXT,
+                created_at TEXT,
+                archived_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Insert session
+        cursor.execute("""
+            INSERT OR REPLACE INTO archived_chat_sessions
+            (id, agent_type, agent_id, title, user_id, context, metadata, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            session.id,
+            session.agent_type,
+            session.agent_id,
+            session.title,
+            session.user_id,
+            json.dumps(session.context) if session.context else '{}',
+            json.dumps(session.session_metadata) if session.session_metadata else '{}',
+            session.created_at.isoformat() if session.created_at else '',
+            session.last_message_at.isoformat() if session.last_message_at else ''
+        ))
+
+        # Insert messages
+        for msg in messages:
+            cursor.execute("""
+                INSERT OR REPLACE INTO archived_chat_messages
+                (id, session_id, role, content, artifacts, tool_calls, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                msg.id,
+                msg.session_id,
+                msg.role,
+                msg.content,
+                json.dumps(msg.artifacts) if msg.artifacts else '[]',
+                json.dumps(msg.tool_calls) if msg.tool_calls else '[]',
+                msg.created_at.isoformat() if msg.created_at else ''
+            ))
+
+        conn.commit()
+        conn.close()
