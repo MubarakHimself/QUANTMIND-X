@@ -1,6 +1,7 @@
 <script lang="ts">
   import TopBar from "$lib/components/TopBar.svelte";
   import ActivityBar from "$lib/components/ActivityBar.svelte";
+  import StatusBand from "$lib/components/StatusBand.svelte";
   import MainContent from "$lib/components/MainContent.svelte";
   import BottomPanel from "$lib/components/BottomPanel.svelte";
 
@@ -51,6 +52,7 @@
 
 <div class="ide-layout">
   <TopBar on:openSettings={handleOpenSettings} />
+  <StatusBand />
   <ActivityBar
     bind:activeView
     on:viewChange={handleViewChange}
@@ -71,14 +73,19 @@
     display: grid;
     grid-template-areas:
       "topbar topbar"
+      "statusband statusband"
       "activity main"
       "activity bottom";
     grid-template-columns: var(--sidebar-width) 1fr;
-    grid-template-rows: var(--header-height) 1fr auto;
+    grid-template-rows: var(--header-height) auto 1fr auto;
     height: 100vh;
     width: 100vw;
     background: var(--bg-primary);
     overflow: hidden;
     gap: 0;
+  }
+
+  :global(.status-band) {
+    grid-area: statusband;
   }
 </style>

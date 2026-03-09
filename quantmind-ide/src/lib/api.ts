@@ -321,11 +321,114 @@ export async function getBacktestStatus(backtestId: string): Promise<{ status: s
     return apiFetch(`/v1/backtest/status/${backtestId}`);
 }
 
+// =============================================================================
+// Status Band Endpoints
+// =============================================================================
+
+export interface SessionStatus {
+  active: boolean;
+  name: string;
+}
+
+export interface SessionsResponse {
+  [key: string]: SessionStatus;
+}
+
+export interface MarketRegime {
+  quality: number;
+  trend: string;
+  chaos: number;
+  volatility: string;
+}
+
+export interface MarketResponse {
+  regime: MarketRegime;
+  symbols?: Array<{
+    symbol: string;
+    price: number;
+    change: number;
+    spread: number;
+  }>;
+}
+
+export interface TradingMetrics {
+  tick_latency_ms: number;
+  active_bots: number;
+  active_positions: number;
+  daily_pnl: number;
+  total_trades: number;
+  win_rate: number;
+}
+
+export async function getAllSessions(): Promise<SessionsResponse> {
+  return apiFetch<SessionsResponse>('/sessions/all');
+}
+
+export async function getMarketState(): Promise<MarketResponse> {
+  return apiFetch<MarketResponse>('/router/market');
+}
+
+export async function getTradingMetrics(): Promise<TradingMetrics> {
+  return apiFetch<TradingMetrics>('/metrics/trading');
+}
+
+// =============================================================================
+// Risk Settings Endpoints
+// =============================================================================
+
+export interface RiskSettings {
+  houseMoneyEnabled: boolean;
+  houseMoneyThreshold: number;
+  dailyLossLimit: number;
+  maxDrawdown: number;
+  riskMode: 'fixed' | 'dynamic' | 'conservative';
+  propFirmPreset: 'ftmo' | 'the5ers' | 'fundingpips' | 'custom';
+  balanceZones: {
+    danger: number;
+    growth: number;
+    scaling: number;
+    guardian: number | typeof Infinity;
+  };
+  maxRiskPerTrade: number;
+}
+
+export async function getRiskSettings(): Promise<RiskSettings> {
+  return apiFetch<RiskSettings>('/settings/risk');
+}
+
+export async function saveRiskSettings(settings: RiskSettings): Promise<void> {
+  return apiFetch('/settings/risk', {
+    method: 'POST',
+    body: JSON.stringify(settings)
+  });
+}
+
+// =============================================================================
+// Router Settings Endpoints
+// =============================================================================
+
+export interface RouterSettings {
+  active: boolean;
+  mode: 'auction' | 'priority' | 'round-robin';
+  auctionInterval: number;
+}
+
+export async function getRouterSettings(): Promise<RouterSettings> {
+  return apiFetch<RouterSettings>('/router/state');
+}
+
+export async function saveRouterSettings(settings: RouterSettings): Promise<void> {
+  return apiFetch('/router/settings', {
+    method: 'POST',
+    body: JSON.stringify(settings)
+  });
+}
+
 // Export WebSocket client creation functions
 export {
-    createBacktestClient,
-    createTradingClient,
-    createWebSocketClient
+  createBacktestClient,
+  createTradingClient,
+  createWebSocketClient
 } from './ws-client';
 
 // =============================================================================

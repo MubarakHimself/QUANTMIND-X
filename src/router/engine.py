@@ -239,7 +239,11 @@ class StrategyRouter:
             logger.info("StrategyRouter: Base Governor activated")
 
         self.commander = Commander(governor=self.governor)
-        
+
+        # Set router mode from risk settings
+        router_mode = getattr(self._risk_settings, 'routerMode', 'auction')
+        self.commander.set_router_mode(router_mode)
+
         # Share multi_timeframe_sentinel with Commander
         self.commander._multi_timeframe_sentinel = self.multi_timeframe_sentinel
         

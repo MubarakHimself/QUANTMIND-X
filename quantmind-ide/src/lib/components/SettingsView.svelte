@@ -19,6 +19,7 @@
     ConnectionPanel,
     SecurityPanel
   } from './settings';
+  import { getRouterSettings, saveRouterSettings } from '$lib/api';
 
   const dispatch = createEventDispatcher();
 
@@ -199,6 +200,13 @@
       guardian: Infinity
     },
     maxRiskPerTrade: 0.05
+  };
+
+  // Router settings
+  let routerSettings = {
+    active: true,
+    mode: 'auction' as 'auction' | 'priority' | 'round-robin',
+    auctionInterval: 5000
   };
 
   // Database settings
@@ -547,6 +555,14 @@
         riskSettings = { ...riskSettings, ...data };
       }
 
+      // Load router settings
+      try {
+        const routerData = await getRouterSettings();
+        routerSettings = { ...routerSettings, ...routerData };
+      } catch (e) {
+        console.error('Failed to load router settings:', e);
+      }
+
       const dbRes = await fetch('http://localhost:8000/api/settings/database');
       if (dbRes.ok) {
         const data = await dbRes.json();
@@ -583,7 +599,8 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(riskSettings)
-        })
+        }),
+        saveRouterSettings(routerSettings)
       ]);
 
       dispatch('settingsSaved');

@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 from datetime import datetime, timezone
 from src.router.session_detector import SessionDetector, TradingSession
+from src.router.bot_manifest import BotManifest
 
 from src.router.dynamic_bot_limits import DynamicBotLimiter
 from src.router.routing_matrix import RoutingMatrix
@@ -86,6 +87,10 @@ class Commander:
             logger.info(f"Commander: Using {governor_class_name} governor (enhanced_sizing={self._use_enhanced_sizing})")
         self.active_bots: Dict = {}  # Legacy support
         self.regime_map: Dict = self._load_regime_map()
+
+        # Router mode selection: auction (default), priority, round_robin
+        self.router_mode: str = "auction"
+        self._last_selected_index: int = -1  # For round_robin mode
         
         # Regime → Strategy Type mapping
         self.regime_strategy_map = {
@@ -102,9 +107,77 @@ class Commander:
         
         # Lifecycle Manager scheduler (runs daily at 3:00 AM UTC)
         self._scheduler: Optional[Any] = None
-        if APSCHEDULER_AVAILABLE:
-            self._setup_lifecycle_scheduler()
-    
+
+    def set_router_mode(self, mode: str) -> None:
+        """Set the router mode for bot selection.
+
+        Args:
+            mode: One of 'auction', 'priority', 'round_robin'
+                - auction: Sort by score (highest first) - default behavior
+                - priority: Sort by priority value (highest first)
+                - round_robin: Rotate through bots equally
+
+        Raises:
+            ValueError: If mode is not valid
+        """
+        valid_modes = ["auction", "priority", "round_robin"]
+        if mode not in valid_modes:
+            raise ValueError(f"Invalid router mode: {mode}. Must be one of {valid_modes}")
+        self.router_mode = mode
+        logger.info(f"Commander: Router mode set to '{mode}'")
+
+    def select_bots_for_auction(self, bots: List["BotManifest"]) -> List["BotManifest"]:
+        """Select bots for auction based on the current router mode.
+
+        Args:
+            bots: List of BotManifest objects to select from
+
+        Returns:
+            List of BotManifest objects sorted/selected based on router mode
+        """
+        if not bots:
+            return []
+
+        if self.router_mode == "auction":
+            # Current behavior: sort by score descending
+            return sorted(bots, key=lambda b: b.score, reverse=True)
+
+        elif self.router_mode == "priority":
+            # Sort by priority value (highest first), ignore score
+            return sorted(bots, key=lambda b: b.priority, reverse=True)
+
+        elif self.router_mode == "round_robin":
+            # Equal opportunity: rotate through bots
+            next_index = (self._last_selected_index + 1) % len(bots)
+            self._last_selected_index = next_index
+            return [bots[next_index]]
+
+        # Fallback: return as-is
+        return bots
+
+    def check_drawdown_limits(
+        self,
+        account_book: str,
+        prop_firm_name: Optional[str],
+        current_drawdown: float
+    ) -> tuple[bool, str]:
+        """Check if trade should be blocked due to drawdown limits.
+
+        Args:
+            account_book: "personal" or "prop_firm"
+            prop_firm_name: Name of prop firm (required if account_book is "prop_firm")
+            current_drawdown: Current drawdown as decimal (e.g., 0.04 for 4%)
+
+        Returns:
+            Tuple of (should_block: bool, reason: str)
+                - should_block: True if trade should be blocked
+                - reason: Explanation if blocked, empty string otherwise
+        """
+        from src.risk.prop_firm_overlay import PropFirmRiskOverlay
+
+        overlay = PropFirmRiskOverlay(firm_name=prop_firm_name)
+        return overlay.should_block_trade(account_book, prop_firm_name, current_drawdown)
+
     def _setup_lifecycle_scheduler(self):
         """Setup APScheduler for LifecycleManager daily checks."""
         try:
@@ -489,13 +562,14 @@ class Commander:
     async def execute_signal(self, execution_params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute a TradingView webhook signal.
-        
+
         This method handles incoming TradingView alerts by:
         1. Validating the signal parameters
         2. Getting current market regime from Sentinel
         3. Finding suitable bot via auction
-        4. Executing trade via MT5 adapter
-        
+        4. Checking drawdown limits (blocks trade if exceeded)
+        5. Executing trade via MT5 adapter
+
         Args:
             execution_params: Dict containing signal parameters
                 - symbol: Trading symbol (required)
@@ -507,7 +581,9 @@ class Commander:
                 - stop_loss: Stop loss price (optional)
                 - take_profit: Take profit price (optional)
                 - comment: Trade comment (optional)
-                
+                - account_book: 'personal' or 'prop_firm' (optional, default: 'personal')
+                - prop_firm_name: Name of prop firm if account_book is 'prop_firm' (optional)
+
         Returns:
             Dict with execution result:
                 - status: 'success' or 'error'
@@ -615,11 +691,43 @@ class Commander:
             
             bot_id = selected_bot.get('bot_id', 'unknown')
             logger.info(f"Selected bot {bot_id} for signal execution")
-            
+
             # 5. Execute Trade via MT5 Adapter
             try:
                 from src.data.brokers.mt5_socket_adapter import MT5SocketAdapter
-                
+
+                # Check Drawdown Limits before executing trade
+                account_book = execution_params.get('account_book', 'personal')
+                prop_firm_name = execution_params.get('prop_firm_name')
+
+                # Calculate current drawdown from account equity vs balance
+                current_drawdown = 0.0
+                try:
+                    # Try to get account info from MT5 adapter
+                    account_info = mt5_adapter.get_account_info()
+                    if account_info and account_info.balance > 0:
+                        # Drawdown is (balance - equity) / balance when equity < balance
+                        if account_info.equity < account_info.balance:
+                            current_drawdown = (account_info.balance - account_info.equity) / account_info.balance
+                except Exception as e:
+                    logger.warning(f"Could not calculate drawdown: {e}")
+
+                # Check if trade should be blocked due to drawdown limits
+                should_block, block_reason = self.check_drawdown_limits(
+                    account_book=account_book,
+                    prop_firm_name=prop_firm_name,
+                    current_drawdown=current_drawdown
+                )
+
+                if should_block:
+                    logger.warning(f"Trade blocked due to drawdown limits: {block_reason}")
+                    return {
+                        'status': 'error',
+                        'message': f'Trade blocked: {block_reason}',
+                        'bot_id': bot_id,
+                        'order_id': None
+                    }
+
                 # Map action to MT5 direction
                 direction = 'buy' if action in ['long'] else 'sell'
                 

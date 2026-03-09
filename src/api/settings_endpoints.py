@@ -64,6 +64,7 @@ class RiskSettings(BaseModel):
     dailyLossLimit: float = 5.0
     maxDrawdown: float = 10.0
     riskMode: str = "dynamic"
+    routerMode: str = "auction"  # auction, priority, round_robin
     balanceZones: Dict[str, float] = {
         "danger": 200,
         "growth": 1000,

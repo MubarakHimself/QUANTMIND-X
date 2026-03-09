@@ -137,12 +137,15 @@ class EnhancedGovernor(Governor):
             self._house_money_multiplier_up = settings.houseMoneyMultiplierUp
             self._house_money_multiplier_down = settings.houseMoneyMultiplierDown
             self._default_risk_per_trade = settings.defaultRiskPerTrade
+            # Risk mode: fixed, dynamic, conservative
+            self.risk_mode = getattr(settings, 'riskMode', 'dynamic')
         else:
             # Fallback defaults (backwards compatible)
             self._house_money_threshold = 0.05  # 5% threshold
             self._house_money_multiplier_up = 1.5
             self._house_money_multiplier_down = 0.5
             self._default_risk_per_trade = 0.02  # 2% default risk
+            self.risk_mode = 'dynamic'
 
         # Load daily state if account_id provided and database is available
         if account_id and self._db_available:
@@ -277,10 +280,20 @@ class EnhancedGovernor(Governor):
                 notes="Fee kill switch activated - fees exceed expected profit"
             )
 
-        # Apply house money multiplier consistently to all risk metrics
-        kelly_f_with_house_money = kelly_result.kelly_f * self.house_money_multiplier
-        scaled_position_size = kelly_result.position_size * self.house_money_multiplier
-        scaled_risk_amount = kelly_result.risk_amount * self.house_money_multiplier
+        # Calculate payoff ratio for risk-mode-aware Kelly fraction
+        payoff_ratio = avg_win / avg_loss if avg_loss > 0 else 1.0
+
+        # Use _calculate_kelly_fraction which respects risk_mode setting
+        # This applies the risk_mode logic: fixed, conservative, or dynamic
+        risk_mode_kelly_f = self._calculate_kelly_fraction(win_rate, payoff_ratio)
+
+        # Apply house money multiplier to the risk-mode-aware Kelly fraction
+        kelly_f_with_house_money = risk_mode_kelly_f * self.house_money_multiplier
+
+        # Recalculate position_size and risk_amount using risk-mode-aware Kelly
+        # This ensures the risk_mode setting actually affects trading
+        scaled_risk_amount = account_balance * kelly_f_with_house_money
+        scaled_position_size = scaled_risk_amount / (stop_loss_pips * pip_value) if stop_loss_pips > 0 and pip_value > 0 else 0.0
 
         # Apply base Governor physics-based throttling
         # Comment 2: Pass mode to base Governor for demo-specific risk scaling
@@ -304,16 +317,22 @@ class EnhancedGovernor(Governor):
         # Note: allocation_scalar is the physics clamp; kelly_fraction is the final Kelly after physics throttling
         # position_size and risk_amount incorporate both house_money_multiplier and physics_scalar
         # Comment 2: Set mandate.mode to preserve mode tag in risk notes
+
+        # Add risk_mode info to kelly_adjustments
+        risk_mode_adjustments = kelly_result.adjustments_applied.copy() if kelly_result.adjustments_applied else {}
+        risk_mode_adjustments['risk_mode'] = self.risk_mode
+        risk_mode_adjustments['risk_mode_applied'] = True
+
         mandate = RiskMandate(
             allocation_scalar=physics_scalar,
             risk_mode=base_mandate.risk_mode,
             position_size=final_position_size,
             kelly_fraction=final_kelly_fraction,
             risk_amount=final_risk_amount,
-            kelly_adjustments=kelly_result.adjustments_applied,
+            kelly_adjustments=risk_mode_adjustments,
             mode=mode,  # Comment 2: Preserve mode in mandate for audit trail
             notes=(
-                f"{mode_tag} Kelly: {kelly_result.kelly_f:.4f} × "
+                f"{mode_tag} Kelly: {risk_mode_kelly_f:.4f} [{self.risk_mode}] × "
                 f"House Money: {self.house_money_multiplier:.2f} × "
                 f"Physics: {physics_scalar:.4f} = {final_kelly_fraction:.4f}. "
                 f"Final position: {final_position_size:.4f} lots, risk: ${final_risk_amount:.2f}. "
@@ -323,7 +342,7 @@ class EnhancedGovernor(Governor):
 
         logger.info(
             f"EnhancedGovernor risk calculation: {mandate.allocation_scalar:.4f} "
-            f"(Kelly: {kelly_result.kelly_f:.4f}, House Money: {self.house_money_multiplier:.2f})"
+            f"(Kelly: {risk_mode_kelly_f:.4f} [{self.risk_mode}], House Money: {self.house_money_multiplier:.2f})"
         )
 
         return mandate
@@ -372,6 +391,48 @@ class EnhancedGovernor(Governor):
         # Update house money state in database if account_id available and DB is enabled
         if self.account_id and self._db_available:
             self._update_house_money_state(current_balance, current_pnl, preservation_mode)
+
+    def _calculate_kelly_fraction(self, win_rate: float, payoff_ratio: float) -> float:
+        """
+        Calculate Kelly fraction based on risk mode.
+
+        Risk mode determines how Kelly is applied:
+        - fixed: Always use default risk percentage, ignore Kelly
+        - dynamic: Use Kelly calculation with fraction (normal behavior)
+        - conservative: Cap at 50% of default risk
+
+        Args:
+            win_rate: Trade win rate (0.0 to 1.0)
+            payoff_ratio: Reward to risk ratio (avg_win / avg_loss)
+
+        Returns:
+            Kelly fraction based on risk mode
+        """
+        # Calculate raw Kelly: f = (p * (b + 1) - 1) / b
+        # where p = win_rate, b = payoff_ratio
+        raw_kelly = (win_rate * (payoff_ratio + 1) - 1) / payoff_ratio
+        raw_kelly = max(0, raw_kelly)  # Can't be negative
+
+        # Get Kelly fraction from calculator config
+        kelly_fraction_setting = self.kelly_calculator.config.kelly_fraction if self.kelly_calculator else 0.5
+
+        if self.risk_mode == "fixed":
+            # Always use default risk percentage, ignore Kelly
+            return self._default_risk_per_trade
+
+        elif self.risk_mode == "conservative":
+            # Cap at 50% of default risk
+            conservative_limit = self._default_risk_per_trade * 0.5
+            kelly_adjusted = raw_kelly * kelly_fraction_setting
+            return min(kelly_adjusted, conservative_limit)
+
+        elif self.risk_mode == "dynamic":
+            # Normal Kelly calculation with fraction
+            kelly_adjusted = raw_kelly * kelly_fraction_setting
+            return min(kelly_adjusted, self._default_risk_per_trade)
+
+        # Default fallback (dynamic behavior)
+        return min(raw_kelly * kelly_fraction_setting, self._default_risk_per_trade)
 
     def _get_pip_value(self, symbol: str, broker: str = 'mt5_default') -> float:
         """
