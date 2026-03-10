@@ -454,3 +454,379 @@ Configure your agent behavior here..."
     {/if}
   {/if}
 </div>
+
+<style>
+  /* Agent Selector Tabs */
+  .agent-selector-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+  }
+
+  .agent-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .agent-tab:hover {
+    background: var(--bg-primary);
+    border-color: var(--accent-secondary);
+    color: var(--text-primary);
+  }
+
+  .agent-tab.active {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: white;
+  }
+
+  .agent-tab .agent-name {
+    font-weight: 500;
+  }
+
+  .agent-tab .agent-dept {
+    font-size: 11px;
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+  }
+
+  .agent-tab.active .agent-dept {
+    background: rgba(255, 255, 255, 0.25);
+  }
+
+  /* Agent Groups */
+  .agent-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  .agent-group-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 8px 0 4px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .agent-tab.subagent {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  /* Editor Mode Toggle */
+  .editor-mode-toggle {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .mode-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .mode-btn:hover {
+    background: var(--bg-primary);
+    border-color: var(--accent-secondary);
+    color: var(--text-primary);
+  }
+
+  .mode-btn.active {
+    background: var(--accent-secondary);
+    border-color: var(--accent-secondary);
+    color: white;
+  }
+
+  /* Markdown Editor */
+  .agents-md-editor {
+    margin-bottom: 16px;
+  }
+
+  .code-editor {
+    width: 100%;
+    min-height: 400px;
+    padding: 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    resize: vertical;
+  }
+
+  .code-editor:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+  }
+
+  /* Visual Config Editor */
+  .agent-config-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .setting-group {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .setting-group > label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .setting-row:last-child {
+    border-bottom: none;
+  }
+
+  .setting-row span {
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+
+  .setting-row .text-input,
+  .setting-row select {
+    width: 200px;
+    padding: 6px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 13px;
+  }
+
+  .setting-row select {
+    cursor: pointer;
+  }
+
+  .slider-input {
+    width: 150px;
+    accent-color: var(--accent-primary);
+  }
+
+  .number-input {
+    width: 100px;
+    padding: 6px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 13px;
+  }
+
+  .prompt-editor {
+    margin-bottom: 8px;
+  }
+
+  .prompt-textarea {
+    width: 100%;
+    min-height: 150px;
+    padding: 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.5;
+    resize: vertical;
+  }
+
+  .prompt-textarea:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+  }
+
+  .help-text {
+    display: block;
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: 6px;
+  }
+
+  .add-skill-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: var(--accent-primary);
+    border: none;
+    border-radius: 4px;
+    color: white;
+    font-size: 12px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+
+  .add-skill-btn:hover {
+    opacity: 0.9;
+  }
+
+  .skills-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .skill-config-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+  }
+
+  .skill-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .skill-name-input {
+    flex: 1;
+    padding: 6px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 13px;
+  }
+
+  .skill-desc-input {
+    width: 100%;
+    padding: 6px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
+  .tools-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .tool-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .tool-checkbox:hover {
+    background: var(--bg-tertiary);
+  }
+
+  .tool-checkbox input {
+    accent-color: var(--accent-primary);
+  }
+
+  .tool-checkbox code {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  /* Switch styling */
+  .switch.small {
+    position: relative;
+    display: inline-block;
+    width: 32px;
+    height: 18px;
+  }
+
+  .switch.small input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .switch.small .slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    transition: 0.2s;
+    border-radius: 18px;
+  }
+
+  .switch.small .slider:before {
+    position: absolute;
+    content: "";
+    height: 12px;
+    width: 12px;
+    left: 2px;
+    bottom: 2px;
+    background: white;
+    transition: 0.2s;
+    border-radius: 50%;
+  }
+
+  .switch.small input:checked + .slider {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+  }
+
+  .switch.small input:checked + .slider:before {
+    transform: translateX(14px);
+  }
+</style>
