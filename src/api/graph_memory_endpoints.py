@@ -26,7 +26,9 @@ def _get_facade() -> GraphMemoryFacade:
     """Get or create the graph memory facade singleton."""
     global _facade
     if _facade is None:
-        _facade = get_graph_memory()
+        import os
+        db_path = os.environ.get("GRAPH_MEMORY_DB", "data/graph_memory.db")
+        _facade = get_graph_memory(db_path=db_path)
     return _facade
 
 
@@ -154,16 +156,14 @@ async def recall_memories(request: RecallRequest):
     """Recall memories based on query and filters."""
     try:
         facade = _get_facade()
+        # Only pass parameters that the facade accepts
         results = facade.recall(
             query=request.query,
             department=request.department,
             agent_id=request.agent_id,
             tags=request.tags,
-            node_types=request.node_types,
-            categories=request.categories,
             min_importance=request.min_importance,
             limit=request.limit,
-            cursor=request.cursor,
         )
 
         # Convert to response format
