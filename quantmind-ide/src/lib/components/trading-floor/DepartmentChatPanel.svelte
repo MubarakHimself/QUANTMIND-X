@@ -49,35 +49,6 @@
     portfolio: Briefcase,
   };
 
-  // Quick actions for each department
-  const quickActions: Record<DepartmentId, Array<{ label: string; prompt: string }>> = {
-    development: [
-      { label: "Analyze Market", prompt: "Analyze the current market conditions for EURUSD" },
-      { label: "Signal Check", prompt: "Check for any active trading signals" },
-      { label: "Trend Analysis", prompt: "Perform trend analysis on major pairs" },
-    ],
-    research: [
-      { label: "Run Backtest", prompt: "Run a backtest on the current strategy" },
-      { label: "Optimize Params", prompt: "Optimize strategy parameters" },
-      { label: "Compare Strategies", prompt: "Compare performance of active strategies" },
-    ],
-    risk: [
-      { label: "Risk Report", prompt: "Generate current risk exposure report" },
-      { label: "Position Check", prompt: "Check all open positions and risk levels" },
-      { label: "Kelly Sizing", prompt: "Calculate Kelly-optimal position sizes" },
-    ],
-    trading: [
-      { label: "Order Status", prompt: "Check status of pending orders" },
-      { label: "Routing Check", prompt: "Verify broker connections and routing" },
-      { label: "Execution Report", prompt: "Generate execution quality report" },
-    ],
-    portfolio: [
-      { label: "Balance Report", prompt: "Generate portfolio balance report" },
-      { label: "Rebalance", prompt: "Check if portfolio needs rebalancing" },
-      { label: "Performance", prompt: "Show portfolio performance metrics" },
-    ],
-  };
-
   // Subscribe to store
   $: activeDept = $departmentChatStore.activeDepartment;
   $: activeChat = $activeDepartmentChat;
@@ -118,17 +89,6 @@
     scrollToBottom();
 
     await departmentChatStore.sendMessage(activeDept, content);
-
-    await tick();
-    scrollToBottom();
-  }
-
-  // Execute quick action
-  async function executeQuickAction(prompt: string) {
-    if (!activeDept || isLoading) return;
-
-    message = "";
-    await departmentChatStore.sendMessage(activeDept, prompt);
 
     await tick();
     scrollToBottom();
@@ -319,20 +279,6 @@
       {/if}
     {/if}
   </div>
-
-  <!-- Quick Actions -->
-  {#if activeDept && !isLoading}
-    <div class="quick-actions">
-      {#each quickActions[activeDept] as action}
-        <button
-          class="quick-action-btn"
-          on:click={() => executeQuickAction(action.prompt)}
-        >
-          {action.label}
-        </button>
-      {/each}
-    </div>
-  {/if}
 
   <!-- Input Area -->
   <div class="input-area">
@@ -673,33 +619,6 @@
   @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
-  }
-
-  /* Quick Actions */
-  .quick-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.375rem;
-    padding: 0.5rem 0.75rem;
-    border-top: 1px solid var(--border-color, #1e293b);
-    background: var(--bg-secondary, #111827);
-  }
-
-  .quick-action-btn {
-    padding: 0.25rem 0.5rem;
-    background: var(--bg-tertiary, #1e293b);
-    border: 1px solid var(--border-color, #334155);
-    border-radius: 0.25rem;
-    color: var(--text-secondary, #94a3b8);
-    font-size: 0.6875rem;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .quick-action-btn:hover {
-    background: var(--bg-hover, #334155);
-    border-color: var(--accent-primary, #3b82f6);
-    color: var(--text-primary, #e2e8f0);
   }
 
   /* Input Area */

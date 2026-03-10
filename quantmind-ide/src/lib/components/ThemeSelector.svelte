@@ -14,7 +14,13 @@
   }
 
   function selectWallpaper(wallpaper: typeof wallpapers[0]) {
-    if (wallpaper.gradient) {
+    if (wallpaper.imageUrl) {
+      // Image wallpaper
+      setCustomWallpaper(wallpaper.imageUrl);
+      customWallpaperUrl = wallpaper.imageUrl;
+      dispatch('wallpaperChanged', { wallpaper: wallpaper.imageUrl });
+    } else if (wallpaper.gradient) {
+      // Gradient or pattern
       setCustomWallpaper(wallpaper.gradient);
       customWallpaperUrl = wallpaper.gradient;
       dispatch('wallpaperChanged', { wallpaper: wallpaper.gradient });
@@ -83,86 +89,26 @@
     </div>
   </div>
 
-  <div class="theme-section">
-    <h4>Wallpapers</h4>
-    <div class="wallpaper-grid">
-      <!-- Gradient Wallpapers -->
-      {#each Object.values(themes).filter(t => t.wallpaper?.type === 'gradient') as wallpaper}
-        <button
-          class="wallpaper-card"
-          class:active={customWallpaperUrl === wallpaper.gradient}
-          on:click={() => {
-            setCustomWallpaper(wallpaper.gradient || '');
-            customWallpaperUrl = wallpaper.gradient || '';
-          }}
-          title={wallpaper.name}
-        >
-          <div class="wallpaper-preview" style="background: {wallpaper.gradient}"></div>
-          <div class="wallpaper-info">
-            <div class="wallpaper-name">{wallpaper.name}</div>
-            {#if customWallpaperUrl === wallpaper.gradient}
-              <Check size={16} class="active-indicator" />
-            {/if}
-          </div>
-        </button>
-      {/each}
-
-      <!-- Pattern Wallpapers -->
-      {#each Object.values(themes).filter(t => t.wallpaper?.type === 'pattern') as wallpaper}
-        <button
-          class="wallpaper-card"
-          class:active={customWallpaperUrl === wallpaper.gradient}
-          on:click={() => {
-            setCustomWallpaper(wallpaper.gradient || '');
-            customWallpaperUrl = wallpaper.gradient || '';
-          }}
-          title={wallpaper.name}
-        >
-          <div class="wallpaper-preview pattern" style="background: {wallpaper.gradient}"></div>
-          <div class="wallpaper-info">
-            <div class="wallpaper-name">{wallpaper.name}</div>
-            {#if customWallpaperUrl === wallpaper.gradient}
-              <Check size={16} class="active-indicator" />
-            {/if}
-          </div>
-        </button>
-      {/each}
-    </div>
-
-    <button 
-      class="custom-wallpaper-btn"
-      on:click={() => showCustomWallpaper = !showCustomWallpaper}
-    >
-      <ImageIcon size={16} />
-      Custom Wallpaper
-    </button>
-
-    {#if customWallpaperUrl}
-      <button 
-        class="reset-wallpaper-btn"
-        on:click={resetToDefaultWallpaper}
-      >
-        <X size={16} />
-        Reset
-      </button>
-    {/if}
-  </div>
-
-  <!-- New Wallpaper Section -->
+  <!-- Wallpaper Selection -->
   <div class="theme-section">
     <h4>Wallpapers</h4>
     <div class="wallpaper-grid">
       {#each wallpapers as wallpaper}
         <button
           class="wallpaper-card"
-          class:active={customWallpaperUrl === wallpaper.gradient}
+          class:active={customWallpaperUrl === (wallpaper.gradient || wallpaper.imageUrl)}
           on:click={() => selectWallpaper(wallpaper)}
           title={wallpaper.name}
         >
-          <div class="wallpaper-preview" class:pattern={wallpaper.type === 'pattern'} style="background: {wallpaper.gradient}; background-size: {wallpaper.type === 'pattern' ? '20px 20px' : 'cover'}"></div>
+          <div
+            class="wallpaper-preview"
+            class:pattern={wallpaper.type === 'pattern'}
+            class:image-wall={wallpaper.type === 'image'}
+            style="background: {wallpaper.type === 'image' ? `url(${wallpaper.imageUrl})` : wallpaper.gradient}; background-size: cover"
+          ></div>
           <div class="wallpaper-info">
             <div class="wallpaper-name">{wallpaper.name}</div>
-            {#if customWallpaperUrl === wallpaper.gradient}
+            {#if customWallpaperUrl === (wallpaper.gradient || wallpaper.imageUrl)}
               <Check size={16} class="active-indicator" />
             {/if}
           </div>
@@ -387,6 +333,11 @@
 
   .wallpaper-preview.pattern {
     background-size: 20px 20px !important;
+  }
+
+  .wallpaper-preview.image-wall {
+    background-size: cover !important;
+    background-position: center;
   }
 
   .wallpaper-info {

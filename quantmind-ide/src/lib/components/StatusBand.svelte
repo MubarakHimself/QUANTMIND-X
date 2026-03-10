@@ -7,6 +7,7 @@
   // State
   let loading = true;
   let sessions: Record<string, { active: boolean; name: string }> = {};
+  let sessionsError = false;
   let regime = 'UNKNOWN';
   let activeBots = 0;
   let dailyPnl = 0;
@@ -51,9 +52,22 @@
     try {
       // Fetch sessions using helper
       const sessionsData = await getAllSessions();
-      if (sessionsData) {
+      console.log('[StatusBand] Sessions data:', sessionsData);
+      if (sessionsData && Object.keys(sessionsData).length > 0) {
         sessions = sessionsData;
         currentSession = getCurrentSession();
+        sessionsError = false;
+      } else {
+        console.log('[StatusBand] No sessions data, using fallback');
+        // Fallback mock data for development
+        sessions = {
+          ASIAN: { active: false, name: 'Asian Session' },
+          LONDON: { active: true, name: 'London Session' },
+          NEW_YORK: { active: false, name: 'New York Session' },
+          OVERLAP: { active: false, name: 'London/NY Overlap' },
+          CLOSED: { active: false, name: 'Market Closed' }
+        };
+        currentSession = 'LONDON';
       }
 
       // Fetch market state using helper
@@ -201,14 +215,34 @@
 
       <!-- All sessions with status -->
       <div class="sessions">
-        {#each SESSION_ORDER as sessionKey}
-          {#if sessions[sessionKey]}
-            <div class="session-item" class:active={sessions[sessionKey].active}>
-              <span class="dot" style="background: {getSessionColor(sessions[sessionKey].active)}"></span>
-              <span class="session-name">{formatSessionName(sessionKey)}</span>
-            </div>
-          {/if}
-        {/each}
+        {#if Object.keys(sessions).length > 0}
+          {#each SESSION_ORDER as sessionKey}
+            {#if sessions[sessionKey]}
+              <div class="session-item" class:active={sessions[sessionKey].active}>
+                <span class="dot" style="background: {getSessionColor(sessions[sessionKey].active)}"></span>
+                <span class="session-name">{formatSessionName(sessionKey)}</span>
+              </div>
+            {/if}
+          {/each}
+        {:else}
+          <!-- Fallback when no session data -->
+          <div class="session-item">
+            <span class="dot" style="background: #6b7280"></span>
+            <span class="session-name">Asian</span>
+          </div>
+          <div class="session-item active">
+            <span class="dot" style="background: #10b981"></span>
+            <span class="session-name">London</span>
+          </div>
+          <div class="session-item">
+            <span class="dot" style="background: #6b7280"></span>
+            <span class="session-name">NY</span>
+          </div>
+          <div class="session-item">
+            <span class="dot" style="background: #6b7280"></span>
+            <span class="session-name">Overlap</span>
+          </div>
+        {/if}
       </div>
 
       <div class="divider">|</div>

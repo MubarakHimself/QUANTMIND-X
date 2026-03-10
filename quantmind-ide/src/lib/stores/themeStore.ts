@@ -694,9 +694,30 @@ export interface Wallpaper {
   type: 'gradient' | 'pattern' | 'image';
   value: string;
   gradient?: string;
+  imageUrl?: string;
+}
+
+// Helper to extract wallpapers from themes
+function getThemeWallpapers(): Wallpaper[] {
+  const themeWalls: Wallpaper[] = [];
+  Object.values(themes).forEach(theme => {
+    if (theme.wallpaper?.gradient) {
+      themeWalls.push({
+        id: `theme-${theme.name}`,
+        name: `${theme.displayName}`,
+        type: theme.wallpaper.type,
+        value: theme.wallpaper.value,
+        gradient: theme.wallpaper.gradient
+      });
+    }
+  });
+  return themeWalls;
 }
 
 export const wallpapers: Wallpaper[] = [
+  // Theme Wallpapers (from existing themes)
+  ...getThemeWallpapers(),
+
   // Gradients
   { id: 'midnight', name: 'Midnight', type: 'gradient', value: 'midnight', gradient: 'linear-gradient(180deg, #0a0a0f 0%, #1a1a2e 50%, #0f0f1a 100%)' },
   { id: 'ocean', name: 'Ocean', type: 'gradient', value: 'ocean', gradient: 'linear-gradient(180deg, #0a1628 0%, #0e2744 50%, #0a1628 100%)' },
@@ -716,6 +737,18 @@ export const wallpapers: Wallpaper[] = [
   { id: 'dots', name: 'Dots', type: 'pattern', value: 'dots', gradient: 'radial-gradient(rgba(255,255,255,0.15) 1px, transparent 1px)' },
   { id: 'cross', name: 'Cross', type: 'pattern', value: 'cross', gradient: 'linear-gradient(45deg, rgba(255,255,255,0.03) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,0.03) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.03) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.03) 75%)' },
   { id: 'waves', name: 'Waves', type: 'pattern', value: 'waves', gradient: 'repeating-linear-gradient(0deg, transparent, transparent 50px, rgba(255,255,255,0.02) 50px, rgba(255,255,255,0.02) 51px)' },
+
+  // Image Wallpapers (Unsplash)
+  { id: 'city-night', name: 'City Night', type: 'image', value: 'city-night', imageUrl: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?w=1920&q=80' },
+  { id: 'abstract-blue', name: 'Abstract Blue', type: 'image', value: 'abstract-blue', imageUrl: 'https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=1920&q=80' },
+  { id: 'neon Tokyo', name: 'Neon Tokyo', type: 'image', value: 'neon-tokyo', imageUrl: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=1920&q=80' },
+  { id: 'stock-chart', name: 'Stock Chart', type: 'image', value: 'stock-chart', imageUrl: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=1920&q=80' },
+  { id: 'trading-floor', name: 'Trading Floor', type: 'image', value: 'trading-floor', imageUrl: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=1920&q=80' },
+  { id: 'data-center', name: 'Data Center', type: 'image', value: 'data-center', imageUrl: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=1920&q=80' },
+  { id: 'bitcoin', name: 'Bitcoin', type: 'image', value: 'bitcoin', imageUrl: 'https://images.unsplash.com/photo-1518546305927-5a555bb7020d?w=1920&q=80' },
+  { id: 'glass-building', name: 'Glass Building', type: 'image', value: 'glass-building', imageUrl: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=1920&q=80' },
+  { id: 'cyberpunk', name: 'Cyberpunk City', type: 'image', value: 'cyberpunk', imageUrl: 'https://images.unsplash.com/photo-1533147670608-2a2f9775d3a4?w=1920&q=80' },
+  { id: 'aurora', name: 'Aurora Borealis', type: 'image', value: 'aurora', imageUrl: 'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=1920&q=80' },
 ];
 
 // ========== FONTS ==========
@@ -884,6 +917,22 @@ export function loadSavedTheme(): ThemeName {
 export function setCustomWallpaper(wallpaper: string) {
   customWallpaper.set(wallpaper);
   localStorage.setItem('quantmind-wallpaper', wallpaper);
+
+  // Apply wallpaper to document
+  const root = document.documentElement;
+  if (wallpaper.startsWith('http')) {
+    // Image URL
+    root.style.setProperty('--wallpaper', `url(${wallpaper})`);
+    root.style.setProperty('--wallpaper-type', 'image');
+  } else if (wallpaper.includes('gradient') || wallpaper.includes('linear') || wallpaper.includes('radial')) {
+    // Gradient
+    root.style.setProperty('--wallpaper', wallpaper);
+    root.style.setProperty('--wallpaper-type', 'gradient');
+  } else {
+    // Pattern
+    root.style.setProperty('--wallpaper', wallpaper);
+    root.style.setProperty('--wallpaper-type', 'pattern');
+  }
 }
 
 export function loadSavedWallpaper(): string {

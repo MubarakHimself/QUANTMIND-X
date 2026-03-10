@@ -761,19 +761,6 @@
     </div>
   </div>
 
-  <!-- Quick Actions -->
-  <div class="quick-actions">
-    {#each quickDelegations.slice(0, 4) as action}
-      <button
-        class="quick-action-btn"
-        on:click={() => delegateToDepartment(action.dept, action.task)}
-        disabled={isLoading}
-      >
-        {action.label}
-      </button>
-    {/each}
-  </div>
-
   <!-- Input -->
   <div class="input-area">
     <div class="input-wrapper">

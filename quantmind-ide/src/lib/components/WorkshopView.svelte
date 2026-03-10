@@ -117,22 +117,6 @@
 </script>
 
 <div class="workshop-view">
-  <!-- Header with tabs -->
-  <div class="workshop-header">
-    <div class="tabs">
-      {#each tabs as tab}
-        <button
-          class="tab-btn"
-          class:active={activeTab === tab.id}
-          on:click={() => activeTab = tab.id}
-        >
-          <svelte:component this={tab.icon} size={14} />
-          {tab.label}
-        </button>
-      {/each}
-    </div>
-  </div>
-
   <!-- Tab Content -->
   <div class="tab-content">
     <!-- Trading Floor Tab - Unified View -->
@@ -144,13 +128,20 @@
       </div>
 
       <!-- Center: Trading Floor Canvas -->
-      <div class="tf-center-panel">
+      <div class="tf-center-panel" class:collapsed={tradingFloorCollapsed}>
         <div class="panel-header">
           <Users size={16} />
           <span>Department Flow</span>
           <div class="tf-controls">
             <button class="tf-btn-sm tf-btn-outline" on:click={initializeTradingFloor}>
               Reset
+            </button>
+            <button class="tf-btn-sm tf-btn-outline" on:click={() => tradingFloorCollapsed = !tradingFloorCollapsed}>
+              {#if tradingFloorCollapsed}
+                <ChevronDown size={14} />
+              {:else}
+                <ChevronUp size={14} />
+              {/if}
             </button>
           </div>
         </div>
@@ -345,10 +336,47 @@
   /* Trading Floor Unified Layout */
   .trading-floor-unified {
     flex: 1;
-    display: grid;
-    grid-template-columns: minmax(200px, 22%) 1fr minmax(240px, 28%);
-    gap: 0;
+    display: flex;
     overflow: hidden;
+  }
+
+  .tf-left-panel {
+    flex: 0 0 22%;
+    min-width: 200px;
+    max-width: 320px;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-secondary, #111827);
+    border-right: 1px solid var(--border-color, #1e293b);
+    transition: flex 0.3s ease;
+  }
+
+  .tf-center-panel {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-primary, #0a0f1a);
+    transition: flex 0.3s ease;
+  }
+
+  .tf-center-panel.collapsed {
+    flex: 0 0 40px;
+  }
+
+  .tf-center-panel:not(.collapsed) {
+    flex: 1;
+    min-width: 300px;
+  }
+
+  .tf-right-panel {
+    flex: 1;
+    min-width: 240px;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-secondary, #111827);
+    border-left: 1px solid var(--border-color, #1e293b);
+    transition: flex 0.3s ease;
   }
 
   .tf-left-panel,
@@ -369,6 +397,17 @@
     flex-direction: column;
     overflow: hidden;
     background: var(--bg-primary, #0a0f1a);
+    transition: all 0.3s ease;
+  }
+
+  .tf-center-panel.collapsed {
+    flex: 0 0 40px;
+    min-height: 40px;
+  }
+
+  .tf-center-panel.collapsed .tf-stats,
+  .tf-center-panel.collapsed .tf-canvas-container {
+    display: none;
   }
 
   .panel-header {
