@@ -149,6 +149,40 @@
     'store_semantic_memory',
     'search_semantic_memories'
   ];
+
+  function getModelsForProvider(provider: string) {
+    const modelsByProvider: Record<string, Array<{id: string, name: string}>> = {
+      anthropic: [
+        { id: 'claude-opus-4-20250514', name: 'Claude Opus 4' },
+        { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
+        { id: 'claude-haiku-3-20240307', name: 'Claude Haiku 3.5' }
+      ],
+      zhipu: [
+        { id: 'glm-4', name: 'GLM-4' },
+        { id: 'glm-4-flash', name: 'GLM-4-Flash' },
+        { id: 'glm-4-long', name: 'GLM-4-Long' }
+      ],
+      minimax: [
+        { id: 'MiniMax-M2.5', name: 'MiniMax M2.5' },
+        { id: 'MiniMax-M2.1', name: 'MiniMax M2.1' },
+        { id: 'MiniMax-M2', name: 'MiniMax M2' }
+      ],
+      deepseek: [
+        { id: 'deepseek-chat', name: 'DeepSeek Chat' },
+        { id: 'deepseek-coder', name: 'DeepSeek Coder' }
+      ],
+      openai: [
+        { id: 'gpt-4', name: 'GPT-4' },
+        { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
+        { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' }
+      ],
+      openrouter: [
+        { id: 'anthropic/claude-sonnet-4', name: 'Claude Sonnet 4 (Router)' },
+        { id: 'anthropic/claude-haiku-3', name: 'Claude Haiku 3 (Router)' }
+      ]
+    };
+    return modelsByProvider[provider] || [];
+  }
 </script>
 
 <div class="panel">
@@ -312,7 +346,11 @@ Configure your agent behavior here..."
           </div>
           <div class="setting-row">
             <span>Model</span>
-            <input type="text" bind:value={agentConfigs[selectedAgent].model} class="text-input" placeholder="anthropic/claude-sonnet-4" on:input={(e) => updateAgentConfig('model', e.currentTarget.value)} />
+            <select bind:value={agentConfigs[selectedAgent].model}>
+              {#each getModelsForProvider(agentConfigs[selectedAgent].provider) as model}
+                <option value={model.id}>{model.name}</option>
+              {/each}
+            </select>
           </div>
           <div class="setting-row">
             <span>Temperature: {agentConfigs[selectedAgent].temperature.toFixed(2)}</span>
