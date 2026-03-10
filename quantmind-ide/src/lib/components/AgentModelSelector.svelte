@@ -8,10 +8,15 @@
   interface Model {
     id: string;
     name: string;
-    tier: string;
+    tier?: string;
   }
 
-  interface ProviderModels {
+  interface ProviderInfo {
+    id: string;
+    name: string;
+    display_name: string;
+    has_api_key: boolean;
+    enabled: boolean;
     available: boolean;
     models: Model[];
   }
@@ -28,21 +33,11 @@
 
   const API_BASE = API_CONFIG.API_BASE;
 
-  // Map provider keys to display names
-  const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
-    anthropic: 'Anthropic',
-    openai: 'OpenAI',
-    minimax: 'MiniMax',
-    zhipu: 'Zhipu (GLM)',
-    google: 'Google',
-    deepseek: 'DeepSeek',
-    openrouter: 'OpenRouter'
-  };
-
   onMount(async () => {
     try {
-      const url = `${API_BASE}/agent-config/available-models`;
-      console.log('[AgentModelSelector] Fetching models from:', url);
+      // Use the new /api/providers/available endpoint which gets provider status from database
+      const url = `${API_BASE}/api/providers/available`;
+      console.log('[AgentModelSelector] Fetching providers from:', url);
 
       const response = await fetch(url);
 
@@ -63,15 +58,17 @@
         throw new Error('Invalid response format: missing providers');
       }
 
-      // Group models by provider
+      // Group models by provider - only include providers that are available
       const groups: ProviderGroup[] = [];
-      for (const [provider, info] of Object.entries(data.providers)) {
-        const providerInfo = info as ProviderModels;
-        if (providerInfo.available && providerInfo.models && providerInfo.models.length > 0) {
+      const providers = data.providers as ProviderInfo[];
+
+      for (const provider of providers) {
+        // Only include providers that have API key configured and are enabled
+        if (provider.available && provider.models && provider.models.length > 0) {
           groups.push({
-            name: provider,
-            displayName: PROVIDER_DISPLAY_NAMES[provider] || provider,
-            models: providerInfo.models
+            name: provider.name,
+            displayName: provider.display_name,
+            models: provider.models
           });
         }
       }

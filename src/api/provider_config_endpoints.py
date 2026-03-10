@@ -71,6 +71,67 @@ PROVIDER_DISPLAY_NAMES = {
     "mistral": "Mistral AI",
 }
 
+# Provider to available models mapping
+PROVIDER_MODELS = {
+    "anthropic": [
+        {"id": "claude-opus-4-6-20250514", "name": "Claude Opus 4.6"},
+        {"id": "claude-sonnet-4-6-20250514", "name": "Claude Sonnet 4.6"},
+        {"id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5"},
+        {"id": "claude-3-5-sonnet-20241022", "name": "Claude 3.5 Sonnet"},
+        {"id": "claude-3-opus-20240229", "name": "Claude 3 Opus"},
+        {"id": "claude-3-haiku-20240307", "name": "Claude 3 Haiku"},
+    ],
+    "openai": [
+        {"id": "gpt-4o", "name": "GPT-4o"},
+        {"id": "gpt-4o-mini", "name": "GPT-4o Mini"},
+        {"id": "gpt-4-turbo", "name": "GPT-4 Turbo"},
+        {"id": "gpt-4", "name": "GPT-4"},
+        {"id": "gpt-3.5-turbo", "name": "GPT-3.5 Turbo"},
+    ],
+    "openrouter": [
+        {"id": "anthropic/claude-3.5-sonnet", "name": "Claude 3.5 Sonnet (OR)"},
+        {"id": "anthropic/claude-3-opus", "name": "Claude 3 Opus (OR)"},
+        {"id": "google/gemini-pro-1.5", "name": "Gemini Pro 1.5 (OR)"},
+        {"id": "meta-llama/llama-3.1-70b-instruct", "name": "Llama 3.1 70B (OR)"},
+        {"id": "mistralai/mistral-7b-instruct", "name": "Mistral 7B (OR)"},
+    ],
+    "deepseek": [
+        {"id": "deepseek-chat", "name": "DeepSeek Chat"},
+        {"id": "deepseek-coder", "name": "DeepSeek Coder"},
+    ],
+    "glm": [
+        {"id": "glm-4", "name": "GLM-4"},
+        {"id": "glm-4-flash", "name": "GLM-4 Flash"},
+        {"id": "glm-4-plus", "name": "GLM-4 Plus"},
+        {"id": "glm-3-turbo", "name": "GLM-3 Turbo"},
+    ],
+    "minimax": [
+        {"id": "MiniMax-M2.5", "name": "MiniMax M2.5"},
+        {"id": "MiniMax-M2.1", "name": "MiniMax M2.1"},
+        {"id": "MiniMax-M2", "name": "MiniMax M2"},
+    ],
+    "google": [
+        {"id": "gemini-2.0-flash-exp", "name": "Gemini 2.0 Flash Exp"},
+        {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro"},
+        {"id": "gemini-1.5-flash", "name": "Gemini 1.5 Flash"},
+    ],
+    "azure": [
+        {"id": "gpt-4o", "name": "GPT-4o (Azure)"},
+        {"id": "gpt-4", "name": "GPT-4 (Azure)"},
+        {"id": "gpt-35-turbo", "name": "GPT-3.5 Turbo (Azure)"},
+    ],
+    "cohere": [
+        {"id": "command-r-plus", "name": "Command R+"},
+        {"id": "command-r", "name": "Command R"},
+        {"id": "command", "name": "Command"},
+    ],
+    "mistral": [
+        {"id": "mistral-large-latest", "name": "Mistral Large"},
+        {"id": "mistral-small-latest", "name": "Mistral Small"},
+        {"id": "mistral-medium-latest", "name": "Mistral Medium"},
+    ],
+}
+
 
 def mask_api_key(api_key: Optional[str]) -> Optional[str]:
     """Mask API key for display - returns None if no key, otherwise masks it."""
@@ -206,7 +267,7 @@ async def get_available_providers():
     Get list of providers with API keys configured (for dropdowns).
 
     Returns all known providers with a flag indicating whether they
-    have an API key configured and are enabled.
+    have an API key configured and are enabled, plus available models.
     """
     try:
         with get_db_session() as db:
@@ -215,17 +276,23 @@ async def get_available_providers():
             # Create a lookup dict by name
             configured_by_name = {p.name: p for p in configured_providers}
 
-            # Build list of all known providers with their status
+            # Build list of all known providers with their status and models
             result = []
             for provider_id, display_name in PROVIDER_DISPLAY_NAMES.items():
+                # Get models for this provider
+                models = PROVIDER_MODELS.get(provider_id, [])
+
                 if provider_id in configured_by_name:
                     p = configured_by_name[provider_id]
+                    has_key = bool(p.api_key and p.api_key.strip())
                     result.append({
                         "id": p.id,
                         "name": p.name,
                         "display_name": display_name,
-                        "has_api_key": bool(p.api_key and p.api_key.strip()),
+                        "has_api_key": has_key,
                         "enabled": p.enabled,
+                        "available": has_key and p.enabled,
+                        "models": models if has_key and p.enabled else [],
                     })
                 else:
                     # Provider exists in our known list but not configured
@@ -235,6 +302,8 @@ async def get_available_providers():
                         "display_name": display_name,
                         "has_api_key": False,
                         "enabled": False,
+                        "available": False,
+                        "models": [],
                     })
 
             return {"providers": result}
@@ -249,6 +318,8 @@ async def get_available_providers():
                     "display_name": name,
                     "has_api_key": False,
                     "enabled": False,
+                    "available": False,
+                    "models": [],
                 }
                 for pid, name in PROVIDER_DISPLAY_NAMES.items()
             ]
