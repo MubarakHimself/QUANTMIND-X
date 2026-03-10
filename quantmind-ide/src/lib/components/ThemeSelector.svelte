@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import { currentTheme, applyTheme, themes, customWallpaper, setCustomWallpaper } from '../stores/themeStore';
-  import { Palette, Sun, Moon, Sparkles, Image as ImageIcon, X, Check } from 'lucide-svelte';
+  import { currentTheme, applyTheme, themes, customWallpaper, setCustomWallpaper, wallpapers, fonts, currentFont, setFont } from '../stores/themeStore';
+  import { Palette, Sun, Moon, Sparkles, Image as ImageIcon, X, Check, Type } from 'lucide-svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -11,6 +11,19 @@
   function selectTheme(themeName: string) {
     applyTheme(themeName);
     dispatch('themeChanged', { theme: themeName });
+  }
+
+  function selectWallpaper(wallpaper: typeof wallpapers[0]) {
+    if (wallpaper.gradient) {
+      setCustomWallpaper(wallpaper.gradient);
+      customWallpaperUrl = wallpaper.gradient;
+      dispatch('wallpaperChanged', { wallpaper: wallpaper.gradient });
+    }
+  }
+
+  function selectFont(fontId: string) {
+    setFont(fontId);
+    dispatch('fontChanged', { font: fontId });
   }
 
   function applyCustomWallpaper() {
@@ -24,6 +37,7 @@
 
   function resetToDefaultWallpaper() {
     setCustomWallpaper('');
+    customWallpaperUrl = '';
     dispatch('wallpaperChanged', { wallpaper: '' });
   }
 </script>
@@ -132,6 +146,54 @@
         Reset
       </button>
     {/if}
+  </div>
+
+  <!-- New Wallpaper Section -->
+  <div class="theme-section">
+    <h4>Wallpapers</h4>
+    <div class="wallpaper-grid">
+      {#each wallpapers as wallpaper}
+        <button
+          class="wallpaper-card"
+          class:active={customWallpaperUrl === wallpaper.gradient}
+          on:click={() => selectWallpaper(wallpaper)}
+          title={wallpaper.name}
+        >
+          <div class="wallpaper-preview" class:pattern={wallpaper.type === 'pattern'} style="background: {wallpaper.gradient}; background-size: {wallpaper.type === 'pattern' ? '20px 20px' : 'cover'}"></div>
+          <div class="wallpaper-info">
+            <div class="wallpaper-name">{wallpaper.name}</div>
+            {#if customWallpaperUrl === wallpaper.gradient}
+              <Check size={16} class="active-indicator" />
+            {/if}
+          </div>
+        </button>
+      {/each}
+    </div>
+  </div>
+
+  <!-- Font Selection -->
+  <div class="theme-section">
+    <h4>
+      <Type size={16} />
+      Font
+    </h4>
+    <div class="font-grid">
+      {#each fonts as font}
+        <button
+          class="font-card"
+          class:active={$currentFont === font.id}
+          on:click={() => selectFont(font.id)}
+          style="font-family: {font.family}"
+          title={font.category}
+        >
+          <span class="font-name">{font.name}</span>
+          <span class="font-category">{font.category}</span>
+          {#if $currentFont === font.id}
+            <Check size={14} class="active-indicator" />
+          {/if}
+        </button>
+      {/each}
+    </div>
   </div>
 
   {#if showCustomWallpaper}
@@ -500,5 +562,63 @@
   .btn.secondary:hover {
     background: var(--bg-surface);
     color: var(--text-primary);
+  }
+
+  /* Font Selection */
+  .font-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+  }
+
+  .font-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border: 2px solid var(--border-subtle);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+  }
+
+  .font-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-color: var(--border-medium);
+  }
+
+  .font-card.active {
+    border-color: var(--accent-primary);
+    background: rgba(99, 102, 241, 0.1);
+  }
+
+  .font-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .font-category {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: capitalize;
+  }
+
+  .font-card .active-indicator {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    color: var(--accent-primary);
+  }
+
+  /* Theme section h4 with icon */
+  .theme-section h4 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 </style>

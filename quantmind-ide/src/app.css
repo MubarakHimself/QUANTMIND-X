@@ -48,6 +48,9 @@
   --panel-width: 300px;
   --header-height: 40px;
   --status-height: 24px;
+
+  /* Typography - Default */
+  --font-family: 'Inter', system-ui, sans-serif;
 }
 
 * {
@@ -58,7 +61,7 @@
 
 html, body {
   height: 100%;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-family, 'Inter', system-ui, -apple-system, sans-serif);
   background: var(--bg-primary);
   color: var(--text-primary);
   font-size: 13px;

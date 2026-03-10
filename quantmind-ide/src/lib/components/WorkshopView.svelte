@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import {
-    Bot, Send, Loader, RefreshCw, Database, Mail, Users, MessageCircle, Server, Sparkles, Workflow, FlaskConical
+    Bot, Send, Loader, RefreshCw, Database, Mail, Users, MessageCircle, Server, Sparkles, Workflow, FlaskConical, ChevronDown, ChevronUp
   } from "lucide-svelte";
   import { memoryStore } from "$lib/stores/memoryStore";
   import * as memoryApi from "$lib/api/memory";
@@ -32,6 +32,7 @@
 
   // Simplified tabs
   let activeTab = "trading-floor";
+  let tradingFloorCollapsed = false;
   const tabs = [
     { id: "trading-floor", label: "Trading Floor", icon: Users },
     { id: "workflows", label: "Workflows", icon: Workflow },
@@ -211,10 +212,6 @@
     <div class="data-panel">
       <div class="panel-header-row">
         <h3>Memory Management</h3>
-        <button class="refresh-btn" on:click={loadMemoryData} disabled={memoryLoading}>
-          <RefreshCw size={14} class={memoryLoading ? "spinning" : ""} />
-          Refresh
-        </button>
       </div>
 
       {#if memoryError}

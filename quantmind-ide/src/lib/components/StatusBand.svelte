@@ -117,6 +117,30 @@
     return 'UNCERTAIN';
   }
 
+  // Helper: Format regime for user-friendly display
+  function formatRegime(r: string): string {
+    const labels: Record<string, string> = {
+      'TREND_STABLE': 'Trending',
+      'RANGE_STABLE': 'Range Bound',
+      'HIGH_CHAOS': 'High Volatility',
+      'BREAKOUT_PRIME': 'Breakout',
+      'UNCERTAIN': 'Uncertain'
+    };
+    return labels[r] || r;
+  }
+
+  // Helper: Format session name for display
+  function formatSessionName(session: string): string {
+    const labels: Record<string, string> = {
+      'ASIAN': 'Asian',
+      'LONDON': 'London',
+      'NEW_YORK': 'NY',
+      'OVERLAP': 'Overlap',
+      'CLOSED': 'Closed'
+    };
+    return labels[session] || session;
+  }
+
   // Helper: Get session color
   function getSessionColor(active: boolean): string {
     return active ? 'var(--accent-success, #10b981)' : 'var(--text-muted, #6b7280)';
@@ -170,7 +194,7 @@
       <div class="current-session clickable" on:click={() => navigationStore.navigateToView('journal')}>
         <Clock size={16} />
         <span class="label">Trading:</span>
-        <span class="session-name current">{currentSession}</span>
+        <span class="session-name current">{formatSessionName(currentSession)}</span>
       </div>
 
       <div class="divider">|</div>
@@ -181,7 +205,7 @@
           {#if sessions[sessionKey]}
             <div class="session-item" class:active={sessions[sessionKey].active}>
               <span class="dot" style="background: {getSessionColor(sessions[sessionKey].active)}"></span>
-              <span class="session-name">{sessionKey}</span>
+              <span class="session-name">{formatSessionName(sessionKey)}</span>
             </div>
           {/if}
         {/each}
@@ -191,7 +215,7 @@
 
       <div class="regime clickable" on:click={() => navigationStore.navigateToView('journal')}>
         <span class="regime-dot" style="background: {getRegimeColor(regime)}"></span>
-        <span>{regime}</span>
+        <span>{formatRegime(regime)}</span>
       </div>
 
       <div class="divider">|</div>
@@ -237,7 +261,7 @@
       <div class="current-session clickable" on:click={() => navigationStore.navigateToView('journal')}>
         <Clock size={16} />
         <span class="label">Trading:</span>
-        <span class="session-name current">{currentSession}</span>
+        <span class="session-name current">{formatSessionName(currentSession)}</span>
       </div>
 
       <div class="divider">|</div>
@@ -248,7 +272,7 @@
           {#if sessions[sessionKey]}
             <div class="session-item" class:active={sessions[sessionKey].active}>
               <span class="dot" style="background: {getSessionColor(sessions[sessionKey].active)}"></span>
-              <span class="session-name">{sessionKey}</span>
+              <span class="session-name">{formatSessionName(sessionKey)}</span>
             </div>
           {/if}
         {/each}
@@ -258,7 +282,7 @@
 
       <div class="regime clickable" on:click={() => navigationStore.navigateToView('journal')}>
         <span class="regime-dot" style="background: {getRegimeColor(regime)}"></span>
-        <span>{regime}</span>
+        <span>{formatRegime(regime)}</span>
       </div>
 
       <div class="divider">|</div>

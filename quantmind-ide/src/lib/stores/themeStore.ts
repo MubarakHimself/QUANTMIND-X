@@ -687,6 +687,80 @@ export const themes: Record<ThemeName, Theme> = {
   }
 };
 
+// ========== SEPARATE WALLPAPERS ==========
+export interface Wallpaper {
+  id: string;
+  name: string;
+  type: 'gradient' | 'pattern' | 'image';
+  value: string;
+  gradient?: string;
+}
+
+export const wallpapers: Wallpaper[] = [
+  // Gradients
+  { id: 'midnight', name: 'Midnight', type: 'gradient', value: 'midnight', gradient: 'linear-gradient(180deg, #0a0a0f 0%, #1a1a2e 50%, #0f0f1a 100%)' },
+  { id: 'ocean', name: 'Ocean', type: 'gradient', value: 'ocean', gradient: 'linear-gradient(180deg, #0a1628 0%, #0e2744 50%, #0a1628 100%)' },
+  { id: 'sunset', name: 'Sunset', type: 'gradient', value: 'sunset', gradient: 'linear-gradient(180deg, #1a0a0a 0%, #2e1a1a 50%, #1a0f0f 100%)' },
+  { id: 'forest', name: 'Forest', type: 'gradient', value: 'forest', gradient: 'linear-gradient(180deg, #0a1a0a 0%, #1a2e1a 50%, #0a1a0f 100%)' },
+  { id: 'purple-haze', name: 'Purple Haze', type: 'gradient', value: 'purple-haze', gradient: 'linear-gradient(135deg, #1a0a2e 0%, #2e1a4e 50%, #1a1a2e 100%)' },
+  { id: 'gold-shimmer', name: 'Gold Shimmer', type: 'gradient', value: 'gold-shimmer', gradient: 'linear-gradient(135deg, #1a1508 0%, #2e2510 50%, #1a1808 100%)' },
+  { id: 'steel-blue', name: 'Steel Blue', type: 'gradient', value: 'steel-blue', gradient: 'linear-gradient(180deg, #0a1520 0%, #152535 50%, #0a1820 100%)' },
+  { id: 'emerald', name: 'Emerald', type: 'gradient', value: 'emerald', gradient: 'linear-gradient(180deg, #0a1a15 0%, #152e25 50%, #0a1a10 100%)' },
+  { id: 'cosmic', name: 'Cosmic', type: 'gradient', value: 'cosmic', gradient: 'radial-gradient(ellipse at top, #1a0a2e 0%, #050510 50%, #0a0a1a 100%)' },
+  { id: 'nebula', name: 'Nebula', type: 'gradient', value: 'nebula', gradient: 'radial-gradient(ellipse at bottom, #1a0a1a 0%, #0a0510 50%, #0a0a15 100%)' },
+  { id: 'arctic', name: 'Arctic', type: 'gradient', value: 'arctic', gradient: 'linear-gradient(135deg, #0a1520 0%, #152535 30%, #1a2a3a 60%, #0a1520 100%)' },
+  { id: 'volcano', name: 'Volcano', type: 'gradient', value: 'volcano', gradient: 'linear-gradient(180deg, #1a0a05 0%, #2e1508 50%, #1a0f05 100%)' },
+
+  // Patterns
+  { id: 'grid', name: 'Grid', type: 'pattern', value: 'grid', gradient: 'linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)' },
+  { id: 'dots', name: 'Dots', type: 'pattern', value: 'dots', gradient: 'radial-gradient(rgba(255,255,255,0.15) 1px, transparent 1px)' },
+  { id: 'cross', name: 'Cross', type: 'pattern', value: 'cross', gradient: 'linear-gradient(45deg, rgba(255,255,255,0.03) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,0.03) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.03) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.03) 75%)' },
+  { id: 'waves', name: 'Waves', type: 'pattern', value: 'waves', gradient: 'repeating-linear-gradient(0deg, transparent, transparent 50px, rgba(255,255,255,0.02) 50px, rgba(255,255,255,0.02) 51px)' },
+];
+
+// ========== FONTS ==========
+export interface FontOption {
+  id: string;
+  name: string;
+  family: string;
+  category: 'mono' | 'sans' | 'serif';
+}
+
+export const fonts: FontOption[] = [
+  { id: 'inter', name: 'Inter', family: "'Inter', system-ui, sans-serif", category: 'sans' },
+  { id: 'system', name: 'System', family: "system-ui, -apple-system, sans-serif", category: 'sans' },
+  { id: 'roboto', name: 'Roboto', family: "'Roboto', sans-serif", category: 'sans' },
+  { id: 'open-sans', name: 'Open Sans', family: "'Open Sans', sans-serif", category: 'sans' },
+  { id: 'poppins', name: 'Poppins', family: "'Poppins', sans-serif", category: 'sans' },
+  { id: 'fira-code', name: 'Fira Code', family: "'Fira Code', 'JetBrains Mono', monospace", category: 'mono' },
+  { id: 'jetbrains', name: 'JetBrains Mono', family: "'JetBrains Mono', monospace", category: 'mono' },
+  { id: 'source-code', name: 'Source Code Pro', family: "'Source Code Pro', monospace", category: 'mono' },
+  { id: 'ibm-plex', name: 'IBM Plex Mono', family: "'IBM Plex Mono', monospace", category: 'mono' },
+  { id: 'crimson', name: 'Crimson Pro', family: "'Crimson Pro', serif", category: 'serif' },
+  { id: 'merriweather', name: 'Merriweather', family: "'Merriweather', serif", category: 'serif' },
+  { id: 'playfair', name: 'Playfair Display', family: "'Playfair Display', serif", category: 'serif' },
+];
+
+// Current font store
+export const currentFont = writable<string>('inter');
+
+export function setFont(fontId: string) {
+  const font = fonts.find(f => f.id === fontId);
+  if (font) {
+    currentFont.set(fontId);
+    localStorage.setItem('quantmind-font', fontId);
+    document.documentElement.style.setProperty('--font-family', font.family);
+  }
+}
+
+export function loadSavedFont(): string {
+  const saved = localStorage.getItem('quantmind-font');
+  if (saved && fonts.find(f => f.id === saved)) {
+    return saved;
+  }
+  return 'inter';
+}
+
 // Theme store
 export const currentTheme = writable<ThemeName>('trading-terminal');
 export const customWallpaper = writable<string>('');
