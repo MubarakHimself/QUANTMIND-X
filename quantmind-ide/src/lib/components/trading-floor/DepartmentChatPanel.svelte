@@ -27,6 +27,7 @@
     type DepartmentMessage,
     type DepartmentInfo,
   } from "$lib/stores/departmentChatStore";
+  import AgentModelSelector from "$lib/components/AgentModelSelector.svelte";
 
   const dispatch = createEventDispatcher();
 
@@ -348,6 +349,12 @@
     </div>
 
     <div class="input-footer">
+      <div class="model-selector-container">
+        <AgentModelSelector
+          agentId={activeDept || 'development'}
+          currentModel="sonnet"
+        />
+      </div>
       <div class="char-count">
         {message.length} / 2000
       </div>
@@ -740,6 +747,11 @@
     justify-content: space-between;
     align-items: center;
     margin-top: 0.5rem;
+    gap: 0.5rem;
+  }
+
+  .model-selector-container {
+    flex-shrink: 0;
   }
 
   .char-count {

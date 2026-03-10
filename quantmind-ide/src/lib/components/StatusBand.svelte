@@ -167,7 +167,7 @@
   {:else}
     <div class="ticker-wrapper">
       <!-- Current Trading Session - prominently displayed -->
-      <div class="current-session clickable" on:click={() => navigationStore.navigateToView('live')}>
+      <div class="current-session clickable" on:click={() => navigationStore.navigateToView('journal')}>
         <Clock size={16} />
         <span class="label">Trading:</span>
         <span class="session-name current">{currentSession}</span>
@@ -189,7 +189,7 @@
 
       <div class="divider">|</div>
 
-      <div class="regime clickable" on:click={() => navigationStore.navigateToView('live')}>
+      <div class="regime clickable" on:click={() => navigationStore.navigateToView('journal')}>
         <span class="regime-dot" style="background: {getRegimeColor(regime)}"></span>
         <span>{regime}</span>
       </div>
@@ -197,23 +197,23 @@
       <div class="divider">|</div>
 
       <div class="metrics">
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('live')}>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('journal')}>
           <Bot size={16} />
           <span>{activeBots} Bots</span>
         </div>
-        <div class="metric clickable" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0} on:click={() => navigationStore.navigateToView('live')}>
+        <div class="metric clickable" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0} on:click={() => navigationStore.navigateToView('journal')}>
           <DollarSign size={16} />
           <span>{formatPnl(dailyPnl)}</span>
         </div>
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('live')}>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('journal')}>
           <Percent size={16} />
           <span>{winRate.toFixed(0)}% WR</span>
         </div>
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('live')}>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('journal')}>
           <Target size={16} />
           <span>{openPositions} Pos</span>
         </div>
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('live')}>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('journal')}>
           <Activity size={16} />
           <span>{tradesToday} Trades</span>
         </div>
@@ -234,7 +234,7 @@
 
       <!-- Duplicate for seamless loop -->
       <!-- Current Trading Session -->
-      <div class="current-session clickable" on:click={() => navigationStore.navigateToView('live')}>
+      <div class="current-session clickable" on:click={() => navigationStore.navigateToView('journal')}>
         <Clock size={16} />
         <span class="label">Trading:</span>
         <span class="session-name current">{currentSession}</span>
@@ -256,7 +256,7 @@
 
       <div class="divider">|</div>
 
-      <div class="regime clickable" on:click={() => navigationStore.navigateToView('live')}>
+      <div class="regime clickable" on:click={() => navigationStore.navigateToView('journal')}>
         <span class="regime-dot" style="background: {getRegimeColor(regime)}"></span>
         <span>{regime}</span>
       </div>
@@ -264,15 +264,15 @@
       <div class="divider">|</div>
 
       <div class="metrics">
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('live')}>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('journal')}>
           <Bot size={16} />
           <span>{activeBots} Bots</span>
         </div>
-        <div class="metric clickable" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0} on:click={() => navigationStore.navigateToView('live')}>
+        <div class="metric clickable" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0} on:click={() => navigationStore.navigateToView('journal')}>
           <DollarSign size={16} />
           <span>{formatPnl(dailyPnl)}</span>
         </div>
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('live')}>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('journal')}>
           <Target size={16} />
           <span>{openPositions} Pos</span>
         </div>
