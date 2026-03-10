@@ -146,53 +146,105 @@
   {#if loading}
     <span class="loading">Loading...</span>
   {:else}
-    <div class="sessions">
-      {#each SESSION_ORDER as sessionKey}
-        {#if sessions[sessionKey] && sessionKey !== 'CLOSED'}
-          <div class="session-item" class:active={sessions[sessionKey].active}>
-            <span class="dot" style="background: {getSessionColor(sessions[sessionKey].active)}"></span>
-            <span class="session-name">{sessionKey}</span>
-          </div>
-        {/if}
-      {/each}
-    </div>
+    <div class="ticker-wrapper">
+      <!-- First set of items -->
+      <div class="sessions">
+        {#each SESSION_ORDER as sessionKey}
+          {#if sessions[sessionKey] && sessionKey !== 'CLOSED'}
+            <div class="session-item" class:active={sessions[sessionKey].active}>
+              <span class="dot" style="background: {getSessionColor(sessions[sessionKey].active)}"></span>
+              <span class="session-name">{sessionKey}</span>
+            </div>
+          {/if}
+        {/each}
+      </div>
 
-  <div class="divider">|</div>
+      <div class="divider">|</div>
 
-  <div class="regime">
-    <span class="regime-dot" style="background: {getRegimeColor(regime)}"></span>
-    <span>{regime}</span>
-  </div>
+      <div class="regime">
+        <span class="regime-dot" style="background: {getRegimeColor(regime)}"></span>
+        <span>{regime}</span>
+      </div>
 
-  <div class="divider">|</div>
+      <div class="divider">|</div>
 
-  <div class="metrics">
-    <div class="metric">
-      <Bot size={14} />
-      <span>{activeBots} Bots</span>
-    </div>
-    <div class="metric" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0}>
-      <DollarSign size={14} />
-      <span>{formatPnl(dailyPnl)}</span>
-    </div>
-    <div class="metric">
-      <Percent size={14} />
-      <span>{winRate.toFixed(0)}% WR</span>
-    </div>
-  </div>
+      <div class="metrics">
+        <div class="metric">
+          <Bot size={14} />
+          <span>{activeBots} Bots</span>
+        </div>
+        <div class="metric" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0}>
+          <DollarSign size={14} />
+          <span>{formatPnl(dailyPnl)}</span>
+        </div>
+        <div class="metric">
+          <Percent size={14} />
+          <span>{winRate.toFixed(0)}% WR</span>
+        </div>
+      </div>
 
-  <div class="divider">|</div>
+      <div class="divider">|</div>
 
-  <div class="mode-indicators">
-    <div class="mode-item" title="Risk Mode">
-      <Shield size={14} />
-      <span>Risk: {formatRiskMode(riskMode)}</span>
+      <div class="mode-indicators">
+        <div class="mode-item" title="Risk Mode">
+          <Shield size={14} />
+          <span>Risk: {formatRiskMode(riskMode)}</span>
+        </div>
+        <div class="mode-item" title="Router Mode">
+          <Route size={14} />
+          <span>Router: {formatRouterMode(routerMode)}</span>
+        </div>
+      </div>
+
+      <!-- Duplicate for seamless loop -->
+      <div class="sessions">
+        {#each SESSION_ORDER as sessionKey}
+          {#if sessions[sessionKey] && sessionKey !== 'CLOSED'}
+            <div class="session-item" class:active={sessions[sessionKey].active}>
+              <span class="dot" style="background: {getSessionColor(sessions[sessionKey].active)}"></span>
+              <span class="session-name">{sessionKey}</span>
+            </div>
+          {/if}
+        {/each}
+      </div>
+
+      <div class="divider">|</div>
+
+      <div class="regime">
+        <span class="regime-dot" style="background: {getRegimeColor(regime)}"></span>
+        <span>{regime}</span>
+      </div>
+
+      <div class="divider">|</div>
+
+      <div class="metrics">
+        <div class="metric">
+          <Bot size={14} />
+          <span>{activeBots} Bots</span>
+        </div>
+        <div class="metric" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0}>
+          <DollarSign size={14} />
+          <span>{formatPnl(dailyPnl)}</span>
+        </div>
+        <div class="metric">
+          <Percent size={14} />
+          <span>{winRate.toFixed(0)}% WR</span>
+        </div>
+      </div>
+
+      <div class="divider">|</div>
+
+      <div class="mode-indicators">
+        <div class="mode-item" title="Risk Mode">
+          <Shield size={14} />
+          <span>Risk: {formatRiskMode(riskMode)}</span>
+        </div>
+        <div class="mode-item" title="Router Mode">
+          <Route size={14} />
+          <span>Router: {formatRouterMode(routerMode)}</span>
+        </div>
+      </div>
     </div>
-    <div class="mode-item" title="Router Mode">
-      <Route size={14} />
-      <span>Router: {formatRouterMode(routerMode)}</span>
-    </div>
-  </div>
   {/if}
 </div>
 
@@ -206,7 +258,26 @@
     border-bottom: 1px solid var(--border-subtle, #374151);
     font-size: 12px;
     color: var(--text-secondary, #d1d5db);
-    overflow-x: auto;
+    overflow-x: hidden;
+  }
+
+  .ticker-wrapper {
+    display: flex;
+    animation: ticker-scroll 30s linear infinite;
+    white-space: nowrap;
+  }
+
+  .ticker-wrapper:hover {
+    animation-play-state: paused;
+  }
+
+  @keyframes ticker-scroll {
+    0% {
+      transform: translateX(0);
+    }
+    100% {
+      transform: translateX(-50%);
+    }
   }
 
   .loading {
