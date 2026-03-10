@@ -33,6 +33,44 @@
   // Simplified tabs
   let activeTab = "trading-floor";
   let tradingFloorCollapsed = false;
+
+  // Resizable panel widths
+  let leftPanelWidth = 280;
+  let rightPanelWidth = 320;
+  let isDraggingLeft = false;
+  let isDraggingRight = false;
+
+  function startResizeLeft(e: MouseEvent) {
+    isDraggingLeft = true;
+    document.addEventListener('mousemove', handleResizeLeft);
+    document.addEventListener('mouseup', stopResize);
+  }
+
+  function handleResizeLeft(e: MouseEvent) {
+    if (!isDraggingLeft) return;
+    const newWidth = Math.max(200, Math.min(450, e.clientX - 60));
+    leftPanelWidth = newWidth;
+  }
+
+  function startResizeRight(e: MouseEvent) {
+    isDraggingRight = true;
+    document.addEventListener('mousemove', handleResizeRight);
+    document.addEventListener('mouseup', stopResize);
+  }
+
+  function handleResizeRight(e: MouseEvent) {
+    if (!isDraggingRight) return;
+    const newWidth = Math.max(240, Math.min(500, window.innerWidth - e.clientX - 60));
+    rightPanelWidth = newWidth;
+  }
+
+  function stopResize() {
+    isDraggingLeft = false;
+    isDraggingRight = false;
+    document.removeEventListener('mousemove', handleResizeLeft);
+    document.removeEventListener('mousemove', handleResizeRight);
+    document.removeEventListener('mouseup', stopResize);
+  }
   const tabs = [
     { id: "trading-floor", label: "Trading Floor", icon: Users },
     { id: "workflows", label: "Workflows", icon: Workflow },
@@ -117,15 +155,32 @@
 </script>
 
 <div class="workshop-view">
+  <!-- Minimal Icon Navigation (left sidebar) -->
+  <div class="nav-sidebar">
+    {#each tabs as tab}
+      <button
+        class="nav-icon-btn"
+        class:active={activeTab === tab.id}
+        on:click={() => activeTab = tab.id}
+        title={tab.label}
+      >
+        <svelte:component this={tab.icon} size={18} />
+      </button>
+    {/each}
+  </div>
+
   <!-- Tab Content -->
-  <div class="tab-content">
+  <div class="tab-content" class:resizing={isDraggingLeft || isDraggingRight}>
     <!-- Trading Floor Tab - Unified View -->
     {#if activeTab === "trading-floor"}
     <div class="trading-floor-unified">
       <!-- Left Panel: Tabbed Copilot / Floor Manager -->
-      <div class="tf-left-panel">
+      <div class="tf-left-panel" style="width: {leftPanelWidth}px; flex: none;">
         <TradingFloorPanel />
       </div>
+
+      <!-- Resize Handle Left -->
+      <div class="resize-handle" on:mousedown={startResizeLeft}></div>
 
       <!-- Center: Trading Floor Canvas -->
       <div class="tf-center-panel" class:collapsed={tradingFloorCollapsed}>
@@ -166,8 +221,11 @@
         </div>
       </div>
 
+      <!-- Resize Handle Right -->
+      <div class="resize-handle" on:mousedown={startResizeRight}></div>
+
       <!-- Right Panel: Department Chat -->
-      <div class="tf-right-panel">
+      <div class="tf-right-panel" style="width: {rightPanelWidth}px; flex: none;">
         <div class="panel-header">
           <MessageCircle size={16} />
           <span>Department Chat</span>
@@ -288,42 +346,43 @@
     color: var(--text-primary, #e2e8f0);
   }
 
-  .workshop-header {
+  /* Workshop takes full height */
+  .workshop-view {
+    height: 100%;
     display: flex;
-    align-items: center;
-    padding: 0.375rem 0.75rem;
-    background: var(--bg-secondary, #111827);
-    border-bottom: 1px solid var(--border-color, #1e293b);
-    gap: 0.75rem;
   }
 
-  .tabs {
+  /* Minimal Icon Navigation Sidebar */
+  .nav-sidebar {
     display: flex;
-    gap: 0.125rem;
-  }
-
-  .tab-btn {
-    display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: 0.25rem;
-    padding: 0.25rem 0.5rem;
+    padding: 0.5rem 0.375rem;
+    background: var(--bg-secondary, #111827);
+    border-right: 1px solid var(--border-color, #1e293b);
+  }
+
+  .nav-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
     background: transparent;
-    border: 1px solid transparent;
-    border-radius: 0.25rem;
+    border: none;
+    border-radius: 0.375rem;
     color: var(--text-secondary, #94a3b8);
-    font-size: 0.6875rem;
     cursor: pointer;
     transition: all 0.15s;
   }
 
-  .tab-btn:hover {
+  .nav-icon-btn:hover {
     background: var(--bg-tertiary, #1e293b);
     color: var(--text-primary, #e2e8f0);
   }
 
-  .tab-btn.active {
+  .nav-icon-btn.active {
     background: var(--accent-primary, #3b82f6);
-    border-color: var(--accent-primary, #3b82f6);
     color: white;
   }
 
@@ -331,6 +390,11 @@
     flex: 1;
     display: flex;
     overflow: hidden;
+  }
+
+  .tab-content.resizing {
+    cursor: col-resize;
+    user-select: none;
   }
 
   /* Trading Floor Unified Layout */
@@ -341,23 +405,35 @@
   }
 
   .tf-left-panel {
-    flex: 0 0 22%;
-    min-width: 200px;
-    max-width: 320px;
     display: flex;
     flex-direction: column;
     background: var(--bg-secondary, #111827);
     border-right: 1px solid var(--border-color, #1e293b);
-    transition: flex 0.3s ease;
+    transition: background 0.2s;
+  }
+
+  /* Resize Handle */
+  .resize-handle {
+    width: 4px;
+    background: transparent;
+    cursor: col-resize;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+
+  .resize-handle:hover,
+  .tab-content.resizing .resize-handle {
+    background: var(--accent-primary, #3b82f6);
   }
 
   .tf-center-panel {
-    flex: 0 0 auto;
+    flex: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     background: var(--bg-primary, #0a0f1a);
     transition: flex 0.3s ease;
+    min-width: 200px;
   }
 
   .tf-center-panel.collapsed {
@@ -370,44 +446,11 @@
   }
 
   .tf-right-panel {
-    flex: 1;
-    min-width: 240px;
     display: flex;
     flex-direction: column;
     background: var(--bg-secondary, #111827);
     border-left: 1px solid var(--border-color, #1e293b);
-    transition: flex 0.3s ease;
-  }
-
-  .tf-left-panel,
-  .tf-right-panel {
-    display: flex;
-    flex-direction: column;
-    background: var(--bg-secondary, #111827);
-    border-right: 1px solid var(--border-color, #1e293b);
-  }
-
-  .tf-right-panel {
-    border-right: none;
-    border-left: 1px solid var(--border-color, #1e293b);
-  }
-
-  .tf-center-panel {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background: var(--bg-primary, #0a0f1a);
-    transition: all 0.3s ease;
-  }
-
-  .tf-center-panel.collapsed {
-    flex: 0 0 40px;
-    min-height: 40px;
-  }
-
-  .tf-center-panel.collapsed .tf-stats,
-  .tf-center-panel.collapsed .tf-canvas-container {
-    display: none;
+    transition: background 0.2s;
   }
 
   .panel-header {

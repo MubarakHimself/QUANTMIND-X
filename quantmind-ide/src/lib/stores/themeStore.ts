@@ -797,6 +797,7 @@ export function loadSavedFont(): string {
 // Theme store
 export const currentTheme = writable<ThemeName>('trading-terminal');
 export const customWallpaper = writable<string>('');
+export const wallpaperEnabled = writable<boolean>(true);
 
 // Derived store for current theme object
 export const theme = derived(
@@ -937,6 +938,24 @@ export function setCustomWallpaper(wallpaper: string) {
 
 export function loadSavedWallpaper(): string {
   return localStorage.getItem('quantmind-wallpaper') || '';
+}
+
+export function toggleWallpaper(enabled: boolean) {
+  wallpaperEnabled.set(enabled);
+  localStorage.setItem('quantmind-wallpaper-enabled', String(enabled));
+
+  // Update CSS
+  const root = document.documentElement;
+  if (enabled) {
+    root.style.setProperty('--wallpaper-visible', '1');
+  } else {
+    root.style.setProperty('--wallpaper-visible', '0');
+  }
+}
+
+export function loadSavedWallpaperEnabled(): boolean {
+  const saved = localStorage.getItem('quantmind-wallpaper-enabled');
+  return saved !== 'false'; // default to true
 }
 
 // Initialize theme on load

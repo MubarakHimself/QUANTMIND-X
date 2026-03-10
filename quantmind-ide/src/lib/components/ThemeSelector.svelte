@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import { currentTheme, applyTheme, themes, customWallpaper, setCustomWallpaper, wallpapers, fonts, currentFont, setFont } from '../stores/themeStore';
+  import { currentTheme, applyTheme, themes, customWallpaper, setCustomWallpaper, wallpapers, fonts, currentFont, setFont, wallpaperEnabled, toggleWallpaper } from '../stores/themeStore';
   import { Palette, Sun, Moon, Sparkles, Image as ImageIcon, X, Check, Type } from 'lucide-svelte';
 
   const dispatch = createEventDispatcher();
@@ -86,6 +86,21 @@
           </div>
         </button>
       {/each}
+    </div>
+  </div>
+
+  <!-- Wallpaper Toggle -->
+  <div class="theme-section">
+    <div class="wallpaper-toggle">
+      <span>Show Wallpaper</span>
+      <label class="switch">
+        <input
+          type="checkbox"
+          checked={$wallpaperEnabled}
+          on:change={(e) => toggleWallpaper(e.currentTarget.checked)}
+        />
+        <span class="slider"></span>
+      </label>
     </div>
   </div>
 
@@ -571,5 +586,22 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+
+  /* Wallpaper Toggle */
+  .wallpaper-toggle {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+  }
+
+  .wallpaper-toggle span {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
   }
 </style>

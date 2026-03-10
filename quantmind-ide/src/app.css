@@ -51,6 +51,9 @@
 
   /* Typography - Default */
   --font-family: 'Inter', system-ui, sans-serif;
+
+  /* Wallpaper visibility */
+  --wallpaper-visible: 1;
 }
 
 * {
@@ -62,7 +65,7 @@
 html, body {
   height: 100%;
   font-family: var(--font-family, 'Inter', system-ui, -apple-system, sans-serif);
-  background: var(--bg-primary);
+  background: transparent;
   color: var(--text-primary);
   font-size: 13px;
   line-height: 1.5;

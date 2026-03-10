@@ -4,6 +4,19 @@
   import StatusBand from "$lib/components/StatusBand.svelte";
   import MainContent from "$lib/components/MainContent.svelte";
   import BottomPanel from "$lib/components/BottomPanel.svelte";
+  import { customWallpaper, wallpaperEnabled, loadSavedWallpaperEnabled, loadSavedWallpaper, setCustomWallpaper, toggleWallpaper } from "$lib/stores/themeStore";
+  import { onMount } from "svelte";
+
+  // Initialize wallpaper
+  onMount(() => {
+    const enabled = loadSavedWallpaperEnabled();
+    toggleWallpaper(enabled);
+
+    const wallpaper = loadSavedWallpaper();
+    if (wallpaper) {
+      setCustomWallpaper(wallpaper);
+    }
+  });
 
   let activeView = "live";
   let openFiles: Array<{
@@ -51,6 +64,13 @@
 </script>
 
 <div class="ide-layout">
+  <!-- Wallpaper Background -->
+  <div
+    class="wallpaper-layer"
+    class:is-pattern={$customWallpaper && !$customWallpaper.startsWith('url') && !$customWallpaper.includes('gradient')}
+    style="background: {$customWallpaper.startsWith('url') ? `url(${$customWallpaper})` : $customWallpaper}; opacity: var(--wallpaper-visible, 1);"
+  ></div>
+
   <TopBar on:openSettings={handleOpenSettings} />
   <StatusBand />
   <ActivityBar
@@ -80,9 +100,36 @@
     grid-template-rows: var(--header-height) auto 1fr auto;
     height: 100vh;
     width: 100vw;
-    background: var(--bg-primary);
+    background: transparent;
     overflow: hidden;
     gap: 0;
+    position: relative;
+  }
+
+  /* Wallpaper background */
+  .wallpaper-layer {
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    background: var(--wallpaper, none);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+  }
+
+  .wallpaper-layer.is-pattern {
+    background-size: 20px 20px;
+  }
+
+  /* Wallpaper overlay - makes content readable */
+  .ide-layout::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--bg-primary);
+    opacity: calc(0.85 - (var(--wallpaper-visible, 1) * 0.5));
+    z-index: -1;
+    pointer-events: none;
   }
 
   :global(.status-band) {
