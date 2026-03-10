@@ -1,7 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import { Power, Settings, Minus, Square, X } from 'lucide-svelte';
-  import AuthStatus from './AuthStatus.svelte';
 
   const dispatch = createEventDispatcher();
   
@@ -52,8 +51,6 @@
     >
       <Settings size={16} />
     </button>
-
-    <AuthStatus />
 
     <button
       class="kill-switch"
