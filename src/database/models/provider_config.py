@@ -20,7 +20,8 @@ class ProviderConfig(Base):
     Attributes:
         id: Primary key (UUID)
         name: Provider name (e.g., 'anthropic', 'glm', 'minimax', 'deepseek', 'openai', 'openrouter')
-        api_key_encrypted: Encrypted API key for the provider
+        api_key: API key for the provider. Note: Encryption is handled at the API layer -
+            the UI encrypts before sending, and the API decrypts when needed.
         base_url: Custom base URL for API endpoint (optional)
         enabled: Whether the provider is enabled
         created_at: Creation timestamp
@@ -30,7 +31,7 @@ class ProviderConfig(Base):
 
     id = Column(String(36), primary_key=True)
     name = Column(String(50), nullable=False, unique=True, index=True)
-    api_key_encrypted = Column(String(500), nullable=True)
+    api_key = Column(String(500), nullable=True)
     base_url = Column(String(500), nullable=True)
     enabled = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
