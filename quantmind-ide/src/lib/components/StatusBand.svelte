@@ -266,8 +266,13 @@
   .ticker-wrapper {
     display: flex;
     gap: 24px;
-    animation: ticker-scroll 30s linear infinite;
+    animation: ticker-scroll 20s linear infinite;
     white-space: nowrap;
+    will-change: transform;
+  }
+
+  .ticker-wrapper > * {
+    flex-shrink: 0;
   }
 
   .ticker-wrapper:hover {
