@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { Bot, DollarSign, Percent, Shield, Route } from 'lucide-svelte';
+  import { Bot, DollarSign, Percent, Shield, Route, TrendingUp, Activity, Target } from 'lucide-svelte';
   import { getAllSessions, getMarketState, getTradingMetrics, getRiskSettings, getRouterSettings } from '$lib/api';
+  import { navigationStore } from '../stores/navigationStore';
 
   // State
   let loading = true;
@@ -10,6 +11,8 @@
   let activeBots = 0;
   let dailyPnl = 0;
   let winRate = 0;
+  let openPositions = 0;
+  let tradesToday = 0;
 
   // Risk and Router settings
   let riskMode: 'fixed' | 'dynamic' | 'conservative' = 'dynamic';
@@ -54,6 +57,8 @@
         activeBots = metricsData.active_bots || 0;
         dailyPnl = metricsData.daily_pnl || 0;
         winRate = (metricsData.win_rate || 0) * 100;
+        openPositions = metricsData.active_positions || 0;
+        tradesToday = metricsData.total_trades || 0;
       }
 
       // Fetch risk settings
@@ -161,7 +166,7 @@
 
       <div class="divider">|</div>
 
-      <div class="regime">
+      <div class="regime clickable" on:click={() => navigationStore.navigateToView('market')}>
         <span class="regime-dot" style="background: {getRegimeColor(regime)}"></span>
         <span>{regime}</span>
       </div>
@@ -169,23 +174,31 @@
       <div class="divider">|</div>
 
       <div class="metrics">
-        <div class="metric">
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('bots')}>
           <Bot size={16} />
           <span>{activeBots} Bots</span>
         </div>
-        <div class="metric" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0}>
+        <div class="metric clickable" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0} on:click={() => navigationStore.navigateToView('trading')}>
           <DollarSign size={16} />
           <span>{formatPnl(dailyPnl)}</span>
         </div>
-        <div class="metric">
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('trading')}>
           <Percent size={16} />
           <span>{winRate.toFixed(0)}% WR</span>
+        </div>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('positions')}>
+          <Target size={16} />
+          <span>{openPositions} Pos</span>
+        </div>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('trading')}>
+          <Activity size={16} />
+          <span>{tradesToday} Trades</span>
         </div>
       </div>
 
       <div class="divider">|</div>
 
-      <div class="mode-indicators">
+      <div class="mode-indicators clickable" on:click={() => navigationStore.navigateToView('settings')}>
         <div class="mode-item" title="Risk Mode">
           <Shield size={16} />
           <span>Risk: {formatRiskMode(riskMode)}</span>
@@ -197,7 +210,7 @@
       </div>
 
       <!-- Duplicate for seamless loop -->
-      <div class="sessions">
+      <div class="sessions clickable" on:click={() => navigationStore.navigateToView('sessions')}>
         {#each SESSION_ORDER as sessionKey}
           {#if sessions[sessionKey] && sessionKey !== 'CLOSED'}
             <div class="session-item" class:active={sessions[sessionKey].active}>
@@ -210,7 +223,7 @@
 
       <div class="divider">|</div>
 
-      <div class="regime">
+      <div class="regime clickable" on:click={() => navigationStore.navigateToView('market')}>
         <span class="regime-dot" style="background: {getRegimeColor(regime)}"></span>
         <span>{regime}</span>
       </div>
@@ -218,23 +231,31 @@
       <div class="divider">|</div>
 
       <div class="metrics">
-        <div class="metric">
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('bots')}>
           <Bot size={16} />
           <span>{activeBots} Bots</span>
         </div>
-        <div class="metric" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0}>
+        <div class="metric clickable" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0} on:click={() => navigationStore.navigateToView('trading')}>
           <DollarSign size={16} />
           <span>{formatPnl(dailyPnl)}</span>
         </div>
-        <div class="metric">
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('trading')}>
           <Percent size={16} />
           <span>{winRate.toFixed(0)}% WR</span>
+        </div>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('positions')}>
+          <Target size={16} />
+          <span>{openPositions} Pos</span>
+        </div>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('trading')}>
+          <Activity size={16} />
+          <span>{tradesToday} Trades</span>
         </div>
       </div>
 
       <div class="divider">|</div>
 
-      <div class="mode-indicators">
+      <div class="mode-indicators clickable" on:click={() => navigationStore.navigateToView('settings')}>
         <div class="mode-item" title="Risk Mode">
           <Shield size={16} />
           <span>Risk: {formatRiskMode(riskMode)}</span>
@@ -291,6 +312,16 @@
   .loading {
     color: var(--text-muted, #6b7280);
     font-style: italic;
+  }
+
+  .clickable {
+    cursor: pointer;
+    transition: opacity 0.2s, color 0.2s;
+  }
+
+  .clickable:hover {
+    opacity: 0.7;
+    color: var(--text-primary, #fff);
   }
 
   .sessions {
