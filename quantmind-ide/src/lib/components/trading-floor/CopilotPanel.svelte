@@ -69,8 +69,8 @@
   $: agentName = isCopilot ? "QuantMind Copilot" : "Floor Manager";
   $: placeholderText = isCopilot ? "Ask QuantMind Copilot..." : "Ask the Floor Manager...";
   $: apiEndpoint = isCopilot
-    ? `${API_BASE}/workshop/copilot/chat`
-    : `${API_BASE}/floor-manager/chat`;
+    ? `${API_BASE}/chat/workshop/message`
+    : `${API_BASE}/chat/floor-manager/message`;
   $: messages = [
     {
       id: "fm_welcome",
@@ -128,9 +128,6 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userContent,
-          agent: "floor_manager",
-          model: "default",
-          provider: "anthropic",
         }),
       });
 
@@ -144,9 +141,9 @@
       messages = [
         ...messages,
         {
-          id: generateId(),
+          id: data.message_id || generateId(),
           role: "floor_manager",
-          content: data.reply || data.result || "I've processed your request.",
+          content: data.reply || "I've processed your request.",
           timestamp: new Date(),
           delegation: data.delegation
             ? {
