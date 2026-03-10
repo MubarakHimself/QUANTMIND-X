@@ -17,14 +17,15 @@
     RiskPanel,
     DatabasePanel,
     ConnectionPanel,
-    SecurityPanel
+    SecurityPanel,
+    ProvidersPanel
   } from './settings';
   import { getRouterSettings, saveRouterSettings } from '$lib/api';
 
   const dispatch = createEventDispatcher();
 
   // Settings tabs
-  type SettingsTab = 'general' | 'api-keys' | 'mcp-servers' | 'agents' | 'models' | 'risk' | 'database' | 'connection' | 'security';
+  type SettingsTab = 'general' | 'api-keys' | 'providers' | 'mcp-servers' | 'agents' | 'models' | 'risk' | 'database' | 'connection' | 'security';
   let activeTab: SettingsTab = 'general';
   let settingsVisible = false;
 
@@ -185,6 +186,14 @@
   let agentsMdLoading = false;
   let agentsMdSaved = false;
 
+  // Providers
+  let providers: Array<{
+    id: string;
+    name: string;
+    base_url: string;
+    api_key?: string;
+  }> = [];
+
   // Risk Management settings
   let riskSettings = {
     houseMoneyEnabled: true,
@@ -297,6 +306,49 @@
       });
     } catch (e) {
       console.error('Failed to remove API key:', e);
+    }
+  }
+
+  // Handlers for Providers
+  async function loadProviders() {
+    try {
+      const res = await fetch('/api/providers');
+      if (res.ok) {
+        const data = await res.json();
+        providers = data.providers || [];
+      }
+    } catch (e) {
+      console.error('Failed to load providers:', e);
+    }
+  }
+
+  async function handleSaveProvider(event: CustomEvent) {
+    const provider = event.detail;
+    try {
+      const res = await fetch('/api/providers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(provider)
+      });
+      if (res.ok) {
+        await loadProviders();
+      }
+    } catch (e) {
+      console.error('Failed to save provider:', e);
+    }
+  }
+
+  async function handleDeleteProvider(event: CustomEvent) {
+    const { providerId } = event.detail;
+    try {
+      const res = await fetch(`/api/providers/${providerId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        await loadProviders();
+      }
+    } catch (e) {
+      console.error('Failed to delete provider:', e);
     }
   }
 
@@ -718,6 +770,14 @@
         </button>
         <button
           class="tab"
+          class:active={activeTab === 'providers'}
+          on:click={() => activeTab = 'providers'}
+        >
+          <Key size={16} />
+          <span>Providers</span>
+        </button>
+        <button
+          class="tab"
           class:active={activeTab === 'mcp-servers'}
           on:click={() => activeTab = 'mcp-servers'}
         >
@@ -794,6 +854,15 @@
             bind:newApiKey
             on:addApiKey={addApiKey}
             on:removeApiKey={(e) => removeApiKey(e.detail.id)}
+          />
+        {/if}
+
+        <!-- Providers -->
+        {#if activeTab === 'providers'}
+          <ProvidersPanel
+            bind:providers
+            on:saveProvider={handleSaveProvider}
+            on:deleteProvider={handleDeleteProvider}
           />
         {/if}
 

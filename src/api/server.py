@@ -101,6 +101,7 @@ try:
     from src.api.pdf_endpoints import router as pdf_router
     from src.api.trading.routes import router as trading_router
     from src.api.hmm_inference_server import router as hmm_inference_router
+    from src.api.provider_config_endpoints import router as provider_config_router
 except ImportError as e:
     logger.error(f"Import Error: {e}")
     # Fallback/Debug info
@@ -213,6 +214,7 @@ app.include_router(demo_mode_router)
 app.include_router(claude_agent_router)
 app.include_router(agent_tools_router)
 app.include_router(model_router)
+app.include_router(provider_config_router)
 app.include_router(memory_router)
 app.include_router(memory_dept_router)
 app.include_router(memory_unified_router)

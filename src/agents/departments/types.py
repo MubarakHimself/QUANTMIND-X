@@ -126,6 +126,8 @@ class DepartmentHeadConfig:
         department: Which department this head leads
         agent_type: Agent type identifier for SDK orchestrator
         system_prompt: System prompt for the department head
+        provider: LLM provider for this agent
+        model: LLM model for this agent
         sub_agents: List of spawnable worker agent types
         memory_namespace: Isolated memory namespace for this department
         max_workers: Maximum concurrent workers
@@ -134,6 +136,8 @@ class DepartmentHeadConfig:
     department: Department
     agent_type: str
     system_prompt: str
+    provider: str = "anthropic"
+    model: str = "claude-sonnet-4-20250514"
     sub_agents: List[str] = field(default_factory=list)
     memory_namespace: str = ""
     max_workers: int = 5
