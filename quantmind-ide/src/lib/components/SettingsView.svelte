@@ -17,14 +17,15 @@
     RiskPanel,
     DatabasePanel,
     ConnectionPanel,
-    SecurityPanel
+    SecurityPanel,
+    ProvidersPanel
   } from './settings';
   import { getRouterSettings, saveRouterSettings } from '$lib/api';
 
   const dispatch = createEventDispatcher();
 
   // Settings tabs
-  type SettingsTab = 'general' | 'api-keys' | 'mcp-servers' | 'agents' | 'models' | 'risk' | 'database' | 'connection' | 'security';
+  type SettingsTab = 'general' | 'api-keys' | 'providers' | 'mcp-servers' | 'agents' | 'models' | 'risk' | 'database' | 'connection' | 'security';
   let activeTab: SettingsTab = 'general';
   let settingsVisible = false;
 
@@ -718,6 +719,14 @@
         </button>
         <button
           class="tab"
+          class:active={activeTab === 'providers'}
+          on:click={() => activeTab = 'providers'}
+        >
+          <Key size={16} />
+          <span>Providers</span>
+        </button>
+        <button
+          class="tab"
           class:active={activeTab === 'mcp-servers'}
           on:click={() => activeTab = 'mcp-servers'}
         >
@@ -795,6 +804,11 @@
             on:addApiKey={addApiKey}
             on:removeApiKey={(e) => removeApiKey(e.detail.id)}
           />
+        {/if}
+
+        <!-- Providers -->
+        {#if activeTab === 'providers'}
+          <ProvidersPanel />
         {/if}
 
         <!-- MCP Servers -->
