@@ -2,7 +2,8 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import {
     Bot, Code, TrendingUp, Save, RefreshCw, Check, Download,
-    Upload as UploadIcon, Plus, Trash2, Terminal, Sliders, FileText
+    Upload as UploadIcon, Plus, Trash2, Terminal, Sliders, FileText,
+    Briefcase, Users, Layers
   } from 'lucide-svelte';
 
   export let agentConfigs: Record<string, {
@@ -17,13 +18,78 @@
     tools: string[];
   }> = {};
 
-  export let selectedAgent: string = 'copilot';
+  export let selectedAgent: string = 'floor_manager';
   export let showRawEditor: boolean = true;
   export let agentsMdContent: string = '';
   export let agentsMdLoading: boolean = false;
   export let agentsMdSaved: boolean = false;
 
   const dispatch = createEventDispatcher();
+
+  // All agents organized by category
+  const ALL_AGENTS = [
+    // Floor Manager
+    { id: 'floor_manager', name: 'Floor Manager', role: 'Trading Floor Orchestrator', department: null, category: 'floor' },
+    // Department Heads
+    { id: 'research_head', name: 'Research Head', role: 'Strategy Research Lead', department: 'Research', category: 'head' },
+    { id: 'development_head', name: 'Development Head', role: 'EA Development Lead', department: 'Development', category: 'head' },
+    { id: 'trading_head', name: 'Trading Head', role: 'Order Execution Lead', department: 'Trading', category: 'head' },
+    { id: 'risk_head', name: 'Risk Head', role: 'Risk Management Lead', department: 'Risk', category: 'head' },
+    { id: 'portfolio_head', name: 'Portfolio Head', role: 'Portfolio Management Lead', department: 'Portfolio', category: 'head' },
+    // Sub-agents - Research
+    { id: 'strategy_researcher', name: 'Strategy Researcher', role: 'Research sub-agent', department: 'Research', category: 'subagent' },
+    { id: 'market_analyst', name: 'Market Analyst', role: 'Research sub-agent', department: 'Research', category: 'subagent' },
+    { id: 'backtester', name: 'Backtester', role: 'Research sub-agent', department: 'Research', category: 'subagent' },
+    // Sub-agents - Development
+    { id: 'python_dev', name: 'Python Developer', role: 'Development sub-agent', department: 'Development', category: 'subagent' },
+    { id: 'pinescript_dev', name: 'PineScript Developer', role: 'Development sub-agent', department: 'Development', category: 'subagent' },
+    { id: 'mql5_dev', name: 'MQL5 Developer', role: 'Development sub-agent', department: 'Development', category: 'subagent' },
+    // Sub-agents - Trading
+    { id: 'order_executor', name: 'Order Executor', role: 'Trading sub-agent', department: 'Trading', category: 'subagent' },
+    { id: 'fill_tracker', name: 'Fill Tracker', role: 'Trading sub-agent', department: 'Trading', category: 'subagent' },
+    { id: 'trade_monitor', name: 'Trade Monitor', role: 'Trading sub-agent', department: 'Trading', category: 'subagent' },
+    // Sub-agents - Risk
+    { id: 'position_sizer', name: 'Position Sizer', role: 'Risk sub-agent', department: 'Risk', category: 'subagent' },
+    { id: 'drawdown_monitor', name: 'Drawdown Monitor', role: 'Risk sub-agent', department: 'Risk', category: 'subagent' },
+    { id: 'var_calculator', name: 'VaR Calculator', role: 'Risk sub-agent', department: 'Risk', category: 'subagent' },
+    // Sub-agents - Portfolio
+    { id: 'allocation_manager', name: 'Allocation Manager', role: 'Portfolio sub-agent', department: 'Portfolio', category: 'subagent' },
+    { id: 'rebalancer', name: 'Rebalancer', role: 'Portfolio sub-agent', department: 'Portfolio', category: 'subagent' },
+    { id: 'performance_tracker', name: 'Performance Tracker', role: 'Portfolio sub-agent', department: 'Portfolio', category: 'subagent' },
+    // UI Assistant
+    { id: 'copilot', name: 'Copilot', role: 'UI Assistant', department: null, category: 'ui' },
+  ];
+
+  // Group agents by category for display
+  $: groupedAgents = {
+    floor: ALL_AGENTS.filter(a => a.category === 'floor'),
+    heads: ALL_AGENTS.filter(a => a.category === 'head'),
+    subagents: ALL_AGENTS.filter(a => a.category === 'subagent'),
+    ui: ALL_AGENTS.filter(a => a.category === 'ui'),
+  };
+
+  // Available providers from API
+  let availableProviders: Array<{ id: string; name: string; display_name: string; has_api_key: boolean; enabled: boolean }> = [];
+
+  // Fetch available providers on mount
+  onMount(async () => {
+    try {
+      const res = await fetch('/api/providers/available');
+      const data = await res.json();
+      availableProviders = data.providers || [];
+    } catch (e) {
+      console.error('Failed to load available providers:', e);
+      // Fallback to default providers if API fails
+      availableProviders = [
+        { id: 'openrouter', name: 'openrouter', display_name: 'OpenRouter', has_api_key: false, enabled: false },
+        { id: 'anthropic', name: 'anthropic', display_name: 'Anthropic', has_api_key: false, enabled: false },
+        { id: 'zhipu', name: 'zhipu', display_name: 'Zhipu AI', has_api_key: false, enabled: false },
+      ];
+    }
+  });
+
+  // Get providers that have API keys configured
+  $: providersWithKeys = availableProviders.filter(p => p.has_api_key);
 
   function setSelectedAgent(agent: string) {
     selectedAgent = agent;
@@ -121,30 +187,65 @@
 
   <!-- Agent Selector Tabs -->
   <div class="agent-selector-tabs">
-    <button
-      class="agent-tab"
-      class:active={selectedAgent === 'copilot'}
-      on:click={() => setSelectedAgent('copilot')}
-    >
-      <Bot size={14} />
-      <span>Copilot</span>
-    </button>
-    <button
-      class="agent-tab"
-      class:active={selectedAgent === 'quantcode'}
-      on:click={() => setSelectedAgent('quantcode')}
-    >
-      <Code size={14} />
-      <span>QuantCode</span>
-    </button>
-    <button
-      class="agent-tab"
-      class:active={selectedAgent === 'analyst'}
-      on:click={() => setSelectedAgent('analyst')}
-    >
-      <TrendingUp size={14} />
-      <span>Analyst</span>
-    </button>
+    <!-- Floor Manager -->
+    {#each groupedAgents.floor as agent}
+      <button
+        class="agent-tab"
+        class:active={selectedAgent === agent.id}
+        on:click={() => setSelectedAgent(agent.id)}
+      >
+        <Bot size={14} />
+        <span>{agent.name}</span>
+      </button>
+    {/each}
+
+    <!-- Department Heads Group -->
+    <div class="agent-group">
+      <div class="agent-group-header">
+        <Briefcase size={12} />
+        <span>Department Heads</span>
+      </div>
+      {#each groupedAgents.heads as agent}
+        <button
+          class="agent-tab"
+          class:active={selectedAgent === agent.id}
+          on:click={() => setSelectedAgent(agent.id)}
+        >
+          <span class="agent-name">{agent.name}</span>
+          <span class="agent-dept">{agent.department}</span>
+        </button>
+      {/each}
+    </div>
+
+    <!-- Sub-agents Group -->
+    <div class="agent-group">
+      <div class="agent-group-header">
+        <Users size={12} />
+        <span>Sub-agents</span>
+      </div>
+      {#each groupedAgents.subagents as agent}
+        <button
+          class="agent-tab subagent"
+          class:active={selectedAgent === agent.id}
+          on:click={() => setSelectedAgent(agent.id)}
+        >
+          <span class="agent-name">{agent.name}</span>
+          <span class="agent-dept">{agent.department}</span>
+        </button>
+      {/each}
+    </div>
+
+    <!-- UI Assistant -->
+    {#each groupedAgents.ui as agent}
+      <button
+        class="agent-tab"
+        class:active={selectedAgent === agent.id}
+        on:click={() => setSelectedAgent(agent.id)}
+      >
+        <Bot size={14} />
+        <span>{agent.name}</span>
+      </button>
+    {/each}
   </div>
 
   <!-- Editor Mode Toggle -->
@@ -200,9 +301,13 @@ Configure your agent behavior here..."
           <div class="setting-row">
             <span>Provider</span>
             <select bind:value={agentConfigs[selectedAgent].provider} on:change={(e) => updateAgentConfig('provider', e.currentTarget.value)}>
-              <option value="openrouter">OpenRouter</option>
-              <option value="anthropic">Anthropic</option>
-              <option value="zhipu">Zhipu AI</option>
+              {#if providersWithKeys.length > 0}
+                {#each providersWithKeys as provider}
+                  <option value={provider.name}>{provider.display_name}</option>
+                {/each}
+              {:else}
+                <option value="">No providers configured</option>
+              {/if}
             </select>
           </div>
           <div class="setting-row">
