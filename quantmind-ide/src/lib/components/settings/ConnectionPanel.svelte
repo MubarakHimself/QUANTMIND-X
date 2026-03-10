@@ -68,3 +68,79 @@
     />
   </div>
 </div>
+
+<style>
+  /* Panel Header */
+  .panel h3 {
+    margin: 0 0 20px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  /* Section Headers */
+  h4 {
+    margin: 24px 0 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  h4:first-of-type {
+    margin-top: 0;
+  }
+
+  /* Setting Group */
+  .setting-group {
+    margin-bottom: 16px;
+  }
+
+  .setting-group:last-child {
+    margin-bottom: 0;
+  }
+
+  .setting-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+
+  /* Text Input */
+  .text-input {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 14px;
+    transition: all 0.15s;
+    box-sizing: border-box;
+  }
+
+  .text-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  }
+
+  .text-input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.6;
+  }
+
+  /* Input types */
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+</style>

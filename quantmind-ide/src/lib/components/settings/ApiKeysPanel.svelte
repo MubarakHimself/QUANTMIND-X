@@ -203,6 +203,312 @@
 {/if}
 
 <style>
+  /* Panel Header */
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  .panel-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  /* Info Box */
+  .info-box {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 8px;
+    margin-bottom: 20px;
+    color: #60a5fa;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .info-box :global(svg) {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  /* Keys List */
+  .keys-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* Key Item */
+  .key-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    transition: all 0.15s ease;
+  }
+
+  .key-item:hover {
+    background: var(--bg-surface);
+    border-color: var(--accent-primary);
+    transform: translateX(2px);
+  }
+
+  .key-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: rgba(99, 102, 241, 0.15);
+    border-radius: 8px;
+    color: var(--accent-primary);
+  }
+
+  .key-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .key-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+  }
+
+  .key-service {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: capitalize;
+  }
+
+  .key-value {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .key-value code {
+    color: var(--text-muted);
+  }
+
+  .key-actions {
+    display: flex;
+    gap: 4px;
+  }
+
+  /* Icon Button */
+  .icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .icon-btn:hover {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+  }
+
+  .icon-btn.danger:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+  }
+
+  /* Copy button */
+  .key-item .copy-btn {
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .key-item:hover .copy-btn {
+    opacity: 1;
+  }
+
+  /* Empty State */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    text-align: center;
+    color: var(--text-muted);
+  }
+
+  .empty-state :global(svg) {
+    margin-bottom: 16px;
+    opacity: 0.5;
+  }
+
+  .empty-state p {
+    margin: 0 0 16px;
+    font-size: 14px;
+  }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .modal {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    width: 450px;
+    max-width: 95vw;
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .modal-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .modal-header button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .modal-header button:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .modal-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .form-group label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+
+  .form-group input,
+  .form-group select {
+    padding: 10px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 14px;
+    transition: all 0.15s;
+  }
+
+  .form-group input:focus,
+  .form-group select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  }
+
+  .form-group input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.6;
+  }
+
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 16px 20px;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  /* Buttons */
+  .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: none;
+  }
+
+  .btn.primary {
+    background: var(--accent-primary);
+    color: white;
+  }
+
+  .btn.primary:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+
+  .btn.secondary {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+  }
+
+  .btn.secondary:hover {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+  }
+
   .key-input-wrapper {
     display: flex;
     align-items: center;
@@ -255,14 +561,5 @@
 
   .btn-text:hover {
     background: var(--bg-tertiary);
-  }
-
-  .key-item .copy-btn {
-    opacity: 0;
-    transition: opacity 0.15s;
-  }
-
-  .key-item:hover .copy-btn {
-    opacity: 1;
   }
 </style>

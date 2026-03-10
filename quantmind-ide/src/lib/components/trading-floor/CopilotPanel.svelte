@@ -6,7 +6,7 @@
     Loader,
     X,
     Bot,
-    Settings,
+    Plus,
     ChevronRight,
     ArrowRightCircle,
     CheckCircle2,
@@ -16,7 +16,9 @@
     Building2,
     Mail,
     MailPlus,
+    MessageSquarePlus,
   } from "lucide-svelte";
+  import AgentModelSelector from "$lib/components/AgentModelSelector.svelte";
   import {
     departmentChatStore,
     activeDelegatedTasks,
@@ -422,8 +424,8 @@
       <button class="icon-btn mail-btn" title="Send Mail to Department" on:click={() => showMailCompose = !showMailCompose}>
         <MailPlus size={14} />
       </button>
-      <button class="icon-btn" title="Clear Chat" on:click={clearChat}>
-        <Settings size={14} />
+      <button class="icon-btn" title="New Chat" on:click={clearChat}>
+        <MessageSquarePlus size={14} />
       </button>
       <button class="icon-btn" title="Close" on:click={closePanel}>
         <X size={14} />
@@ -638,6 +640,12 @@
       ></textarea>
     </div>
     <div class="input-footer">
+      <div class="model-selector-container">
+        <AgentModelSelector
+          agentId={isCopilot ? 'copilot' : 'floor_manager'}
+          currentModel="opus"
+        />
+      </div>
       <div class="char-count">{message.length} / 4000</div>
       <button
         class="send-btn"

@@ -157,3 +157,198 @@
     </div>
   </div>
 </div>
+
+<style>
+  /* Panel Header */
+  .panel h3 {
+    margin: 0 0 20px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  /* Setting Group */
+  .setting-group {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+
+  .setting-group:last-child {
+    margin-bottom: 0;
+  }
+
+  .setting-group > label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+  }
+
+  /* Setting Row */
+  .setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+  }
+
+  .setting-row:not(:last-child) {
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .setting-row span {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  /* Inputs */
+  .number-input,
+  .select-input {
+    padding: 8px 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    min-width: 120px;
+    transition: all 0.15s;
+  }
+
+  .number-input:focus,
+  .select-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  }
+
+  /* Toggle Switch */
+  .switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+  }
+
+  .switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    transition: 0.2s;
+    border-radius: 24px;
+  }
+
+  .slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 2px;
+    bottom: 2px;
+    background-color: var(--text-muted);
+    transition: 0.2s;
+    border-radius: 50%;
+  }
+
+  input:checked + .slider {
+    background-color: var(--accent-primary);
+    border-color: var(--accent-primary);
+  }
+
+  input:checked + .slider:before {
+    transform: translateX(20px);
+    background-color: white;
+  }
+
+  /* Hint Text */
+  .hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 8px 0 0;
+    padding: 8px 12px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+  }
+
+  /* Balance Zones Grid */
+  .zones-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .zone-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+
+  .zone-item.danger {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+
+  .zone-item.growth {
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+
+  .zone-item.scaling {
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+  }
+
+  .zone-item.guardian {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+
+  .zone-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+
+  .zone-item.danger .zone-label { color: #ef4444; }
+  .zone-item.growth .zone-label { color: #f59e0b; }
+  .zone-item.scaling .zone-label { color: #3b82f6; }
+  .zone-item.guardian .zone-label { color: #10b981; }
+
+  .zone-amount {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  /* Section Headers */
+  h4 {
+    margin: 24px 0 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  h4:first-child {
+    margin-top: 0;
+  }
+</style>

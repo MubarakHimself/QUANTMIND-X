@@ -1,6 +1,5 @@
 <script lang="ts">
   import CopilotPanel from './trading-floor/CopilotPanel.svelte';
-  import AgentModelSelector from './AgentModelSelector.svelte';
 
   let activeTab: 'copilot' | 'floor-manager' = 'floor-manager';
   const tabs = [
@@ -24,13 +23,6 @@
         {tab.label}
       </button>
     {/each}
-  </div>
-
-  <div class="panel-header">
-    <AgentModelSelector
-      agentId={activeTab === 'copilot' ? 'copilot' : 'floor_manager'}
-      currentModel="opus"
-    />
   </div>
 
   <div class="panel-content">
@@ -83,14 +75,6 @@
   .tab-btn.active {
     color: var(--accent-color, #4a9eff);
     border-bottom: 2px solid var(--accent-color, #4a9eff);
-  }
-
-  .panel-header {
-    padding: 6px 8px;
-    display: flex;
-    justify-content: flex-end;
-    border-bottom: 1px solid var(--border-color, #333);
-    flex-shrink: 0;
   }
 
   .panel-content {

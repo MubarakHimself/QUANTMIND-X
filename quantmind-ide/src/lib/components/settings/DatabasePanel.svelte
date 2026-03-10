@@ -133,3 +133,200 @@
     </div>
   </div>
 </div>
+
+<style>
+  /* Panel Header */
+  .panel h3 {
+    margin: 0 0 20px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  /* Setting Group */
+  .setting-group {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+
+  .setting-group:last-child {
+    margin-bottom: 0;
+  }
+
+  .setting-group > label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+  }
+
+  /* Connection Type Selector */
+  .connection-type-selector {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .connection-type-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 16px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .connection-type-btn:hover {
+    border-color: var(--text-muted);
+    color: var(--text-primary);
+  }
+
+  .connection-type-btn.active {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+  }
+
+  .connection-type-btn :global(svg) {
+    color: inherit;
+  }
+
+  /* Setting Row */
+  .setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+  }
+
+  .setting-row:not(:last-child) {
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .setting-row span {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  /* Inputs */
+  .text-input,
+  .number-input {
+    padding: 8px 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    min-width: 200px;
+    transition: all 0.15s;
+  }
+
+  .text-input:focus,
+  .number-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  }
+
+  .text-input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.6;
+  }
+
+  /* Toggle Switch */
+  .switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+  }
+
+  .switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    transition: 0.2s;
+    border-radius: 24px;
+  }
+
+  .slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 2px;
+    bottom: 2px;
+    background-color: var(--text-muted);
+    transition: 0.2s;
+    border-radius: 50%;
+  }
+
+  input:checked + .slider {
+    background-color: var(--accent-primary);
+    border-color: var(--accent-primary);
+  }
+
+  input:checked + .slider:before {
+    transform: translateX(20px);
+    background-color: white;
+  }
+
+  /* Storage Info */
+  .storage-info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .storage-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+  }
+
+  .storage-item :global(svg) {
+    color: var(--accent-primary);
+  }
+
+  .storage-details {
+    display: flex;
+    justify-content: space-between;
+    flex: 1;
+    align-items: center;
+  }
+
+  .storage-details .label {
+    font-size: 13px;
+    color: var(--text-primary);
+  }
+
+  .storage-details .size {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: monospace;
+  }
+</style>
