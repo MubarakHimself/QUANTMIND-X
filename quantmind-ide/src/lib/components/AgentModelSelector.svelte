@@ -35,9 +35,7 @@
 
   onMount(async () => {
     try {
-      // Use the new /api/providers/available endpoint which gets provider status from database
       const url = `${API_BASE}/api/providers/available`;
-      console.log('[AgentModelSelector] Fetching providers from:', url);
 
       const response = await fetch(url);
 
@@ -51,10 +49,8 @@
       }
 
       const data = await response.json();
-      console.log('[AgentModelSelector] Response data:', data);
 
       if (!data || !data.providers) {
-        console.warn('[AgentModelSelector] No providers in response, using fallback');
         throw new Error('Invalid response format: missing providers');
       }
 
@@ -74,7 +70,6 @@
       }
 
       providerGroups = groups;
-      console.log('[AgentModelSelector] Provider groups:', providerGroups);
 
       // Set selected model to first available or default
       const allModels = providerGroups.flatMap(g => g.models);

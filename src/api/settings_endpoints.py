@@ -2,16 +2,20 @@
 Settings API Endpoints
 
 Manages user settings, API keys, MCP servers, agent configuration,
-risk management, and database settings.
+risk management, database settings, and custom wallpapers.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import json
 import logging
 import os
+import uuid
+import base64
 from pathlib import Path
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +25,10 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 SETTINGS_DIR = Path("./config/settings")
 SETTINGS_FILE = SETTINGS_DIR / "settings.json"
 SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Custom wallpapers directory
+WALLPAPERS_DIR = SETTINGS_DIR / "wallpapers"
+WALLPAPERS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Data models
 class GeneralSettings(BaseModel):
@@ -705,3 +713,182 @@ def generate_agents_md(agents: dict[str, dict[str, Any]]) -> str:
         lines.append("")
 
     return '\n'.join(lines)
+
+
+# ============== Custom Wallpapers ==============
+
+class CustomWallpaper(BaseModel):
+    id: str
+    name: str
+    filename: str
+    url: str
+    thumbnail: Optional[str] = None
+    created: str
+    size: int = 0
+
+
+def load_wallpapers_metadata() -> Dict[str, Any]:
+    """Load wallpapers metadata from settings file."""
+    settings = load_settings()
+    return settings.get("customWallpapers", {"wallpapers": [], "activeWallpaperId": None})
+
+
+def save_wallpapers_metadata(metadata: Dict[str, Any]):
+    """Save wallpapers metadata to settings file."""
+    settings = load_settings()
+    settings["customWallpapers"] = metadata
+    save_settings(settings)
+
+
+@router.get("/wallpapers")
+async def get_custom_wallpapers():
+    """Get list of custom wallpapers."""
+    metadata = load_wallpapers_metadata()
+    return metadata.get("wallpapers", [])
+
+
+@router.post("/wallpapers")
+async def upload_wallpaper(
+    file: UploadFile = File(...),
+    name: str = Form(...)
+):
+    """Upload a custom wallpaper image."""
+    # Validate file type
+    allowed_types = ["image/jpeg", "image/png", "image/webp", "image/gif"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type. Allowed: {', '.join(allowed_types)}"
+        )
+
+    # Validate file size (max 10MB)
+    file.file.seek(0, 2)
+    size = file.file.tell()
+    file.file.seek(0)
+
+    if size > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Max 10MB.")
+
+    # Generate unique ID and filename
+    wallpaper_id = str(uuid.uuid4())
+    ext = file.filename.split('.')[-1] if '.' in file.filename else 'jpg'
+    filename = f"{wallpaper_id}.{ext}"
+    filepath = WALLPAPERS_DIR / filename
+
+    # Save file
+    content = await file.read()
+    filepath.write_bytes(content)
+
+    # Create thumbnail (base64 for preview)
+    thumbnail = None
+
+    # Get URL path
+    url_path = f"/api/settings/wallpapers/{wallpaper_id}/file"
+
+    # Create wallpaper object
+    wallpaper = {
+        "id": wallpaper_id,
+        "name": name,
+        "filename": filename,
+        "url": url_path,
+        "thumbnail": thumbnail,
+        "created": datetime.now().isoformat(),
+        "size": size
+    }
+
+    # Save to metadata
+    metadata = load_wallpapers_metadata()
+    metadata["wallpapers"].append(wallpaper)
+    save_wallpapers_metadata(metadata)
+
+    return {"success": True, "wallpaper": wallpaper}
+
+
+@router.get("/wallpapers/{wallpaper_id}/file")
+async def get_wallpaper_file(wallpaper_id: str):
+    """Get the wallpaper image file."""
+    metadata = load_wallpapers_metadata()
+    wallpapers = metadata.get("wallpapers", [])
+
+    wallpaper = next((w for w in wallpapers if w["id"] == wallpaper_id), None)
+    if not wallpaper:
+        raise HTTPException(status_code=404, detail="Wallpaper not found")
+
+    filepath = WALLPAPERS_DIR / wallpaper["filename"]
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="Wallpaper file not found")
+
+    # Determine content type
+    ext = wallpaper["filename"].split('.')[-1].lower()
+    content_type = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+        "gif": "image/gif"
+    }.get(ext, "image/jpeg")
+
+    return FileResponse(
+        filepath,
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=31536000"}
+    )
+
+
+@router.delete("/wallpapers/{wallpaper_id}")
+async def delete_wallpaper(wallpaper_id: str):
+    """Delete a custom wallpaper."""
+    metadata = load_wallpapers_metadata()
+    wallpapers = metadata.get("wallpapers", [])
+
+    wallpaper = next((w for w in wallpapers if w["id"] == wallpaper_id), None)
+    if not wallpaper:
+        raise HTTPException(status_code=404, detail="Wallpaper not found")
+
+    # Delete file
+    filepath = WALLPAPERS_DIR / wallpaper["filename"]
+    if filepath.exists():
+        filepath.unlink()
+
+    # Remove from metadata
+    metadata["wallpapers"] = [w for w in wallpapers if w["id"] != wallpaper_id]
+
+    # Clear active if it was the deleted one
+    if metadata.get("activeWallpaperId") == wallpaper_id:
+        metadata["activeWallpaperId"] = None
+
+    save_wallpapers_metadata(metadata)
+
+    return {"success": True}
+
+
+@router.post("/wallpapers/{wallpaper_id}/activate")
+async def activate_wallpaper(wallpaper_id: str):
+    """Set a wallpaper as active."""
+    metadata = load_wallpapers_metadata()
+    wallpapers = metadata.get("wallpapers", [])
+
+    wallpaper = next((w for w in wallpapers if w["id"] == wallpaper_id), None)
+    if not wallpaper:
+        raise HTTPException(status_code=404, detail="Wallpaper not found")
+
+    metadata["activeWallpaperId"] = wallpaper_id
+    save_wallpapers_metadata(metadata)
+
+    return {"success": True, "wallpaper": wallpaper}
+
+
+@router.get("/wallpapers/active")
+async def get_active_wallpaper():
+    """Get the currently active wallpaper."""
+    metadata = load_wallpapers_metadata()
+    active_id = metadata.get("activeWallpaperId")
+
+    if not active_id:
+        return {"active": None}
+
+    wallpapers = metadata.get("wallpapers", [])
+    wallpaper = next((w for w in wallpapers if w["id"] == active_id), None)
+
+    return {"active": wallpaper}
+

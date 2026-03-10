@@ -4,17 +4,24 @@
   import StatusBand from "$lib/components/StatusBand.svelte";
   import MainContent from "$lib/components/MainContent.svelte";
   import BottomPanel from "$lib/components/BottomPanel.svelte";
-  import { customWallpaper, wallpaperEnabled, loadSavedWallpaperEnabled, loadSavedWallpaper, setCustomWallpaper, toggleWallpaper } from "$lib/stores/themeStore";
+  import { customWallpaper, wallpaperEnabled, loadSavedWallpaperEnabled, loadSavedWallpaper, setCustomWallpaper, toggleWallpaper, getActiveWallpaper } from "$lib/stores/themeStore";
   import { onMount } from "svelte";
 
   // Initialize wallpaper
-  onMount(() => {
+  onMount(async () => {
     const enabled = loadSavedWallpaperEnabled();
     toggleWallpaper(enabled);
 
+    // First load local wallpaper
     const wallpaper = loadSavedWallpaper();
     if (wallpaper) {
       setCustomWallpaper(wallpaper);
+    }
+
+    // Then check for active custom wallpaper from backend
+    const activeWallpaper = await getActiveWallpaper();
+    if (activeWallpaper?.urlPath) {
+      setCustomWallpaper(activeWallpaper.urlPath);
     }
   });
 

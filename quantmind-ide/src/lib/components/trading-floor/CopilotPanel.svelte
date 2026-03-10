@@ -743,24 +743,6 @@
     {/if}
   </div>
 
-  <!-- Department Shortcuts -->
-  <div class="department-shortcuts">
-    <span class="shortcuts-label">Quick Delegate:</span>
-    <div class="shortcuts-list">
-      {#each departmentList as dept}
-        <button
-          class="dept-shortcut"
-          style="--dept-color: {dept.color}"
-          on:click={() => openDepartmentChat(dept.id)}
-          title="{dept.name}: {dept.description}"
-        >
-          <span class="shortcut-dot"></span>
-          {dept.name}
-        </button>
-      {/each}
-    </div>
-  </div>
-
   <!-- Input -->
   <div class="input-area">
     <div class="input-wrapper">

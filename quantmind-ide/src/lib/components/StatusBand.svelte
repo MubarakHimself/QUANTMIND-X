@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { Bot, DollarSign, Percent, Shield, Route, TrendingUp, Activity, Target, Clock } from 'lucide-svelte';
-  import { getAllSessions, getMarketState, getTradingMetrics, getRiskSettings, getRouterSettings } from '$lib/api';
+  import { getAllSessions, getCurrentSessionInfo, getMarketState, getTradingMetrics, getRiskSettings, getRouterSettings } from '$lib/api';
   import { navigationStore } from '../stores/navigationStore';
 
   // State
@@ -15,15 +15,25 @@
   let openPositions = 0;
   let tradesToday = 0;
   let currentSession = 'CLOSED';
+  let currentTime = '';
 
   // Risk and Router settings
   let riskMode: 'fixed' | 'dynamic' | 'conservative' = 'dynamic';
   let routerMode: 'auction' | 'priority' | 'round-robin' = 'auction';
 
   let refreshInterval: ReturnType<typeof setInterval>;
+  let timeInterval: ReturnType<typeof setInterval>;
 
   // Explicit session order for deterministic display
   const SESSION_ORDER = ['ASIAN', 'LONDON', 'NEW_YORK', 'OVERLAP'];
+
+  // Session times in UTC
+  const SESSION_TIMES = {
+    ASIAN: { start: '00:00', end: '08:00', label: '00:00-08:00 UTC' },
+    LONDON: { start: '08:00', end: '16:00', label: '08:00-16:00 UTC' },
+    NEW_YORK: { start: '13:00', end: '21:00', label: '13:00-21:00 UTC' },
+    OVERLAP: { start: '13:00', end: '16:00', label: '13:00-16:00 UTC' }
+  };
 
   // Helper: Get current active trading session
   function getCurrentSession(): string {
@@ -41,21 +51,41 @@
     } finally {
       loading = false;
     }
-    refreshInterval = setInterval(fetchData, 5000); // Refresh every 5 seconds
+    // Update time every second
+    currentTime = getCurrentTime();
+    timeInterval = setInterval(() => {
+      currentTime = getCurrentTime();
+    }, 1000);
+    // Refresh data every 5 seconds
+    refreshInterval = setInterval(fetchData, 5000);
   });
 
   onDestroy(() => {
     if (refreshInterval) clearInterval(refreshInterval);
+    if (timeInterval) clearInterval(timeInterval);
   });
 
   async function fetchData() {
     try {
+      // Fetch current session info with timing
+      try {
+        const sessionInfo = await getCurrentSessionInfo();
+        console.log('[StatusBand] Session info:', sessionInfo);
+        if (sessionInfo) {
+          currentSession = sessionInfo.session;
+        }
+      } catch (e) {
+        console.log('[StatusBand] Could not get session info, using fallback');
+      }
+
       // Fetch sessions using helper
       const sessionsData = await getAllSessions();
       console.log('[StatusBand] Sessions data:', sessionsData);
       if (sessionsData && Object.keys(sessionsData).length > 0) {
         sessions = sessionsData;
-        currentSession = getCurrentSession();
+        if (!currentSession || currentSession === 'CLOSED') {
+          currentSession = getCurrentSession();
+        }
         sessionsError = false;
       } else {
         console.log('[StatusBand] No sessions data, using fallback');
@@ -71,22 +101,31 @@
       }
 
       // Fetch market state using helper
-      const marketData = await getMarketState();
-      if (marketData) {
-        // Extract regime from the nested structure
-        if (marketData.regime) {
-          regime = determineRegime(marketData.regime);
+      try {
+        const marketData = await getMarketState();
+        if (marketData) {
+          // Extract regime from the nested structure
+          if (marketData.regime) {
+            regime = determineRegime(marketData.regime);
+          }
         }
+      } catch (e) {
+        console.log('[StatusBand] Market data not available');
+        regime = 'UNCERTAIN';
       }
 
       // Fetch trading metrics using helper
-      const metricsData = await getTradingMetrics();
-      if (metricsData) {
-        activeBots = metricsData.active_bots || 0;
-        dailyPnl = metricsData.daily_pnl || 0;
-        winRate = (metricsData.win_rate || 0) * 100;
-        openPositions = metricsData.active_positions || 0;
-        tradesToday = metricsData.total_trades || 0;
+      try {
+        const metricsData = await getTradingMetrics();
+        if (metricsData) {
+          activeBots = metricsData.active_bots || 0;
+          dailyPnl = metricsData.daily_pnl || 0;
+          winRate = (metricsData.win_rate || 0) * 100;
+          openPositions = metricsData.active_positions || 0;
+          tradesToday = metricsData.total_trades || 0;
+        }
+      } catch (e) {
+        console.log('[StatusBand] Trading metrics not available');
       }
 
       // Fetch risk settings
@@ -146,13 +185,29 @@
   // Helper: Format session name for display
   function formatSessionName(session: string): string {
     const labels: Record<string, string> = {
-      'ASIAN': 'Asian',
-      'LONDON': 'London',
-      'NEW_YORK': 'NY',
-      'OVERLAP': 'Overlap',
-      'CLOSED': 'Closed'
+      'ASIAN': 'Asian Session',
+      'LONDON': 'London Session',
+      'NEW_YORK': 'New York Session',
+      'OVERLAP': 'London/NY Overlap',
+      'CLOSED': 'Market Closed'
     };
     return labels[session] || session;
+  }
+
+  // Helper: Get session time display
+  function getSessionTimeDisplay(session: string): string {
+    return SESSION_TIMES[session as keyof typeof SESSION_TIMES]?.label || '';
+  }
+
+  // Helper: Get current time formatted
+  function getCurrentTime(): string {
+    const now = new Date();
+    return now.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
   }
 
   // Helper: Get session color
@@ -204,109 +259,36 @@
     <span class="loading">Loading...</span>
   {:else}
     <div class="ticker-wrapper">
-      <!-- Current Trading Session - prominently displayed -->
-      <div class="current-session clickable" on:click={() => navigationStore.navigateToView('journal')}>
-        <Clock size={16} />
-        <span class="label">Trading:</span>
-        <span class="session-name current">{formatSessionName(currentSession)}</span>
-      </div>
-
-      <div class="divider">|</div>
-
-      <!-- All sessions with status -->
-      <div class="sessions">
-        {#if Object.keys(sessions).length > 0}
-          {#each SESSION_ORDER as sessionKey}
-            {#if sessions[sessionKey]}
-              <div class="session-item" class:active={sessions[sessionKey].active}>
-                <span class="dot" style="background: {getSessionColor(sessions[sessionKey].active)}"></span>
-                <span class="session-name">{formatSessionName(sessionKey)}</span>
-              </div>
-            {/if}
-          {/each}
-        {:else}
-          <!-- Fallback when no session data -->
-          <div class="session-item">
-            <span class="dot" style="background: #6b7280"></span>
-            <span class="session-name">Asian</span>
-          </div>
-          <div class="session-item active">
-            <span class="dot" style="background: #10b981"></span>
-            <span class="session-name">London</span>
-          </div>
-          <div class="session-item">
-            <span class="dot" style="background: #6b7280"></span>
-            <span class="session-name">NY</span>
-          </div>
-          <div class="session-item">
-            <span class="dot" style="background: #6b7280"></span>
-            <span class="session-name">Overlap</span>
-          </div>
-        {/if}
-      </div>
-
-      <div class="divider">|</div>
-
-      <div class="regime clickable" on:click={() => navigationStore.navigateToView('journal')}>
-        <span class="regime-dot" style="background: {getRegimeColor(regime)}"></span>
-        <span>{formatRegime(regime)}</span>
-      </div>
-
-      <div class="divider">|</div>
-
-      <div class="metrics">
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('journal')}>
-          <Bot size={16} />
-          <span>{activeBots} Bots</span>
+      <!-- CURRENT SESSION BLOCK -->
+      <div class="info-block">
+        <div class="current-session clickable" on:click={() => navigationStore.navigateToView('journal')}>
+          <Clock size={14} />
+          <span class="label">Trading:</span>
+          <span class="session-name current">{formatSessionName(currentSession)}</span>
         </div>
-        <div class="metric clickable" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0} on:click={() => navigationStore.navigateToView('journal')}>
-          <DollarSign size={16} />
-          <span>{formatPnl(dailyPnl)}</span>
-        </div>
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('journal')}>
-          <Percent size={16} />
-          <span>{winRate.toFixed(0)}% WR</span>
-        </div>
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('journal')}>
-          <Target size={16} />
-          <span>{openPositions} Pos</span>
-        </div>
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('journal')}>
-          <Activity size={16} />
-          <span>{tradesToday} Trades</span>
+        <div class="current-time">
+          <Clock size={14} />
+          <span class="time-display">{currentTime}</span>
+          <span class="utc-label">UTC</span>
         </div>
       </div>
 
       <div class="divider">|</div>
 
-      <div class="mode-indicators clickable" on:click={() => navigationStore.navigateToView('settings')}>
-        <div class="mode-item" title="Risk Mode">
-          <Shield size={16} />
-          <span>Risk: {formatRiskMode(riskMode)}</span>
-        </div>
-        <div class="mode-item" title="Router Mode">
-          <Route size={16} />
-          <span>Router: {formatRouterMode(routerMode)}</span>
-        </div>
-      </div>
-
-      <!-- Duplicate for seamless loop -->
-      <!-- Current Trading Session -->
-      <div class="current-session clickable" on:click={() => navigationStore.navigateToView('journal')}>
-        <Clock size={16} />
-        <span class="label">Trading:</span>
-        <span class="session-name current">{formatSessionName(currentSession)}</span>
-      </div>
-
-      <div class="divider">|</div>
-
-      <!-- All sessions -->
-      <div class="sessions">
+      <!-- ALL SESSIONS WITH TIMES -->
+      <div class="sessions-block">
         {#each SESSION_ORDER as sessionKey}
           {#if sessions[sessionKey]}
             <div class="session-item" class:active={sessions[sessionKey].active}>
               <span class="dot" style="background: {getSessionColor(sessions[sessionKey].active)}"></span>
               <span class="session-name">{formatSessionName(sessionKey)}</span>
+              <span class="session-time-label">{getSessionTimeDisplay(sessionKey)}</span>
+            </div>
+          {:else}
+            <div class="session-item">
+              <span class="dot" style="background: #6b7280"></span>
+              <span class="session-name">{formatSessionName(sessionKey)}</span>
+              <span class="session-time-label">{getSessionTimeDisplay(sessionKey)}</span>
             </div>
           {/if}
         {/each}
@@ -314,6 +296,7 @@
 
       <div class="divider">|</div>
 
+      <!-- REGIME -->
       <div class="regime clickable" on:click={() => navigationStore.navigateToView('journal')}>
         <span class="regime-dot" style="background: {getRegimeColor(regime)}"></span>
         <span>{formatRegime(regime)}</span>
@@ -321,34 +304,122 @@
 
       <div class="divider">|</div>
 
+      <!-- METRICS -->
       <div class="metrics">
         <div class="metric clickable" on:click={() => navigationStore.navigateToView('journal')}>
-          <Bot size={16} />
+          <Bot size={14} />
           <span>{activeBots} Bots</span>
         </div>
         <div class="metric clickable" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0} on:click={() => navigationStore.navigateToView('journal')}>
-          <DollarSign size={16} />
+          <DollarSign size={14} />
           <span>{formatPnl(dailyPnl)}</span>
         </div>
         <div class="metric clickable" on:click={() => navigationStore.navigateToView('journal')}>
-          <Target size={16} />
+          <Percent size={14} />
+          <span>{winRate.toFixed(0)}% WR</span>
+        </div>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('journal')}>
+          <Target size={14} />
           <span>{openPositions} Pos</span>
         </div>
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('trading')}>
-          <Activity size={16} />
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('journal')}>
+          <Activity size={14} />
           <span>{tradesToday} Trades</span>
         </div>
       </div>
 
       <div class="divider">|</div>
 
+      <!-- MODE INDICATORS -->
       <div class="mode-indicators clickable" on:click={() => navigationStore.navigateToView('settings')}>
         <div class="mode-item" title="Risk Mode">
-          <Shield size={16} />
+          <Shield size={14} />
           <span>Risk: {formatRiskMode(riskMode)}</span>
         </div>
         <div class="mode-item" title="Router Mode">
-          <Route size={16} />
+          <Route size={14} />
+          <span>Router: {formatRouterMode(routerMode)}</span>
+        </div>
+      </div>
+
+      <!-- DUPLICATE FOR SEAMLESS LOOP -->
+      <div class="divider">|</div>
+
+      <!-- CURRENT SESSION BLOCK -->
+      <div class="info-block">
+        <div class="current-session clickable" on:click={() => navigationStore.navigateToView('journal')}>
+          <Clock size={14} />
+          <span class="label">Trading:</span>
+          <span class="session-name current">{formatSessionName(currentSession)}</span>
+        </div>
+        <div class="current-time">
+          <Clock size={14} />
+          <span class="time-display">{currentTime}</span>
+          <span class="utc-label">UTC</span>
+        </div>
+      </div>
+
+      <div class="divider">|</div>
+
+      <!-- ALL SESSIONS WITH TIMES -->
+      <div class="sessions-block">
+        {#each SESSION_ORDER as sessionKey}
+          {#if sessions[sessionKey]}
+            <div class="session-item" class:active={sessions[sessionKey].active}>
+              <span class="dot" style="background: {getSessionColor(sessions[sessionKey].active)}"></span>
+              <span class="session-name">{formatSessionName(sessionKey)}</span>
+              <span class="session-time-label">{getSessionTimeDisplay(sessionKey)}</span>
+            </div>
+          {:else}
+            <div class="session-item">
+              <span class="dot" style="background: #6b7280"></span>
+              <span class="session-name">{formatSessionName(sessionKey)}</span>
+              <span class="session-time-label">{getSessionTimeDisplay(sessionKey)}</span>
+            </div>
+          {/if}
+        {/each}
+      </div>
+
+      <div class="divider">|</div>
+
+      <!-- REGIME -->
+      <div class="regime clickable" on:click={() => navigationStore.navigateToView('journal')}>
+        <span class="regime-dot" style="background: {getRegimeColor(regime)}"></span>
+        <span>{formatRegime(regime)}</span>
+      </div>
+
+      <div class="divider">|</div>
+
+      <!-- METRICS -->
+      <div class="metrics">
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('journal')}>
+          <Bot size={14} />
+          <span>{activeBots} Bots</span>
+        </div>
+        <div class="metric clickable" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0} on:click={() => navigationStore.navigateToView('journal')}>
+          <DollarSign size={14} />
+          <span>{formatPnl(dailyPnl)}</span>
+        </div>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('journal')}>
+          <Target size={14} />
+          <span>{openPositions} Pos</span>
+        </div>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('trading')}>
+          <Activity size={14} />
+          <span>{tradesToday} Trades</span>
+        </div>
+      </div>
+
+      <div class="divider">|</div>
+
+      <!-- MODE INDICATORS -->
+      <div class="mode-indicators clickable" on:click={() => navigationStore.navigateToView('settings')}>
+        <div class="mode-item" title="Risk Mode">
+          <Shield size={14} />
+          <span>Risk: {formatRiskMode(riskMode)}</span>
+        </div>
+        <div class="mode-item" title="Router Mode">
+          <Route size={14} />
           <span>Router: {formatRouterMode(routerMode)}</span>
         </div>
       </div>
@@ -360,23 +431,25 @@
   .status-band {
     display: flex;
     align-items: center;
-    gap: 24px;
-    padding: 12px 20px;
+    padding: 8px 0;
     background: var(--bg-secondary, #1e293b);
     border-bottom: 1px solid var(--border-subtle, #374151);
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     color: var(--text-secondary, #d1d5db);
-    overflow-x: hidden;
-    min-height: 48px;
+    overflow: hidden;
+    min-height: 40px;
+    height: 40px;
   }
 
   .ticker-wrapper {
     display: flex;
-    gap: 24px;
-    animation: ticker-scroll 20s linear infinite;
+    align-items: center;
+    gap: 16px;
+    animation: ticker-scroll 40s linear infinite;
     white-space: nowrap;
     will-change: transform;
+    padding-left: 100%;
   }
 
   .ticker-wrapper > * {
@@ -392,13 +465,14 @@
       transform: translateX(0);
     }
     100% {
-      transform: translateX(-50%);
+      transform: translateX(-100%);
     }
   }
 
   .loading {
     color: var(--text-muted, #6b7280);
     font-style: italic;
+    padding-left: 20px;
   }
 
   .clickable {
@@ -411,68 +485,109 @@
     color: var(--text-primary, #fff);
   }
 
-  .current-session {
+  .info-block {
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+
+  .current-session {
+    display: flex;
+    align-items: center;
+    gap: 4px;
     font-weight: 600;
   }
 
   .current-session .label {
     color: var(--text-muted, #9ca3af);
+    font-size: 11px;
   }
 
   .current-session .current {
     color: var(--accent-success, #10b981);
+    font-size: 11px;
   }
 
-  .sessions {
+  .current-time {
     display: flex;
-    gap: 20px;
+    align-items: center;
+    gap: 4px;
+    font-weight: 600;
+    font-family: monospace;
+  }
+
+  .current-time .time-display {
+    font-size: 12px;
+    color: var(--text-primary, #fff);
+  }
+
+  .current-time .utc-label {
+    font-size: 9px;
+    color: var(--text-muted, #9ca3af);
+    font-weight: 400;
+  }
+
+  .sessions-block {
+    display: flex;
+    gap: 12px;
   }
 
   .session-item {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
   }
 
-  .session-item.active {
+  .session-item .session-name {
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .session-item .session-time-label {
+    font-size: 9px;
+    color: var(--text-muted, #6b7280);
+  }
+
+  .session-item.active .session-name {
     color: var(--text-primary, #fff);
   }
 
   .dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
+    flex-shrink: 0;
   }
 
   .divider {
     color: var(--border-subtle, #374151);
+    flex-shrink: 0;
+    font-size: 10px;
   }
 
   .regime {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
+    font-size: 11px;
   }
 
   .regime-dot {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     border-radius: 2px;
   }
 
   .metrics {
     display: flex;
-    gap: 24px;
-    margin-left: auto;
+    gap: 12px;
   }
 
   .metric {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
+    font-size: 11px;
   }
 
   .metric.profit {
@@ -485,11 +600,15 @@
 
   .mode-indicators {
     display: flex;
-    gap: 24px;
+    gap: 12px;
   }
 
   .mode-item {
     display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+  }
     align-items: center;
     gap: 6px;
     color: var(--text-secondary, #d1d5db);

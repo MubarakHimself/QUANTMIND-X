@@ -921,8 +921,8 @@ export function setCustomWallpaper(wallpaper: string) {
 
   // Apply wallpaper to document
   const root = document.documentElement;
-  if (wallpaper.startsWith('http')) {
-    // Image URL
+  if (wallpaper.startsWith('http') || wallpaper.startsWith('/api')) {
+    // Image URL (including relative API paths)
     root.style.setProperty('--wallpaper', `url(${wallpaper})`);
     root.style.setProperty('--wallpaper-type', 'image');
   } else if (wallpaper.includes('gradient') || wallpaper.includes('linear') || wallpaper.includes('radial')) {
@@ -956,6 +956,108 @@ export function toggleWallpaper(enabled: boolean) {
 export function loadSavedWallpaperEnabled(): boolean {
   const saved = localStorage.getItem('quantmind-wallpaper-enabled');
   return saved !== 'false'; // default to true
+}
+
+// ============ Custom Wallpaper API ============
+
+export interface CustomWallpaper {
+  id: string;
+  name: string;
+  filename: string;
+  urlPath: string;
+  uploadedAt: string;
+}
+
+let customWallpapers = writable<CustomWallpaper[]>([]);
+export { customWallpapers };
+
+export async function fetchCustomWallpapers(): Promise<CustomWallpaper[]> {
+  try {
+    const response = await fetch('/api/settings/wallpapers');
+    if (!response.ok) throw new Error('Failed to fetch wallpapers');
+    const wallpapers: CustomWallpaper[] = await response.json();
+    customWallpapers.set(wallpapers);
+    return wallpapers;
+  } catch (error) {
+    console.error('Error fetching custom wallpapers:', error);
+    return [];
+  }
+}
+
+export async function uploadCustomWallpaper(file: File, name: string): Promise<CustomWallpaper | null> {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('name', name);
+
+    const response = await fetch('/api/settings/wallpapers', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) throw new Error('Failed to upload wallpaper');
+    const result = await response.json();
+
+    // Update local store
+    customWallpapers.update(wps => [...wps, result.wallpaper]);
+
+    return result.wallpaper;
+  } catch (error) {
+    console.error('Error uploading wallpaper:', error);
+    return null;
+  }
+}
+
+export async function deleteCustomWallpaper(wallpaperId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`/api/settings/wallpapers/${wallpaperId}`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) throw new Error('Failed to delete wallpaper');
+
+    // Update local store
+    customWallpapers.update(wps => wps.filter(w => w.id !== wallpaperId));
+
+    return true;
+  } catch (error) {
+    console.error('Error deleting wallpaper:', error);
+    return false;
+  }
+}
+
+export async function activateCustomWallpaper(wallpaperId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`/api/settings/wallpapers/${wallpaperId}/activate`, {
+      method: 'POST'
+    });
+
+    if (!response.ok) throw new Error('Failed to activate wallpaper');
+
+    const result = await response.json();
+
+    // Apply the wallpaper as active
+    if (result.wallpaper?.urlPath) {
+      setCustomWallpaper(result.wallpaper.urlPath);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error activating wallpaper:', error);
+    return false;
+  }
+}
+
+export async function getActiveWallpaper(): Promise<CustomWallpaper | null> {
+  try {
+    const response = await fetch('/api/settings/wallpapers/active');
+    if (!response.ok) throw new Error('Failed to get active wallpaper');
+    const result = await response.json();
+    return result.active || null;
+  } catch (error) {
+    console.error('Error getting active wallpaper:', error);
+    return null;
+  }
 }
 
 // Initialize theme on load

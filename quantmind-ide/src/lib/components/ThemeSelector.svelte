@@ -1,12 +1,19 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
-  import { currentTheme, applyTheme, themes, customWallpaper, setCustomWallpaper, wallpapers, fonts, currentFont, setFont, wallpaperEnabled, toggleWallpaper } from '../stores/themeStore';
-  import { Palette, Sun, Moon, Sparkles, Image as ImageIcon, X, Check, Type } from 'lucide-svelte';
+  import { createEventDispatcher, onMount } from 'svelte';
+  import { currentTheme, applyTheme, themes, customWallpaper, setCustomWallpaper, wallpapers, fonts, currentFont, setFont, wallpaperEnabled, toggleWallpaper, customWallpapers, fetchCustomWallpapers, uploadCustomWallpaper, deleteCustomWallpaper, activateCustomWallpaper, type CustomWallpaper } from '../stores/themeStore';
+  import { Palette, Sun, Moon, Sparkles, Image as ImageIcon, X, Check, Type, Upload, Trash2 } from 'lucide-svelte';
 
   const dispatch = createEventDispatcher();
 
   let showCustomWallpaper = false;
   let customWallpaperUrl = '';
+  let uploading = false;
+  let uploadedWallpapers: CustomWallpaper[] = [];
+
+  // Load custom wallpapers on mount
+  onMount(async () => {
+    uploadedWallpapers = await fetchCustomWallpapers();
+  });
 
   function selectTheme(themeName: string) {
     applyTheme(themeName);
@@ -45,6 +52,54 @@
     setCustomWallpaper('');
     customWallpaperUrl = '';
     dispatch('wallpaperChanged', { wallpaper: '' });
+  }
+
+  // Custom wallpaper upload handlers
+  let fileInput: HTMLInputElement;
+
+  async function handleFileSelect(event: Event) {
+    const target = event.target as HTMLInputElement;
+    const file = target.files?.[0];
+    if (!file) return;
+
+    // Validate file
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      alert('Please select a valid image file (JPEG, PNG, GIF, or WebP)');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert('File size must be less than 10MB');
+      return;
+    }
+
+    const name = file.name.replace(/\.[^/.]+$/, ''); // Remove extension
+    uploading = true;
+
+    const wallpaper = await uploadCustomWallpaper(file, name);
+    uploading = false;
+
+    if (wallpaper) {
+      uploadedWallpapers = [...uploadedWallpapers, wallpaper];
+      // Auto-activate the uploaded wallpaper
+      await activateCustomWallpaper(wallpaper.id);
+      customWallpaperUrl = wallpaper.urlPath;
+    }
+  }
+
+  async function handleDeleteWallpaper(id: string) {
+    if (confirm('Are you sure you want to delete this wallpaper?')) {
+      const success = await deleteCustomWallpaper(id);
+      if (success) {
+        uploadedWallpapers = uploadedWallpapers.filter(w => w.id !== id);
+      }
+    }
+  }
+
+  async function handleActivateWallpaper(wallpaper: CustomWallpaper) {
+    await activateCustomWallpaper(wallpaper.id);
+    customWallpaperUrl = wallpaper.urlPath;
   }
 </script>
 
@@ -130,6 +185,72 @@
         </button>
       {/each}
     </div>
+  </div>
+
+  <!-- Custom Wallpaper Upload -->
+  <div class="theme-section">
+    <h4>
+      <Upload size={16} />
+      Your Images
+    </h4>
+    <p class="section-description">Upload your own images to use as wallpapers</p>
+
+    <!-- Upload button -->
+    <div class="upload-section">
+      <input
+        type="file"
+        accept="image/jpeg,image/png,image/gif,image/webp"
+        bind:this={fileInput}
+        on:change={handleFileSelect}
+        style="display: none;"
+      />
+      <button
+        class="upload-btn"
+        on:click={() => fileInput.click()}
+        disabled={uploading}
+      >
+        {#if uploading}
+          <span class="spinner"></span>
+          Uploading...
+        {:else}
+          <Upload size={18} />
+          Upload Image
+        {/if}
+      </button>
+    </div>
+
+    <!-- Uploaded wallpapers grid -->
+    {#if uploadedWallpapers.length > 0}
+      <div class="wallpaper-grid">
+        {#each uploadedWallpapers as wallpaper}
+          <div class="wallpaper-card" class:active={customWallpaperUrl === wallpaper.urlPath}>
+            <div
+              class="wallpaper-preview image-wall"
+              style="background: url({wallpaper.urlPath}); background-size: cover; background-position: center;"
+            ></div>
+            <div class="wallpaper-info">
+              <div class="wallpaper-name">{wallpaper.name}</div>
+              <div class="wallpaper-actions">
+                <button
+                  class="action-btn activate"
+                  on:click={() => handleActivateWallpaper(wallpaper)}
+                  title="Set as wallpaper"
+                >
+                  <Check size={14} />
+                </button>
+                <button
+                  class="action-btn delete"
+                  on:click={() => handleDeleteWallpaper(wallpaper.id)}
+                  title="Delete"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
   </div>
 
   <!-- Font Selection -->
@@ -603,5 +724,94 @@
     font-size: 14px;
     font-weight: 500;
     color: var(--text-primary);
+  }
+
+  /* Upload Section */
+  .section-description {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+  }
+
+  .upload-section {
+    margin-bottom: 16px;
+  }
+
+  .upload-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--accent-primary);
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .upload-btn:hover:not(:disabled) {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+
+  .upload-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .wallpaper-actions {
+    display: flex;
+    gap: 4px;
+  }
+
+  .action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .action-btn:hover {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+  }
+
+  .action-btn.activate:hover {
+    background: var(--accent-success);
+    border-color: var(--accent-success);
+    color: white;
+  }
+
+  .action-btn.delete:hover {
+    background: var(--accent-danger);
+    border-color: var(--accent-danger);
+    color: white;
+  }
+
+  .wallpaper-card.active .wallpaper-info {
+    background: rgba(99, 102, 241, 0.1);
   }
 </style>

@@ -364,6 +364,20 @@ export async function getAllSessions(): Promise<SessionsResponse> {
   return apiFetch<SessionsResponse>('/sessions/all');
 }
 
+export interface CurrentSessionInfo {
+  session: string;
+  utc_time: string;
+  next_session: string | null;
+  is_active: boolean;
+  time_until_open: number | null;
+  time_until_close: number | null;
+  time_until_close_str: string | null;
+}
+
+export async function getCurrentSessionInfo(): Promise<CurrentSessionInfo> {
+  return apiFetch<CurrentSessionInfo>('/sessions/current');
+}
+
 export async function getMarketState(): Promise<MarketResponse> {
   return apiFetch<MarketResponse>('/router/market');
 }

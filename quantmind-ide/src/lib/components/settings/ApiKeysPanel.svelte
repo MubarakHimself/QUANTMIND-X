@@ -68,7 +68,6 @@
   }
 
   function testConnection(service: string) {
-    console.log(`Testing connection to ${service}...`);
     dispatch('testConnection', { service });
   }
 
