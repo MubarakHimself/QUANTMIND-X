@@ -7,7 +7,12 @@
   --bg-secondary: oklch(18% 0.02 260);  /* Lighter Navy/Slate 800 */
   --bg-tertiary: oklch(22% 0.03 260);   /* Slate 700 */
   --bg-input: oklch(12% 0.02 260);      /* Darker input background */
-  
+  --bg-glass: rgba(0, 0, 0, 0.3);       /* Glass effect background */
+
+  /* Wallpaper - Applied by theme system */
+  --wallpaper: none;
+  --wallpaper-type: none;
+
   /* Accents */
   --accent-primary: oklch(65% 0.18 250);     /* Tech Blue */
   --accent-secondary: oklch(60% 0.15 280);   /* Deep Purple */
@@ -15,16 +20,29 @@
   --accent-success: oklch(70% 0.18 145);     /* Green */
   --accent-warning: oklch(80% 0.15 85);      /* Amber */
   --accent-danger: oklch(65% 0.20 25);       /* Red */
-  
+
   /* Text Colors */
   --text-primary: oklch(92% 0.01 260);
   --text-secondary: oklch(70% 0.02 260);
   --text-muted: oklch(50% 0.03 260);
-  
+  --text-accent: oklch(65% 0.18 250);
+
   /* Borders & Dividers */
   --border-subtle: oklch(25% 0.03 260);
+  --border-medium: oklch(30% 0.04 260);
   --border-strong: oklch(35% 0.04 260);
-  
+  --border-accent: oklch(65% 0.18 250);
+
+  /* Syntax Colors - Default */
+  --syntax-keyword: oklch(75% 0.15 280);
+  --syntax-string: oklch(75% 0.15 145);
+  --syntax-number: oklch(80% 0.15 85);
+  --syntax-comment: oklch(50% 0.03 260);
+  --syntax-function: oklch(65% 0.18 250);
+  --syntax-variable: oklch(92% 0.01 260);
+  --syntax-operator: oklch(70% 0.02 260);
+  --syntax-background: oklch(15% 0.02 260);
+
   /* Dimensions */
   --sidebar-width: 48px;
   --panel-width: 300px;

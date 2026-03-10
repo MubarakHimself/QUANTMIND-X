@@ -8,6 +8,7 @@
     Bot,
     Plus,
     ChevronRight,
+    ChevronDown,
     ArrowRightCircle,
     CheckCircle2,
     Clock,
@@ -17,8 +18,12 @@
     Mail,
     MailPlus,
     MessageSquarePlus,
+    History,
+    Trash2,
+    MessageCircle,
   } from "lucide-svelte";
   import AgentModelSelector from "$lib/components/AgentModelSelector.svelte";
+  import { chatApi, type ChatSession } from "$lib/api/chatApi";
   import {
     departmentChatStore,
     activeDelegatedTasks,
@@ -34,6 +39,29 @@
 
   // API base URL
   const API_BASE = "http://localhost:8000/api";
+
+  // Chat history sidebar state
+  let showChatHistory = false;
+  let sessions: ChatSession[] = [];
+  let currentSessionId: string | null = null;
+  let chatHistoryLoading = false;
+
+  // Chat history grouped by time
+  interface GroupedSessions {
+    today: ChatSession[];
+    yesterday: ChatSession[];
+    last7Days: ChatSession[];
+    last30Days: ChatSession[];
+    older: ChatSession[];
+  }
+
+  let groupedSessions: GroupedSessions = {
+    today: [],
+    yesterday: [],
+    last7Days: [],
+    last30Days: [],
+    older: [],
+  };
 
   // Floor Manager state
   let message = "";
@@ -88,6 +116,123 @@
   // Subscribed values
   $: activeTasks = $activeDelegatedTasks;
   $: isLoading = $departmentChatStore.isLoading;
+
+  // Group sessions by time
+  function groupSessionsByTime(sessionList: ChatSession[]): GroupedSessions {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const last7Days = new Date(today);
+    last7Days.setDate(last7Days.getDate() - 7);
+    const last30Days = new Date(today);
+    last30Days.setDate(last30Days.getDate() - 30);
+
+    const grouped: GroupedSessions = {
+      today: [],
+      yesterday: [],
+      last7Days: [],
+      last30Days: [],
+      older: [],
+    };
+
+    sessionList.forEach((session) => {
+      const sessionDate = new Date(session.created_at);
+      if (sessionDate >= today) {
+        grouped.today.push(session);
+      } else if (sessionDate >= yesterday) {
+        grouped.yesterday.push(session);
+      } else if (sessionDate >= last7Days) {
+        grouped.last7Days.push(session);
+      } else if (sessionDate >= last30Days) {
+        grouped.last30Days.push(session);
+      } else {
+        grouped.older.push(session);
+      }
+    });
+
+    return grouped;
+  }
+
+  // Load chat sessions
+  async function loadSessions() {
+    chatHistoryLoading = true;
+    try {
+      const agentType = isCopilot ? 'workshop' : 'floor-manager';
+      sessions = await chatApi.listSessions(undefined, agentType);
+      groupedSessions = groupSessionsByTime(sessions);
+    } catch (e) {
+      console.error('Failed to load sessions:', e);
+    } finally {
+      chatHistoryLoading = false;
+    }
+  }
+
+  // Create new chat session
+  async function createNewChat() {
+    try {
+      const agentType = isCopilot ? 'workshop' : 'floor-manager';
+      const newSession = await chatApi.createSession({
+        agentType,
+        agentId: isCopilot ? 'copilot' : 'floor_manager',
+        userId: 'default_user',
+        title: 'New Conversation',
+      });
+      currentSessionId = newSession.id;
+      messages = [
+        {
+          id: "fm_welcome",
+          role: isCopilot ? "copilot" : "floor_manager",
+          content: greeting,
+          timestamp: new Date(),
+        },
+      ];
+      showChatHistory = false;
+      await loadSessions();
+    } catch (e) {
+      console.error('Failed to create new chat:', e);
+    }
+  }
+
+  // Load session messages
+  async function loadSession(sessionId: string) {
+    try {
+      currentSessionId = sessionId;
+      messages = [
+        {
+          id: "fm_welcome",
+          role: isCopilot ? "copilot" : "floor_manager",
+          content: greeting,
+          timestamp: new Date(),
+        },
+      ];
+      showChatHistory = false;
+    } catch (e) {
+      console.error('Failed to load session:', e);
+    }
+  }
+
+  // Delete session
+  async function deleteSession(sessionId: string, event: MouseEvent) {
+    event.stopPropagation();
+    try {
+      await chatApi.deleteSession(sessionId);
+      await loadSessions();
+      if (currentSessionId === sessionId) {
+        await createNewChat();
+      }
+    } catch (e) {
+      console.error('Failed to delete session:', e);
+    }
+  }
+
+  // Toggle chat history sidebar
+  function toggleChatHistory() {
+    showChatHistory = !showChatHistory;
+    if (showChatHistory) {
+      loadSessions();
+    }
+  }
 
   // Generate message ID
   function generateId(): string {
@@ -424,7 +569,10 @@
       <button class="icon-btn mail-btn" title="Send Mail to Department" on:click={() => showMailCompose = !showMailCompose}>
         <MailPlus size={14} />
       </button>
-      <button class="icon-btn" title="New Chat" on:click={clearChat}>
+      <button class="icon-btn" title="Chat History" on:click={toggleChatHistory}>
+        <History size={14} />
+      </button>
+      <button class="icon-btn" title="New Chat" on:click={createNewChat}>
         <MessageSquarePlus size={14} />
       </button>
       <button class="icon-btn" title="Close" on:click={closePanel}>
@@ -629,6 +777,12 @@
   <!-- Input -->
   <div class="input-area">
     <div class="input-wrapper">
+      <div class="model-selector-inline">
+        <AgentModelSelector
+          agentId={isCopilot ? 'copilot' : 'floor_manager'}
+          currentModel="opus"
+        />
+      </div>
       <textarea
         bind:this={textareaElement}
         bind:value={message}
@@ -640,12 +794,6 @@
       ></textarea>
     </div>
     <div class="input-footer">
-      <div class="model-selector-container">
-        <AgentModelSelector
-          agentId={isCopilot ? 'copilot' : 'floor_manager'}
-          currentModel="opus"
-        />
-      </div>
       <div class="char-count">{message.length} / 4000</div>
       <button
         class="send-btn"
@@ -661,6 +809,101 @@
     </div>
   </div>
 </div>
+
+<!-- Chat History Sidebar -->
+{#if showChatHistory}
+  <div class="chat-history-sidebar" transition:fly={{ x: -300, duration: 200 }}>
+    <div class="history-header">
+      <span>Chat History</span>
+      <button class="close-history-btn" on:click={toggleChatHistory}>
+        <X size={16} />
+      </button>
+    </div>
+    <button class="new-chat-btn" on:click={createNewChat}>
+      <MessageSquarePlus size={16} />
+      <span>New Chat</span>
+    </button>
+    <div class="history-list">
+      {#if chatHistoryLoading}
+        <div class="history-loading">Loading...</div>
+      {:else}
+        {#if groupedSessions.today.length > 0}
+          <div class="history-group">
+            <div class="history-group-header">Today</div>
+            {#each groupedSessions.today as session}
+              <div class="history-item" class:active={currentSessionId === session.id} on:click={() => loadSession(session.id)} on:keydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
+                <MessageCircle size={14} />
+                <span class="history-title">{session.title || 'New Conversation'}</span>
+                <button class="delete-session-btn" on:click={(e) => deleteSession(session.id, e)}>
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+        {#if groupedSessions.yesterday.length > 0}
+          <div class="history-group">
+            <div class="history-group-header">Yesterday</div>
+            {#each groupedSessions.yesterday as session}
+              <div class="history-item" class:active={currentSessionId === session.id} on:click={() => loadSession(session.id)} on:keydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
+                <MessageCircle size={14} />
+                <span class="history-title">{session.title || 'New Conversation'}</span>
+                <button class="delete-session-btn" on:click={(e) => deleteSession(session.id, e)}>
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+        {#if groupedSessions.last7Days.length > 0}
+          <div class="history-group">
+            <div class="history-group-header">Previous 7 Days</div>
+            {#each groupedSessions.last7Days as session}
+              <div class="history-item" class:active={currentSessionId === session.id} on:click={() => loadSession(session.id)} on:keydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
+                <MessageCircle size={14} />
+                <span class="history-title">{session.title || 'New Conversation'}</span>
+                <button class="delete-session-btn" on:click={(e) => deleteSession(session.id, e)}>
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+        {#if groupedSessions.last30Days.length > 0}
+          <div class="history-group">
+            <div class="history-group-header">Previous 30 Days</div>
+            {#each groupedSessions.last30Days as session}
+              <div class="history-item" class:active={currentSessionId === session.id} on:click={() => loadSession(session.id)} on:keydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
+                <MessageCircle size={14} />
+                <span class="history-title">{session.title || 'New Conversation'}</span>
+                <button class="delete-session-btn" on:click={(e) => deleteSession(session.id, e)}>
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+        {#if groupedSessions.older.length > 0}
+          <div class="history-group">
+            <div class="history-group-header">Older</div>
+            {#each groupedSessions.older as session}
+              <div class="history-item" class:active={currentSessionId === session.id} on:click={() => loadSession(session.id)} on:keydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
+                <MessageCircle size={14} />
+                <span class="history-title">{session.title || 'New Conversation'}</span>
+                <button class="delete-session-btn" on:click={(e) => deleteSession(session.id, e)}>
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+        {#if sessions.length === 0}
+          <div class="history-empty">No chat history yet</div>
+        {/if}
+      {/if}
+    </div>
+  </div>
+{/if}
 
 <style>
   .floor-manager-panel {
@@ -1038,6 +1281,11 @@
     line-height: 1.4;
   }
 
+  .model-selector-inline {
+    margin-bottom: 0.5rem;
+    flex-shrink: 0;
+  }
+
   .input-wrapper textarea:focus {
     outline: none;
     border-color: var(--accent-primary, #3b82f6);
@@ -1045,6 +1293,146 @@
 
   .input-wrapper textarea:disabled {
     opacity: 0.6;
+  }
+
+  /* Chat History Sidebar */
+  .chat-history-sidebar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 280px;
+    background: var(--bg-secondary, #111827);
+    border-right: 1px solid var(--border-color, #1e293b);
+    display: flex;
+    flex-direction: column;
+    z-index: 100;
+    overflow: hidden;
+  }
+
+  .history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border-color, #1e293b);
+    font-weight: 600;
+    font-size: 0.875rem;
+  }
+
+  .close-history-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted, #64748b);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .close-history-btn:hover {
+    color: var(--text-primary, #e2e8f0);
+  }
+
+  .new-chat-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin: 0.75rem;
+    padding: 0.625rem;
+    background: var(--accent-primary, #3b82f6);
+    border: none;
+    border-radius: 0.375rem;
+    color: white;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    transition: background 0.15s;
+  }
+
+  .new-chat-btn:hover {
+    background: var(--accent-primary-hover, #2563eb);
+  }
+
+  .history-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem;
+  }
+
+  .history-loading,
+  .history-empty {
+    text-align: center;
+    padding: 1rem;
+    color: var(--text-muted, #64748b);
+    font-size: 0.8125rem;
+  }
+
+  .history-group {
+    margin-bottom: 1rem;
+  }
+
+  .history-group-header {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--text-muted, #64748b);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.5rem 0.5rem 0.25rem;
+  }
+
+  .history-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.5rem;
+    background: none;
+    border: none;
+    border-radius: 0.375rem;
+    color: var(--text-secondary, #94a3b8);
+    cursor: pointer;
+    text-align: left;
+    font-size: 0.8125rem;
+    transition: all 0.15s;
+  }
+
+  .history-item:hover {
+    background: var(--bg-hover, #1e293b);
+    color: var(--text-primary, #e2e8f0);
+  }
+
+  .history-item.active {
+    background: var(--bg-hover, #1e293b);
+    color: var(--accent-primary, #3b82f6);
+  }
+
+  .history-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .delete-session-btn {
+    opacity: 0;
+    background: none;
+    border: none;
+    color: var(--text-muted, #64748b);
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+  }
+
+  .history-item:hover .delete-session-btn {
+    opacity: 1;
+  }
+
+  .delete-session-btn:hover {
+    color: #ef4444;
   }
 
   .input-footer {

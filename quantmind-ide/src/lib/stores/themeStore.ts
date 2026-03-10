@@ -1,6 +1,6 @@
 import { writable, derived } from 'svelte/store';
 
-export type ThemeName = 'trading-terminal' | 'monokai' | 'ambient' | 'cyberpunk' | 'matrix' | 'dark-pro';
+export type ThemeName = 'trading-terminal' | 'monokai' | 'ambient' | 'cyberpunk' | 'matrix' | 'dark-pro' | 'bloomberg' | 'crypto-quant' | 'gold-futures' | 'forex-pro' | 'midnight-quant' | 'ocean-blue' | 'deep-space' | 'nordic-frost';
 
 export interface Theme {
   name: ThemeName;
@@ -52,6 +52,7 @@ export interface Theme {
   wallpaper?: {
     type: 'gradient' | 'pattern' | 'animated';
     value: string;
+    gradient?: string;
   };
 }
 
@@ -364,6 +365,325 @@ export const themes: Record<ThemeName, Theme> = {
       animated: false,
       gradients: false
     }
+  },
+
+  // ========== FINANCE THEMES ==========
+
+  'bloomberg': {
+    name: 'bloomberg',
+    displayName: 'Bloomberg Terminal',
+    description: 'Classic financial terminal with amber accents',
+    colors: {
+      bg: {
+        primary: '#0a0a0a',
+        secondary: '#121212',
+        tertiary: '#1a1a1a',
+        glass: 'rgba(255, 153, 0, 0.05)'
+      },
+      text: {
+        primary: '#ff9900',
+        secondary: '#cc7a00',
+        muted: '#664000',
+        accent: '#ffcc00'
+      },
+      border: {
+        subtle: '#1a1a1a',
+        medium: '#333333',
+        accent: '#ff9900'
+      },
+      accent: {
+        primary: '#ff9900',
+        secondary: '#ffb300',
+        success: '#00ff00',
+        warning: '#ffcc00',
+        danger: '#ff3300'
+      },
+      syntax: {
+        keyword: '#ff9900',
+        string: '#ffcc00',
+        number: '#00ff00',
+        comment: '#664000',
+        function: '#00ccff',
+        variable: '#ff9900',
+        operator: '#ff6600',
+        background: '#0a0a0a'
+      }
+    },
+    effects: {
+      glass: true,
+      glow: false,
+      scanlines: false,
+      animated: false,
+      gradients: false
+    },
+    wallpaper: {
+      type: 'gradient',
+      value: 'bloomberg-grid',
+      gradient: 'linear-gradient(180deg, #0a0a0a 0%, #1a1208 100%)'
+    }
+  },
+
+  'crypto-quant': {
+    name: 'crypto-quant',
+    displayName: 'Crypto Quant',
+    description: 'Modern crypto trading with purple neon accents',
+    colors: {
+      bg: {
+        primary: '#0d0d1a',
+        secondary: '#151525',
+        tertiary: '#1e1e35',
+        glass: 'rgba(138, 43, 226, 0.08)'
+      },
+      text: {
+        primary: '#e8e8ff',
+        secondary: '#a0a0cc',
+        muted: '#606090',
+        accent: '#bf00ff'
+      },
+      border: {
+        subtle: '#2a2a45',
+        medium: '#404060',
+        accent: '#8b5cf6'
+      },
+      accent: {
+        primary: '#a855f7',
+        secondary: '#c084fc',
+        success: '#22c55e',
+        warning: '#eab308',
+        danger: '#ef4444'
+      },
+      syntax: {
+        keyword: '#c084fc',
+        string: '#22c55e',
+        number: '#fbbf24',
+        comment: '#606090',
+        function: '#38bdf8',
+        variable: '#e8e8ff',
+        operator: '#f472b6',
+        background: '#0d0d1a'
+      }
+    },
+    effects: {
+      glass: true,
+      glow: true,
+      scanlines: false,
+      animated: true,
+      gradients: true
+    },
+    wallpaper: {
+      type: 'gradient',
+      value: 'crypto-gradient',
+      gradient: 'linear-gradient(135deg, #0d0d1a 0%, #1a0a2e 50%, #0d1a1a 100%)'
+    }
+  },
+
+  'gold-futures': {
+    name: 'gold-futures',
+    displayName: 'Gold Futures',
+    description: 'Premium commodities trading with gold accents',
+    colors: {
+      bg: {
+        primary: '#0c0a07',
+        secondary: '#14100c',
+        tertiary: '#1c1812',
+        glass: 'rgba(212, 175, 55, 0.06)'
+      },
+      text: {
+        primary: '#f5e6c8',
+        secondary: '#c9b896',
+        muted: '#6b5c48',
+        accent: '#d4af37'
+      },
+      border: {
+        subtle: '#2a2318',
+        medium: '#3d3423',
+        accent: '#d4af37'
+      },
+      accent: {
+        primary: '#d4af37',
+        secondary: '#e6c158',
+        success: '#22c55e',
+        warning: '#f59e0b',
+        danger: '#dc2626'
+      },
+      syntax: {
+        keyword: '#d4af37',
+        string: '#fbbf24',
+        number: '#fb923c',
+        comment: '#6b5c48',
+        function: '#38bdf8',
+        variable: '#f5e6c8',
+        operator: '#d4af37',
+        background: '#0c0a07'
+      }
+    },
+    effects: {
+      glass: true,
+      glow: true,
+      scanlines: false,
+      animated: false,
+      gradients: true
+    },
+    wallpaper: {
+      type: 'gradient',
+      value: 'gold-shimmer',
+      gradient: 'linear-gradient(135deg, #0c0a07 0%, #1a1510 50%, #0d0a05 100%)'
+    }
+  },
+
+  'forex-pro': {
+    name: 'forex-pro',
+    displayName: 'Forex Pro',
+    description: 'Professional forex trading with green/red indicators',
+    colors: {
+      bg: {
+        primary: '#0a0f0a',
+        secondary: '#0f140f',
+        tertiary: '#151a15',
+        glass: 'rgba(34, 197, 94, 0.05)'
+      },
+      text: {
+        primary: '#e8f5e8',
+        secondary: '#a8c8a8',
+        muted: '#486048',
+        accent: '#22c55e'
+      },
+      border: {
+        subtle: '#1a201a',
+        medium: '#2a352a',
+        accent: '#22c55e'
+      },
+      accent: {
+        primary: '#22c55e',
+        secondary: '#4ade80',
+        success: '#22c55e',
+        warning: '#eab308',
+        danger: '#ef4444'
+      },
+      syntax: {
+        keyword: '#22c55e',
+        string: '#86efac',
+        number: '#fcd34d',
+        comment: '#486048',
+        function: '#38bdf8',
+        variable: '#e8f5e8',
+        operator: '#22c55e',
+        background: '#0a0f0a'
+      }
+    },
+    effects: {
+      glass: true,
+      glow: false,
+      scanlines: false,
+      animated: false,
+      gradients: false
+    },
+    wallpaper: {
+      type: 'gradient',
+      value: 'forex-forest',
+      gradient: 'linear-gradient(180deg, #0a0f0a 0%, #0a140a 100%)'
+    }
+  },
+
+  'midnight-quant': {
+    name: 'midnight-quant',
+    displayName: 'Midnight Quant',
+    description: 'Modern dark theme with teal accents for quant traders',
+    colors: {
+      bg: {
+        primary: '#0a0f14',
+        secondary: '#0f161c',
+        tertiary: '#151d26',
+        glass: 'rgba(20, 184, 166, 0.06)'
+      },
+      text: {
+        primary: '#e0f2f1',
+        secondary: '#99b8b4',
+        muted: '#4a6662',
+        accent: '#14b8a6'
+      },
+      border: {
+        subtle: '#1a242c',
+        medium: '#2a343c',
+        accent: '#14b8a6'
+      },
+      accent: {
+        primary: '#14b8a6',
+        secondary: '#2dd4bf',
+        success: '#22c55e',
+        warning: '#f59e0b',
+        danger: '#f43f5e'
+      },
+      syntax: {
+        keyword: '#2dd4bf',
+        string: '#34d399',
+        number: '#fbbf24',
+        comment: '#4a6662',
+        function: '#38bdf8',
+        variable: '#e0f2f1',
+        operator: '#14b8a6',
+        background: '#0a0f14'
+      }
+    },
+    effects: {
+      glass: true,
+      glow: true,
+      scanlines: false,
+      animated: true,
+      gradients: true
+    },
+    wallpaper: {
+      type: 'gradient',
+      value: 'midnight-teal',
+      gradient: 'linear-gradient(135deg, #0a0f14 0%, #0c1418 50%, #0a1012 100%)'
+    }
+  },
+
+  // ========== WALLPAPER THEMES ==========
+
+  'ocean-blue': {
+    name: 'ocean-blue',
+    displayName: 'Ocean Blue',
+    description: 'Deep ocean gradient for focus',
+    colors: {
+      bg: { primary: '#0a1628', secondary: '#0f1d32', tertiary: '#142540', glass: 'rgba(59, 130, 246, 0.08)' },
+      text: { primary: '#e0f2fe', secondary: '#7dd3fc', muted: '#0369a1', accent: '#38bdf8' },
+      border: { subtle: '#1e3a5f', medium: '#2d4a6f', accent: '#38bdf8' },
+      accent: { primary: '#38bdf8', secondary: '#7dd3fc', success: '#22c55e', warning: '#f59e0b', danger: '#ef4444' },
+      syntax: { keyword: '#38bdf8', string: '#34d399', number: '#fbbf24', comment: '#0369a1', function: '#c084fc', variable: '#e0f2fe', operator: '#38bdf8', background: '#0a1628' }
+    },
+    effects: { glass: true, glow: true, scanlines: false, animated: true, gradients: true },
+    wallpaper: { type: 'gradient', value: 'ocean-gradient', gradient: 'linear-gradient(180deg, #0a1628 0%, #0e2744 50%, #0a1628 100%)' }
+  },
+
+  'deep-space': {
+    name: 'deep-space',
+    displayName: 'Deep Space',
+    description: 'Cosmic dark theme for night trading',
+    colors: {
+      bg: { primary: '#050510', secondary: '#0a0a1a', tertiary: '#0f0f25', glass: 'rgba(139, 92, 246, 0.06)' },
+      text: { primary: '#e9d5ff', secondary: '#c4b5fd', muted: '#6b21a8', accent: '#a855f7' },
+      border: { subtle: '#1a1a35', medium: '#2a2a45', accent: '#a855f7' },
+      accent: { primary: '#a855f7', secondary: '#c084fc', success: '#22c55e', warning: '#eab308', danger: '#f43f5e' },
+      syntax: { keyword: '#c084fc', string: '#a855f7', number: '#fbbf24', comment: '#6b21a8', function: '#38bdf8', variable: '#e9d5ff', operator: '#a855f7', background: '#050510' }
+    },
+    effects: { glass: true, glow: true, scanlines: false, animated: true, gradients: true },
+    wallpaper: { type: 'gradient', value: 'space-gradient', gradient: 'radial-gradient(ellipse at top, #1a0a2e 0%, #050510 50%, #0a0a1a 100%)' }
+  },
+
+  'nordic-frost': {
+    name: 'nordic-frost',
+    displayName: 'Nordic Frost',
+    description: 'Clean cool theme for clarity',
+    colors: {
+      bg: { primary: '#0c1220', secondary: '#111a2a', tertiary: '#162235', glass: 'rgba(148, 163, 184, 0.06)' },
+      text: { primary: '#f1f5f9', secondary: '#94a3b8', muted: '#475569', accent: '#94a3b8' },
+      border: { subtle: '#1e293b', medium: '#334155', accent: '#64748b' },
+      accent: { primary: '#64748b', secondary: '#94a3b8', success: '#10b981', warning: '#f59e0b', danger: '#ef4444' },
+      syntax: { keyword: '#38bdf8', string: '#34d399', number: '#fbbf24', comment: '#475569', function: '#818cf8', variable: '#f1f5f9', operator: '#64748b', background: '#0c1220' }
+    },
+    effects: { glass: true, glow: false, scanlines: false, animated: false, gradients: false },
+    wallpaper: { type: 'gradient', value: 'frost-gradient', gradient: 'linear-gradient(135deg, #0c1220 0%, #162235 50%, #0c1220 100%)' }
   }
 };
 
@@ -397,6 +717,90 @@ export function applyTheme(themeName: ThemeName) {
   currentTheme.set(themeName);
   localStorage.setItem('quantmind-theme', themeName);
 }
+
+// Helper function to apply theme CSS variables to document
+function applyThemeVariables(themeObj: Theme) {
+  const root = document.documentElement;
+
+  // Background colors
+  root.style.setProperty('--bg-primary', themeObj.colors.bg.primary);
+  root.style.setProperty('--bg-secondary', themeObj.colors.bg.secondary);
+  root.style.setProperty('--bg-tertiary', themeObj.colors.bg.tertiary);
+  root.style.setProperty('--bg-glass', themeObj.colors.bg.glass);
+
+  // Text colors
+  root.style.setProperty('--text-primary', themeObj.colors.text.primary);
+  root.style.setProperty('--text-secondary', themeObj.colors.text.secondary);
+  root.style.setProperty('--text-muted', themeObj.colors.text.muted);
+  root.style.setProperty('--text-accent', themeObj.colors.text.accent);
+
+  // Border colors
+  root.style.setProperty('--border-subtle', themeObj.colors.border.subtle);
+  root.style.setProperty('--border-medium', themeObj.colors.border.medium);
+  root.style.setProperty('--border-accent', themeObj.colors.border.accent);
+
+  // Accent colors
+  root.style.setProperty('--accent-primary', themeObj.colors.accent.primary);
+  root.style.setProperty('--accent-secondary', themeObj.colors.accent.secondary);
+  root.style.setProperty('--accent-success', themeObj.colors.accent.success);
+  root.style.setProperty('--accent-warning', themeObj.colors.accent.warning);
+  root.style.setProperty('--accent-danger', themeObj.colors.accent.danger);
+
+  // Syntax colors
+  root.style.setProperty('--syntax-keyword', themeObj.colors.syntax.keyword);
+  root.style.setProperty('--syntax-string', themeObj.colors.syntax.string);
+  root.style.setProperty('--syntax-number', themeObj.colors.syntax.number);
+  root.style.setProperty('--syntax-comment', themeObj.colors.syntax.comment);
+  root.style.setProperty('--syntax-function', themeObj.colors.syntax.function);
+  root.style.setProperty('--syntax-variable', themeObj.colors.syntax.variable);
+  root.style.setProperty('--syntax-operator', themeObj.colors.syntax.operator);
+  root.style.setProperty('--syntax-background', themeObj.colors.syntax.background);
+
+  // Apply effects as data attributes
+  root.dataset.glass = String(themeObj.effects.glass);
+  root.dataset.glow = String(themeObj.effects.glow);
+  root.dataset.scanlines = String(themeObj.effects.scanlines);
+  root.dataset.animated = String(themeObj.effects.animated);
+  root.dataset.gradients = String(themeObj.effects.gradients);
+}
+
+// Helper function to apply wallpaper
+function applyWallpaper(themeObj: Theme) {
+  const root = document.documentElement;
+  const wallpaper = themeObj.wallpaper;
+
+  if (wallpaper?.gradient) {
+    root.style.setProperty('--wallpaper', wallpaper.gradient);
+    root.style.setProperty('--wallpaper-type', wallpaper.type);
+  } else {
+    root.style.setProperty('--wallpaper', 'none');
+  }
+}
+
+// Reactive effect to apply theme when currentTheme changes
+let previousTheme: ThemeName | null = null;
+
+currentTheme.subscribe(themeName => {
+  if (themeName !== previousTheme) {
+    const themeObj = themes[themeName];
+    if (themeObj) {
+      applyThemeVariables(themeObj);
+      applyWallpaper(themeObj);
+      localStorage.setItem('quantmind-theme', themeName);
+    }
+    previousTheme = themeName;
+  }
+});
+
+customWallpaper.subscribe(wallpaper => {
+  if (previousTheme) {
+    const themeObj = themes[previousTheme];
+    if (themeObj) {
+      applyWallpaper(themeObj);
+    }
+  }
+  localStorage.setItem('quantmind-wallpaper', wallpaper);
+});
 
 export function loadSavedTheme(): ThemeName {
   const saved = localStorage.getItem('quantmind-theme');
