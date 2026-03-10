@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { Bot, DollarSign, Percent, Shield, Route, TrendingUp, Activity, Target } from 'lucide-svelte';
+  import { Bot, DollarSign, Percent, Shield, Route, TrendingUp, Activity, Target, Clock } from 'lucide-svelte';
   import { getAllSessions, getMarketState, getTradingMetrics, getRiskSettings, getRouterSettings } from '$lib/api';
   import { navigationStore } from '../stores/navigationStore';
 
@@ -13,6 +13,7 @@
   let winRate = 0;
   let openPositions = 0;
   let tradesToday = 0;
+  let currentSession = 'CLOSED';
 
   // Risk and Router settings
   let riskMode: 'fixed' | 'dynamic' | 'conservative' = 'dynamic';
@@ -22,6 +23,16 @@
 
   // Explicit session order for deterministic display
   const SESSION_ORDER = ['ASIAN', 'LONDON', 'NEW_YORK', 'OVERLAP'];
+
+  // Helper: Get current active trading session
+  function getCurrentSession(): string {
+    for (const sessionKey of SESSION_ORDER) {
+      if (sessions[sessionKey]?.active) {
+        return sessionKey;
+      }
+    }
+    return 'CLOSED';
+  }
 
   onMount(async () => {
     try {
@@ -40,7 +51,10 @@
     try {
       // Fetch sessions using helper
       const sessionsData = await getAllSessions();
-      if (sessionsData) sessions = sessionsData;
+      if (sessionsData) {
+        sessions = sessionsData;
+        currentSession = getCurrentSession();
+      }
 
       // Fetch market state using helper
       const marketData = await getMarketState();
@@ -152,10 +166,19 @@
     <span class="loading">Loading...</span>
   {:else}
     <div class="ticker-wrapper">
-      <!-- First set of items -->
+      <!-- Current Trading Session - prominently displayed -->
+      <div class="current-session clickable" on:click={() => navigationStore.navigateToView('live')}>
+        <Clock size={16} />
+        <span class="label">Trading:</span>
+        <span class="session-name current">{currentSession}</span>
+      </div>
+
+      <div class="divider">|</div>
+
+      <!-- All sessions with status -->
       <div class="sessions">
         {#each SESSION_ORDER as sessionKey}
-          {#if sessions[sessionKey] && sessionKey !== 'CLOSED'}
+          {#if sessions[sessionKey]}
             <div class="session-item" class:active={sessions[sessionKey].active}>
               <span class="dot" style="background: {getSessionColor(sessions[sessionKey].active)}"></span>
               <span class="session-name">{sessionKey}</span>
@@ -166,7 +189,7 @@
 
       <div class="divider">|</div>
 
-      <div class="regime clickable" on:click={() => navigationStore.navigateToView('market')}>
+      <div class="regime clickable" on:click={() => navigationStore.navigateToView('live')}>
         <span class="regime-dot" style="background: {getRegimeColor(regime)}"></span>
         <span>{regime}</span>
       </div>
@@ -174,23 +197,23 @@
       <div class="divider">|</div>
 
       <div class="metrics">
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('bots')}>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('live')}>
           <Bot size={16} />
           <span>{activeBots} Bots</span>
         </div>
-        <div class="metric clickable" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0} on:click={() => navigationStore.navigateToView('trading')}>
+        <div class="metric clickable" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0} on:click={() => navigationStore.navigateToView('live')}>
           <DollarSign size={16} />
           <span>{formatPnl(dailyPnl)}</span>
         </div>
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('trading')}>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('live')}>
           <Percent size={16} />
           <span>{winRate.toFixed(0)}% WR</span>
         </div>
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('positions')}>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('live')}>
           <Target size={16} />
           <span>{openPositions} Pos</span>
         </div>
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('trading')}>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('live')}>
           <Activity size={16} />
           <span>{tradesToday} Trades</span>
         </div>
@@ -210,9 +233,19 @@
       </div>
 
       <!-- Duplicate for seamless loop -->
-      <div class="sessions clickable" on:click={() => navigationStore.navigateToView('sessions')}>
+      <!-- Current Trading Session -->
+      <div class="current-session clickable" on:click={() => navigationStore.navigateToView('live')}>
+        <Clock size={16} />
+        <span class="label">Trading:</span>
+        <span class="session-name current">{currentSession}</span>
+      </div>
+
+      <div class="divider">|</div>
+
+      <!-- All sessions -->
+      <div class="sessions">
         {#each SESSION_ORDER as sessionKey}
-          {#if sessions[sessionKey] && sessionKey !== 'CLOSED'}
+          {#if sessions[sessionKey]}
             <div class="session-item" class:active={sessions[sessionKey].active}>
               <span class="dot" style="background: {getSessionColor(sessions[sessionKey].active)}"></span>
               <span class="session-name">{sessionKey}</span>
@@ -223,7 +256,7 @@
 
       <div class="divider">|</div>
 
-      <div class="regime clickable" on:click={() => navigationStore.navigateToView('market')}>
+      <div class="regime clickable" on:click={() => navigationStore.navigateToView('live')}>
         <span class="regime-dot" style="background: {getRegimeColor(regime)}"></span>
         <span>{regime}</span>
       </div>
@@ -231,19 +264,15 @@
       <div class="divider">|</div>
 
       <div class="metrics">
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('bots')}>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('live')}>
           <Bot size={16} />
           <span>{activeBots} Bots</span>
         </div>
-        <div class="metric clickable" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0} on:click={() => navigationStore.navigateToView('trading')}>
+        <div class="metric clickable" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0} on:click={() => navigationStore.navigateToView('live')}>
           <DollarSign size={16} />
           <span>{formatPnl(dailyPnl)}</span>
         </div>
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('trading')}>
-          <Percent size={16} />
-          <span>{winRate.toFixed(0)}% WR</span>
-        </div>
-        <div class="metric clickable" on:click={() => navigationStore.navigateToView('positions')}>
+        <div class="metric clickable" on:click={() => navigationStore.navigateToView('live')}>
           <Target size={16} />
           <span>{openPositions} Pos</span>
         </div>
@@ -322,6 +351,21 @@
   .clickable:hover {
     opacity: 0.7;
     color: var(--text-primary, #fff);
+  }
+
+  .current-session {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+  }
+
+  .current-session .label {
+    color: var(--text-muted, #9ca3af);
+  }
+
+  .current-session .current {
+    color: var(--accent-success, #10b981);
   }
 
   .sessions {

@@ -16,6 +16,7 @@
     CheckCircle2,
     Clock,
     ArrowRight,
+    Bot,
   } from "lucide-svelte";
   import {
     departmentChatStore,
