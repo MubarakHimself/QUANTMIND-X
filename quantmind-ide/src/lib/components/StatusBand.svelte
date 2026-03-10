@@ -170,15 +170,15 @@
 
       <div class="metrics">
         <div class="metric">
-          <Bot size={14} />
+          <Bot size={16} />
           <span>{activeBots} Bots</span>
         </div>
         <div class="metric" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0}>
-          <DollarSign size={14} />
+          <DollarSign size={16} />
           <span>{formatPnl(dailyPnl)}</span>
         </div>
         <div class="metric">
-          <Percent size={14} />
+          <Percent size={16} />
           <span>{winRate.toFixed(0)}% WR</span>
         </div>
       </div>
@@ -187,11 +187,11 @@
 
       <div class="mode-indicators">
         <div class="mode-item" title="Risk Mode">
-          <Shield size={14} />
+          <Shield size={16} />
           <span>Risk: {formatRiskMode(riskMode)}</span>
         </div>
         <div class="mode-item" title="Router Mode">
-          <Route size={14} />
+          <Route size={16} />
           <span>Router: {formatRouterMode(routerMode)}</span>
         </div>
       </div>
@@ -219,15 +219,15 @@
 
       <div class="metrics">
         <div class="metric">
-          <Bot size={14} />
+          <Bot size={16} />
           <span>{activeBots} Bots</span>
         </div>
         <div class="metric" class:profit={dailyPnl >= 0} class:loss={dailyPnl < 0}>
-          <DollarSign size={14} />
+          <DollarSign size={16} />
           <span>{formatPnl(dailyPnl)}</span>
         </div>
         <div class="metric">
-          <Percent size={14} />
+          <Percent size={16} />
           <span>{winRate.toFixed(0)}% WR</span>
         </div>
       </div>
@@ -236,11 +236,11 @@
 
       <div class="mode-indicators">
         <div class="mode-item" title="Risk Mode">
-          <Shield size={14} />
+          <Shield size={16} />
           <span>Risk: {formatRiskMode(riskMode)}</span>
         </div>
         <div class="mode-item" title="Router Mode">
-          <Route size={14} />
+          <Route size={16} />
           <span>Router: {formatRouterMode(routerMode)}</span>
         </div>
       </div>
@@ -252,17 +252,20 @@
   .status-band {
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 8px 16px;
+    gap: 24px;
+    padding: 12px 20px;
     background: var(--bg-secondary, #1e293b);
     border-bottom: 1px solid var(--border-subtle, #374151);
-    font-size: 12px;
+    font-size: 13px;
+    font-weight: 500;
     color: var(--text-secondary, #d1d5db);
     overflow-x: hidden;
+    min-height: 48px;
   }
 
   .ticker-wrapper {
     display: flex;
+    gap: 24px;
     animation: ticker-scroll 30s linear infinite;
     white-space: nowrap;
   }
@@ -287,13 +290,13 @@
 
   .sessions {
     display: flex;
-    gap: 12px;
+    gap: 20px;
   }
 
   .session-item {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
   }
 
   .session-item.active {
@@ -301,8 +304,8 @@
   }
 
   .dot {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
   }
 
@@ -313,25 +316,25 @@
   .regime {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
   }
 
   .regime-dot {
-    width: 8px;
-    height: 8px;
+    width: 10px;
+    height: 10px;
     border-radius: 2px;
   }
 
   .metrics {
     display: flex;
-    gap: 16px;
+    gap: 24px;
     margin-left: auto;
   }
 
   .metric {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
   }
 
   .metric.profit {
@@ -344,13 +347,13 @@
 
   .mode-indicators {
     display: flex;
-    gap: 16px;
+    gap: 24px;
   }
 
   .mode-item {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     color: var(--text-secondary, #d1d5db);
   }
 </style>
