@@ -64,14 +64,14 @@
     if (!provider) return;
 
     try {
-      const response = await fetch('http://localhost:8000/api/settings/providers', {
+      const response = await fetch('http://localhost:8000/api/providers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          provider_id: providerId,
-          name: provider.name,
+          name: providerId,
           base_url: provider.base_url,
-          api_key: provider.api_key
+          api_key: provider.api_key,
+          enabled: true
         })
       });
 
@@ -88,7 +88,7 @@
 
   async function deleteProvider(providerId: string) {
     try {
-      const response = await fetch(`http://localhost:8000/api/settings/providers/${providerId}`, {
+      const response = await fetch(`http://localhost:8000/api/providers/${providerId}`, {
         method: 'DELETE'
       });
 
@@ -107,7 +107,7 @@
   async function loadProviders() {
     isLoading = true;
     try {
-      const response = await fetch('http://localhost:8000/api/settings/providers');
+      const response = await fetch('http://localhost:8000/api/providers');
       if (response.ok) {
         const data = await response.json();
         providers = DEFAULT_PROVIDERS.map(p => ({
