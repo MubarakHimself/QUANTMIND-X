@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class AgentConfig:
     """
     Configuration dataclass for factory-created agents.
-    
+
     Supports loading from YAML, dict, and runtime overrides.
     """
     agent_id: str
@@ -29,6 +29,8 @@ class AgentConfig:
     name: str
     llm_provider: str = "openrouter"
     llm_model: str = ""
+    provider: str = "anthropic"
+    model: str = "claude-sonnet-4-20250514"
     temperature: float = 0.0
     max_tokens: int = 4096
     tools: List[str] = field(default_factory=list)
