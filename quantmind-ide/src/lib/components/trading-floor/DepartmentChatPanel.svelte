@@ -11,7 +11,7 @@
     Zap,
     Briefcase,
     ChevronRight,
-    Bot,
+    Plus,
     AlertCircle,
     CheckCircle2,
     Clock,
@@ -216,7 +216,7 @@
           class="department-selector-btn placeholder"
           on:click={() => (showDepartmentSelector = !showDepartmentSelector)}
         >
-          <Bot size={16} />
+          <Plus size={16} />
           <span>Select Department</span>
           <span class="chevron" class:rotated={showDepartmentSelector}>
             <ChevronRight size={14} />

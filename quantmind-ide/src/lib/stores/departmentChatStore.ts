@@ -230,14 +230,11 @@ function createDepartmentChatStore() {
         this.setTyping(departmentId, true);
 
         // Call API to send message to department
-        const response = await fetch(`${API_BASE}/chat/send`, {
+        const response = await fetch(`${API_BASE}/chat/departments/${departmentId}/message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            agent: departmentId,
             message: content,
-            model: 'default',
-            provider: 'anthropic',
           }),
         });
 

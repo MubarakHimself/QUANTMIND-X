@@ -35,6 +35,12 @@ from src.agents.memory.department_integration import (
     search_across_namespaces,
 )
 
+# Import GraphMemoryFacade for delegation
+try:
+    from src.memory.graph.facade import GraphMemoryFacade
+except ImportError:
+    GraphMemoryFacade = None  # Graph memory not available
+
 logger = logging.getLogger(__name__)
 
 
@@ -202,6 +208,21 @@ class UnifiedMemoryFacade:
         # Sync tracking
         self._last_sync: Optional[datetime] = None
 
+        # Initialize GraphMemoryFacade for graph-based memory
+        self._graph_memory: Optional[GraphMemoryFacade] = None
+        if GraphMemoryFacade is not None and auto_initialize:
+            try:
+                graph_db_path = Path(os.environ.get(
+                    "GRAPH_MEMORY_PATH",
+                    "data/graph_memory/memory.db"
+                ))
+                graph_db_path.parent.mkdir(parents=True, exist_ok=True)
+                self._graph_memory = GraphMemoryFacade(db_path=graph_db_path)
+                logger.info(f"Initialized GraphMemoryFacade for unified facade")
+            except Exception as e:
+                logger.warning(f"Failed to initialize GraphMemoryFacade: {e}")
+                self._graph_memory = None
+
         logger.info(
             f"Initialized UnifiedMemoryFacade for department={self._department_str}, "
             f"agent_id={agent_id}"
@@ -226,6 +247,11 @@ class UnifiedMemoryFacade:
         """Get the underlying DepartmentMemoryManager instance."""
         return self._dept_memory
 
+    @property
+    def graph_memory(self) -> Optional[GraphMemoryFacade]:
+        """Get the underlying GraphMemoryFacade instance."""
+        return self._graph_memory
+
     # =========================================================================
     # CRUD Operations
     # =========================================================================
@@ -238,6 +264,7 @@ class UnifiedMemoryFacade:
         tags: Optional[List[str]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         sync_to_agent: bool = True,
+        sync_to_graph: bool = True,
     ) -> str:
         """
         Add a memory entry to the appropriate system.
@@ -249,6 +276,7 @@ class UnifiedMemoryFacade:
             tags: Optional tags
             metadata: Optional metadata
             sync_to_agent: Whether to also sync to AgentMemory
+            sync_to_graph: Whether to also sync to graph memory
 
         Returns:
             Memory entry ID
@@ -290,6 +318,21 @@ class UnifiedMemoryFacade:
                 )
             except Exception as e:
                 logger.warning(f"Failed to sync to DepartmentMemoryManager: {e}")
+
+        # Also write to graph memory if enabled
+        if sync_to_graph and self._graph_memory:
+            try:
+                self._graph_memory.retain(
+                    content=f"{key}: {value}",
+                    source="unified_memory_facade",
+                    department=self._department_str,
+                    agent_id=self._agent_id,
+                    session_id=self._session_id,
+                    importance=0.5,
+                    tags=tags or [],
+                )
+            except Exception as e:
+                logger.warning(f"Failed to sync to graph memory: {e}")
 
         logger.info(f"Added memory: {namespace or 'global'}/{key}")
         return entry_id
@@ -377,6 +420,7 @@ class UnifiedMemoryFacade:
         namespace: Optional[str] = None,
         limit: int = 10,
         include_all_sources: bool = True,
+        prefer_graph: bool = True,
     ) -> UnifiedSearchResult:
         """
         Search across memory systems.
@@ -386,6 +430,7 @@ class UnifiedMemoryFacade:
             namespace: Optional namespace filter
             limit: Maximum results per source
             include_all_sources: Whether to search both systems
+            prefer_graph: If True, query graph first, fallback to legacy
 
         Returns:
             UnifiedSearchResult with combined results
@@ -394,7 +439,49 @@ class UnifiedMemoryFacade:
         start_time = time.time()
 
         entries: List[UnifiedMemoryEntry] = []
-        sources: Dict[str, int] = {"agent_memory": 0, "department_memory": 0}
+        sources: Dict[str, int] = {"agent_memory": 0, "department_memory": 0, "graph_memory": 0}
+
+        # Try graph memory first if available and prefer_graph is True
+        if prefer_graph and self._graph_memory:
+            try:
+                graph_results = self._graph_memory.recall(
+                    query=query,
+                    department=self._department_str,
+                    agent_id=self._agent_id,
+                    limit=limit,
+                )
+
+                for node in graph_results:
+                    entries.append(UnifiedMemoryEntry(
+                        id=str(node.id),
+                        key=node.title,
+                        value=node.content,
+                        namespace="graph_memory",
+                        source="graph_memory",
+                        department=node.department,
+                        tags=node.tags,
+                        metadata={},
+                        created_at=node.created_at,
+                        updated_at=node.updated_at,
+                        agent_id=node.agent_id,
+                        session_id=node.session_id,
+                        relevance_score=node.relevance_score,
+                    ))
+                    sources["graph_memory"] += 1
+
+                # If we have graph results and don't want all sources, return early
+                if not include_all_sources and entries:
+                    elapsed_ms = (time.time() - start_time) * 1000
+                    return UnifiedSearchResult(
+                        entries=entries[:limit],
+                        total=len(entries),
+                        query=query,
+                        sources=sources,
+                        elapsed_ms=elapsed_ms,
+                    )
+
+            except Exception as e:
+                logger.warning(f"GraphMemory search failed: {e}")
 
         # Search AgentMemory (SQLite)
         try:
@@ -791,16 +878,27 @@ class UnifiedMemoryFacade:
             logger.warning(f"Failed to get agent memory stats: {e}")
             agent_stats = {"error": str(e)}
 
+        # Get GraphMemory stats
+        graph_stats: Dict[str, Any] = {}
+        if self._graph_memory:
+            try:
+                graph_stats = self._graph_memory.get_stats()
+            except Exception as e:
+                logger.warning(f"Failed to get graph memory stats: {e}")
+                graph_stats = {"error": str(e)}
+
         # Calculate totals
         total_entries = (
             dept_stats.get("total_entries", 0) +
-            agent_stats.get("total_entries", 0)
+            agent_stats.get("total_entries", 0) +
+            graph_stats.get("total_nodes", 0)
         )
 
         # Build sources list
         sources = list(set(
             list(dept_stats.get("categories", [])) +
-            list(agent_stats.get("by_namespace", {}).keys())
+            list(agent_stats.get("by_namespace", {}).keys()) +
+            ["graph_memory"]
         ))
 
         return UnifiedMemoryStats(

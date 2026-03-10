@@ -37,13 +37,22 @@
     "houseMoneyThreshold": 0.5,
     "dailyLossLimit": 5.0,
     "maxDrawdown": 10.0,
-    "riskMode": "dynamic",
+    "riskMode": "conservative",
     "balanceZones": {
       "danger": 200,
       "growth": 1000,
       "scaling": 5000,
       "guardian": 999999999
-    }
+    },
+    "maxPortfolioRisk": 0.2,
+    "correlationThreshold": 0.8,
+    "demoRiskMultiplier": 1.5,
+    "houseMoneyMultiplierUp": 1.5,
+    "houseMoneyMultiplierDown": 0.5,
+    "hardStopBuffer": 0.01,
+    "maxRiskPerTrade": 0.05,
+    "defaultRiskPerTrade": 0.02,
+    "propFirmPreset": "custom"
   },
   "database": {
     "sqlitePath": "./data/quantmind.db",
