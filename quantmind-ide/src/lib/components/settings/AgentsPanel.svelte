@@ -71,12 +71,16 @@
   // Available providers from API
   let availableProviders: Array<{ id: string; name: string; display_name: string; has_api_key: boolean; enabled: boolean }> = [];
 
-  // Fetch available providers on mount
+  // Available models from API (keyed by provider)
+  let availableModels: Record<string, Array<{ id: string; name: string; tier: string }>> = {};
+
+  // Fetch available providers and models on mount
   onMount(async () => {
     try {
-      const res = await fetch('/api/providers/available');
-      const data = await res.json();
-      availableProviders = data.providers || [];
+      // Fetch providers with API key status
+      const providersRes = await fetch('/api/providers/available');
+      const providersData = await providersRes.json();
+      availableProviders = providersData.providers || [];
     } catch (e) {
       console.error('Failed to load available providers:', e);
       // Fallback to default providers if API fails
@@ -85,6 +89,24 @@
         { id: 'anthropic', name: 'anthropic', display_name: 'Anthropic', has_api_key: false, enabled: false },
         { id: 'zhipu', name: 'zhipu', display_name: 'Zhipu AI', has_api_key: false, enabled: false },
       ];
+    }
+
+    try {
+      // Fetch available models from the models endpoint
+      const modelsRes = await fetch('/agent-config/available-models');
+      const modelsData = await modelsRes.json();
+      if (modelsData.providers) {
+        availableModels = {};
+        for (const [provider, info] of Object.entries(modelsData.providers)) {
+          const providerInfo = info as { available: boolean; models: Array<{ id: string; name: string; tier: string }> };
+          if (providerInfo.available && providerInfo.models) {
+            availableModels[provider] = providerInfo.models;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load available models:', e);
+      // Models will fallback to getModelsForProvider function
     }
   });
 
@@ -150,38 +172,45 @@
     'search_semantic_memories'
   ];
 
+  // Hardcoded fallback models (used if API fails)
+  const fallbackModelsByProvider: Record<string, Array<{id: string, name: string}>> = {
+    anthropic: [
+      { id: 'claude-opus-4-20250514', name: 'Claude Opus 4' },
+      { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
+      { id: 'claude-haiku-3-20240307', name: 'Claude Haiku 3.5' }
+    ],
+    zhipu: [
+      { id: 'glm-4', name: 'GLM-4' },
+      { id: 'glm-4-flash', name: 'GLM-4-Flash' },
+      { id: 'glm-4-long', name: 'GLM-4-Long' }
+    ],
+    minimax: [
+      { id: 'MiniMax-M2.5', name: 'MiniMax M2.5' },
+      { id: 'MiniMax-M2.1', name: 'MiniMax M2.1' },
+      { id: 'MiniMax-M2', name: 'MiniMax M2' }
+    ],
+    deepseek: [
+      { id: 'deepseek-chat', name: 'DeepSeek Chat' },
+      { id: 'deepseek-coder', name: 'DeepSeek Coder' }
+    ],
+    openai: [
+      { id: 'gpt-4', name: 'GPT-4' },
+      { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
+      { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' }
+    ],
+    openrouter: [
+      { id: 'anthropic/claude-sonnet-4', name: 'Claude Sonnet 4 (Router)' },
+      { id: 'anthropic/claude-haiku-3', name: 'Claude Haiku 3 (Router)' }
+    ]
+  };
+
   function getModelsForProvider(provider: string) {
-    const modelsByProvider: Record<string, Array<{id: string, name: string}>> = {
-      anthropic: [
-        { id: 'claude-opus-4-20250514', name: 'Claude Opus 4' },
-        { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
-        { id: 'claude-haiku-3-20240307', name: 'Claude Haiku 3.5' }
-      ],
-      zhipu: [
-        { id: 'glm-4', name: 'GLM-4' },
-        { id: 'glm-4-flash', name: 'GLM-4-Flash' },
-        { id: 'glm-4-long', name: 'GLM-4-Long' }
-      ],
-      minimax: [
-        { id: 'MiniMax-M2.5', name: 'MiniMax M2.5' },
-        { id: 'MiniMax-M2.1', name: 'MiniMax M2.1' },
-        { id: 'MiniMax-M2', name: 'MiniMax M2' }
-      ],
-      deepseek: [
-        { id: 'deepseek-chat', name: 'DeepSeek Chat' },
-        { id: 'deepseek-coder', name: 'DeepSeek Coder' }
-      ],
-      openai: [
-        { id: 'gpt-4', name: 'GPT-4' },
-        { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
-        { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' }
-      ],
-      openrouter: [
-        { id: 'anthropic/claude-sonnet-4', name: 'Claude Sonnet 4 (Router)' },
-        { id: 'anthropic/claude-haiku-3', name: 'Claude Haiku 3 (Router)' }
-      ]
-    };
-    return modelsByProvider[provider] || [];
+    // First, try to use models fetched from API
+    if (availableModels[provider] && availableModels[provider].length > 0) {
+      return availableModels[provider];
+    }
+    // Fallback to hardcoded models if API didn't return models for this provider
+    return fallbackModelsByProvider[provider] || [];
   }
 </script>
 
