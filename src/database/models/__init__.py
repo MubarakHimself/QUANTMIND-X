@@ -79,6 +79,9 @@ from .activity import ActivityEvent
 # Chat models
 from .chat import ChatSession, ChatMessage
 
+# Provider config models
+from .provider_config import ProviderConfig
+
 # Session factory (import from engine package)
 from sqlalchemy.orm import sessionmaker
 from src.database import engine
@@ -148,4 +151,7 @@ __all__ = [
     # Chat
     'ChatSession',
     'ChatMessage',
+
+    # Provider config
+    'ProviderConfig',
 ]
