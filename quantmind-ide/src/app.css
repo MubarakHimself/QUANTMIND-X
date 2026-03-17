@@ -1,4 +1,5 @@
 /* QuantMind IDE - Midnight Finance Theme */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&family=Syne:wght@700;800&display=swap');
 
 :root {
   /* OKLCH Color System - Midnight Finance */
@@ -12,6 +13,17 @@
   /* Wallpaper - Applied by theme system */
   --wallpaper: none;
   --wallpaper-type: none;
+
+  /* Frosted Terminal Colors - Story 1-4 */
+  --color-bg-primary: #080d14;
+  --color-accent-cyan: #00d4ff;
+  --color-accent-amber: #f0a500;
+  --color-danger: #ff3b3b;
+
+  /* Glass Tiers - Frosted Terminal Aesthetic */
+  --glass-tier-1: rgba(8, 13, 20, 0.08);
+  --glass-tier-2: rgba(8, 13, 20, 0.35);
+  --glass-blur: blur(24px) saturate(160%);
 
   /* Accents */
   --accent-primary: oklch(65% 0.18 250);     /* Tech Blue */
@@ -44,13 +56,17 @@
   --syntax-background: oklch(15% 0.02 260);
 
   /* Dimensions */
-  --sidebar-width: 48px;
+  --sidebar-width: 56px;
+  --sidebar-expanded-width: 200px;
   --panel-width: 300px;
-  --header-height: 40px;
+  --header-height: 48px;
   --status-height: 24px;
 
   /* Typography - Default */
   --font-family: 'Inter', system-ui, sans-serif;
+  --font-display: 'Syne', sans-serif;
+  --font-nav: 'Space Grotesk', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
 
   /* Wallpaper visibility */
   --wallpaper-visible: 1;
