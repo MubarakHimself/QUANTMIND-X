@@ -11,14 +11,58 @@ Features:
 - Validates generated MQL5 code structure
 - Iteratively fixes validation errors via LLM feedback
 - Returns production-ready MQL5 code
+
+NOTE: LangGraph imports removed - pending migration to Anthropic Agent SDK (Epic 7).
+The conversion logic remains but uses a simple function-based workflow instead of StateGraph.
 """
 
 import re
 import logging
 from typing import TypedDict, List, Dict, Any, Optional
-from langgraph.graph import StateGraph, END
+
+# LangGraph imports removed
+# from langgraph.graph import StateGraph, END
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Stub for StateGraph
+# =============================================================================
+
+class StateGraph:
+    """Stub for langgraph StateGraph - pending migration to Anthropic Agent SDK."""
+    def __init__(self, state_class):
+        self.state_class = state_class
+        self._nodes = {}
+
+    def add_node(self, name: str, func):
+        self._nodes[name] = func
+
+    def add_edge(self, from_node: str, to_node: str):
+        pass
+
+    def add_conditional_edges(self, from_node: str, condition_func, mapping: Dict):
+        pass
+
+    def set_entry_point(self, node: str):
+        pass
+
+    def compile(self):
+        return _StubCompiledGraph()
+
+
+class _StubCompiledGraph:
+    """Stub for compiled LangGraph."""
+    def invoke(self, state):
+        return state
+
+    def ainvoke(self, state):
+        return state
+
+
+# Use a sentinel for END
+END = "END"
 
 
 # ============================================================================

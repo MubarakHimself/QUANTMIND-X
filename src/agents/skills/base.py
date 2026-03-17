@@ -1,10 +1,14 @@
 """
 QuantMind Agent Skill System
 Defines the structure for modular capabilities (Skills) that can be attached to Agents.
+
+NOTE: LangChain BaseTool import removed - pending migration to Anthropic Agent SDK (Epic 7).
 """
 
-from typing import List, Optional
-from langchain_core.tools import BaseTool
+from typing import List, Optional, Any
+
+# LangChain BaseTool removed - using plain object as stub
+# from langchain_core.tools import BaseTool
 
 class AgentSkill:
     """
@@ -14,10 +18,10 @@ class AgentSkill:
     def __init__(self, name: str, description: str):
         self.name = name
         self.description = description
-        self.tools: List[BaseTool] = []
+        self.tools: List[Any] = []  # Previously: List[BaseTool]
         self.system_prompt_addition: str = ""
 
-    def get_tools(self) -> List[BaseTool]:
+    def get_tools(self) -> List[Any]:  # Previously: List[BaseTool]
         return self.tools
 
     def get_system_prompt(self) -> str:

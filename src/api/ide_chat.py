@@ -2,6 +2,8 @@
 QuantMind IDE Chat Endpoint
 
 API endpoint for agent chat.
+
+NOTE: LangChain/LangGraph imports removed - pending migration to Anthropic Agent SDK (Epic 7).
 """
 
 import logging
@@ -24,14 +26,14 @@ async def chat(request: dict):
     from src.api.ide_handlers import LiveTradingAPIHandler
     trading_handler = LiveTradingAPIHandler()
 
-    # Connect to actual LangGraph agent
+    # STUB - LangGraph agent pending migration to Anthropic Agent SDK (Epic 7)
+    # Previously used: from langgraph.checkpoint.memory import MemorySaver
     try:
         from src.agents.analyst_v2 import compile_analyst_graph
-        from langgraph.checkpoint.memory import MemorySaver
         import uuid
 
-        # Compile the graph with memory checkpointer
-        graph = compile_analyst_graph(checkpointer=MemorySaver())
+        # Compile the graph (memory checkpointer removed pending Epic 7)
+        graph = compile_analyst_graph()
 
         # Build config for per-session conversation history
         thread_id = f"chat_{agent}_{uuid.uuid4().hex[:8]}"
@@ -57,8 +59,8 @@ async def chat(request: dict):
         if not response:
             response = f"Processed: {message[:50]}..."
 
-    except Exception as e:
-        logger.error(f"LangGraph agent invocation failed: {e}")
+    except (ImportError, NotImplementedError, AttributeError) as e:
+        logger.warning(f"Agent chat is in stub mode: {e}")
         # Fallback to keyword-based responses
         response = f"I understand you want to: {message[:50]}... I'll help you with that."
 
@@ -69,5 +71,7 @@ async def chat(request: dict):
         elif "bot" in message.lower() or "active" in message.lower():
             bots = trading_handler.get_active_bots()
             response = f"You have {len(bots)} active bots. Go to Live Trading to manage them."
+        else:
+            response = "Chat functionality is currently in stub mode pending migration to Anthropic Agent SDK (Epic 7)."
 
     return {"response": response, "agent": agent, "model": model}

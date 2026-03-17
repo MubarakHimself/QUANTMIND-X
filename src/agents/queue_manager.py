@@ -524,41 +524,47 @@ async def _register_default_handlers(manager: AgentQueueManager):
                     return {"result": last_msg.get("content", str(last_msg))}
                 return {"result": str(last_msg)}
             return {"result": result.get("output", "No response")}
-        except ImportError:
-            return {"result": f"Copilot handler: {task.name}"}
+        except (ImportError, NotImplementedError):
+            return {"result": f"Copilot handler (stub): {task.name}"}
 
     async def analyst_handler(task: Task) -> Dict[str, Any]:
         """Handle analyst tasks by invoking the agent."""
+        # STUB - pending migration to Anthropic Agent SDK (Epic 7)
+        # Previously used langchain_core.messages.HumanMessage
         try:
             from src.agents.analyst_v2 import compile_analyst_graph
-            from langchain_core.messages import HumanMessage
+            # from langchain_core.messages import HumanMessage  # Removed
 
             graph = compile_analyst_graph(use_tool_node=True)
             message = task.input_data.get("message", task.name)
 
+            # Use dict instead of HumanMessage
             result = graph.invoke({
-                "messages": [HumanMessage(content=message)]
+                "messages": [{"role": "user", "content": message}]
             })
 
             return {"result": str(result.get("messages", [])[-1])}
-        except ImportError:
+        except (ImportError, NotImplementedError):
             return {"result": f"Analyst handler: {task.name}"}
 
     async def quantcode_handler(task: Task) -> Dict[str, Any]:
         """Handle quantcode tasks by invoking the agent."""
+        # STUB - pending migration to Anthropic Agent SDK (Epic 7)
+        # Previously used langchain_core.messages.HumanMessage
         try:
             from src.agents.quantcode_v2 import compile_quantcode_graph
-            from langchain_core.messages import HumanMessage
+            # from langchain_core.messages import HumanMessage  # Removed
 
             graph = compile_quantcode_graph(use_tool_node=True)
             message = task.input_data.get("message", task.name)
 
+            # Use dict instead of HumanMessage
             result = graph.invoke({
-                "messages": [HumanMessage(content=message)]
+                "messages": [{"role": "user", "content": message}]
             })
 
             return {"result": str(result.get("messages", [])[-1])}
-        except ImportError:
+        except (ImportError, NotImplementedError):
             return {"result": f"QuantCode handler: {task.name}"}
 
     manager.register_handler("copilot", copilot_handler)

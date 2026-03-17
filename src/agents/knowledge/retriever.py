@@ -1,17 +1,35 @@
 """
 Knowledge Base Retrieval
 Standardized RAG tool for QuantMindAgents using PageIndex.
+
+NOTE: LangChain tool decorator removed - pending migration to Anthropic Agent SDK (Epic 7).
 """
 
 import json
 from typing import List, Optional, Dict, Any
-from langchain_core.tools import tool
+
+# LangChain tool decorator removed - using plain functions
+# from langchain_core.tools import tool
+
 from pydantic import BaseModel, Field
 
 from src.agents.knowledge.router import kb_router, PageIndexClient
 
 # Re-export PageIndexClient for external use
 __all__ = ["PageIndexClient", "search_knowledge_base", "search_all_collections", "get_retrieval_tool", "get_all_retrieval_tools"]
+
+
+# =============================================================================
+# Tool Decorator Stub
+# =============================================================================
+
+def tool(name: str, args_schema=None):
+    """Stub decorator for langchain tool - pending Anthropic Agent SDK migration."""
+    def decorator(func):
+        func._name = name
+        func._is_tool = True
+        return func
+    return decorator
 
 
 class SearchInput(BaseModel):

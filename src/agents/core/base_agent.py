@@ -1,23 +1,59 @@
 """
 QuantMind Base Agent
 The foundational class for all autonomous agents in the ecosystem.
-Wraps LangGraph and LangChain to provide a unified, reusable interface.
+
+NOTE: LangChain/LangGraph imports removed for migration to Anthropic Agent SDK.
+This file contains stub implementations pending Epic 7.
 """
 
 import logging
 import asyncio
 from typing import List, Optional, Dict, Any, Union, Callable
 
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
-from langchain_core.tools import tool, BaseTool
-from langgraph.prebuilt import create_react_agent
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.types import Command
+# LangChain imports removed - pending migration to Anthropic Agent SDK (Epic 7)
+# Original imports:
+# from langchain_openai import ChatOpenAI
+# from langchain_anthropic import ChatAnthropic
+# from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+# from langchain_core.tools import tool, BaseTool
+# from langgraph.prebuilt import create_react_agent
+# from langgraph.checkpoint.memory import MemorySaver
+# from langgraph.types import Command
 
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+# Stub types for migration
+class BaseMessage:
+    """Stub for langchain BaseMessage - will be replaced with Anthropic SDK."""
+    def __init__(self, content: str, **kwargs):
+        self.content = content
+
+class HumanMessage(BaseMessage):
+    """Stub for langchain HumanMessage - will be replaced with Anthropic SDK."""
+    def __init__(self, content: str):
+        super().__init__(content)
+
+class SystemMessage(BaseMessage):
+    """Stub for langchain SystemMessage - will be replaced with Anthropic SDK."""
+    def __init__(self, content: str):
+        super().__init__(content)
+
+class BaseTool:
+    """Stub for langchain BaseTool - will be replaced with Anthropic SDK."""
+    def __init__(self, name: str = "", description: str = ""):
+        self.name = name
+        self.description = description
+
+def tool(func):
+    """Stub decorator for langchain tool - will be replaced with Anthropic SDK."""
+    return func
+
+class MemorySaver:
+    """Stub for langgraph MemorySaver - will be replaced with Anthropic SDK."""
+    pass
+
+# Continue with the rest of the file
+
+# from mcp import ClientSession, StdioServerParameters
+# from mcp.client.stdio import stdio_client
 
 from src.agents.skills.base import AgentSkill
 
@@ -25,7 +61,10 @@ logger = logging.getLogger(__name__)
 
 class BaseAgent:
     """
-    A reusable Agent wrapper using LangGraph ReAct pattern with "Deep" features.
+    A reusable Agent wrapper - STUB pending migration to Anthropic Agent SDK (Epic 7).
+
+    This class was previously using LangGraph ReAct pattern with "Deep" features.
+    The actual agent functionality will be re-implemented using Anthropic Agent SDK.
     """
     def __init__(
         self,
@@ -47,75 +86,56 @@ class BaseAgent:
         self.kb_namespace = kb_namespace or name.lower()
         self.skills = skills
         self.checkpointer = MemorySaver()
-        self.mcp_clients: List[ClientSession] = []
-        
-        # 1. Initialize LLM
-        self.llm = self._init_llm(model_name)
-        
-        # 2. Base Tools & System Prompt
-        self.tools: List[Union[BaseTool, Callable]] = []
+        self.mcp_clients: List = []  # Type simplified pending migration
+
+        # LLM initialization - STUB pending Anthropic Agent SDK migration
+        self.llm = None  # Previously: self._init_llm(model_name)
+
+        # Base Tools & System Prompt - STUB
+        self.tools: List = []  # Previously: List[Union[BaseTool, Callable]]
         self.system_prompt = system_prompt or f"You are {name}, {role}.\n"
-        
-        # 3. Add Planning (Deep Characteristic)
+
+        # Planning tools - STUB
         if enable_planning:
             self._add_planning_tool()
-            
-        # 4. Add Sub-agent capability
+
+        # Sub-agent capability - STUB
         if enable_subagents:
             self._add_subagent_tool()
-        
-        # 5. Compile Tools from Skills
+
+        # Compile Tools from Skills - STUB
         for skill in skills:
-            self.tools.extend(skill.get_tools())
+            skill_tools = skill.get_tools()
+            if skill_tools:
+                self.tools.extend(skill_tools)
             if skill.get_system_prompt():
                 self.system_prompt += f"\n\n## Skill: {skill.name}\n{skill.get_system_prompt()}"
 
-        # 6. Add MCP Servers
+        # MCP Servers - STUB
         for mcp_config in mcp_servers:
             # Note: MCP initialization is async, will be handled in a 'startup' method
             pass
 
-        # 7. Add Memory Tools (LangMem)
+        # Memory Tools - STUB
         if enable_long_term_memory:
             self._add_memory_tools()
 
-        # 8. Build Graph
-        self.graph = create_react_agent(
-            model=self.llm,
-            tools=self.tools,
-            prompt=self.system_prompt,
-            checkpointer=self.checkpointer
-        )
-        
+        # Graph - STUB (previously used create_react_agent)
+        self.graph = None  # Pending migration to Anthropic Agent SDK
+
+        logger.warning(f"Agent {name} initialized in STUB mode - migration to Anthropic Agent SDK pending (Epic 7)")
         logger.info(f"Agent {name} initialized with {len(skills)} skills and {len(self.tools)} tools.")
 
     def _init_llm(self, model_name: str):
         """
-        Factory for LLM initialization.
-        Configured for OpenRouter by default.
+        STUB - Previously initialized LLM. Migration pending Epic 7.
         """
-        import os
-        base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-        api_key = os.getenv("OPENROUTER_API_KEY")
-
-        if "claude" in model_name.lower() and "openrouter" not in base_url:
-            return ChatAnthropic(model=model_name)
-        
-        # Default to OpenAI-compatible (OpenRouter)
-        return ChatOpenAI(
-            model=model_name,
-            openai_api_base=base_url,
-            openai_api_key=api_key,
-            default_headers={
-                "HTTP-Referer": "https://quantmindx.com", # Required by OpenRouter
-                "X-Title": "QuantMindX"
-            }
+        raise NotImplementedError(
+            "BaseAgent LLM initialization is pending migration to Anthropic Agent SDK (Epic 7)"
         )
 
     def _add_memory_tools(self):
-        """Injects native memory tools for long-term recall (replaces LangMem)."""
-        # Native implementation - stores memory in checkpointer state
-        @tool
+        """STUB - Memory tools pending migration to Anthropic Agent SDK."""
         def store_memory(memory_type: str, content: str) -> str:
             """
             Store important information in long-term memory.
@@ -140,73 +160,52 @@ class BaseAgent:
         self.system_prompt += "\n\n## Memory Access\nYou have access to long-term memory. Use store_memory to save preferences, user info, and procedural learnings. Use recall_memory to retrieve stored information."
 
     def _add_planning_tool(self):
-        """Adds a No-Op Todo List tool for context engineering (Deep Agent pattern)."""
-        @tool
+        """STUB - Planning tools pending migration to Anthropic Agent SDK."""
         def update_todo_list(todos: List[str]) -> str:
             """
-            Update your internal planning todo list. 
+            Update your internal planning todo list.
             Use this to break down complex tasks and track progress.
             """
-            # In a stateless ReAct loop, this basically just puts the plan in the chat history
             return "Todo list updated. Continue with the next step."
-        
+
         self.tools.append(update_todo_list)
         self.system_prompt += "\n\n## Planning\nYou have a 'todo_list' tool. Use it to decompose complex requests into smaller steps."
 
     def _add_subagent_tool(self):
-        """Adds ability to spawn specialized subtasks."""
-        @tool
+        """STUB - Sub-agent capability pending migration to Anthropic Agent SDK."""
         def delegate_task(agent_type: str, task_description: str) -> str:
             """
             Delegate a specialized sub-task to another agent.
             Supported types: 'researcher', 'coder', 'analyst'.
             """
-            # Implementation of the Command pattern for multi-agent handoff
-            # For V1, this could be a recursive call or a proper Command update
             return f"Delegating task to {agent_type}: {task_description}"
 
         self.tools.append(delegate_task)
 
     async def connect_mcp(self, name: str, command: str, args: List[str] = []):
-        """Connect to an external MCP server and pull its tools."""
-        server_params = StdioServerParameters(command=command, args=args, env=None)
-        # This requires more complex integration with LangGraph's tool runtime
-        # but represents the architectural intent.
-        logger.info(f"Connecting to MCP server: {name}")
+        """STUB - MCP connection pending migration to Anthropic Agent SDK."""
+        logger.info(f"MCP server connection (STUB): {name}")
 
     async def ainvoke(self, message: str, thread_id: str = "1") -> str:
         """
-        Asynchronous chat interface.
+        STUB - Asynchronous chat interface pending migration to Anthropic Agent SDK.
         """
-        config = {"configurable": {"thread_id": thread_id}}
-        inputs = {"messages": [HumanMessage(content=message)]}
-        
-        final_state = await self.graph.ainvoke(inputs, config=config)
-        return final_state["messages"][-1].content
+        raise NotImplementedError(
+            "BaseAgent.ainvoke is pending migration to Anthropic Agent SDK (Epic 7)"
+        )
 
     def invoke(self, message: str, thread_id: str = "1") -> str:
         """
-        Synchronous chat interface.
+        STUB - Synchronous chat interface pending migration to Anthropic Agent SDK.
         """
-        config = {"configurable": {"thread_id": thread_id}}
-        
-        # LangGraph inputs
-        inputs = {"messages": [HumanMessage(content=message)]}
-        
-        # Stream response (simplified to get final message for now)
-        final_state = self.graph.invoke(inputs, config=config)
-        
-        # Extract last AI message
-        return final_state["messages"][-1].content
+        raise NotImplementedError(
+            "BaseAgent.invoke is pending migration to Anthropic Agent SDK (Epic 7)"
+        )
 
     def stream(self, message: str, thread_id: str = "1"):
         """
-        Generator for streaming tokens/steps.
+        STUB - Streaming interface pending migration to Anthropic Agent SDK.
         """
-        config = {"configurable": {"thread_id": thread_id}}
-        inputs = {"messages": [HumanMessage(content=message)]}
-        
-        for event in self.graph.stream(inputs, config=config, stream_mode="values"):
-            message = event["messages"][-1]
-            if isinstance(message, BaseMessage):
-                 yield message.content  # Simplified stream
+        raise NotImplementedError(
+            "BaseAgent.stream is pending migration to Anthropic Agent SDK (Epic 7)"
+        )

@@ -5,15 +5,31 @@ Provides validation and MQL5→Pine Script conversion tools for the Pine Script 
 These tools are exposed to LangGraph and HTTP routes for Pine Script workflow integration.
 
 **Validates: Property 17: Pine Script Agent - Tooling**
+
+NOTE: LangChain tool decorator removed - pending migration to Anthropic Agent SDK (Epic 7).
 """
 
 import re
 import logging
 from typing import Dict, Any, List, Optional
 
-from langchain_core.tools import tool
+# LangChain tool decorator removed - using plain functions
+# from langchain_core.tools import tool
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Tool Decorator Stub
+# =============================================================================
+
+def tool(name: str):
+    """Stub decorator for langchain tool - pending Anthropic Agent SDK migration."""
+    def decorator(func):
+        func._name = name
+        func._is_tool = True
+        return func
+    return decorator
 
 
 # =============================================================================

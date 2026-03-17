@@ -23,6 +23,91 @@ load_dotenv()  # Load .env before any other imports that read env vars
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("quantmind.server")
 
+# =============================================================================
+# NODE_ROLE Configuration (Story 1-3: Backend Deployment Split)
+# =============================================================================
+# Controls which router groups register at startup
+# Accepted values: contabo | cloudzy | local (default: local)
+# - contabo: Agent/compute endpoints only (AI agents, memory, workflows)
+# - cloudzy: Live trading endpoints only (MT5, trading, broker)
+# - local: All endpoints (development mode)
+
+NODE_ROLE = os.getenv("NODE_ROLE", "local").lower()
+
+# Validate NODE_ROLE
+VALID_ROLES = {"contabo", "cloudzy", "local"}
+if NODE_ROLE not in VALID_ROLES:
+    logger.warning(
+        f"Invalid NODE_ROLE '{NODE_ROLE}'. "
+        f"Valid values are: {', '.join(VALID_ROLES)}. "
+        f"Defaulting to 'local' mode."
+    )
+    NODE_ROLE = "local"
+
+logger.info(f"NODE_ROLE set to: {NODE_ROLE}")
+
+# =============================================================================
+# Router Classification by Node
+# =============================================================================
+# Cloudzy routers (live trading): MT5, trading, broker, kill switch
+# Contabo routers (agent/compute): agents, memory, workflows, settings
+# Both/Local: health, version, metrics
+
+CLOUDZY_ROUTERS = {
+    "kill_switch_router",      # Trading kill switch
+    "trading_router",          # Trade execution
+    "broker_router",           # Broker connection
+    "paper_trading_router",    # Paper trading
+    "tradingview_router",      # TradingView charts
+    "lifecycle_scanner_router", # Lifecycle monitoring
+}
+
+CONTABO_ROUTERS = {
+    "settings_router",          # Configuration
+    "provider_config_router",   # AI providers
+    "agent_management_router", # Agent management
+    "agent_activity_router",   # Agent activity
+    "agent_metrics_router",     # Agent metrics
+    "agent_queue_router",      # Agent queue
+    "agent_session_router",    # Agent sessions
+    "checkpoint_router",        # Session checkpoints
+    "memory_router",           # Memory endpoints
+    "memory_dept_router",      # Memory department
+    "memory_unified_router",   # Unified memory
+    "graph_memory_router",     # Graph memory
+    "floor_manager_router",    # Copilot
+    "workshop_copilot_router",# Workshop copilot
+    "workflow_router",         # Alpha Forge
+    "hmm_router",              # Risk sensors
+    "hmm_inference_router",    # HMM inference
+    "knowledge_router",        # Knowledge endpoints
+    "video_to_ea_router",     # Video to EA
+    "video_ingest_ide_router",# Video ingest IDE
+    "batch_router",            # Batch processing
+    "evaluation_router",       # Evaluation
+    "trading_floor_router",   # Trading floor
+    "claude_agent_router",     # Claude agent
+    "tool_call_router",        # Tool calls
+    "model_router",            # Model config
+}
+
+BOTH_ROUTERS = {
+    "health_router",           # Health checks (always needed)
+    "version_router",          # Version info (always needed)
+    "metrics_router",          # Metrics (always needed)
+}
+
+# Set to track which routers to include
+INCLUDE_CLOUDZY = NODE_ROLE in ("cloudzy", "local")
+INCLUDE_CONTABO = NODE_ROLE in ("contabo", "local")
+
+logger.info(f"Including Cloudzy routers: {INCLUDE_CLOUDZY}")
+logger.info(f"Including Contabo routers: {INCLUDE_CONTABO}")
+
+# =============================================================================
+# End Router Configuration
+# =============================================================================
+
 # Set up JSON file logging for Promtail to scrape
 try:
     from src.monitoring.json_logging import configure_api_logging, configure_router_logging
@@ -186,62 +271,131 @@ async def prometheus_middleware(request: Request, call_next):
     return response
 
 
-# Include additional routers (note: chat_router and knowledge_router already included in create_ide_api_app)
-app.include_router(settings_router)
-app.include_router(trd_router)
-app.include_router(router_router)
-app.include_router(journal_router)
-app.include_router(session_router)
-if paper_trading_router:
-    app.include_router(paper_trading_router)
-app.include_router(mcp_router)
-app.include_router(agent_queue_router)
-app.include_router(workflow_router)
-app.include_router(approval_gate_router)
-app.include_router(kill_switch_router)
-app.include_router(hmm_router)
-app.include_router(tradingview_router)
-app.include_router(github_router)
-app.include_router(metrics_router)
-app.include_router(agent_metrics_router)
-app.include_router(health_router)
-app.include_router(broker_router)
-app.include_router(lifecycle_scanner_router)
-app.include_router(agent_management_router)
-app.include_router(agent_activity_router)
-app.include_router(version_router)
-app.include_router(demo_mode_router)
-app.include_router(claude_agent_router)
-app.include_router(agent_tools_router)
-app.include_router(model_router)
-app.include_router(provider_config_router)
-app.include_router(memory_router)
-app.include_router(memory_dept_router)
-app.include_router(memory_unified_router)
-app.include_router(graph_memory_router)
-app.include_router(agent_session_router)
-app.include_router(checkpoint_router)
-app.include_router(trading_floor_router)
-app.include_router(floor_manager_router)
-app.include_router(workshop_copilot_router)
-app.include_router(video_to_ea_router)
-app.include_router(batch_router)
-app.include_router(evaluation_router)
-app.include_router(files_router)
-app.include_router(mt5_router)
-app.include_router(tool_call_router)
-app.include_router(assets_router)
-app.include_router(ea_ide_router)
-app.include_router(strategies_router)
-app.include_router(timeframes_router)
-app.include_router(video_ingest_ide_router)
-app.include_router(chat_ide_router)
-app.include_router(backtest_router)
-app.include_router(pdf_router)
+# =============================================================================
+# Router Registration (Conditional on NODE_ROLE)
+# =============================================================================
+# Routers are registered based on NODE_ROLE setting:
+# - cloudzy: Live trading routers only
+# - contabo: Agent/compute routers only
+# - local: All routers (development mode)
+# =============================================================================
+
+logger.info(f"Registering routers for NODE_ROLE={NODE_ROLE}...")
+
+# ---------------------------------------------------------------------------
+# Routers that work on BOTH nodes (or always included in local mode)
+# ---------------------------------------------------------------------------
+# Always include health, version, metrics (BOTH routers)
+if INCLUDE_CLOUDZY or INCLUDE_CONTABO:
+    app.include_router(health_router)    # Health checks
+    app.include_router(version_router)    # Version info
+    app.include_router(metrics_router)   # Metrics
+
+# ---------------------------------------------------------------------------
+# IDE Core Routers (needed on both for development)
+# ---------------------------------------------------------------------------
+# Files, assets, strategies, timeframes - needed for IDE to function
+if INCLUDE_CONTABO:  # Contabo runs the IDE
+    app.include_router(files_router)
+    app.include_router(assets_router)
+    app.include_router(strategies_router)
+    app.include_router(timeframes_router)
+
+# ---------------------------------------------------------------------------
+# Cloudzy Routers (Live Trading)
+# ---------------------------------------------------------------------------
+if INCLUDE_CLOUDZY:
+    app.include_router(kill_switch_router)       # Trading kill switch
+    app.include_router(trading_router)           # Trade execution
+    app.include_router(broker_router)            # Broker connection
+    if paper_trading_router:
+        app.include_router(paper_trading_router) # Paper trading
+    app.include_router(tradingview_router)       # TradingView charts
+    app.include_router(lifecycle_scanner_router) # Lifecycle monitoring
+    logger.info("Registered Cloudzy routers: trading, broker, kill_switch, paper_trading, tradingview")
+
+# ---------------------------------------------------------------------------
+# Contabo Routers (Agent/Compute)
+# ---------------------------------------------------------------------------
+if INCLUDE_CONTABO:
+    # Settings & Configuration
+    app.include_router(settings_router)
+    app.include_router(provider_config_router)
+    app.include_router(model_router)
+
+    # Agent Management
+    app.include_router(agent_management_router)
+    app.include_router(agent_activity_router)
+    app.include_router(agent_metrics_router)
+    app.include_router(agent_queue_router)
+    app.include_router(agent_session_router)
+    app.include_router(agent_tools_router)
+
+    # Memory & Checkpoints
+    app.include_router(memory_router)
+    app.include_router(memory_dept_router)
+    app.include_router(memory_unified_router)
+    app.include_router(graph_memory_router)
+    app.include_router(checkpoint_router)
+
+    # Floor Manager & Workflows
+    app.include_router(floor_manager_router)
+    app.include_router(workshop_copilot_router)
+    app.include_router(workflow_router)
+
+    # Risk & HMM
+    app.include_router(hmm_router)
+    app.include_router(hmm_inference_router)
+
+    # Knowledge & Research
+    app.include_router(knowledge_router)
+
+    # Video & Processing
+    app.include_router(video_to_ea_router)
+    app.include_router(video_ingest_ide_router)
+    app.include_router(batch_router)
+    app.include_router(evaluation_router)
+
+    # Trading Floor
+    app.include_router(trading_floor_router)
+
+    # Claude Agent
+    app.include_router(claude_agent_router)
+    app.include_router(tool_call_router)
+
+    # IDE-specific
+    app.include_router(chat_ide_router)
+    app.include_router(backtest_router)
+
+    logger.info("Registered Contabo routers: agents, memory, workflows, settings, knowledge")
+
+# ---------------------------------------------------------------------------
+# Routers that work on EITHER node (not specific to trading or agents)
+# ---------------------------------------------------------------------------
+# These are needed for general operation
+app.include_router(trd_router)        # Trading Requirements Doc
+app.include_router(router_router)     # Router endpoints
+app.include_router(journal_router)    # Journal
+app.include_router(session_router)     # Sessions
+app.include_router(mcp_router)         # MCP endpoints
+app.include_router(approval_gate_router) # Approval gate
+app.include_router(github_router)      # GitHub sync
+app.include_router(demo_mode_router)   # Demo mode
+
+# IDE-specific (non-agent)
+app.include_router(mt5_router)         # MT5 IDE
+app.include_router(ea_ide_router)      # EA IDE
+
 if department_mail_router:
     app.include_router(department_mail_router)
-app.include_router(trading_router)
-app.include_router(hmm_inference_router)
+
+app.include_router(pdf_router)
+
+logger.info(f"Router registration complete for NODE_ROLE={NODE_ROLE}")
+
+# =============================================================================
+# End Router Registration
+# =============================================================================
 
 # Standardized error handlers
 from fastapi import HTTPException, Query

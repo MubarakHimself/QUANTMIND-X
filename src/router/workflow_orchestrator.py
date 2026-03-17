@@ -998,21 +998,21 @@ class WorkflowOrchestrator:
     ) -> Dict[str, Any]:
         """Run Analyst agent to analyze VideoIngest content and generate TRD."""
         logger.info(f"Running Analyst for workflow {workflow.workflow_id}")
-        
+
         video_ingest_data = workflow.metadata.get("video_ingest_data", {})
-        
+
         try:
             # Import and compile the analyst graph
             from src.agents.analyst_v2 import compile_analyst_graph
-            from langchain_core.messages import HumanMessage
-            
+            # from langchain_core.messages import HumanMessage  # Removed - use dict
+
             # Prepare VideoIngest content for the analyst
             video_ingest_content = json.dumps(video_ingest_data, indent=2)
-            
-            # Compile and invoke the analyst graph
+
+            # Compile and invoke the analyst graph (use dict instead of HumanMessage)
             analyst_graph = compile_analyst_graph()
             result = analyst_graph.invoke({
-                "messages": [HumanMessage(content=f"Analyze this VideoIngest and generate a Trading Requirements Document:\n\n{video_ingest_content}")]
+                "messages": [{"role": "user", "content": f"Analyze this VideoIngest and generate a Trading Requirements Document:\n\n{video_ingest_content}"}]
             })
             
             # Extract TRD from result
@@ -1116,16 +1116,16 @@ class WorkflowOrchestrator:
         
         if not trd_content:
             raise ValueError("No TRD content available for QuantCode")
-        
+
         try:
             # Import and compile the quantcode graph
             from src.agents.quantcode_v2 import compile_quantcode_graph
-            from langchain_core.messages import HumanMessage
-            
-            # Compile and invoke the quantcode graph
+            # from langchain_core.messages import HumanMessage  # Removed - use dict
+
+            # Compile and invoke the quantcode graph (use dict instead of HumanMessage)
             quantcode_graph = compile_quantcode_graph()
             result = quantcode_graph.invoke({
-                "messages": [HumanMessage(content=f"Generate MQL5 Expert Advisor code from this TRD:\n\n{trd_content}")]
+                "messages": [{"role": "user", "content": f"Generate MQL5 Expert Advisor code from this TRD:\n\n{trd_content}"}]
             })
             
             # Extract code from result

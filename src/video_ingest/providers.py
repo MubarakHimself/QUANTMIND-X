@@ -932,89 +932,23 @@ class OpenRouterProvider(ModelProvider):
     
     def _call_openrouter_api(self, frames: List[Path], audio: Path, prompt: str) -> TimelineOutput:
         """
-        Call OpenRouter API using LangChain ChatOpenAI integration.
-        
+        Call OpenRouter API using direct HTTP requests.
+
+        NOTE: LangChain integration removed - using direct API calls instead.
+        Previously used langchain_openai.ChatOpenAI and langchain_core.messages.
+
         Args:
             frames: List of frame paths
             audio: Audio file path
             prompt: Analysis prompt
-            
+
         Returns:
             TimelineOutput object
         """
-        try:
-            from langchain_openai import ChatOpenAI
-            from langchain_core.messages import HumanMessage, SystemMessage
-        except ImportError:
-            # Fallback to direct API call if langchain not available
-            return self._call_openrouter_api_direct(frames, audio, prompt)
-        
-        import base64
-        
-        # Initialize ChatOpenAI with OpenRouter base URL
-        llm = ChatOpenAI(
-            base_url=self.base_url,
-            api_key=self.api_key,
-            model=self.model,
-            temperature=0.1,  # Low temperature for objective extraction
-            timeout=300,  # 5 minute timeout
-        )
-        
-        # Prepare multimodal content
-        content = [{"type": "text", "text": prompt}]
-        
-        # Add frames as images
-        for i, frame in enumerate(frames):
-            with open(frame, 'rb') as f:
-                image_data = base64.b64encode(f.read()).decode('utf-8')
-            
-            content.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{image_data}"
-                }
-            })
-        
-        # Check if model supports audio and add audio content
-        model_info = self.SUPPORTED_MODELS.get(self.model, {})
-        if model_info.get("audio", False) and audio.exists():
-            # For models that support audio (e.g., Gemini)
-            with open(audio, 'rb') as f:
-                audio_data = base64.b64encode(f.read()).decode('utf-8')
-            
-            # Note: Audio format depends on model - some use different formats
-            content.append({
-                "type": "audio_url",
-                "audio_url": {
-                    "url": f"data:audio/mp3;base64,{audio_data}"
-                }
-            })
-        
-        # Create messages
-        messages = [
-            SystemMessage(content="You are a video analysis assistant that extracts verbatim transcripts and objective visual descriptions."),
-            HumanMessage(content=content)
-        ]
-        
-        # Call API
-        response = llm.invoke(messages)
-        
-        # Parse response
-        response_content = response.content
-        
-        # Parse content into timeline clips
-        clips = self._parse_openrouter_response(response_content, frames)
-        
-        # Create TimelineOutput
-        return TimelineOutput(
-            video_url="unknown",
-            title="OpenRouter Analysis",
-            duration_seconds=len(frames) * 30,  # Estimate from frame count
-            processed_at=datetime.now().isoformat(),
-            model_provider="openrouter",
-            timeline=clips
-        )
-    
+        # Use direct API call instead of LangChain
+        return self._call_openrouter_api_direct(frames, audio, prompt)
+
+
     def _call_openrouter_api_direct(self, frames: List[Path], audio: Path, prompt: str) -> TimelineOutput:
         """
         Call OpenRouter API directly without LangChain.
