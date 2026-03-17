@@ -1,8 +1,12 @@
 <script lang="ts">
   import { X } from "lucide-svelte";
 
-  export let open = false;
-  export let jsonData: any = null;
+  interface Props {
+    open?: boolean;
+    jsonData?: any;
+  }
+
+  let { open = $bindable(false), jsonData = null }: Props = $props();
 
   function close() {
     open = false;
@@ -24,8 +28,8 @@
 {#if open}
   <div
     class="modal-overlay"
-    on:click={handleOverlayClick}
-    on:keydown={handleKeyDown}
+    onclick={handleOverlayClick}
+    onkeydown={handleKeyDown}
     role="button"
     tabindex="0"
   >
@@ -35,7 +39,7 @@
           <h3>JSON Preview</h3>
           <p class="modal-subtitle">View complex data structure</p>
         </div>
-        <button class="icon-btn" on:click={close}>
+        <button class="icon-btn" onclick={close}>
           <X size={18} />
         </button>
       </div>

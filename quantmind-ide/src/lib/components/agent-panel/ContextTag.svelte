@@ -3,8 +3,10 @@
   import { fade, scale } from 'svelte/transition';
   import { X, FileText, TrendingUp, Link, Activity, Check, AlertCircle, Clock } from 'lucide-svelte';
   
-  // Props
-  export let item: {
+  
+  interface Props {
+    // Props
+    item: {
     id: string;
     name: string;
     type: 'file' | 'strategy' | 'broker' | 'backtest';
@@ -12,12 +14,15 @@
     status?: string;
     size?: number;
   };
+  }
+
+  let { item }: Props = $props();
   
   const dispatch = createEventDispatcher();
   
   // State
-  let isHovered = false;
-  let showTooltip = false;
+  let isHovered = $state(false);
+  let showTooltip = $state(false);
   
   // Icon mapping
   const iconMap: Record<string, any> = {
@@ -27,14 +32,8 @@
     backtest: Activity
   };
   
-  // Get the icon component
-  $: IconComponent = iconMap[item.type] || FileText;
   
-  // Get status icon
-  $: statusIcon = getStatusIcon(item.status);
   
-  // Get status color
-  $: statusColor = getStatusColor(item.status);
   
   function getStatusIcon(status?: string): any {
     switch (status) {
@@ -100,20 +99,26 @@
     const baseName = name.slice(0, maxLength - (ext?.length || 0) - 4);
     return `${baseName}...${ext ? '.' + ext : ''}`;
   }
+  // Get the icon component
+  let IconComponent = $derived(iconMap[item.type] || FileText);
+  // Get status icon
+  let statusIcon = $derived(getStatusIcon(item.status));
+  // Get status color
+  let statusColor = $derived(getStatusColor(item.status));
 </script>
 
-<!-- svelte-ignore a11y-no-static-element-interactions -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div 
   class="context-tag {item.type}"
-  on:mouseenter={() => { isHovered = true; showTooltip = true; }}
-  on:mouseleave={() => { isHovered = false; showTooltip = false; }}
+  onmouseenter={() => { isHovered = true; showTooltip = true; }}
+  onmouseleave={() => { isHovered = false; showTooltip = false; }}
   transition:scale={{ duration: 150 }}
   role="listitem"
   aria-label="{getTypeLabel(item.type)}: {item.name}"
 >
   <!-- Icon -->
   <div class="tag-icon">
-    <svelte:component this={IconComponent} size={12} />
+    <IconComponent size={12} />
   </div>
   
   <!-- Name -->
@@ -123,8 +128,8 @@
   
   <!-- Status indicator -->
   {#if item.status && statusIcon}
-    <svelte:component 
-      this={statusIcon} 
+    {@const SvelteComponent = statusIcon}
+    <SvelteComponent 
       size={10} 
       class="status-icon"
       style="color: {statusColor}"
@@ -135,7 +140,7 @@
   {#if isHovered}
     <button 
       class="remove-btn" 
-      on:click={handleRemove}
+      onclick={handleRemove}
       transition:fade={{ duration: 100 }}
       title="Remove"
       aria-label="Remove {item.name}"
@@ -148,7 +153,7 @@
   {#if showTooltip}
     <div class="tooltip" transition:fade={{ duration: 100 }}>
       <div class="tooltip-header">
-        <svelte:component this={IconComponent} size={14} />
+        <IconComponent size={14} />
         <span class="tooltip-name">{item.name}</span>
       </div>
       <div class="tooltip-details">

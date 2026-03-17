@@ -4,24 +4,33 @@
 
   const dispatch = createEventDispatcher();
 
-  export let plans: Array<{
+
+  interface Props {
+    plans?: Array<{
     id: string;
     name: string;
     filename: string;
     path: string;
     modified: string;
     size: number;
-  }> = [];
+  }>;
+    selectedPlan?: string | null;
+    planContent?: string;
+    loading?: boolean;
+  }
 
-  export let selectedPlan: string | null = null;
-  export let planContent: string = '';
-  export let loading = false;
+  let {
+    plans = [],
+    selectedPlan = null,
+    planContent = '',
+    loading = false
+  }: Props = $props();
 
-  let searchQuery = '';
+  let searchQuery = $state('');
 
-  $: filteredPlans = searchQuery
+  let filteredPlans = $derived(searchQuery
     ? plans.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : plans;
+    : plans);
 
   function selectPlan(plan: typeof plans[0]) {
     dispatch('select', plan);
@@ -55,7 +64,7 @@
   <div class="plans-sidebar">
     <div class="sidebar-header">
       <h3>Implementation Plans</h3>
-      <button class="close-btn" on:click={closeViewer}>
+      <button class="close-btn" onclick={closeViewer}>
         <X size={18} />
       </button>
     </div>
@@ -79,7 +88,7 @@
           <button
             class="plan-item"
             class:selected={selectedPlan === plan.id}
-            on:click={() => selectPlan(plan)}
+            onclick={() => selectPlan(plan)}
           >
             <FileText size={16} />
             <div class="plan-info">

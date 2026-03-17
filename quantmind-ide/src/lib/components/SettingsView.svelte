@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { run, createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { createEventDispatcher } from 'svelte';
   import { onMount, onDestroy } from 'svelte';
   import {
@@ -26,11 +29,11 @@
 
   // Settings tabs
   type SettingsTab = 'general' | 'api-keys' | 'providers' | 'mcp-servers' | 'agents' | 'models' | 'risk' | 'database' | 'connection' | 'security';
-  let activeTab: SettingsTab = 'general';
-  let settingsVisible = false;
+  let activeTab: SettingsTab = $state('general');
+  let settingsVisible = $state(false);
 
   // General settings
-  let generalSettings = {
+  let generalSettings = $state({
     theme: 'dark' as 'light' | 'dark' | 'auto',
     language: 'en',
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -38,7 +41,7 @@
     autoSaveInterval: 30,
     debugMode: false,
     logLevel: 'info' as 'debug' | 'info' | 'warn' | 'error'
-  };
+  });
 
   // API Keys
   let apiKeys: Array<{
@@ -48,14 +51,14 @@
     service: string;
     created: string;
     lastUsed?: string;
-  }> = [];
+  }> = $state([]);
 
-  let apiKeyModal = false;
-  let newApiKey = {
+  let apiKeyModal = $state(false);
+  let newApiKey = $state({
     name: '',
     key: '',
     service: 'openai'
-  };
+  });
 
   // MCP Servers
   let mcpServers: Array<{
@@ -66,7 +69,7 @@
     status: 'running' | 'stopped' | 'error';
     type: 'builtin' | 'custom';
     description?: string;
-  }> = [
+  }> = $state([
     {
       id: 'context7',
       name: 'Context7 MCP',
@@ -121,15 +124,15 @@
       type: 'builtin',
       description: 'Browser automation and testing'
     }
-  ];
+  ]);
 
-  let mcpModalOpen = false;
-  let newMcpServer = {
+  let mcpModalOpen = $state(false);
+  let newMcpServer = $state({
     name: '',
     command: '',
     args: '',
     description: ''
-  };
+  });
 
   // Agent settings
   let agentConfigs: Record<string, {
@@ -142,7 +145,7 @@
     systemPrompt: string;
     skills: Array<{ id: string; name: string; description: string; enabled: boolean }>;
     tools: string[];
-  }> = {
+  }> = $state({
     copilot: {
       name: 'copilot',
       role: 'Trading Assistant & Workflow Guide',
@@ -176,15 +179,15 @@
       skills: [],
       tools: []
     }
-  };
+  });
 
-  let selectedAgent = 'copilot';
-  let showRawEditor = true;
+  let selectedAgent = $state('copilot');
+  let showRawEditor = $state(true);
 
   // AGENTS.md content
-  let agentsMdContent = '';
-  let agentsMdLoading = false;
-  let agentsMdSaved = false;
+  let agentsMdContent = $state('');
+  let agentsMdLoading = $state(false);
+  let agentsMdSaved = $state(false);
 
   // Providers
   let providers: Array<{
@@ -192,10 +195,10 @@
     name: string;
     base_url: string;
     api_key?: string;
-  }> = [];
+  }> = $state([]);
 
   // Risk Management settings
-  let riskSettings = {
+  let riskSettings = $state({
     houseMoneyEnabled: true,
     houseMoneyThreshold: 0.5,
     dailyLossLimit: 5,
@@ -209,7 +212,7 @@
       guardian: Infinity
     },
     maxRiskPerTrade: 0.05
-  };
+  });
 
   // Router settings
   let routerSettings = {
@@ -219,7 +222,7 @@
   };
 
   // Database settings
-  let dbSettings = {
+  let dbSettings = $state({
     connectionType: 'sqlite',
     databaseUrl: '',
     sqlitePath: './data/quantmind.db',
@@ -227,22 +230,22 @@
     autoBackup: true,
     backupInterval: 3600,
     maxBackups: 10
-  };
+  });
 
   // Connection settings
-  let connectionSettings = {
+  let connectionSettings = $state({
     redisUrl: 'redis://localhost:6379',
     zmqEndpoint: 'tcp://localhost:5555',
     mt5Login: '',
     mt5Password: '',
     mt5Server: ''
-  };
+  });
 
   // Security settings
-  let securitySettings = {
+  let securitySettings = $state({
     secretKeyConfigured: false,
     secretKeyPrefix: ''
-  };
+  });
 
   // Model config
   type ModelProvider = 'anthropic' | 'zhipu' | 'minimax' | 'openai' | 'deepseek' | 'openrouter';
@@ -254,7 +257,7 @@
     deepseek: 'https://api.deepseek.com/v1',
     openrouter: 'https://openrouter.ai/api/v1'
   };
-  let modelConfig = {
+  let modelConfig = $state({
     provider: 'anthropic' as ModelProvider,
     baseUrl: '',
     apiKey: '',
@@ -263,7 +266,7 @@
     showApiKey: false,
     isSaving: false,
     isLoading: false
-  };
+  });
 
   // Handlers for API Keys
   async function addApiKey() {
@@ -687,17 +690,23 @@
   }
 
   // Reactive statements
-  $: if (generalSettings.theme && settingsVisible) {
-    applyTheme();
-  }
+  run(() => {
+    if (generalSettings.theme && settingsVisible) {
+      applyTheme();
+    }
+  });
 
-  $: if (generalSettings.language && settingsVisible) {
-    applyLanguage();
-  }
+  run(() => {
+    if (generalSettings.language && settingsVisible) {
+      applyLanguage();
+    }
+  });
 
-  $: if (generalSettings.timezone && settingsVisible) {
-    localStorage.setItem('timezone', generalSettings.timezone);
-  }
+  run(() => {
+    if (generalSettings.timezone && settingsVisible) {
+      localStorage.setItem('timezone', generalSettings.timezone);
+    }
+  });
 
   // Global Escape key handler
   let handleGlobalEscape: ((e: KeyboardEvent) => void) | null = null;
@@ -719,8 +728,8 @@
   });
 </script>
 
-<div class="settings-overlay" class:visible={settingsVisible} on:click={() => hide()}>
-  <div class="settings-panel" on:click|stopPropagation on:keydown={handleKeydown} tabindex="0" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+<div class="settings-overlay" class:visible={settingsVisible} onclick={() => hide()}>
+  <div class="settings-panel" onclick={stopPropagation(bubble('click'))} onkeydown={handleKeydown} tabindex="0" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <!-- Header -->
     <div class="settings-header">
       <div class="header-left">
@@ -731,16 +740,16 @@
         </div>
       </div>
       <div class="header-actions">
-        <button class="icon-btn" on:click={exportSettings} title="Export Settings">
+        <button class="icon-btn" onclick={exportSettings} title="Export Settings">
           <Download size={18} />
         </button>
-        <button class="icon-btn" on:click={loadSettings} title="Refresh">
+        <button class="icon-btn" onclick={loadSettings} title="Refresh">
           <RefreshCw size={18} />
         </button>
-        <button class="icon-btn primary" on:click={saveSettings} title="Save Settings">
+        <button class="icon-btn primary" onclick={saveSettings} title="Save Settings">
           <Save size={18} />
         </button>
-        <button class="icon-btn" on:click={hide} title="Close">
+        <button class="icon-btn" onclick={hide} title="Close">
           <X size={18} />
         </button>
       </div>
@@ -752,7 +761,7 @@
         <button
           class="tab"
           class:active={activeTab === 'general'}
-          on:click={() => activeTab = 'general'}
+          onclick={() => activeTab = 'general'}
         >
           <Sliders size={16} />
           <span>General</span>
@@ -760,7 +769,7 @@
         <button
           class="tab"
           class:active={activeTab === 'api-keys'}
-          on:click={() => activeTab = 'api-keys'}
+          onclick={() => activeTab = 'api-keys'}
         >
           <Key size={16} />
           <span>API Keys</span>
@@ -771,7 +780,7 @@
         <button
           class="tab"
           class:active={activeTab === 'providers'}
-          on:click={() => activeTab = 'providers'}
+          onclick={() => activeTab = 'providers'}
         >
           <Key size={16} />
           <span>Providers</span>
@@ -779,7 +788,7 @@
         <button
           class="tab"
           class:active={activeTab === 'mcp-servers'}
-          on:click={() => activeTab = 'mcp-servers'}
+          onclick={() => activeTab = 'mcp-servers'}
         >
           <Server size={16} />
           <span>MCP Servers</span>
@@ -790,7 +799,7 @@
         <button
           class="tab"
           class:active={activeTab === 'agents'}
-          on:click={() => activeTab = 'agents'}
+          onclick={() => activeTab = 'agents'}
         >
           <Bot size={16} />
           <span>Agents</span>
@@ -798,7 +807,7 @@
         <button
           class="tab"
           class:active={activeTab === 'models'}
-          on:click={() => activeTab = 'models'}
+          onclick={() => activeTab = 'models'}
         >
           <ModelIcon size={16} />
           <span>Models</span>
@@ -806,7 +815,7 @@
         <button
           class="tab"
           class:active={activeTab === 'risk'}
-          on:click={() => activeTab = 'risk'}
+          onclick={() => activeTab = 'risk'}
         >
           <Shield size={16} />
           <span>Risk</span>
@@ -814,7 +823,7 @@
         <button
           class="tab"
           class:active={activeTab === 'database'}
-          on:click={() => activeTab = 'database'}
+          onclick={() => activeTab = 'database'}
         >
           <Database size={16} />
           <span>Database</span>
@@ -822,7 +831,7 @@
         <button
           class="tab"
           class:active={activeTab === 'connection'}
-          on:click={() => activeTab = 'connection'}
+          onclick={() => activeTab = 'connection'}
         >
           <Server size={16} />
           <span>Connection</span>
@@ -830,7 +839,7 @@
         <button
           class="tab"
           class:active={activeTab === 'security'}
-          on:click={() => activeTab = 'security'}
+          onclick={() => activeTab = 'security'}
         >
           <Lock size={16} />
           <span>Security</span>
@@ -901,7 +910,7 @@
             <div class="panel-header">
               <h3>Model Configuration</h3>
               <div class="header-actions">
-                <button class="icon-btn" on:click={loadModelConfig} title="Refresh">
+                <button class="icon-btn" onclick={loadModelConfig} title="Refresh">
                   <RefreshCw size={16} />
                 </button>
               </div>
@@ -914,7 +923,7 @@
 
             <div class="setting-group">
               <label>Provider</label>
-              <select bind:value={modelConfig.provider} on:change={handleProviderChange}>
+              <select bind:value={modelConfig.provider} onchange={handleProviderChange}>
                 <option value="anthropic">Anthropic (Claude)</option>
                 <option value="zhipu">Zhipu (GLM)</option>
                 <option value="minimax">MiniMax</option>
@@ -947,7 +956,7 @@
                   <button
                     class="icon-btn"
                     type="button"
-                    on:click={() => modelConfig.showApiKey = !modelConfig.showApiKey}
+                    onclick={() => modelConfig.showApiKey = !modelConfig.showApiKey}
                   >
                     {#if modelConfig.showApiKey}
                       <EyeOff size={14} />
@@ -982,7 +991,7 @@
             </div>
 
             <div class="form-actions">
-              <button class="btn primary" on:click={saveModelConfig} disabled={modelConfig.isSaving}>
+              <button class="btn primary" onclick={saveModelConfig} disabled={modelConfig.isSaving}>
                 {#if modelConfig.isSaving}
                   <RefreshCw size={14} class="spinning" />
                   Saving...

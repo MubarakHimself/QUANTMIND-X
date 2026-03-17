@@ -33,7 +33,11 @@
     type DelegatedTask,
   } from "$lib/stores/departmentChatStore";
 
-  export let isCopilot: boolean = false;
+  interface Props {
+    isCopilot?: boolean;
+  }
+
+  let { isCopilot = false }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -41,10 +45,10 @@
   const API_BASE = "http://localhost:8000/api";
 
   // Chat history sidebar state
-  let showChatHistory = false;
-  let sessions: ChatSession[] = [];
-  let currentSessionId: string | null = null;
-  let chatHistoryLoading = false;
+  let showChatHistory = $state(false);
+  let sessions: ChatSession[] = $state([]);
+  let currentSessionId: string | null = $state(null);
+  let chatHistoryLoading = $state(false);
 
   // Chat history grouped by time
   interface GroupedSessions {
@@ -55,28 +59,28 @@
     older: ChatSession[];
   }
 
-  let groupedSessions: GroupedSessions = {
+  let groupedSessions: GroupedSessions = $state({
     today: [],
     yesterday: [],
     last7Days: [],
     last30Days: [],
     older: [],
-  };
+  });
 
   // Floor Manager state
-  let message = "";
-  let textareaElement: HTMLTextAreaElement;
-  let messagesContainer: HTMLDivElement;
+  let message = $state("");
+  let textareaElement: HTMLTextAreaElement = $state();
+  let messagesContainer: HTMLDivElement = $state();
   let settingsOpen = false;
 
   // Mail compose state
-  let showMailCompose = false;
-  let mailTo: DepartmentId = "development";
-  let mailSubject = "";
-  let mailBody = "";
-  let mailPriority: "low" | "normal" | "high" | "urgent" = "normal";
-  let mailType: "status" | "question" | "result" | "error" | "dispatch" = "dispatch";
-  let sendingMail = false;
+  let showMailCompose = $state(false);
+  let mailTo: DepartmentId = $state("development");
+  let mailSubject = $state("");
+  let mailBody = $state("");
+  let mailPriority: "low" | "normal" | "high" | "urgent" = $state("normal");
+  let mailType: "status" | "question" | "result" | "error" | "dispatch" = $state("dispatch");
+  let sendingMail = $state(false);
 
   // Messages with Floor Manager
   interface FloorManagerMessage {
@@ -95,27 +99,27 @@
   const copilotGreeting = "Hello! I'm QuantMind Copilot, your AI trading assistant. I can help with market analysis, strategy questions, or delegate tasks to the Floor Manager for trading operations. How can I assist you?";
   const floorManagerGreeting = "Hello! I'm the Floor Manager. I coordinate tasks across all departments - Analysis, Research, Risk, Execution, and Portfolio. I can delegate tasks, check status, or answer questions about the trading floor. How can I help?";
 
-  $: greeting = isCopilot ? copilotGreeting : floorManagerGreeting;
-  $: agentName = isCopilot ? "QuantMind Copilot" : "Floor Manager";
-  $: placeholderText = isCopilot ? "Ask QuantMind Copilot..." : "Ask the Floor Manager...";
-  $: apiEndpoint = isCopilot
+  let greeting = $derived(isCopilot ? copilotGreeting : floorManagerGreeting);
+  let agentName = $derived(isCopilot ? "QuantMind Copilot" : "Floor Manager");
+  let placeholderText = $derived(isCopilot ? "Ask QuantMind Copilot..." : "Ask the Floor Manager...");
+  let apiEndpoint = $derived(isCopilot
     ? `${API_BASE}/chat/workshop/message`
-    : `${API_BASE}/chat/floor-manager/message`;
-  $: messages = [
+    : `${API_BASE}/chat/floor-manager/message`);
+  let messages = $derived([
     {
       id: "fm_welcome",
       role: isCopilot ? "copilot" : "floor_manager",
       content: greeting,
       timestamp: new Date(),
     },
-  ];
+  ]);
 
   // Department info for display
   const departmentList = Object.values(DEPARTMENTS);
 
   // Subscribed values
-  $: activeTasks = $activeDelegatedTasks;
-  $: isLoading = $departmentChatStore.isLoading;
+  let activeTasks = $derived($activeDelegatedTasks);
+  let isLoading = $derived($departmentChatStore.isLoading);
 
   // Group sessions by time
   function groupSessionsByTime(sessionList: ChatSession[]): GroupedSessions {
@@ -566,16 +570,16 @@
     </div>
 
     <div class="header-actions">
-      <button class="icon-btn mail-btn" title="Send Mail to Department" on:click={() => showMailCompose = !showMailCompose}>
+      <button class="icon-btn mail-btn" title="Send Mail to Department" onclick={() => showMailCompose = !showMailCompose}>
         <MailPlus size={14} />
       </button>
-      <button class="icon-btn" title="Chat History" on:click={toggleChatHistory}>
+      <button class="icon-btn" title="Chat History" onclick={toggleChatHistory}>
         <History size={14} />
       </button>
-      <button class="icon-btn" title="New Chat" on:click={createNewChat}>
+      <button class="icon-btn" title="New Chat" onclick={createNewChat}>
         <MessageSquarePlus size={14} />
       </button>
-      <button class="icon-btn" title="Close" on:click={closePanel}>
+      <button class="icon-btn" title="Close" onclick={closePanel}>
         <X size={14} />
       </button>
     </div>
@@ -587,7 +591,7 @@
       <div class="mail-compose-header">
         <Mail size={14} />
         <span>Send Mail to Department</span>
-        <button class="close-modal-btn" on:click={() => showMailCompose = false}>
+        <button class="close-modal-btn" onclick={() => showMailCompose = false}>
           <X size={12} />
         </button>
       </div>
@@ -601,7 +605,7 @@
                 class="dept-option"
                 class:selected={mailTo === dept.id}
                 style="--dept-color: {dept.color}"
-                on:click={() => mailTo = dept.id}
+                onclick={() => mailTo = dept.id}
               >
                 <span class="dept-dot"></span>
                 {dept.name}
@@ -618,7 +622,7 @@
                 class="priority-option"
                 class:selected={mailPriority === p.v}
                 style="--priority-color: {p.c}"
-                on:click={() => mailPriority = p.v}
+                onclick={() => mailPriority = p.v}
               >
                 {p.v}
               </button>
@@ -649,10 +653,10 @@
       </div>
 
       <div class="mail-compose-footer">
-        <button class="cancel-btn" on:click={() => showMailCompose = false}>Cancel</button>
+        <button class="cancel-btn" onclick={() => showMailCompose = false}>Cancel</button>
         <button
           class="send-mail-btn"
-          on:click={sendMailToDepartment}
+          onclick={sendMailToDepartment}
           disabled={!mailSubject.trim() || !mailBody.trim() || sendingMail}
         >
           {#if sendingMail}
@@ -675,12 +679,13 @@
       </div>
       <div class="tasks-list">
         {#each activeTasks.slice(0, 3) as task}
+          {@const SvelteComponent = getStatusIcon(task.status)}
           <div class="task-item">
             <div class="task-dept" style="background: {DEPARTMENTS[task.departmentId].color}20; color: {DEPARTMENTS[task.departmentId].color}">
               {DEPARTMENTS[task.departmentId].name}
             </div>
             <div class="task-status" style="color: {getStatusColor(task.status)}">
-              <svelte:component this={getStatusIcon(task.status)} size={10} />
+              <SvelteComponent size={10} />
             </div>
           </div>
         {/each}
@@ -712,13 +717,14 @@
           {/if}
           <div class="message-text">{msg.content}</div>
           {#if msg.delegation}
+            {@const SvelteComponent_1 = getStatusIcon(msg.delegation.status)}
             <div class="delegation-info">
               <ArrowRightCircle size={12} />
               <span>
                 Delegated to <strong>{DEPARTMENTS[msg.delegation.departmentId].name}</strong>
               </span>
               <span class="delegation-status" style="color: {getStatusColor(msg.delegation.status)}">
-                <svelte:component this={getStatusIcon(msg.delegation.status)} size={10} />
+                <SvelteComponent_1 size={10} />
                 {msg.delegation.status}
               </span>
             </div>
@@ -755,8 +761,8 @@
       <textarea
         bind:this={textareaElement}
         bind:value={message}
-        on:keydown={handleKeydown}
-        on:input={autoResize}
+        onkeydown={handleKeydown}
+        oninput={autoResize}
         placeholder={placeholderText}
         rows="1"
         disabled={isLoading}
@@ -766,7 +772,7 @@
       <div class="char-count">{message.length} / 4000</div>
       <button
         class="send-btn"
-        on:click={sendMessage}
+        onclick={sendMessage}
         disabled={!message.trim() || isLoading}
       >
         {#if isLoading}
@@ -784,11 +790,11 @@
   <div class="chat-history-sidebar" transition:fly={{ x: -300, duration: 200 }}>
     <div class="history-header">
       <span>Chat History</span>
-      <button class="close-history-btn" on:click={toggleChatHistory}>
+      <button class="close-history-btn" onclick={toggleChatHistory}>
         <X size={16} />
       </button>
     </div>
-    <button class="new-chat-btn" on:click={createNewChat}>
+    <button class="new-chat-btn" onclick={createNewChat}>
       <MessageSquarePlus size={16} />
       <span>New Chat</span>
     </button>
@@ -800,10 +806,10 @@
           <div class="history-group">
             <div class="history-group-header">Today</div>
             {#each groupedSessions.today as session}
-              <div class="history-item" class:active={currentSessionId === session.id} on:click={() => loadSession(session.id)} on:keydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
+              <div class="history-item" class:active={currentSessionId === session.id} onclick={() => loadSession(session.id)} onkeydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
                 <MessageCircle size={14} />
                 <span class="history-title">{session.title || 'New Conversation'}</span>
-                <button class="delete-session-btn" on:click={(e) => deleteSession(session.id, e)}>
+                <button class="delete-session-btn" onclick={(e) => deleteSession(session.id, e)}>
                   <Trash2 size={12} />
                 </button>
               </div>
@@ -814,10 +820,10 @@
           <div class="history-group">
             <div class="history-group-header">Yesterday</div>
             {#each groupedSessions.yesterday as session}
-              <div class="history-item" class:active={currentSessionId === session.id} on:click={() => loadSession(session.id)} on:keydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
+              <div class="history-item" class:active={currentSessionId === session.id} onclick={() => loadSession(session.id)} onkeydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
                 <MessageCircle size={14} />
                 <span class="history-title">{session.title || 'New Conversation'}</span>
-                <button class="delete-session-btn" on:click={(e) => deleteSession(session.id, e)}>
+                <button class="delete-session-btn" onclick={(e) => deleteSession(session.id, e)}>
                   <Trash2 size={12} />
                 </button>
               </div>
@@ -828,10 +834,10 @@
           <div class="history-group">
             <div class="history-group-header">Previous 7 Days</div>
             {#each groupedSessions.last7Days as session}
-              <div class="history-item" class:active={currentSessionId === session.id} on:click={() => loadSession(session.id)} on:keydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
+              <div class="history-item" class:active={currentSessionId === session.id} onclick={() => loadSession(session.id)} onkeydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
                 <MessageCircle size={14} />
                 <span class="history-title">{session.title || 'New Conversation'}</span>
-                <button class="delete-session-btn" on:click={(e) => deleteSession(session.id, e)}>
+                <button class="delete-session-btn" onclick={(e) => deleteSession(session.id, e)}>
                   <Trash2 size={12} />
                 </button>
               </div>
@@ -842,10 +848,10 @@
           <div class="history-group">
             <div class="history-group-header">Previous 30 Days</div>
             {#each groupedSessions.last30Days as session}
-              <div class="history-item" class:active={currentSessionId === session.id} on:click={() => loadSession(session.id)} on:keydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
+              <div class="history-item" class:active={currentSessionId === session.id} onclick={() => loadSession(session.id)} onkeydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
                 <MessageCircle size={14} />
                 <span class="history-title">{session.title || 'New Conversation'}</span>
-                <button class="delete-session-btn" on:click={(e) => deleteSession(session.id, e)}>
+                <button class="delete-session-btn" onclick={(e) => deleteSession(session.id, e)}>
                   <Trash2 size={12} />
                 </button>
               </div>
@@ -856,10 +862,10 @@
           <div class="history-group">
             <div class="history-group-header">Older</div>
             {#each groupedSessions.older as session}
-              <div class="history-item" class:active={currentSessionId === session.id} on:click={() => loadSession(session.id)} on:keydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
+              <div class="history-item" class:active={currentSessionId === session.id} onclick={() => loadSession(session.id)} onkeydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
                 <MessageCircle size={14} />
                 <span class="history-title">{session.title || 'New Conversation'}</span>
-                <button class="delete-session-btn" on:click={(e) => deleteSession(session.id, e)}>
+                <button class="delete-session-btn" onclick={(e) => deleteSession(session.id, e)}>
                   <Trash2 size={12} />
                 </button>
               </div>

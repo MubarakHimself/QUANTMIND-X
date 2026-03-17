@@ -20,8 +20,13 @@
     PaperTradingPromoteModal,
   } from "./paper-trading";
 
-  // Props
-  export let baseUrl: string = "http://localhost:8000";
+  
+  interface Props {
+    // Props
+    baseUrl?: string;
+  }
+
+  let { baseUrl = "http://localhost:8000" }: Props = $props();
 
   // Performance metrics interface
   interface PerformanceMetrics {
@@ -59,24 +64,24 @@
     magic_number?: number;
     uptime_seconds?: number;
     created_at: string;
-  }> = [];
+  }> = $state([]);
 
   // Performance metrics per agent
-  let performanceMetrics: Record<string, PerformanceMetrics> = {};
+  let performanceMetrics: Record<string, PerformanceMetrics> = $state({});
 
-  let selectedAgent: (typeof agents)[0] | null = null;
-  let agentLogs: string[] = [];
-  let isLoading = false;
-  let error: string | null = null;
+  let selectedAgent: (typeof agents)[0] | null = $state(null);
+  let agentLogs: string[] = $state([]);
+  let isLoading = $state(false);
+  let error: string | null = $state(null);
   let wsClient: WebSocketClient | null = null;
   let tickData: Record<
     string,
     { bid: number; ask: number; spread: number; timestamp: string }
-  > = {};
-  let showDeployForm = false;
-  let showPromoteModal = false;
-  let promoteAgentId: string | null = null;
-  let promoteLoading = false;
+  > = $state({});
+  let showDeployForm = $state(false);
+  let showPromoteModal = $state(false);
+  let promoteAgentId: string | null = $state(null);
+  let promoteLoading = $state(false);
   let promoteResult: {
     success: boolean;
     bot_id?: string;
@@ -84,7 +89,7 @@
   } | null = null;
 
   // Deploy form state
-  let deployForm = {
+  let deployForm = $state({
     strategy_name: "",
     strategy_code: "",
     symbol: "EURUSD",
@@ -93,14 +98,14 @@
     mt5_password: "",
     mt5_server: "MetaQuotes-Demo",
     magic_number: Math.floor(Math.random() * 100000000),
-  };
+  });
 
   // Promote form state
-  let promoteForm = {
+  let promoteForm = $state({
     target_account: "account_b_sniper",
     strategy_name: "",
     strategy_type: "STRUCTURAL",
-  };
+  });
 
   // Options
   const symbols = ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD"];
@@ -481,7 +486,7 @@
     <div class="header-left">
       <button
         class="back-button"
-        on:click={() => navigationStore.navigateToView("live", "Live Trading")}
+        onclick={() => navigationStore.navigateToView("live", "Live Trading")}
         title="Back to Live Trading"
       >
         <ArrowLeft size={20} />
@@ -490,7 +495,7 @@
     </div>
     <button
       class="btn btn-primary"
-      on:click={() => (showDeployForm = true)}
+      onclick={() => (showDeployForm = true)}
       disabled={isLoading}
     >
       <Plus size={18} />
@@ -503,7 +508,7 @@
     <div class="error-banner">
       <span class="error-icon">⚠️</span>
       <span class="error-text">{error}</span>
-      <button class="error-close" on:click={() => (error = null)}>
+      <button class="error-close" onclick={() => (error = null)}>
         <X size={16} />
       </button>
     </div>
@@ -520,7 +525,7 @@
         <p>Deploy your first paper trading agent to get started.</p>
         <button
           class="btn btn-primary"
-          on:click={() => (showDeployForm = true)}
+          onclick={() => (showDeployForm = true)}
         >
           <Plus size={18} />
           Deploy Agent

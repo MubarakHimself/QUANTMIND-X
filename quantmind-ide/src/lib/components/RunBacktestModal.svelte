@@ -1,17 +1,23 @@
 <script lang="ts">
+  import { self } from 'svelte/legacy';
+
   import { createEventDispatcher } from "svelte";
   import { X, Play, Loader } from "lucide-svelte";
 
-  export let isOpen = false;
-  export let isRunning = false;
-  export let config = {
+  interface Props {
+    isOpen?: boolean;
+    isRunning?: boolean;
+    config?: any;
+  }
+
+  let { isOpen = false, isRunning = false, config = $bindable({
     strategy: "ict-v2",
     period: "1M",
     monteCarlo: true,
     variant: "spiced",
     symbol: "EURUSD",
     timeframe: "H1"
-  };
+  }) }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -27,15 +33,15 @@
 {#if isOpen}
   <div
     class="modal-overlay"
-    on:click|self={handleClose}
+    onclick={self(handleClose)}
     role="button"
     tabindex="0"
-    on:keydown={(e) => e.key === "Enter" && handleClose()}
+    onkeydown={(e) => e.key === "Enter" && handleClose()}
   >
     <div class="modal">
       <div class="modal-header">
         <h2><Play size={20} /> Run Backtest</h2>
-        <button on:click={handleClose}><X size={20} /></button>
+        <button onclick={handleClose}><X size={20} /></button>
       </div>
       <div class="modal-body">
         <div class="form-group">
@@ -110,12 +116,12 @@
       <div class="modal-footer">
         <button
           class="btn secondary"
-          on:click={handleClose}
+          onclick={handleClose}
           disabled={isRunning}>Cancel</button
         >
         <button
           class="btn primary"
-          on:click={handleRun}
+          onclick={handleRun}
           disabled={isRunning}
         >
           {#if isRunning}Running...{:else}Start Backtest{/if}

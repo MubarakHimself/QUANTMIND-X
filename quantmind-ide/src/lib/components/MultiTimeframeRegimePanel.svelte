@@ -2,11 +2,11 @@
   import { onMount, onDestroy } from 'svelte';
   import { createTradingClient } from '$lib/ws-client';
   import type { WebSocketClient } from '$lib/ws-client';
-  import { PUBLIC_API_BASE } from '$env/static/public';
+  import { API_BASE } from '$lib/constants';
   import { Activity, TrendingUp } from 'lucide-svelte';
 
   // Use configured API base or default to same origin
-  const apiBase = PUBLIC_API_BASE || '';
+  const apiBase = API_BASE || '';
 
   // TypeScript interfaces for regime data
   interface TimeframeRegime {
@@ -21,9 +21,9 @@
   }
 
   // Reactive state with defaults
-  let dominantRegime: string = 'UNKNOWN';
-  let timeframeRegimes: Record<string, TimeframeRegime> = {};
-  let consensusStrength: number = 0;
+  let dominantRegime: string = $state('UNKNOWN');
+  let timeframeRegimes: Record<string, TimeframeRegime> = $state({});
+  let consensusStrength: number = $state(0);
   let wsClient: WebSocketClient | null = null;
 
   // Helper function to get regime color

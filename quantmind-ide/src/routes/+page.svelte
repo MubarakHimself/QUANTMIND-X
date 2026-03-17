@@ -25,14 +25,14 @@
     }
   });
 
-  let activeView = "live";
+  let activeView = $state("live");
   let openFiles: Array<{
     id: string;
     name: string;
     content?: string;
     type?: string;
-  }> = [];
-  let activeTabId = "";
+  }> = $state([]);
+  let activeTabId = $state("");
 
   function handleViewChange(event: CustomEvent) {
     const newView = event.detail.view;

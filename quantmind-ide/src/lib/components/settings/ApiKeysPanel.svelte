@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { self } from 'svelte/legacy';
+
   import { createEventDispatcher } from 'svelte';
   import {
     Key, RefreshCw, Trash2, AlertCircle, Plus,
@@ -6,21 +8,25 @@
     Copy, Eye, EyeOff
   } from 'lucide-svelte';
 
-  export let apiKeys: Array<{
+
+  interface Props {
+    apiKeys?: Array<{
     id: string;
     name: string;
     key: string;
     service: string;
     created: string;
     lastUsed?: string;
-  }> = [];
+  }>;
+    apiKeyModal?: boolean;
+    newApiKey?: any;
+  }
 
-  export let apiKeyModal = false;
-  export let newApiKey = {
+  let { apiKeys = [], apiKeyModal = $bindable(false), newApiKey = $bindable({
     name: '',
     key: '',
     service: 'openai'
-  };
+  }) }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -33,7 +39,7 @@
   }
 
   // Show/hide generated key
-  let showGeneratedKey = false;
+  let showGeneratedKey = $state(false);
 
   function handleGenerateKey() {
     newApiKey.key = generateSecureKey();
@@ -93,7 +99,7 @@
 <div class="panel">
   <div class="panel-header">
     <h3>API Keys</h3>
-    <button class="btn primary" on:click={openModal}>
+    <button class="btn primary" onclick={openModal}>
       <Plus size={14} /> Add Key
     </button>
   </div>
@@ -105,9 +111,10 @@
 
   <div class="keys-list">
     {#each apiKeys as key}
+      {@const SvelteComponent = getServiceIcon(key.service)}
       <div class="key-item">
         <div class="key-icon">
-          <svelte:component this={getServiceIcon(key.service)} />
+          <SvelteComponent />
         </div>
         <div class="key-info">
           <div class="key-name">{key.name}</div>
@@ -115,15 +122,15 @@
         </div>
         <div class="key-value">
           <code>{key.key.slice(0, 8)}...</code>
-          <button class="icon-btn copy-btn" on:click={() => copyKeyValue(key.key)} title="Copy Key">
+          <button class="icon-btn copy-btn" onclick={() => copyKeyValue(key.key)} title="Copy Key">
             <Copy size={14} />
           </button>
         </div>
         <div class="key-actions">
-          <button class="icon-btn" on:click={() => testConnection(key.service)} title="Test Connection">
+          <button class="icon-btn" onclick={() => testConnection(key.service)} title="Test Connection">
             <RefreshCw size={14} />
           </button>
-          <button class="icon-btn danger" on:click={() => removeApiKey(key.id)} title="Remove">
+          <button class="icon-btn danger" onclick={() => removeApiKey(key.id)} title="Remove">
             <Trash2 size={14} />
           </button>
         </div>
@@ -132,7 +139,7 @@
       <div class="empty-state">
         <Key size={32} />
         <p>No API keys configured</p>
-        <button class="btn primary" on:click={openModal}>
+        <button class="btn primary" onclick={openModal}>
           Add Your First API Key
         </button>
       </div>
@@ -142,11 +149,11 @@
 
 <!-- API Key Modal -->
 {#if apiKeyModal}
-  <div class="modal-overlay" on:click|self={closeModal}>
+  <div class="modal-overlay" onclick={self(closeModal)}>
     <div class="modal">
       <div class="modal-header">
         <h3>Add API Key</h3>
-        <button on:click={closeModal}><RefreshCw size={20} /></button>
+        <button onclick={closeModal}><RefreshCw size={20} /></button>
       </div>
       <div class="modal-body">
         <div class="form-group">
@@ -170,10 +177,10 @@
             {#if showGeneratedKey}
               <div class="generated-key-display">
                 <code class="key-value">{newApiKey.key}</code>
-                <button class="icon-btn" on:click={() => copyToClipboard(newApiKey.key)} title="Copy to clipboard">
+                <button class="icon-btn" onclick={() => copyToClipboard(newApiKey.key)} title="Copy to clipboard">
                   <Copy size={14} />
                 </button>
-                <button class="icon-btn" on:click={() => showGeneratedKey = false} title="Hide">
+                <button class="icon-btn" onclick={() => showGeneratedKey = false} title="Hide">
                   <EyeOff size={14} />
                 </button>
               </div>
@@ -182,11 +189,11 @@
             {/if}
           </div>
           <div class="generate-row">
-            <button type="button" class="btn secondary generate-btn" on:click={handleGenerateKey}>
+            <button type="button" class="btn secondary generate-btn" onclick={handleGenerateKey}>
               <Key size={14} /> Generate Secure Key
             </button>
             {#if newApiKey.key && !showGeneratedKey}
-              <button type="button" class="btn-text" on:click={() => showGeneratedKey = true}>
+              <button type="button" class="btn-text" onclick={() => showGeneratedKey = true}>
                 <Eye size={12} /> Show
               </button>
             {/if}
@@ -194,8 +201,8 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn secondary" on:click={closeModal}>Cancel</button>
-        <button class="btn primary" on:click={addApiKey}>Add Key</button>
+        <button class="btn secondary" onclick={closeModal}>Cancel</button>
+        <button class="btn primary" onclick={addApiKey}>Add Key</button>
       </div>
     </div>
   </div>

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { createEventDispatcher, onMount, tick } from "svelte";
   import {
     X,
@@ -25,13 +27,13 @@
 
   const API_BASE = "http://localhost:8000/api";
 
-  let activeAgent = "copilot";
-  let message = "";
-  let showDelegationUI = false;
+  let activeAgent = $state("copilot");
+  let message = $state("");
+  let showDelegationUI = $state(false);
 
   // Skills state
-  let availableSkills: Array<{ id: string; name: string; description: string; enabled: boolean }> = [];
-  let selectedSkill: string = "";
+  let availableSkills: Array<{ id: string; name: string; description: string; enabled: boolean }> = $state([]);
+  let selectedSkill: string = $state("");
   let skillsLoading = false;
 
   // Fetch available skills from API
@@ -53,21 +55,21 @@
   onMount(() => {
     fetchSkills();
   });
-  let selectedDepartmentForDelegation: Department | null = null;
-  let isDelegating = false;
-  let delegationResult: { success: boolean; message: string } | null = null;
-  let messages: Array<{ role: string; content: string; agent?: string }> = [
+  let selectedDepartmentForDelegation: Department | null = $state(null);
+  let isDelegating = $state(false);
+  let delegationResult: { success: boolean; message: string } | null = $state(null);
+  let messages: Array<{ role: string; content: string; agent?: string }> = $state([
     {
       role: "assistant",
       content:
         "Hello! I'm the QuantMind Copilot. I can help you analyze strategies, run backtests, and manage your trading bots. What would you like to do?",
       agent: "copilot",
     },
-  ];
-  let loading = false;
-  let settingsOpen = false;
-  let textareaElement: HTMLTextAreaElement;
-  let messagesContainer: HTMLDivElement;
+  ]);
+  let loading = $state(false);
+  let settingsOpen = $state(false);
+  let textareaElement: HTMLTextAreaElement = $state();
+  let messagesContainer: HTMLDivElement = $state();
 
   // Auto-resize textarea
   function autoResize() {
@@ -82,7 +84,7 @@
   }
 
   // Character counter
-  $: charCount = message.length;
+  let charCount = $derived(message.length);
 
   // Slash Commands
   const slashCommands = [
@@ -130,12 +132,12 @@
     },
   ];
 
-  let showCommandPalette = false;
-  let filteredCommands = slashCommands;
-  let selectedCommandIndex = 0;
+  let showCommandPalette = $state(false);
+  let filteredCommands = $state(slashCommands);
+  let selectedCommandIndex = $state(0);
 
   // Reactive slash command filtering
-  $: {
+  run(() => {
     if (message.startsWith("/")) {
       showCommandPalette = true;
       const query = message.slice(1).toLowerCase();
@@ -152,7 +154,7 @@
       showCommandPalette = false;
       selectedCommandIndex = 0;
     }
-  }
+  });
 
   const agents = [
     {
@@ -176,20 +178,20 @@
   ];
 
   // AI Settings
-  let aiSettings = {
+  let aiSettings = $state({
     model: "gemini-2.5-pro",
     temperature: 0.7,
     yoloMode: true,
-  };
+  });
 
   // Enhanced Settings State (Sprint 5)
-  let activeSettingsTab = "general"; // general, api, mcp
-  let apiKeys = {
+  let activeSettingsTab = $state("general"); // general, api, mcp
+  let apiKeys = $state({
     openai: "",
     anthropic: "",
     gemini: "",
-  };
-  let mcpServers = [
+  });
+  let mcpServers = $state([
     {
       id: "filesystem",
       name: "File System",
@@ -218,7 +220,7 @@
       status: "connected",
       description: "Query parquet files",
     },
-  ];
+  ]);
 
   onMount(() => {
     // Load settings from localStorage
@@ -511,20 +513,20 @@
         <button
           class="agent-tab"
           class:active={activeAgent === agent.id}
-          on:click={() => switchAgent(agent.id)}
+          onclick={() => switchAgent(agent.id)}
           title={agent.description}
         >
-          <svelte:component this={agent.icon} size={16} />
+          <agent.icon size={16} />
           <span>{agent.name}</span>
         </button>
       {/each}
     </div>
 
     <div class="header-actions">
-      <button class="icon-btn" title="AI Settings" on:click={toggleSettings}>
+      <button class="icon-btn" title="AI Settings" onclick={toggleSettings}>
         <Settings size={16} />
       </button>
-      <button class="icon-btn" title="Close" on:click={() => dispatch("close")}>
+      <button class="icon-btn" title="Close" onclick={() => dispatch("close")}>
         <X size={16} />
       </button>
     </div>
@@ -534,7 +536,7 @@
     <div class="settings-panel">
       <div class="settings-header">
         <h3>Assistant Settings</h3>
-        <button class="icon-btn" on:click={() => (settingsOpen = false)}
+        <button class="icon-btn" onclick={() => (settingsOpen = false)}
           ><X size={16} /></button
         >
       </div>
@@ -542,15 +544,15 @@
       <div class="settings-tabs">
         <button
           class:active={activeSettingsTab === "general"}
-          on:click={() => (activeSettingsTab = "general")}>General</button
+          onclick={() => (activeSettingsTab = "general")}>General</button
         >
         <button
           class:active={activeSettingsTab === "api"}
-          on:click={() => (activeSettingsTab = "api")}>API Keys</button
+          onclick={() => (activeSettingsTab = "api")}>API Keys</button
         >
         <button
           class:active={activeSettingsTab === "mcp"}
-          on:click={() => (activeSettingsTab = "mcp")}>Skills (MCP)</button
+          onclick={() => (activeSettingsTab = "mcp")}>Skills (MCP)</button
         >
       </div>
 
@@ -635,7 +637,7 @@
       </div>
 
       <div class="settings-footer">
-        <button class="btn-save" on:click={saveSettings}>Save Changes</button>
+        <button class="btn-save" onclick={saveSettings}>Save Changes</button>
       </div>
     </div>
   {/if}
@@ -677,10 +679,10 @@
           <button
             class="command-item"
             class:selected={i === selectedCommandIndex}
-            on:click={() => selectCommand(cmd)}
-            on:mouseenter={() => (selectedCommandIndex = i)}
+            onclick={() => selectCommand(cmd)}
+            onmouseenter={() => (selectedCommandIndex = i)}
           >
-            <svelte:component this={cmd.icon} size={14} class="cmd-icon" />
+            <cmd.icon size={14} class="cmd-icon" />
             <span class="cmd-name">{cmd.command}</span>
             {#if cmd.params}
               <span class="cmd-params">{cmd.params}</span>
@@ -695,8 +697,8 @@
       <textarea
         placeholder="Ask {agents.find((a) => a.id === activeAgent)?.name}..."
         bind:value={message}
-        on:keydown={handleKeydown}
-        on:input={autoResize}
+        onkeydown={handleKeydown}
+        oninput={autoResize}
         bind:this={textareaElement}
         rows="1"
       ></textarea>
@@ -717,7 +719,7 @@
         <button
           class="action-btn"
           title="Delegate to Trading Floor"
-          on:click={toggleDelegationUI}
+          onclick={toggleDelegationUI}
           class:active={showDelegationUI}
         >
           <Briefcase size={14} />
@@ -739,7 +741,7 @@
         <button
           class="action-btn"
           title="Model Config"
-          on:click={toggleSettings}
+          onclick={toggleSettings}
         >
           <Settings size={14} />
           <span>Config</span>
@@ -752,7 +754,7 @@
         </div>
         <button
           class="action-btn primary"
-          on:click={sendMessage}
+          onclick={sendMessage}
           disabled={!message.trim() || loading}
         >
           {#if loading}
@@ -768,7 +770,7 @@
       <div class="delegation-panel">
         <div class="delegation-header">
           <span class="delegation-title">Delegate to Trading Floor</span>
-          <button class="icon-btn-small" on:click={toggleDelegationUI}>
+          <button class="icon-btn-small" onclick={toggleDelegationUI}>
             <X size={14} />
           </button>
         </div>
@@ -784,7 +786,7 @@
               <button
                 class="dept-option"
                 class:selected={selectedDepartmentForDelegation === null}
-                on:click={() => selectedDepartmentForDelegation = null}
+                onclick={() => selectedDepartmentForDelegation = null}
               >
                 Auto-detect
               </button>
@@ -792,7 +794,7 @@
                 <button
                   class="dept-option"
                   class:selected={selectedDepartmentForDelegation === dept.id}
-                  on:click={() => selectedDepartmentForDelegation = dept.id}
+                  onclick={() => selectedDepartmentForDelegation = dept.id}
                 >
                   {dept.name}
                 </button>
@@ -809,7 +811,7 @@
           <div class="delegation-actions">
             <button
               class="btn-delegate"
-              on:click={delegateToTradingFloor}
+              onclick={delegateToTradingFloor}
               disabled={!message.trim() || isDelegating}
             >
               {#if isDelegating}

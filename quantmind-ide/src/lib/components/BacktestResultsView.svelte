@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { self } from 'svelte/legacy';
+
   import { createEventDispatcher, onMount } from 'svelte';
   import {
     BarChart3, TrendingUp, TrendingDown, Activity, Target, Award,
@@ -57,28 +59,38 @@
     n_parameters_tested?: number;
   }
 
-  // Backtest result types
-  export let results: BacktestResult[] = [];
-  export let loading = false;
-  export let selectedMode: 'MODE_A' | 'MODE_B' | 'MODE_C' = 'MODE_C';
-  export let selectedVersion: 'vanilla' | 'spiced' = 'spiced';
+  
+  interface Props {
+    // Backtest result types
+    results?: BacktestResult[];
+    loading?: boolean;
+    selectedMode?: 'MODE_A' | 'MODE_B' | 'MODE_C';
+    selectedVersion?: 'vanilla' | 'spiced';
+  }
+
+  let {
+    results = $bindable([]),
+    loading = $bindable(false),
+    selectedMode = $bindable('MODE_C'),
+    selectedVersion = $bindable('spiced')
+  }: Props = $props();
 
   // View state
-  let activeTab: 'historical' | 'walk_forward' | 'monte_carlo' | 'pbo_analysis' = 'historical';
-  let expandedTrades: Set<string> = new Set();
-  let showModeComparison = false;
-  let showCharts = true;
-  let selectedTrade: any = null;
-  let detailModalOpen = false;
+  let activeTab: 'historical' | 'walk_forward' | 'monte_carlo' | 'pbo_analysis' = $state('historical');
+  let expandedTrades: Set<string> = $state(new Set());
+  let showModeComparison = $state(false);
+  let showCharts = $state(true);
+  let selectedTrade: any = $state(null);
+  let detailModalOpen = $state(false);
 
   // Filter state
-  let filters = {
+  let filters = $state({
     symbol: 'all',
     status: 'all',
     minProfit: null as number | null,
     maxProfit: null as number | null,
     strategy: 'all' as string
-  };
+  });
 
   // Available strategies for single strategy testing
   let availableStrategies = [
@@ -90,9 +102,9 @@
   ];
 
   // Forward Test State
-  let forwardTestRunning = false;
-  let forwardTestProgress = 0;
-  let forwardTestResults: any = null;
+  let forwardTestRunning = $state(false);
+  let forwardTestProgress = $state(0);
+  let forwardTestResults: any = $state(null);
 
   // Monte Carlo Settings
   let monteCarloSettings = {
@@ -102,22 +114,22 @@
   };
 
   // PBO Analysis State
-  let pboLoading = false;
-  let pboResults: PBOResult | null = null;
-  let pboError: string | null = null;
+  let pboLoading = $state(false);
+  let pboResults: PBOResult | null = $state(null);
+  let pboError: string | null = $state(null);
   let pboSettings = {
     n_blocks: 5,
     n_simulations: 100
   };
 
   // Aggregated statistics
-  let aggregateStats = {
+  let aggregateStats = $state({
     totalTrades: 0,
     totalProfit: 0,
     avgSharpe: 0,
     maxDrawdown: 0,
     passRate: 0
-  };
+  });
 
   onMount(() => {
     loadBacktestResults();
@@ -548,15 +560,15 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     }
   ];
 
-  $: currentResults = getTestTypeResults(activeTab);
-  $: filteredTrades = currentResults.length > 0 ? currentResults[0].trades.filter(t => {
+  let currentResults = $derived(getTestTypeResults(activeTab));
+  let filteredTrades = $derived(currentResults.length > 0 ? currentResults[0].trades.filter(t => {
     if (filters.symbol !== 'all' && t.symbol !== filters.symbol) return false;
     if (filters.status === 'winning' && t.pnl <= 0) return false;
     if (filters.status === 'losing' && t.pnl >= 0) return false;
     if (filters.minProfit && t.pnl < filters.minProfit) return false;
     if (filters.maxProfit && t.pnl > filters.maxProfit) return false;
     return true;
-  }) : [];
+  }) : []);
 </script>
 
 <div class="backtest-results-view">
@@ -573,7 +585,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
       <!-- Strategy Selector -->
       <div class="strategy-selector">
         <label><Search size={12} /> Strategy:</label>
-        <select bind:value={filters.strategy} on:change={() => calculateAggregateStats()}>
+        <select bind:value={filters.strategy} onchange={() => calculateAggregateStats()}>
           {#each availableStrategies as strategy}
             <option value={strategy.id}>{strategy.name}</option>
           {/each}
@@ -582,7 +594,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
       
       <div class="mode-selector">
         <label>Mode:</label>
-        <select bind:value={selectedMode} on:change={calculateAggregateStats}>
+        <select bind:value={selectedMode} onchange={calculateAggregateStats}>
           <option value="MODE_A">EA Only</option>
           <option value="MODE_B">EA + Kelly</option>
           <option value="MODE_C">Full System</option>
@@ -590,20 +602,20 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
       </div>
       <div class="version-selector">
         <label>Version:</label>
-        <select bind:value={selectedVersion} on:change={calculateAggregateStats}>
+        <select bind:value={selectedVersion} onchange={calculateAggregateStats}>
           <option value="vanilla">Vanilla</option>
           <option value="spiced">Spiced</option>
         </select>
       </div>
-      <button class="btn" on:click={() => showModeComparison = !showModeComparison} class:active={showModeComparison}>
+      <button class="btn" onclick={() => showModeComparison = !showModeComparison} class:active={showModeComparison}>
         <Layers size={14} />
         <span>Compare</span>
       </button>
-      <button class="btn" on:click={loadBacktestResults}>
+      <button class="btn" onclick={loadBacktestResults}>
         <RefreshCw size={14} />
         <span>Refresh</span>
       </button>
-      <button class="btn primary" on:click={runNewBacktest}>
+      <button class="btn primary" onclick={runNewBacktest}>
         <Play size={14} />
         <span>Run Backtest</span>
       </button>
@@ -612,7 +624,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
       <div class="test-type-actions">
         <button
           class="btn"
-          on:click={runForwardTest}
+          onclick={runForwardTest}
           disabled={forwardTestRunning}
           title="Run Forward Test"
         >
@@ -621,7 +633,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
         </button>
         <button
           class="btn"
-          on:click={runMonteCarlo}
+          onclick={runMonteCarlo}
           disabled={loading}
           title="Run Monte Carlo Simulation"
         >
@@ -630,7 +642,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
         </button>
         <button
           class="btn pbo-btn"
-          on:click={runPBOAnalysis}
+          onclick={runPBOAnalysis}
           disabled={pboLoading}
           title="Run PBO Analysis (Probability of Backtest Overfitting)"
         >
@@ -661,7 +673,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
       <div class="results-header">
         <TrendingUpIcon size={16} />
         <span>Forward Test Results</span>
-        <button class="close-btn" on:click={() => forwardTestResults = null}><X size={14} /></button>
+        <button class="close-btn" onclick={() => forwardTestResults = null}><X size={14} /></button>
       </div>
       <div class="results-grid">
         <div class="result-item">
@@ -725,7 +737,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     <button
       class="tab"
       class:active={activeTab === 'historical'}
-      on:click={() => activeTab = 'historical'}
+      onclick={() => activeTab = 'historical'}
     >
       <LineChart size={14} />
       <span>Historical Backtest</span>
@@ -736,7 +748,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     <button
       class="tab"
       class:active={activeTab === 'walk_forward'}
-      on:click={() => activeTab = 'walk_forward'}
+      onclick={() => activeTab = 'walk_forward'}
     >
       <Target size={14} />
       <span>Walk-Forward</span>
@@ -747,7 +759,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     <button
       class="tab"
       class:active={activeTab === 'monte_carlo'}
-      on:click={() => activeTab = 'monte_carlo'}
+      onclick={() => activeTab = 'monte_carlo'}
     >
       <PieChart size={14} />
       <span>Monte Carlo</span>
@@ -758,7 +770,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     <button
       class="tab"
       class:active={activeTab === 'pbo_analysis'}
-      on:click={() => activeTab = 'pbo_analysis'}
+      onclick={() => activeTab = 'pbo_analysis'}
     >
       <Shield size={14} />
       <span>PBO Analysis</span>
@@ -769,7 +781,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
       {/if}
     </button>
     <div class="tab-actions">
-      <button class="icon-btn" on:click={() => showCharts = !showCharts} title="Toggle charts">
+      <button class="icon-btn" onclick={() => showCharts = !showCharts} title="Toggle charts">
         {#if showCharts}
           <Eye size={14} />
         {:else}
@@ -884,18 +896,19 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
           <Shield size={48} />
           <h3>PBO Analysis</h3>
           <p>Calculate Probability of Backtest Overfitting to validate your strategy</p>
-          <button class="btn primary" on:click={runPBOAnalysis}>
+          <button class="btn primary" onclick={runPBOAnalysis}>
             <Shield size={14} />
             Run PBO Analysis
           </button>
         </div>
       {/if}
     {:else if currentResults.length === 0}
+      {@const SvelteComponent = getTestTypeIcon(activeTab)}
       <div class="empty-state">
-        <svelte:component this={getTestTypeIcon(activeTab)} size={48} />
+        <SvelteComponent size={48} />
         <h3>No {getTestTypeLabel(activeTab)} Results</h3>
         <p>Run a backtest to see results here</p>
-        <button class="btn primary" on:click={runNewBacktest}>
+        <button class="btn primary" onclick={runNewBacktest}>
           <Play size={14} />
           Run {getTestTypeLabel(activeTab)}
         </button>
@@ -951,12 +964,13 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
 
       <!-- Main Results Display -->
       {#each currentResults as result}
+        {@const SvelteComponent_1 = getTestTypeIcon(result.test_type)}
         <div class="result-card">
           <!-- Result Header -->
           <div class="result-header">
             <div class="header-info">
               <div class="test-type">
-                <svelte:component this={getTestTypeIcon(result.test_type)} size={20} />
+                <SvelteComponent_1 size={20} />
                 <span>{getTestTypeLabel(result.test_type)}</span>
               </div>
               <div class="mode-version">
@@ -1119,15 +1133,15 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
           <!-- Export Actions -->
           <div class="export-actions">
             <span class="export-label">Export:</span>
-            <button class="export-btn" on:click={() => exportResults('json')}>
+            <button class="export-btn" onclick={() => exportResults('json')}>
               <FileText size={12} />
               JSON
             </button>
-            <button class="export-btn" on:click={() => exportResults('csv')}>
+            <button class="export-btn" onclick={() => exportResults('csv')}>
               <FileText size={12} />
               CSV
             </button>
-            <button class="export-btn" on:click={() => exportResults('pine')}>
+            <button class="export-btn" onclick={() => exportResults('pine')}>
               <Globe size={12} />
               Pine Script
             </button>
@@ -1158,7 +1172,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
             {#each filteredTrades as trade}
               {@const tradeId = `${trade.entry_time}-${trade.symbol}`}
               <div class="trade-item" class:expanded={expandedTrades.has(tradeId)}>
-                <div class="trade-summary" on:click={() => toggleTradeExpanded(tradeId)}>
+                <div class="trade-summary" onclick={() => toggleTradeExpanded(tradeId)}>
                   <div class="trade-info">
                     <Clock size={14} class="trade-icon" />
                     <div class="trade-time">{formatDateTime(trade.entry_time)}</div>
@@ -1199,7 +1213,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
                       <span class="detail-label">Why?</span>
                       <span class="detail-value reason">{trade.why}</span>
                     </div>
-                    <button class="view-details-btn" on:click={() => selectTrade(trade)}>
+                    <button class="view-details-btn" onclick={() => selectTrade(trade)}>
                       <Eye size={12} />
                       View Full Details
                     </button>
@@ -1215,11 +1229,11 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
 
   <!-- Trade Detail Modal -->
   {#if detailModalOpen && selectedTrade}
-    <div class="modal-overlay" on:click|self={() => detailModalOpen = false}>
+    <div class="modal-overlay" onclick={self(() => detailModalOpen = false)}>
       <div class="modal">
         <div class="modal-header">
           <h3>Trade Details</h3>
-          <button class="icon-btn" on:click={() => detailModalOpen = false}>
+          <button class="icon-btn" onclick={() => detailModalOpen = false}>
             <X size={18} />
           </button>
         </div>

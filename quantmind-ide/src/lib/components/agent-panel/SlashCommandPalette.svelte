@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { createEventDispatcher, onMount, tick } from 'svelte';
   import { fade, slide } from 'svelte/transition';
   import { 
@@ -18,8 +20,13 @@
   import commandHandler from '../../services/commandHandler';
   import type { Command } from '../../services/commandHandler';
   
-  // Props
-  export let filter: string = '';
+  
+  interface Props {
+    // Props
+    filter?: string;
+  }
+
+  let { filter = '' }: Props = $props();
   
   const dispatch = createEventDispatcher();
   
@@ -39,35 +46,13 @@
     '/export': Upload
   };
   
-  // Get commands from commandHandler
-  $: allCommands = commandHandler.getAll().map(cmd => ({
-    name: cmd.name,
-    params: cmd.params,
-    description: cmd.description,
-    icon: iconMap[cmd.name] || BarChart3,
-    category: cmd.category
-  }));
   
   // State
-  let selectedIndex = 0;
-  let commandListElement: HTMLDivElement;
+  let selectedIndex = $state(0);
+  let commandListElement: HTMLDivElement = $state();
   
-  // Filter commands based on input
-  $: filteredCommands = filter.trim()
-    ? allCommands.filter(cmd => 
-        cmd.name.toLowerCase().includes(filter.toLowerCase()) ||
-        cmd.description.toLowerCase().includes(filter.toLowerCase())
-      )
-    : allCommands;
   
-  // Group commands by category
-  $: groupedCommands = groupCommandsByCategory(filteredCommands);
   
-  // Reset selection when filter changes
-  $: {
-    filter;
-    selectedIndex = 0;
-  }
   
   function groupCommandsByCategory(commands: typeof allCommands) {
     const groups: Record<string, typeof allCommands> = {};
@@ -155,6 +140,28 @@
     }
     return index + cmdIndex;
   }
+  // Get commands from commandHandler
+  let allCommands = $derived(commandHandler.getAll().map(cmd => ({
+    name: cmd.name,
+    params: cmd.params,
+    description: cmd.description,
+    icon: iconMap[cmd.name] || BarChart3,
+    category: cmd.category
+  })));
+  // Filter commands based on input
+  let filteredCommands = $derived(filter.trim()
+    ? allCommands.filter(cmd => 
+        cmd.name.toLowerCase().includes(filter.toLowerCase()) ||
+        cmd.description.toLowerCase().includes(filter.toLowerCase())
+      )
+    : allCommands);
+  // Group commands by category
+  let groupedCommands = $derived(groupCommandsByCategory(filteredCommands));
+  // Reset selection when filter changes
+  run(() => {
+    filter;
+    selectedIndex = 0;
+  });
 </script>
 
 <div 
@@ -189,13 +196,13 @@
             <button
               class="command-item"
               class:selected={selectedIndex === globalIndex}
-              on:click={() => selectCommand(command)}
-              on:mouseenter={() => selectedIndex = globalIndex}
+              onclick={() => selectCommand(command)}
+              onmouseenter={() => selectedIndex = globalIndex}
               role="option"
               aria-selected={selectedIndex === globalIndex}
             >
               <div class="command-icon" style="color: {getCategoryColor(category)}">
-                <svelte:component this={command.icon} size={14} />
+                <command.icon size={14} />
               </div>
               <div class="command-info">
                 <span class="command-name">{command.name}</span>

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { createEventDispatcher, onMount } from 'svelte';
   import { 
     Save, Undo, Redo, Copy, Download, Search, 
@@ -8,35 +10,46 @@
   import { fileHistoryManager } from '../services/fileHistoryManager';
   import type { AgentType } from '../stores/chatStore';
 
-  export let file: {
+
+  interface Props {
+    file?: {
     id: string;
     name: string;
     path?: string;
     content: string;
     type?: string;
-  } | null = null;
+  } | null;
+    readOnly?: boolean;
+    showLineNumbers?: boolean;
+    wordWrap?: boolean;
+    fontSize?: number;
+    agent?: AgentType;
+  }
 
-  export let readOnly = false;
-  export let showLineNumbers = true;
-  export let wordWrap = false;
-  export let fontSize = 13;
-  export let agent: AgentType = 'copilot';
+  let {
+    file = null,
+    readOnly = false,
+    showLineNumbers = $bindable(true),
+    wordWrap = $bindable(false),
+    fontSize = $bindable(13),
+    agent = 'copilot'
+  }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
-  let editorContent = '';
-  let previousContent = '';
-  let undoStack: string[] = [];
-  let redoStack: string[] = [];
-  let searchQuery = '';
-  let searchResults: number[] = [];
-  let currentSearchIndex = -1;
-  let showSearch = false;
-  let isMaximized = false;
-  let copied = false;
-  let cursorLine = 1;
-  let cursorColumn = 1;
-  let showHistoryPanel = false;
+  let editorContent = $state('');
+  let previousContent = $state('');
+  let undoStack: string[] = $state([]);
+  let redoStack: string[] = $state([]);
+  let searchQuery = $state('');
+  let searchResults: number[] = $state([]);
+  let currentSearchIndex = $state(-1);
+  let showSearch = $state(false);
+  let isMaximized = $state(false);
+  let copied = $state(false);
+  let cursorLine = $state(1);
+  let cursorColumn = $state(1);
+  let showHistoryPanel = $state(false);
 
   const API_BASE = 'http://localhost:8000/api';
 
@@ -58,13 +71,6 @@
     'css': 'css'
   };
 
-  $: language = file?.name ? getLanguage(file.name) : 'text';
-  $: if (file) {
-    editorContent = file.content || '';
-    previousContent = file.content || '';
-    undoStack = [];
-    redoStack = [];
-  }
 
   function getLanguage(filename: string): string {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
@@ -318,8 +324,17 @@
     dispatch('maximize', { maximized: isMaximized });
   }
 
-  $: canUndo = undoStack.length > 0;
-  $: canRedo = redoStack.length > 0;
+  let language = $derived(file?.name ? getLanguage(file.name) : 'text');
+  run(() => {
+    if (file) {
+      editorContent = file.content || '';
+      previousContent = file.content || '';
+      undoStack = [];
+      redoStack = [];
+    }
+  });
+  let canUndo = $derived(undoStack.length > 0);
+  let canRedo = $derived(redoStack.length > 0);
 </script>
 
 <div class="file-editor" class:maximized={isMaximized} class:read-only={readOnly}>
@@ -338,7 +353,7 @@
       {#if !readOnly}
         <button 
           class="action-btn" 
-          on:click={undo} 
+          onclick={undo} 
           disabled={!canUndo}
           title="Undo (Ctrl+Z)"
         >
@@ -346,7 +361,7 @@
         </button>
         <button 
           class="action-btn" 
-          on:click={redo} 
+          onclick={redo} 
           disabled={!canRedo}
           title="Redo (Ctrl+Shift+Z)"
         >
@@ -355,7 +370,7 @@
         <div class="divider"></div>
         <button 
           class="action-btn" 
-          on:click={copyContent}
+          onclick={copyContent}
           title="Copy"
         >
           {#if copied}
@@ -366,7 +381,7 @@
         </button>
         <button 
           class="action-btn" 
-          on:click={downloadFile}
+          onclick={downloadFile}
           title="Download"
         >
           <Download size={14} />
@@ -377,19 +392,19 @@
               type="text"
               placeholder="Search..."
               bind:value={searchQuery}
-              on:input={highlightSearch}
+              oninput={highlightSearch}
             />
             <div class="search-nav">
               <button 
                 class="search-btn" 
-                on:click={() => navigateSearch('prev')}
+                onclick={() => navigateSearch('prev')}
                 disabled={searchResults.length === 0}
               >
                 <ChevronUp size={14} />
               </button>
               <button 
                 class="search-btn" 
-                on:click={() => navigateSearch('next')}
+                onclick={() => navigateSearch('next')}
                 disabled={searchResults.length === 0}
               >
                 <ChevronDown size={14} />
@@ -402,14 +417,14 @@
                 0/0
               {/if}
             </span>
-            <button class="action-btn close-search" on:click={() => { showSearch = false; searchQuery = ''; }}>
+            <button class="action-btn close-search" onclick={() => { showSearch = false; searchQuery = ''; }}>
               <X size={14} />
             </button>
           </div>
         {:else}
           <button 
             class="action-btn" 
-            on:click={() => showSearch = true}
+            onclick={() => showSearch = true}
             title="Search (Ctrl+F)"
           >
             <Search size={14} />
@@ -419,7 +434,7 @@
         {#if file?.id}
           <button 
             class="action-btn" 
-            on:click={toggleHistoryPanel}
+            onclick={toggleHistoryPanel}
             title="File History"
             class:active={showHistoryPanel}
           >
@@ -428,7 +443,7 @@
         {/if}
         <button 
           class="action-btn save-btn" 
-          on:click={saveFile}
+          onclick={saveFile}
           title="Save (Ctrl+S)"
         >
           <Save size={14} />
@@ -437,7 +452,7 @@
       {/if}
       <button 
         class="action-btn" 
-        on:click={toggleMaximize}
+        onclick={toggleMaximize}
         title={isMaximized ? 'Minimize' : 'Maximize'}
       >
         {#if isMaximized}
@@ -469,9 +484,9 @@
     </label>
     <div class="font-size-control">
       <span>Size:</span>
-      <button on:click={() => fontSize = Math.max(10, fontSize - 1)}>-</button>
+      <button onclick={() => fontSize = Math.max(10, fontSize - 1)}>-</button>
       <span>{fontSize}px</span>
-      <button on:click={() => fontSize = Math.min(24, fontSize + 1)}>+</button>
+      <button onclick={() => fontSize = Math.min(24, fontSize + 1)}>+</button>
     </div>
   </div>
 
@@ -490,9 +505,9 @@
         <textarea
           class="code-input"
           spellcheck="false"
-          on:input={handleInput}
-          on:keydown={handleKeyDown}
-          on:click={handleClick}
+          oninput={handleInput}
+          onkeydown={handleKeyDown}
+          onclick={handleClick}
           bind:value={editorContent}
         ></textarea>
         <pre class="code-overlay"><code>{@html getHighlightedContent()}</code></pre>

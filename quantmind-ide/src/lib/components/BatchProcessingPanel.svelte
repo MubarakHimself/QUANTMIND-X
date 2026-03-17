@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { stopPropagation } from 'svelte/legacy';
+
   import { onMount, onDestroy } from 'svelte';
   import { createEventDispatcher } from 'svelte';
   import {
@@ -11,23 +13,23 @@
   const dispatch = createEventDispatcher();
 
   // State
-  let stats: BatchStatsResponse | null = null;
-  let batches: BatchListItem[] = [];
-  let selectedBatchId: string | null = null;
-  let selectedBatchResults: BatchResultResponse | null = null;
-  let isLoading = false;
-  let error: string | null = null;
+  let stats: BatchStatsResponse | null = $state(null);
+  let batches: BatchListItem[] = $state([]);
+  let selectedBatchId: string | null = $state(null);
+  let selectedBatchResults: BatchResultResponse | null = $state(null);
+  let isLoading = $state(false);
+  let error: string | null = $state(null);
   let refreshInterval: ReturnType<typeof setInterval> | null = null;
-  let isExpanded = true;
+  let isExpanded = $state(true);
 
   // Submit form state
-  let showSubmitForm = false;
-  let newBatchPayload = '';
-  let newBatchPriority: 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL' = 'NORMAL';
+  let showSubmitForm = $state(false);
+  let newBatchPayload = $state('');
+  let newBatchPriority: 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL' = $state('NORMAL');
 
   // Computed
-  $: selectedBatch = batches.find(b => b.batch_id === selectedBatchId);
-  $: statusColor = (status: string) => {
+  let selectedBatch = $derived(batches.find(b => b.batch_id === selectedBatchId));
+  let statusColor = $derived((status: string) => {
     switch (status) {
       case 'completed': return 'var(--accent-success)';
       case 'processing': return 'var(--accent-primary)';
@@ -36,11 +38,11 @@
       case 'cancelled': return 'var(--text-muted)';
       default: return 'var(--text-muted)';
     }
-  };
+  });
 
-  $: progressPercent = selectedBatch
+  let progressPercent = $derived(selectedBatch
     ? Math.round(((selectedBatch.completed_count + selectedBatch.failed_count) / selectedBatch.total_items) * 100)
-    : 0;
+    : 0);
 
   // Functions
   async function loadStats() {
@@ -186,7 +188,7 @@
 
 <div class="batch-panel">
   <!-- Header -->
-  <div class="panel-header" on:click={() => isExpanded = !isExpanded}>
+  <div class="panel-header" onclick={() => isExpanded = !isExpanded}>
     <div class="header-left">
       {#if isExpanded}
         <ChevronDown size={18} />
@@ -202,7 +204,7 @@
       {/if}
     </div>
     <div class="header-actions">
-      <button class="icon-btn" on:click|stopPropagation={refresh} title="Refresh">
+      <button class="icon-btn" onclick={stopPropagation(refresh)} title="Refresh">
         <span class:spinning={isLoading === true}><RefreshCw size={16} /></span>
       </button>
     </div>
@@ -213,18 +215,18 @@
     <div class="controls-bar">
       <div class="control-group">
         {#if stats?.running}
-          <button class="control-btn" on:click={handleStop} disabled={isLoading}>
+          <button class="control-btn" onclick={handleStop} disabled={isLoading}>
             <Pause size={14} />
             <span>Pause</span>
           </button>
         {:else}
-          <button class="control-btn primary" on:click={handleStart} disabled={isLoading}>
+          <button class="control-btn primary" onclick={handleStart} disabled={isLoading}>
             <Play size={14} />
             <span>Start</span>
           </button>
         {/if}
       </div>
-      <button class="control-btn" on:click={() => showSubmitForm = !showSubmitForm}>
+      <button class="control-btn" onclick={() => showSubmitForm = !showSubmitForm}>
         <Plus size={14} />
         <span>New Batch</span>
       </button>
@@ -235,7 +237,7 @@
       <div class="error-banner">
         <AlertTriangle size={16} />
         <span>{error}</span>
-        <button class="icon-btn small" on:click={() => error = null}>
+        <button class="icon-btn small" onclick={() => error = null}>
           <X size={14} />
         </button>
       </div>
@@ -262,10 +264,10 @@
           </select>
         </div>
         <div class="form-actions">
-          <button class="control-btn" on:click={() => showSubmitForm = false}>
+          <button class="control-btn" onclick={() => showSubmitForm = false}>
             Cancel
           </button>
-          <button class="control-btn primary" on:click={handleSubmitBatch} disabled={isLoading}>
+          <button class="control-btn primary" onclick={handleSubmitBatch} disabled={isLoading}>
             Submit Batch
           </button>
         </div>
@@ -320,7 +322,7 @@
             <div
               class="batch-item"
               class:selected={selectedBatchId === batch.batch_id}
-              on:click={() => selectBatch(batch.batch_id)}
+              onclick={() => selectBatch(batch.batch_id)}
             >
               <div class="batch-main">
                 <span class="batch-id">{batch.batch_id.slice(0, 8)}...</span>
@@ -351,7 +353,7 @@
                 </span>
                 <button
                   class="icon-btn small danger"
-                  on:click|stopPropagation={() => handleDeleteBatch(batch.batch_id)}
+                  onclick={stopPropagation(() => handleDeleteBatch(batch.batch_id))}
                   title="Delete batch"
                 >
                   <Trash2 size={12} />

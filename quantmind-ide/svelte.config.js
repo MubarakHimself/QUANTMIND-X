@@ -9,8 +9,11 @@ const config = {
             pages: 'build',
             assets: 'build',
             fallback: 'index.html',
-            strict: true
-        })
+            strict: false
+        }),
+        prerender: {
+            entries: []
+        }
     }
 };
 

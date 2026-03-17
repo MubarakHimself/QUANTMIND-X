@@ -1,14 +1,20 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { onMount, onDestroy, tick } from 'svelte';
   import Chart from 'chart.js/auto';
   import { tickRateHistory } from '../../services/metricsWebSocket';
   import { theme } from '../../stores/themeStore';
 
-  export let height = 200;
-  export let timeRange: '1m' | '5m' | '15m' | '1h' = '5m';
+  interface Props {
+    height?: number;
+    timeRange?: '1m' | '5m' | '15m' | '1h';
+  }
 
-  let canvas: HTMLCanvasElement;
-  let chart: Chart | null = null;
+  let { height = 200, timeRange = '5m' }: Props = $props();
+
+  let canvas: HTMLCanvasElement = $state();
+  let chart: Chart | null = $state(null);
 
   // Get time range in seconds
   function getTimeRangeSeconds(): number {
@@ -168,14 +174,18 @@
   });
 
   // Watch for theme changes
-  $: if (chart && $theme) {
-    updateChart();
-  }
+  run(() => {
+    if (chart && $theme) {
+      updateChart();
+    }
+  });
 
   // Watch for time range changes
-  $: if (chart && timeRange) {
-    updateChart();
-  }
+  run(() => {
+    if (chart && timeRange) {
+      updateChart();
+    }
+  });
 </script>
 
 <div class="tick-stream-chart" style="height: {height}px;">

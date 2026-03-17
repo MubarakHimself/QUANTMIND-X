@@ -1,9 +1,13 @@
 <script lang="ts">
   import { ChevronRight, Home } from "lucide-svelte";
 
-  export let items: Array<{ label: string; path?: string }> = [];
-  export let onNavigate: ((path: string) => void) | undefined = undefined;
-  export let showHome = true;
+  interface Props {
+    items?: Array<{ label: string; path?: string }>;
+    onNavigate?: ((path: string) => void) | undefined;
+    showHome?: boolean;
+  }
+
+  let { items = [], onNavigate = undefined, showHome = true }: Props = $props();
 
   function handleClick(
     item: { label: string; path?: string; fullPath?: string; id?: string },
@@ -22,7 +26,7 @@
       <li class="breadcrumb-item">
         <button
           class="breadcrumb-link home"
-          on:click={() => onNavigate?.("/")}
+          onclick={() => onNavigate?.("/")}
           aria-label="Go to home"
         >
           <Home size={14} />
@@ -42,7 +46,7 @@
         {:else}
           <button
             class="breadcrumb-link"
-            on:click={() => handleClick(item, index)}
+            onclick={() => handleClick(item, index)}
           >
             {item.label}
           </button>

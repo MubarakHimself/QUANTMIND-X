@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
   import {
     agents,
     departments,
@@ -14,12 +15,12 @@
   } from '$lib/stores/tradingFloorStore';
 
   // Department filter state
-  let selectedDepartment: string = 'all';
+  let selectedDepartment: string = $state('all');
   const departmentOptions = ['all', 'development', 'research', 'risk', 'trading', 'portfolio'];
 
   // Gamification state
   let hoveredAgent: AgentState | null = null;
-  let showAchievements = false;
+  let showAchievements = $state(false);
   let agentXP = new Map<string, number>();
   let agentLevels = new Map<string, number>();
   let agentAchievements = new Map<string, string[]>();
@@ -27,8 +28,8 @@
 
   // Initialize gamification data
   const initGamification = () => {
-    const $agents = get(agents);
-    $agents.forEach((agent) => {
+    const currentAgents = get(agents);
+    currentAgents.forEach((agent) => {
       if (!agentXP.has(agent.id)) {
         agentXP.set(agent.id, Math.floor(Math.random() * 500));
         agentLevels.set(agent.id, Math.floor(agentXP.get(agent.id)! / 100) + 1);
@@ -92,7 +93,7 @@
   const CANVAS_WIDTH = 1000;
   const CANVAS_HEIGHT = 600;
 
-  let canvas: HTMLCanvasElement;
+  let canvas: HTMLCanvasElement = $state();
   let ctx: CanvasRenderingContext2D | null = null;
   let animationFrame: number = 0;
 
@@ -154,20 +155,20 @@
   function render() {
     if (!ctx) return;
 
-    const $agents = get(agents);
-    const $departments = get(departments);
-    const $animatingMail = get(animatingMail);
-    const $selectedAgent = get(selectedAgent);
-    const $floorStats = get(floorStats);
+    const agentData = get(agents);
+    const deptData = get(departments);
+    const animatingMailData = get(animatingMail);
+    const selectedAgentData = get(selectedAgent);
+    const floorStatsData = get(floorStats);
 
     // Filter agents and departments by selected department
     const filteredAgents = selectedDepartment === 'all'
-      ? $agents
-      : new Map([...$agents].filter(([, agent]) => agent.department === selectedDepartment));
+      ? agentData
+      : new Map([...agentData].filter(([, agent]) => agent.department === selectedDepartment));
 
     const filteredDepartments = selectedDepartment === 'all'
-      ? $departments
-      : new Map([...$departments].filter(([key]) => key === selectedDepartment));
+      ? deptData
+      : new Map([...deptData].filter(([key]) => key === selectedDepartment));
 
     // Clear canvas
     ctx.fillStyle = COLORS.background;
@@ -195,24 +196,24 @@
 
     // Draw filtered departments
     filteredDepartments.forEach((dept, key) => {
-      drawDepartment(dept, key, $selectedAgent);
+      drawDepartment(dept, key, selectedAgentData);
     });
 
     // Draw filtered agents
     filteredAgents.forEach((agent) => {
-      drawAgent(agent, $selectedAgent);
+      drawAgent(agent, selectedAgentData);
     });
 
     // Draw mail animation
-    if ($animatingMail) {
-      drawMail($animatingMail, $departments);
+    if (animatingMailData) {
+      drawMail(animatingMailData, deptData);
     }
 
     // Draw particles
     renderParticles();
 
     // Draw stats
-    renderStats($floorStats, filteredAgents);
+    renderStats(floorStatsData, filteredAgents);
   }
 
   function drawDepartment(dept: DepartmentPosition, key: string, selectedId: string | null) {
@@ -501,12 +502,12 @@
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
-    const $departments = get(departments);
-    const $agents = get(agents);
+    const deptData = get(departments);
+    const agentData = get(agents);
 
     // Check if clicked on department
     let clickedDept: string | null = null;
-    $departments.forEach((dept, key) => {
+    deptData.forEach((dept, key) => {
       if (
         x >= dept.x && x <= dept.x + dept.width &&
         y >= dept.y && y <= dept.y + dept.height
@@ -517,7 +518,7 @@
 
     // Check if clicked on agent
     let clickedAgent: AgentState | null = null;
-    $agents.forEach((agent) => {
+    agentData.forEach((agent) => {
       const dx = x - agent.position.x;
       const dy = y - agent.position.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
@@ -553,10 +554,10 @@
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
-    const $agents = get(agents);
+    const agentData = get(agents);
 
     let found: AgentState | null = null;
-    $agents.forEach((agent) => {
+    agentData.forEach((agent) => {
       const dx = x - agent.position.x;
       const dy = y - agent.position.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
@@ -604,9 +605,6 @@
   function toggleAchievements() {
     showAchievements = !showAchievements;
   }
-
-  // Import get from svelte/store
-  import { get } from 'svelte/store';
 </script>
 
 <div class="trading-floor-canvas">
@@ -615,8 +613,8 @@
       bind:this={canvas}
       width={CANVAS_WIDTH}
       height={CANVAS_HEIGHT}
-      on:click={handleClick}
-      on:mousemove={handleMouseMove}
+      onclick={handleClick}
+      onmousemove={handleMouseMove}
     ></canvas>
     <div class="controls-overlay">
       <select
@@ -633,7 +631,7 @@
       <button
         class="achievements-btn"
         class:active={showAchievements}
-        on:click={toggleAchievements}
+        onclick={toggleAchievements}
         title="Toggle Achievements"
       >
         <span class="trophy-icon">T</span>

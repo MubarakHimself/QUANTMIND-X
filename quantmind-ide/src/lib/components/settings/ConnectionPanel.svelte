@@ -1,13 +1,13 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
 
-  export let connectionSettings = {
+  let { connectionSettings = $bindable({
     redisUrl: 'redis://localhost:6379',
     zmqEndpoint: 'tcp://localhost:5555',
     mt5Login: '',
     mt5Password: '',
     mt5Server: ''
-  };
+  }) } = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -25,7 +25,7 @@
       type="text"
       bind:value={connectionSettings.redisUrl}
       class="text-input"
-      on:input={(e) => updateConnectionSettings('redisUrl', e.currentTarget.value)}
+      oninput={(e) => updateConnectionSettings('redisUrl', e.currentTarget.value)}
     />
   </div>
 
@@ -35,7 +35,7 @@
       type="text"
       bind:value={connectionSettings.zmqEndpoint}
       class="text-input"
-      on:input={(e) => updateConnectionSettings('zmqEndpoint', e.currentTarget.value)}
+      oninput={(e) => updateConnectionSettings('zmqEndpoint', e.currentTarget.value)}
     />
   </div>
 
@@ -46,7 +46,7 @@
       type="number"
       bind:value={connectionSettings.mt5Login}
       class="text-input"
-      on:input={(e) => updateConnectionSettings('mt5Login', e.currentTarget.value)}
+      oninput={(e) => updateConnectionSettings('mt5Login', e.currentTarget.value)}
     />
   </div>
   <div class="setting-group">
@@ -55,7 +55,7 @@
       type="password"
       bind:value={connectionSettings.mt5Password}
       class="text-input"
-      on:input={(e) => updateConnectionSettings('mt5Password', e.currentTarget.value)}
+      oninput={(e) => updateConnectionSettings('mt5Password', e.currentTarget.value)}
     />
   </div>
   <div class="setting-group">
@@ -64,7 +64,7 @@
       type="text"
       bind:value={connectionSettings.mt5Server}
       class="text-input"
-      on:input={(e) => updateConnectionSettings('mt5Server', e.currentTarget.value)}
+      oninput={(e) => updateConnectionSettings('mt5Server', e.currentTarget.value)}
     />
   </div>
 </div>

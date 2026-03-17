@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { run } from 'svelte/legacy';
+
 	import { onMount, onDestroy, createEventDispatcher } from "svelte";
 	import type {
 		IChartApi,
@@ -14,20 +16,39 @@
 	import { createChart, ColorType, CrosshairMode } from "lightweight-charts";
 	import { wsClient } from "$lib/ws-client";
 
-	// Props
-	export let symbol: string = "EURUSD";
-	export let timeframe: string = "H1";
-	export let data: CandlestickData<Time>[] = [];
-	export let volumeData: HistogramData<Time>[] = [];
-	export let trades: TradeMarker[] = [];
-	export let regimes: RegimeOverlay[] = [];
-	export let autoSize: boolean = true;
-	export let showVolume: boolean = true;
-	export let showTrades: boolean = true;
-	export let showRegimes: boolean = true;
-	export let wsEnabled: boolean = true;
-	// WebSocket URL prop - defaults to relative /ws/chart endpoint
-	export let wsUrl: string = "";
+	
+	
+	interface Props {
+		// Props
+		symbol?: string;
+		timeframe?: string;
+		data?: CandlestickData<Time>[];
+		volumeData?: HistogramData<Time>[];
+		trades?: TradeMarker[];
+		regimes?: RegimeOverlay[];
+		autoSize?: boolean;
+		showVolume?: boolean;
+		showTrades?: boolean;
+		showRegimes?: boolean;
+		wsEnabled?: boolean;
+		// WebSocket URL prop - defaults to relative /ws/chart endpoint
+		wsUrl?: string;
+	}
+
+	let {
+		symbol = "EURUSD",
+		timeframe = "H1",
+		data = $bindable([]),
+		volumeData = [],
+		trades = $bindable([]),
+		regimes = $bindable([]),
+		autoSize = true,
+		showVolume = true,
+		showTrades = true,
+		showRegimes = true,
+		wsEnabled = true,
+		wsUrl = ""
+	}: Props = $props();
 
 	// Internal state
 	let ws: WebSocket | null = null;
@@ -37,10 +58,10 @@
 	const RECONNECT_DELAY = 3000;
 
 	// Chart container reference
-	let chartContainer: HTMLDivElement;
-	let chart: IChartApi | null = null;
-	let candlestickSeries: ISeriesApi<"Candlestick"> | null = null;
-	let volumeSeries: ISeriesApi<"Histogram"> | null = null;
+	let chartContainer: HTMLDivElement = $state();
+	let chart: IChartApi | null = $state(null);
+	let candlestickSeries: ISeriesApi<"Candlestick"> | null = $state(null);
+	let volumeSeries: ISeriesApi<"Histogram"> | null = $state(null);
 	let tradeMarkers: any[] = [];
 
 	// Dispatch events
@@ -375,21 +396,27 @@
 	});
 
 	// Update data
-	$: if (chart && candlestickSeries && data.length > 0) {
-		candlestickSeries.setData(data);
-	}
+	run(() => {
+		if (chart && candlestickSeries && data.length > 0) {
+			candlestickSeries.setData(data);
+		}
+	});
 
-	$: if (chart && volumeSeries && volumeData.length > 0) {
-		volumeSeries.setData(volumeData);
-	}
+	run(() => {
+		if (chart && volumeSeries && volumeData.length > 0) {
+			volumeSeries.setData(volumeData);
+		}
+	});
 
 	// React to symbol/timeframe changes - reconnect WebSocket
-	$: if (wsEnabled && (symbol || timeframe)) {
-		disconnectWebSocket();
-		if (chartContainer) {
-			connectWebSocket();
+	run(() => {
+		if (wsEnabled && (symbol || timeframe)) {
+			disconnectWebSocket();
+			if (chartContainer) {
+				connectWebSocket();
+			}
 		}
-	}
+	});
 
 	// Update trade markers
 	function updateTradeMarkers() {
@@ -498,7 +525,7 @@
 		<div class="chart-controls">
 			<button
 				class="control-btn"
-				on:click={fitContent}
+				onclick={fitContent}
 				title="Fit Content"
 			>
 				<svg
@@ -517,7 +544,7 @@
 			</button>
 			<button
 				class="control-btn"
-				on:click={scrollToRealTime}
+				onclick={scrollToRealTime}
 				title="Scroll to Real-time"
 			>
 				<svg
@@ -537,7 +564,7 @@
 			</button>
 		</div>
 	</div>
-	<div bind:this={chartContainer} class="chart-container" />
+	<div bind:this={chartContainer} class="chart-container"></div>
 </div>
 
 <style>

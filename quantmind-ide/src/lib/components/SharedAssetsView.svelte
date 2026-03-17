@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { self } from 'svelte/legacy';
+
   import { createEventDispatcher, onMount } from 'svelte';
   import {
     Package, Code, Shield, Search, Filter, Plus, Eye, Edit,
@@ -36,40 +38,40 @@
   }
 
   // State
-  let assets: SharedAsset[] = [];
-  let filteredAssets: SharedAsset[] = [];
-  let selectedAsset: SharedAsset | null = null;
+  let assets: SharedAsset[] = $state([]);
+  let filteredAssets: SharedAsset[] = $state([]);
+  let selectedAsset: SharedAsset | null = $state(null);
 
   // View state
-  let expandedAsset: string | null = null;
-  let detailViewOpen = false;
-  let addAssetModalOpen = false;
+  let expandedAsset: string | null = $state(null);
+  let detailViewOpen = $state(false);
+  let addAssetModalOpen = $state(false);
   let editAssetModalOpen = false;
-  let historyModalOpen = false;
-  let activeTab = 'assets'; // 'assets' or 'database'
+  let historyModalOpen = $state(false);
+  let activeTab = $state('assets'); // 'assets' or 'database'
 
   // Filters
-  let categoryFilter = 'all';
-  let searchQuery = '';
+  let categoryFilter = $state('all');
+  let searchQuery = $state('');
 
   // New asset form
-  let newAsset = {
+  let newAsset = $state({
     name: '',
     category: 'Indicator' as 'Indicator' | 'Risk' | 'Utils',
     code: '',
     description: '',
     dependencies: [] as string[]
-  };
+  });
 
   // Asset history
-  let assetHistory: AssetHistory[] = [];
+  let assetHistory: AssetHistory[] = $state([]);
 
   // Permission settings
-  let permissionSettings = {
+  let permissionSettings = $state({
     quantCodeWrite: true,
     copilotWrite: false,
     userWrite: true
-  };
+  });
 
   onMount(() => {
     loadAssets();
@@ -277,16 +279,16 @@
       </div>
     </div>
     <div class="header-actions">
-      <button class="btn" on:click={loadAssets}>
+      <button class="btn" onclick={loadAssets}>
         <RefreshCw size={14} />
         <span>Refresh</span>
       </button>
-      <button class="btn" on:click={() => permissionSettings.copilotWrite = !permissionSettings.copilotWrite}>
+      <button class="btn" onclick={() => permissionSettings.copilotWrite = !permissionSettings.copilotWrite}>
         <SettingsIcon size={14} />
         <span>{permissionSettings.copilotWrite ? 'Copilot: ON' : 'Copilot: OFF'}</span>
       </button>
       {#if activeTab === 'assets'}
-        <button class="btn primary" on:click={() => addAssetModalOpen = true}>
+        <button class="btn primary" onclick={() => addAssetModalOpen = true}>
           <Plus size={14} />
           <span>Add Asset</span>
         </button>
@@ -296,11 +298,11 @@
 
   <!-- Tabs -->
   <div class="tabs-bar">
-    <button class="tab-btn" class:active={activeTab === 'assets'} on:click={() => activeTab = 'assets'}>
+    <button class="tab-btn" class:active={activeTab === 'assets'} onclick={() => activeTab = 'assets'}>
       <Package size={14} />
       <span>Shared Assets</span>
     </button>
-    <button class="tab-btn" class:active={activeTab === 'database'} on:click={() => activeTab = 'database'}>
+    <button class="tab-btn" class:active={activeTab === 'database'} onclick={() => activeTab = 'database'}>
       <Database size={14} />
       <span>Database Manager</span>
     </button>
@@ -335,13 +337,13 @@
         type="text"
         placeholder="Search by name, description, path..."
         bind:value={searchQuery}
-        on:input={applyFilters}
+        oninput={applyFilters}
       />
     </div>
 
     <div class="filter-group">
       <Filter size={14} />
-      <select bind:value={categoryFilter} on:change={applyFilters}>
+      <select bind:value={categoryFilter} onchange={applyFilters}>
         <option value="all">All Categories</option>
         <option value="Indicator">Indicators</option>
         <option value="Risk">Risk</option>
@@ -428,7 +430,7 @@
           <div class="cell actions">
             <button
               class="icon-btn"
-              on:click={() => toggleExpanded(asset.id)}
+              onclick={() => toggleExpanded(asset.id)}
               title="Toggle details"
             >
               {#if expandedAsset === asset.id}
@@ -437,12 +439,12 @@
                 <ChevronDown size={14} />
               {/if}
             </button>
-            <button class="icon-btn" on:click={() => viewAsset(asset)} title="View details">
+            <button class="icon-btn" onclick={() => viewAsset(asset)} title="View details">
               <Eye size={14} />
             </button>
             <button
               class="icon-btn"
-              on:click={() => editAsset(asset)}
+              onclick={() => editAsset(asset)}
               title="Edit asset"
               disabled={!canWriteAsset(asset)}
               class:disabled={!canWriteAsset(asset)}
@@ -451,7 +453,7 @@
             </button>
             <button
               class="icon-btn danger"
-              on:click={() => deleteAsset(asset)}
+              onclick={() => deleteAsset(asset)}
               title="Delete asset"
               disabled={!canWriteAsset(asset)}
               class:disabled={!canWriteAsset(asset)}
@@ -502,7 +504,7 @@
               <div class="detail-section">
                 <h4><Zap size={14} /> Quick Actions</h4>
                 <div class="quick-actions">
-                  <button class="action-btn" on:click={() => viewHistory(asset)}>
+                  <button class="action-btn" onclick={() => viewHistory(asset)}>
                     <History size={14} />
                     <span>View History</span>
                   </button>
@@ -510,7 +512,7 @@
                     <Download size={14} />
                     <span>Export</span>
                   </button>
-                  <button class="action-btn" on:click={() => openInEditor(asset)}>
+                  <button class="action-btn" onclick={() => openInEditor(asset)}>
                     <Edit size={14} />
                     <span>Open in Editor</span>
                   </button>
@@ -525,7 +527,7 @@
         <div class="empty-state">
           <Package size={32} />
           <p>No shared assets found</p>
-          <button class="btn primary" on:click={() => addAssetModalOpen = true}>
+          <button class="btn primary" onclick={() => addAssetModalOpen = true}>
             <Plus size={14} />
             <span>Create First Asset</span>
           </button>
@@ -537,7 +539,7 @@
 
 <!-- Asset Detail Modal -->
   {#if detailViewOpen && selectedAsset}
-    <div class="modal-overlay" on:click|self={() => detailViewOpen = false} role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
+    <div class="modal-overlay" onclick={self(() => detailViewOpen = false)} role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
       <div class="modal large">
         <div class="modal-header">
           <div>
@@ -552,7 +554,7 @@
               <span class="version">v{selectedAsset.version}</span>
             </p>
           </div>
-          <button class="icon-btn" on:click={() => detailViewOpen = false}>
+          <button class="icon-btn" onclick={() => detailViewOpen = false}>
             <X size={18} />
           </button>
         </div>
@@ -628,7 +630,7 @@
 
           <!-- Actions -->
           <div class="detail-actions">
-            <button class="btn" on:click={() => selectedAsset && viewHistory(selectedAsset)}>
+            <button class="btn" onclick={() => selectedAsset && viewHistory(selectedAsset)}>
               <GitBranch size={14} />
               <span>Version History</span>
             </button>
@@ -637,7 +639,7 @@
               <span>Export Asset</span>
             </button>
             {#if selectedAsset && canWriteAsset(selectedAsset)}
-              <button class="btn" on:click={() => editAsset(selectedAsset)}>
+              <button class="btn" onclick={() => editAsset(selectedAsset)}>
                 <Edit size={14} />
                 <span>Edit Asset</span>
               </button>
@@ -650,14 +652,14 @@
 
   <!-- Add Asset Modal -->
   {#if addAssetModalOpen}
-    <div class="modal-overlay" on:click|self={() => addAssetModalOpen = false} on:keydown={(e) => e.key === 'Escape' && (addAssetModalOpen = false)} role="dialog" aria-modal="true" aria-labelledby="add-modal-title">
+    <div class="modal-overlay" onclick={self(() => addAssetModalOpen = false)} onkeydown={(e) => e.key === 'Escape' && (addAssetModalOpen = false)} role="dialog" aria-modal="true" aria-labelledby="add-modal-title">
       <div class="modal">
         <div class="modal-header">
           <div>
             <h3 id="add-modal-title">Add New Shared Asset</h3>
             <p class="modal-subtitle">Create a reusable component for the library</p>
           </div>
-          <button class="icon-btn" on:click={() => addAssetModalOpen = false}>
+          <button class="icon-btn" onclick={() => addAssetModalOpen = false}>
             <X size={18} />
           </button>
         </div>
@@ -699,7 +701,7 @@
               id="asset-dependencies-input"
               type="text"
               placeholder="e.g., MovingAverage, ATR, Statistics"
-              on:change={(e) => {
+              onchange={(e) => {
                 const target = e.target;
                 newAsset.dependencies = target.value.split(',').map(s => s.trim()).filter(s => s);
               }}
@@ -708,8 +710,8 @@
         </div>
 
         <div class="modal-actions">
-          <button class="btn" on:click={() => addAssetModalOpen = false}>Cancel</button>
-          <button class="btn primary" on:click={createAsset}>
+          <button class="btn" onclick={() => addAssetModalOpen = false}>Cancel</button>
+          <button class="btn primary" onclick={createAsset}>
             <Plus size={14} />
             <span>Create Asset</span>
           </button>
@@ -720,14 +722,14 @@
 
   <!-- History Modal -->
   {#if historyModalOpen && selectedAsset}
-    <div class="modal-overlay" on:click|self={() => historyModalOpen = false} on:keydown={(e) => e.key === 'Escape' && (historyModalOpen = false)} role="dialog" aria-modal="true" aria-labelledby="history-modal-title">
+    <div class="modal-overlay" onclick={self(() => historyModalOpen = false)} onkeydown={(e) => e.key === 'Escape' && (historyModalOpen = false)} role="dialog" aria-modal="true" aria-labelledby="history-modal-title">
       <div class="modal">
         <div class="modal-header">
           <div>
             <h3 id="history-modal-title">Version History</h3>
             <p class="modal-subtitle">{selectedAsset.name}</p>
           </div>
-          <button class="icon-btn" on:click={() => historyModalOpen = false}>
+          <button class="icon-btn" onclick={() => historyModalOpen = false}>
             <X size={18} />
           </button>
         </div>
@@ -748,7 +750,7 @@
                 </div>
                 <p class="history-description">{history.change_description}</p>
                 {#if index > 0 && canWriteAsset(selectedAsset)}
-                  <button class="rollback-btn" on:click={() => rollbackToVersion(history.version)}>
+                  <button class="rollback-btn" onclick={() => rollbackToVersion(history.version)}>
                     <History size={12} />
                     <span>Rollback</span>
                   </button>

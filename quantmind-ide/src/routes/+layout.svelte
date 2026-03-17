@@ -1,15 +1,20 @@
-<script>
+<script lang="ts">
   import '../app.css';
   import { onMount } from 'svelte';
   import { theme, applyTheme, loadSavedTheme, setFont, loadSavedFont, setCustomWallpaper, loadSavedWallpaper, customWallpaper } from '$lib/stores/themeStore';
+  interface Props {
+    children?: import('svelte').Snippet;
+  }
+
+  let { children }: Props = $props();
 
   // Reactive wallpaper style
-  $: wallpaperStyle = $customWallpaper.startsWith('url')
+  let wallpaperStyle = $derived($customWallpaper.startsWith('url')
     ? `url(${$customWallpaper})`
-    : $customWallpaper || 'none';
+    : $customWallpaper || 'none');
 
-  $: isImage = $customWallpaper.startsWith('url');
-  $: isPattern = !$customWallpaper.startsWith('url') && $customWallpaper.includes('gradient') === false && $customWallpaper !== '';
+  let isImage = $derived($customWallpaper.startsWith('url'));
+  let isPattern = $derived(!$customWallpaper.startsWith('url') && $customWallpaper.includes('gradient') === false && $customWallpaper !== '');
 
   // Apply saved theme and font on mount
   onMount(() => {
@@ -37,7 +42,7 @@
   style="background: {wallpaperStyle};"
 ></div>
 
-<slot />
+{@render children?.()}
 
 <style>
   .wallpaper-bg {

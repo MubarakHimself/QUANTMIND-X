@@ -3,17 +3,28 @@
   import { X, ArrowLeft, ArrowRight, Copy, Check } from 'lucide-svelte';
   import type { FileVersion } from '../services/fileHistoryManager';
 
-  export let oldContent: string;
-  export let newContent: string;
-  export let oldLabel: string = 'Previous';
-  export let newLabel: string = 'Current';
-  export let oldVersion: FileVersion | null = null;
-  export let newVersion: FileVersion | null = null;
+  interface Props {
+    oldContent: string;
+    newContent: string;
+    oldLabel?: string;
+    newLabel?: string;
+    oldVersion?: FileVersion | null;
+    newVersion?: FileVersion | null;
+  }
+
+  let {
+    oldContent,
+    newContent,
+    oldLabel = 'Previous',
+    newLabel = 'Current',
+    oldVersion = null,
+    newVersion = null
+  }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
-  let viewMode: 'split' | 'unified' = 'split';
-  let copied = false;
+  let viewMode: 'split' | 'unified' = $state('split');
+  let copied = $state(false);
 
   interface DiffLine {
     type: 'added' | 'removed' | 'unchanged';
@@ -120,11 +131,11 @@
     return diff;
   }
 
-  $: oldLines = oldContent.split('\n');
-  $: newLines = newContent.split('\n');
-  $: diffLines = computeDiff(oldLines, newLines);
-  $: addedCount = diffLines.filter(l => l.type === 'added').length;
-  $: removedCount = diffLines.filter(l => l.type === 'removed').length;
+  let oldLines = $derived(oldContent.split('\n'));
+  let newLines = $derived(newContent.split('\n'));
+  let diffLines = $derived(computeDiff(oldLines, newLines));
+  let addedCount = $derived(diffLines.filter(l => l.type === 'added').length);
+  let removedCount = $derived(diffLines.filter(l => l.type === 'removed').length);
 
   function copyDiff() {
     const diffText = diffLines.map(line => {
@@ -160,25 +171,25 @@
       <div class="view-toggle">
         <button 
           class:active={viewMode === 'split'} 
-          on:click={() => viewMode = 'split'}
+          onclick={() => viewMode = 'split'}
         >
           Split
         </button>
         <button 
           class:active={viewMode === 'unified'} 
-          on:click={() => viewMode = 'unified'}
+          onclick={() => viewMode = 'unified'}
         >
           Unified
         </button>
       </div>
-      <button class="action-btn" on:click={copyDiff} title="Copy diff">
+      <button class="action-btn" onclick={copyDiff} title="Copy diff">
         {#if copied}
           <Check size={14} />
         {:else}
           <Copy size={14} />
         {/if}
       </button>
-      <button class="close-btn" on:click={() => dispatch('close')}>
+      <button class="close-btn" onclick={() => dispatch('close')}>
         <X size={16} />
       </button>
     </div>

@@ -20,13 +20,13 @@
 
   const API_BASE = API_CONFIG.API_BASE;
 
-  let youtubeUrl = '';
-  let isPlaylist = false;
-  let loading = false;
-  let error = '';
-  let jobs: VideoIngestJob[] = [];
-  let authStatus: AuthStatus = { gemini: false, qwen: false };
-  let checkingAuth = true;
+  let youtubeUrl = $state('');
+  let isPlaylist = $state(false);
+  let loading = $state(false);
+  let error = $state('');
+  let jobs: VideoIngestJob[] = $state([]);
+  let authStatus: AuthStatus = $state({ gemini: false, qwen: false });
+  let checkingAuth = $state(true);
 
   // Check authentication status on mount
   onMount(async () => {
@@ -203,18 +203,18 @@
         bind:value={youtubeUrl}
         placeholder="Enter YouTube URL or playlist..."
         disabled={loading}
-        on:keydown={(e) => e.key === 'Enter' && submitJob()}
+        onkeydown={(e) => e.key === 'Enter' && submitJob()}
       />
       <button
         class="playlist-toggle"
         class:active={isPlaylist}
-        on:click={() => isPlaylist = !isPlaylist}
+        onclick={() => isPlaylist = !isPlaylist}
         title="Toggle playlist mode"
       >
         <ListVideo size={16} />
       </button>
     </div>
-    <button on:click={submitJob} disabled={loading || !youtubeUrl}>
+    <button onclick={submitJob} disabled={loading || !youtubeUrl}>
       {#if loading}
         <Loader2 size={14} class="spin" />
         Processing...
@@ -235,7 +235,7 @@
   <div class="jobs-section">
     <div class="jobs-header">
       <h4>Recent Jobs</h4>
-      <button class="refresh-btn" on:click={refreshJobs} title="Refresh">
+      <button class="refresh-btn" onclick={refreshJobs} title="Refresh">
         <Loader2 size={14} />
       </button>
     </div>
@@ -249,10 +249,11 @@
     {:else}
       <div class="jobs-list">
         {#each jobs as job}
+          {@const SvelteComponent = getStatusIcon(job.status)}
           <div class="job-card">
             <div class="job-main">
               <div class="job-status" style="color: {getStatusColor(job.status)}">
-                <svelte:component this={getStatusIcon(job.status)} size={16} />
+                <SvelteComponent size={16} />
                 <span>{getStatusText(job.status)}</span>
               </div>
               {#if job.progress !== undefined && job.progress > 0}

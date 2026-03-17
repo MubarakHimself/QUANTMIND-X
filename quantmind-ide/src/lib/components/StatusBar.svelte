@@ -9,14 +9,14 @@
 
   const API_BASE = 'http://localhost:8000/api';
 
-  let connected = false;
-  let regime = 'Unknown';
-  let kelly = 0.0;
-  let activeBots = 0;
-  let pnlToday = 0.0;
-  let killSwitchActive = false;
+  let connected = $state(false);
+  let regime = $state('Unknown');
+  let kelly = $state(0.0);
+  let activeBots = $state(0);
+  let pnlToday = $state(0.0);
+  let killSwitchActive = $state(false);
   let loading = true;
-  let showApprovalPanel = false;
+  let showApprovalPanel = $state(false);
 
   onMount(() => {
     fetchStatus();
@@ -86,7 +86,7 @@
 
 <footer class="status-bar">
   <div class="left-section">
-    <button class="status-item connection" class:connected on:click={fetchStatus}>
+    <button class="status-item connection" class:connected onclick={fetchStatus}>
       {#if connected}
         <Wifi size={12} />
         <span>Connected</span>
@@ -113,7 +113,7 @@
       <button
         class="status-item approval-btn"
         class:has-approvals={$pendingCount > 0}
-        on:click={() => showApprovalPanel = !showApprovalPanel}
+        onclick={() => showApprovalPanel = !showApprovalPanel}
         title="Workflow Approvals"
       >
         <Workflow size={12} />
@@ -127,7 +127,7 @@
       {/if}
     </div>
 
-    <button class="status-item bots" on:click={openLiveTrading}>
+    <button class="status-item bots" onclick={openLiveTrading}>
       <Bot size={12} />
       <span>Active: {activeBots}</span>
     </button>
@@ -143,7 +143,7 @@
     <button
       class="kill-switch"
       class:active={killSwitchActive}
-      on:click={toggleKillSwitch}
+      onclick={toggleKillSwitch}
       title="Emergency Kill Switch"
     >
       <Power size={12} />

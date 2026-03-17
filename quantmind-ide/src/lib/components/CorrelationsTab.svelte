@@ -1,13 +1,17 @@
 <script lang="ts">
   import { Layers, AlertTriangle } from 'lucide-svelte';
 
-  export let correlations: Array<{
+
+  interface Props {
+    correlations: Array<{
     pair: string;
     value: number;
     status: 'ok' | 'warning' | 'danger';
   }>;
+    getScoreColor: (score: number) => string;
+  }
 
-  export let getScoreColor: (score: number) => string;
+  let { correlations, getScoreColor }: Props = $props();
 </script>
 
 <div class="correlations-section">

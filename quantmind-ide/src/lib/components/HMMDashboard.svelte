@@ -9,12 +9,12 @@
   import HMMControlPanel from '$lib/components/HMMControlPanel.svelte';
   import { createTradingClient } from '$lib/ws-client';
   import type { WebSocketClient } from '$lib/ws-client';
-  import { PUBLIC_API_BASE } from '$env/static/public';
+  import { API_BASE } from '$lib/constants';
 
-  const apiBase = PUBLIC_API_BASE || '';
+  const apiBase = API_BASE || '';
 
   // HMM Status
-  let hmmStatus = {
+  let hmmStatus = $state({
     model_loaded: false,
     model_version: '',
     deployment_mode: 'ising_only',
@@ -28,22 +28,22 @@
       agreement_count: 0,
       agreement_pct: 0
     }
-  };
+  });
 
   // Model hierarchy
-  let modelHierarchy = {
+  let modelHierarchy = $state({
     universal: { trained: false, version: '', accuracy: 0 },
     per_symbol: {} as Record<string, { trained: boolean; version: string; accuracy: number }>,
     per_symbol_timeframe: {} as Record<string, Record<string, { trained: boolean; version: string; accuracy: number }>>
-  };
+  });
 
   // Training status
-  let trainingStatus = {
+  let trainingStatus = $state({
     status: 'idle',
     progress: 0,
     message: '',
     next_training: ''
-  };
+  });
 
   // Available models
   let availableModels: Array<{
@@ -54,7 +54,7 @@
     training_date?: string;
     training_samples?: number;
     log_likelihood?: number;
-  }> = [];
+  }> = $state([]);
 
   let wsClient: WebSocketClient | null = null;
 

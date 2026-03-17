@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { stopPropagation, self } from 'svelte/legacy';
+
   import { onMount } from 'svelte';
   import { fade, fly, slide } from 'svelte/transition';
   import {
@@ -29,20 +31,20 @@
 
   // State
   let strategies: StrategyRaw[] = [];
-  let filteredStrategies: StrategyRaw[] = [];
-  let selectedStrategy: StrategyRaw | null = null;
-  let loading = false;
-  let error: string | null = null;
+  let filteredStrategies: StrategyRaw[] = $state([]);
+  let selectedStrategy: StrategyRaw | null = $state(null);
+  let loading = $state(false);
+  let error: string | null = $state(null);
 
   // View state
-  let expandedStrategy: string | null = null;
-  let detailModalOpen = false;
-  let activeTab = 'strategies'; // 'strategies' or 'trd'
+  let expandedStrategy: string | null = $state(null);
+  let detailModalOpen = $state(false);
+  let activeTab = $state('strategies'); // 'strategies' or 'trd'
 
   // Filters
-  let searchQuery = '';
-  let sourceFilter = 'all';
-  let statusFilter = 'all';
+  let searchQuery = $state('');
+  let sourceFilter = $state('all');
+  let statusFilter = $state('all');
 
   const API_BASE = 'http://localhost:8000/api';
 
@@ -163,7 +165,7 @@
       </div>
     </div>
     <div class="header-actions">
-      <button class="btn" on:click={loadStrategies}>
+      <button class="btn" onclick={loadStrategies}>
         <RefreshCw size={14} />
         <span>Refresh</span>
       </button>
@@ -179,7 +181,7 @@
     <div class="error-banner" in:fly={{ y: -20 }}>
       <AlertCircle size={16} />
       <span>{error}</span>
-      <button class="dismiss-btn" on:click={() => error = null}>
+      <button class="dismiss-btn" onclick={() => error = null}>
         <X size={14} />
       </button>
     </div>
@@ -190,7 +192,7 @@
     <button
       class="tab-btn"
       class:active={activeTab === 'strategies'}
-      on:click={() => activeTab = 'strategies'}
+      onclick={() => activeTab = 'strategies'}
     >
       <FileText size={14} />
       <span>Extracted Strategies</span>
@@ -198,7 +200,7 @@
     <button
       class="tab-btn"
       class:active={activeTab === 'trd'}
-      on:click={() => activeTab = 'trd'}
+      onclick={() => activeTab = 'trd'}
     >
       <BookOpen size={14} />
       <span>TRD Documents</span>
@@ -213,13 +215,13 @@
         type="text"
         placeholder="Search strategies..."
         bind:value={searchQuery}
-        on:input={applyFilters}
+        oninput={applyFilters}
       />
     </div>
 
     <div class="filter-group">
       <Filter size={14} />
-      <select bind:value={sourceFilter} on:change={applyFilters}>
+      <select bind:value={sourceFilter} onchange={applyFilters}>
         <option value="all">All Sources</option>
         <option value="video">Videos</option>
         <option value="pdf">PDFs</option>
@@ -229,7 +231,7 @@
 
     <div class="filter-group">
       <Tag size={14} />
-      <select bind:value={statusFilter} on:change={applyFilters}>
+      <select bind:value={statusFilter} onchange={applyFilters}>
         <option value="all">All Status</option>
         <option value="completed">Completed</option>
         <option value="processing">Processing</option>
@@ -255,15 +257,17 @@
       {#if filteredStrategies.length > 0}
         <div class="strategies-list">
           {#each filteredStrategies as strategy}
+            {@const SvelteComponent = getSourceIcon(strategy.source_type)}
+            {@const SvelteComponent_1 = getStatusIcon(strategy.status)}
             <div
               class="strategy-card"
               class:expanded={expandedStrategy === strategy.id}
               in:fly={{ y: 20 }}
             >
-              <div class="strategy-header" on:click={() => toggleExpanded(strategy.id)}>
+              <div class="strategy-header" onclick={() => toggleExpanded(strategy.id)}>
                 <div class="strategy-info">
                   <div class="strategy-name">
-                    <svelte:component this={getSourceIcon(strategy.source_type)} size={14} style="color: {getSourceColor(strategy.source_type)}" />
+                    <SvelteComponent size={14} style="color: {getSourceColor(strategy.source_type)}" />
                     <span>{strategy.name}</span>
                   </div>
                   <div class="strategy-meta">
@@ -271,7 +275,7 @@
                       {strategy.source_type.toUpperCase()}
                     </span>
                     <span class="status-badge" style="color: {getStatusColor(strategy.status)}">
-                      <svelte:component this={getStatusIcon(strategy.status)} size={10} />
+                      <SvelteComponent_1 size={10} />
                       <span>{strategy.status}</span>
                     </span>
                     <span class="extracted-time">
@@ -283,7 +287,7 @@
                 <div class="strategy-actions">
                   <button
                     class="icon-btn"
-                    on:click|stopPropagation={() => viewStrategy(strategy)}
+                    onclick={stopPropagation(() => viewStrategy(strategy))}
                     title="View details"
                   >
                     <Eye size={14} />
@@ -340,7 +344,7 @@
         <div class="empty-state">
           <FileText size={48} />
           <p>No extracted strategies found</p>
-          <button class="btn primary" on:click={loadStrategies}>
+          <button class="btn primary" onclick={loadStrategies}>
             <RefreshCw size={14} />
             <span>Refresh</span>
           </button>
@@ -363,7 +367,7 @@
 {#if detailModalOpen && selectedStrategy}
   <div
     class="modal-overlay"
-    on:click|self={() => detailModalOpen = false}
+    onclick={self(() => detailModalOpen = false)}
     role="dialog"
     aria-modal="true"
   >
@@ -380,7 +384,7 @@
             </span>
           </p>
         </div>
-        <button class="icon-btn" on:click={() => detailModalOpen = false}>
+        <button class="icon-btn" onclick={() => detailModalOpen = false}>
           <X size={18} />
         </button>
       </div>

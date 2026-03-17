@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { self } from 'svelte/legacy';
+
   import { createEventDispatcher } from "svelte";
   import {
     X,
@@ -8,21 +10,31 @@
     File,
   } from "lucide-svelte";
 
-  export let isOpen = false;
-  export let uploadType: "book" | "article" | "note" = "article";
-  export let dragOver = false;
-  export let metadata = {
+  interface Props {
+    isOpen?: boolean;
+    uploadType?: "book" | "article" | "note";
+    dragOver?: boolean;
+    metadata?: any;
+    uploadingFiles?: Array<{
+    name: string;
+    progress: number;
+    status: "pending" | "uploading" | "done" | "error";
+  }>;
+  }
+
+  let {
+    isOpen = false,
+    uploadType = $bindable("article"),
+    dragOver = false,
+    metadata = $bindable({
     title: "",
     author: "",
     category: "",
     url: "",
     content: "",
-  };
-  export let uploadingFiles: Array<{
-    name: string;
-    progress: number;
-    status: "pending" | "uploading" | "done" | "error";
-  }> = [];
+  }),
+    uploadingFiles = []
+  }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -57,15 +69,15 @@
 {#if isOpen}
   <div
     class="modal-overlay"
-    on:click|self={handleClose}
+    onclick={self(handleClose)}
     role="button"
     tabindex="0"
-    on:keydown={(e) => e.key === "Enter" && handleClose()}
+    onkeydown={(e) => e.key === "Enter" && handleClose()}
   >
     <div class="modal upload-modal">
       <div class="modal-header">
         <h2><Upload size={20} /> Upload to Knowledge Hub</h2>
-        <button on:click={handleClose}
+        <button onclick={handleClose}
           ><X size={20} /></button
         >
       </div>
@@ -270,9 +282,9 @@
           <div
             class="upload-dropzone"
             class:drag-over={dragOver}
-            on:dragover={handleDragOver}
-            on:dragleave={handleDragLeave}
-            on:drop={handleDrop}
+            ondragover={handleDragOver}
+            ondragleave={handleDragLeave}
+            ondrop={handleDrop}
           >
             <Upload size={40} />
             <p>
@@ -288,7 +300,7 @@
                 accept={uploadType === "book"
                   ? ".pdf"
                   : ".pdf,.md,.txt,.csv,.json,.html"}
-                on:change={handleFileSelect}
+                onchange={handleFileSelect}
               />
               Browse Files
             </label>
@@ -300,7 +312,7 @@
           </div>
         {:else}
           <div class="note-actions">
-            <button class="btn primary" on:click={handleNoteSubmit}>
+            <button class="btn primary" onclick={handleNoteSubmit}>
               <Upload size={14} /> Save Note
             </button>
           </div>
@@ -345,7 +357,7 @@
       <div class="modal-footer">
         <button
           class="btn secondary"
-          on:click={handleClose}>Close</button
+          onclick={handleClose}>Close</button
         >
       </div>
     </div>

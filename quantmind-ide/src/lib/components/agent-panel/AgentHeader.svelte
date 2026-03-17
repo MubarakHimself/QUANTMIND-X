@@ -11,15 +11,20 @@
   } from "lucide-svelte";
   import type { AgentType } from "../../stores/chatStore";
 
-  // Props
-  export let agents: Array<{
+  
+  interface Props {
+    // Props
+    agents: Array<{
     id: AgentType;
     name: string;
     icon: string;
     description: string;
   }>;
-  export let activeAgent: AgentType;
-  export let showChatList: boolean = true;
+    activeAgent: AgentType;
+    showChatList?: boolean;
+  }
+
+  let { agents, activeAgent, showChatList = true }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -55,16 +60,17 @@
   <!-- Agent Tabs -->
   <div class="agent-tabs" role="tablist" aria-label="Agent selection">
     {#each agents as agent}
+      {@const SvelteComponent = iconMap[agent.icon] || Bot}
       <button
         class="agent-tab"
         class:active={activeAgent === agent.id}
-        on:click={() => handleAgentClick(agent.id)}
+        onclick={() => handleAgentClick(agent.id)}
         role="tab"
         aria-selected={activeAgent === agent.id}
         aria-controls="chat-panel-{agent.id}"
         title={agent.description}
       >
-        <svelte:component this={iconMap[agent.icon] || Bot} size={18} />
+        <SvelteComponent size={18} />
         <span class="agent-name">{agent.name}</span>
       </button>
     {/each}
@@ -74,7 +80,7 @@
   <div class="header-actions">
     <button
       class="action-btn"
-      on:click={handleNewChat}
+      onclick={handleNewChat}
       title="New Chat"
       aria-label="Create new chat"
     >
@@ -84,7 +90,7 @@
     <button
       class="action-btn toggle-list-btn"
       class:active={showChatList}
-      on:click={handleToggleChatList}
+      onclick={handleToggleChatList}
       title={showChatList ? "Hide chat list" : "Show chat list"}
       aria-label={showChatList ? "Hide chat list" : "Show chat list"}
     >
@@ -97,7 +103,7 @@
 
     <button
       class="action-btn"
-      on:click={handleSettings}
+      onclick={handleSettings}
       title="Settings"
       aria-label="Open settings"
     >

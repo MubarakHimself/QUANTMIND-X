@@ -1,12 +1,22 @@
 <script lang="ts">
   import { X, Plus } from "lucide-svelte";
 
-  export let open = false;
-  export let selectedTable: any = null;
-  export let newRowData: Record<string, any> = {};
 
-  export let getColumnTypeColor: (type: string) => string;
-  export let insertRow: () => Promise<void>;
+  interface Props {
+    open?: boolean;
+    selectedTable?: any;
+    newRowData?: Record<string, any>;
+    getColumnTypeColor: (type: string) => string;
+    insertRow: () => Promise<void>;
+  }
+
+  let {
+    open = $bindable(false),
+    selectedTable = null,
+    newRowData = $bindable({}),
+    getColumnTypeColor,
+    insertRow
+  }: Props = $props();
 
   function close() {
     open = false;
@@ -28,8 +38,8 @@
 {#if open && selectedTable}
   <div
     class="modal-overlay"
-    on:click={handleOverlayClick}
-    on:keydown={handleKeyDown}
+    onclick={handleOverlayClick}
+    onkeydown={handleKeyDown}
     role="button"
     tabindex="0"
   >
@@ -39,7 +49,7 @@
           <h3>Insert Row</h3>
           <p class="modal-subtitle">{selectedTable.name}</p>
         </div>
-        <button class="icon-btn" on:click={close}>
+        <button class="icon-btn" onclick={close}>
           <X size={18} />
         </button>
       </div>
@@ -83,8 +93,8 @@
         {/each}
 
         <div class="modal-actions">
-          <button class="btn" on:click={close}>Cancel</button>
-          <button class="btn primary" on:click={insertRow}>
+          <button class="btn" onclick={close}>Cancel</button>
+          <button class="btn primary" onclick={insertRow}>
             <Plus size={14} />
             <span>Insert Row</span>
           </button>

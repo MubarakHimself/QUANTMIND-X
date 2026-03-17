@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { onMount, onDestroy } from 'svelte';
   import { 
     RefreshCw, Download, Upload, AlertTriangle, CheckCircle, 
@@ -6,12 +9,12 @@
   } from 'lucide-svelte';
   import { createTradingClient } from '$lib/ws-client';
   import type { WebSocketClient } from '$lib/ws-client';
-  import { PUBLIC_API_BASE } from '$env/static/public';
+  import { API_BASE } from '$lib/constants';
 
-  const apiBase = PUBLIC_API_BASE || '';
+  const apiBase = API_BASE || '';
 
   // HMM Status
-  let hmmStatus = {
+  let hmmStatus = $state({
     model_loaded: false,
     model_version: '',
     deployment_mode: 'ising_only',
@@ -22,15 +25,15 @@
     version_mismatch: false,
     last_sync: '',
     sync_status: ''
-  };
+  });
 
   // Sync progress
-  let syncProgress = {
+  let syncProgress = $state({
     status: 'idle',
     progress: 0,
     message: '',
     error: ''
-  };
+  });
 
   // Pending approvals
   let pendingApprovals: Array<{
@@ -48,15 +51,15 @@
     ising_regime: string;
     hmm_regime: string;
     agreement: boolean;
-  }> = [];
+  }> = $state([]);
 
   // UI state
-  let isSyncing = false;
-  let showLogs = false;
+  let isSyncing = $state(false);
+  let showLogs = $state(false);
   let selectedMode = 'ising_only';
-  let approvalToken = '';
-  let showApprovalModal = false;
-  let pendingMode = '';
+  let approvalToken = $state('');
+  let showApprovalModal = $state(false);
+  let pendingMode = $state('');
 
   let wsClient: WebSocketClient | null = null;
 
@@ -290,7 +293,7 @@
     <button 
       class="sync-btn" 
       class:syncing={isSyncing}
-      on:click={syncModel}
+      onclick={syncModel}
       disabled={isSyncing}
     >
       <Download size={14} />
@@ -323,7 +326,7 @@
         <input 
           type="checkbox" 
           checked={hmmStatus.shadow_mode_active}
-          on:change={(e) => toggleShadowMode(e.currentTarget.checked)}
+          onchange={(e) => toggleShadowMode(e.currentTarget.checked)}
         />
         <span class="toggle-slider"></span>
       </label>
@@ -343,7 +346,7 @@
           class:active={hmmStatus.deployment_mode === mode}
           class:restricted={['hmm_hybrid_50', 'hmm_hybrid_80', 'hmm_only'].includes(mode)}
           style="border-color: {getModeColor(mode)}; color: {hmmStatus.deployment_mode === mode ? getModeColor(mode) : '#94a3b8'}"
-          on:click={() => requestModeChange(mode)}
+          onclick={() => requestModeChange(mode)}
         >
           {getModeLabel(mode)}
           {#if ['hmm_hybrid_50', 'hmm_hybrid_80', 'hmm_only'].includes(mode)}
@@ -353,7 +356,7 @@
       {/each}
     </div>
 
-    <button class="rollback-btn" on:click={rollback}>
+    <button class="rollback-btn" onclick={rollback}>
       <RotateCcw size={14} />
       Rollback to Previous Mode
     </button>
@@ -361,7 +364,7 @@
 
   <!-- HMM Logs Section -->
   <div class="section">
-    <div class="section-header" on:click={() => showLogs = !showLogs}>
+    <div class="section-header" onclick={() => showLogs = !showLogs}>
       <h4>Recent Predictions</h4>
       {#if showLogs}
         <ChevronUp size={16} />
@@ -397,8 +400,8 @@
 
 <!-- Approval Modal -->
 {#if showApprovalModal}
-  <div class="modal-overlay" on:click={() => showApprovalModal = false}>
-    <div class="modal" on:click|stopPropagation>
+  <div class="modal-overlay" onclick={() => showApprovalModal = false}>
+    <div class="modal" onclick={stopPropagation(bubble('click'))}>
       <h3>Approval Required</h3>
       <p>Transitioning to <strong>{getModeLabel(pendingMode)}</strong> requires approval.</p>
       
@@ -412,12 +415,12 @@
       </div>
 
       <div class="modal-actions">
-        <button class="cancel-btn" on:click={() => showApprovalModal = false}>
+        <button class="cancel-btn" onclick={() => showApprovalModal = false}>
           Cancel
         </button>
         <button 
           class="approve-btn" 
-          on:click={() => changeMode(pendingMode, approvalToken)}
+          onclick={() => changeMode(pendingMode, approvalToken)}
         >
           Approve Transition
         </button>

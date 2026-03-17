@@ -18,24 +18,29 @@
   import commandHandler from "../../services/commandHandler";
   import skillChatService from "../../services/skillChatService";
 
-  // Props
-  export let agent: AgentType;
+  
+  interface Props {
+    // Props
+    agent: AgentType;
+  }
+
+  let { agent }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
   // State
-  let message = "";
-  let textareaElement: HTMLTextAreaElement;
-  let showModelDropdown = false;
-  let showSlashCommands = false;
-  let slashCommandFilter = "";
-  let showSkillMentions = false;
-  let skillMentionFilter = "";
-  let isLoading = false;
+  let message = $state("");
+  let textareaElement: HTMLTextAreaElement = $state();
+  let showModelDropdown = $state(false);
+  let showSlashCommands = $state(false);
+  let slashCommandFilter = $state("");
+  let showSkillMentions = $state(false);
+  let skillMentionFilter = $state("");
+  let isLoading = $state(false);
 
   // Command feedback state
   let commandFeedback: { type: "success" | "error"; message: string } | null =
-    null;
+    $state(null);
   let feedbackTimeout: ReturnType<typeof setTimeout> | null = null;
 
   // Model configuration
@@ -59,18 +64,18 @@
   ];
 
   let selectedProvider = "google";
-  let selectedModel = "gemini-2.5-pro";
+  let selectedModel = $state("gemini-2.5-pro");
 
   // Context from store
-  $: context = $activeContext;
-  $: hasContext =
-    context.files.length > 0 ||
+  let context = $derived($activeContext);
+  let hasContext =
+    $derived(context.files.length > 0 ||
     context.strategies.length > 0 ||
     context.brokers.length > 0 ||
-    context.backtests.length > 0;
+    context.backtests.length > 0);
 
   // Character counter
-  $: charCount = message.length;
+  let charCount = $derived(message.length);
   const maxChars = 4000;
 
   // Auto-resize textarea
@@ -501,7 +506,7 @@
         <div class="context-chip">
           <span>📄 {file.name}</span>
           <button
-            on:click={() => removeContext("files", file.id)}
+            onclick={() => removeContext("files", file.id)}
             aria-label="Remove file"
           >
             <X size={10} />
@@ -512,7 +517,7 @@
         <div class="context-chip">
           <span>📊 {strategy.name}</span>
           <button
-            on:click={() => removeContext("strategies", strategy.id)}
+            onclick={() => removeContext("strategies", strategy.id)}
             aria-label="Remove strategy"
           >
             <X size={10} />
@@ -523,7 +528,7 @@
         <div class="context-chip">
           <span>🔗 {broker.name}</span>
           <button
-            on:click={() => removeContext("brokers", broker.id)}
+            onclick={() => removeContext("brokers", broker.id)}
             aria-label="Remove broker"
           >
             <X size={10} />
@@ -534,7 +539,7 @@
         <div class="context-chip">
           <span>📈 {backtest.name}</span>
           <button
-            on:click={() => removeContext("backtests", backtest.id)}
+            onclick={() => removeContext("backtests", backtest.id)}
             aria-label="Remove backtest"
           >
             <X size={10} />
@@ -556,7 +561,7 @@
         <AlertCircle size={14} />
       {/if}
       <span>{commandFeedback.message}</span>
-      <button on:click={() => (commandFeedback = null)} aria-label="Dismiss">
+      <button onclick={() => (commandFeedback = null)} aria-label="Dismiss">
         <X size={12} />
       </button>
     </div>
@@ -567,7 +572,7 @@
     <!-- Attach button -->
     <button
       class="input-btn attach-btn"
-      on:click={attachFile}
+      onclick={attachFile}
       title="Attach file"
       aria-label="Attach file"
     >
@@ -578,8 +583,8 @@
     <textarea
       bind:value={message}
       bind:this={textareaElement}
-      on:input={handleInput}
-      on:keydown={handleKeydown}
+      oninput={handleInput}
+      onkeydown={handleKeydown}
       placeholder="Message {agent}... (/ for commands, @ for skills)"
       rows="1"
       aria-label="Message input"
@@ -609,7 +614,7 @@
     <div class="model-selector">
       <button
         class="model-btn"
-        on:click={() => (showModelDropdown = !showModelDropdown)}
+        onclick={() => (showModelDropdown = !showModelDropdown)}
         aria-label="Select model"
         aria-expanded={showModelDropdown}
       >
@@ -626,7 +631,7 @@
                 <button
                   class="model-option"
                   class:selected={selectedModel === model}
-                  on:click={() => selectModel(provider.id, model)}
+                  onclick={() => selectModel(provider.id, model)}
                 >
                   {model}
                 </button>
@@ -640,7 +645,7 @@
     <!-- Send button -->
     <button
       class="send-btn"
-      on:click={sendMessage}
+      onclick={sendMessage}
       disabled={!message.trim() || isLoading}
       aria-label="Send message"
     >

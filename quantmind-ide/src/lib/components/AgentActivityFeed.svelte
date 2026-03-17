@@ -28,21 +28,26 @@
 
   // =============================================================================
   // Props
-  // =============================================================================
+  
 
-  export let agentId: string | null = null;
-  export let maxEvents: number = 50;
+  interface Props {
+    // =============================================================================
+    agentId?: string | null;
+    maxEvents?: number;
+  }
+
+  let { agentId = null, maxEvents = 50 }: Props = $props();
 
   // =============================================================================
   // State
   // =============================================================================
 
-  let events: ActivityEvent[] = [];
-  let stats: ActivityStats | null = null;
+  let events: ActivityEvent[] = $state([]);
+  let stats: ActivityStats | null = $state(null);
   let ws: WebSocket | null = null;
-  let connected = false;
-  let loading = true;
-  let error: string | null = null;
+  let connected = $state(false);
+  let loading = $state(true);
+  let error: string | null = $state(null);
 
   // =============================================================================
   // Lifecycle
@@ -120,7 +125,7 @@
       <h2>Live Agent Activity</h2>
       <span class="status" class:connected>{connected ? 'Connected' : 'Disconnected'}</span>
     </div>
-    <button class="btn" on:click={loadInitialData}>Refresh</button>
+    <button class="btn" onclick={loadInitialData}>Refresh</button>
   </header>
 
   {#if stats}

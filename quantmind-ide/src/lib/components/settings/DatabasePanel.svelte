@@ -2,7 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import { Database, Server, HardDrive, Cpu } from 'lucide-svelte';
 
-  export let dbSettings = {
+  let { dbSettings = $bindable({
     connectionType: 'sqlite',
     databaseUrl: '',
     sqlitePath: './data/quantmind.db',
@@ -10,7 +10,7 @@
     autoBackup: true,
     backupInterval: 3600,
     maxBackups: 10
-  };
+  }) } = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -28,7 +28,7 @@
       <button
         class="connection-type-btn"
         class:active={dbSettings.connectionType === 'sqlite'}
-        on:click={() => updateDbSettings('connectionType', 'sqlite')}
+        onclick={() => updateDbSettings('connectionType', 'sqlite')}
       >
         <Database size={16} />
         <span>SQLite</span>
@@ -36,7 +36,7 @@
       <button
         class="connection-type-btn"
         class:active={dbSettings.connectionType === 'postgresql'}
-        on:click={() => updateDbSettings('connectionType', 'postgresql')}
+        onclick={() => updateDbSettings('connectionType', 'postgresql')}
       >
         <Server size={16} />
         <span>PostgreSQL</span>
@@ -54,7 +54,7 @@
           bind:value={dbSettings.databaseUrl}
           class="text-input"
           placeholder="postgresql://user:pass@host:5432/dbname"
-          on:input={(e) => updateDbSettings('databaseUrl', e.currentTarget.value)}
+          oninput={(e) => updateDbSettings('databaseUrl', e.currentTarget.value)}
         />
       </div>
     </div>
@@ -65,7 +65,7 @@
       <label>SQLite (Transactional)</label>
       <div class="setting-row">
         <span>Path</span>
-        <input type="text" bind:value={dbSettings.sqlitePath} class="text-input" on:input={(e) => updateDbSettings('sqlitePath', e.currentTarget.value)} />
+        <input type="text" bind:value={dbSettings.sqlitePath} class="text-input" oninput={(e) => updateDbSettings('sqlitePath', e.currentTarget.value)} />
       </div>
     </div>
   {/if}
@@ -74,7 +74,7 @@
     <label>DuckDB (Analytics)</label>
     <div class="setting-row">
       <span>Path</span>
-      <input type="text" bind:value={dbSettings.duckdbPath} class="text-input" on:input={(e) => updateDbSettings('duckdbPath', e.currentTarget.value)} />
+      <input type="text" bind:value={dbSettings.duckdbPath} class="text-input" oninput={(e) => updateDbSettings('duckdbPath', e.currentTarget.value)} />
     </div>
   </div>
 
@@ -83,7 +83,7 @@
     <div class="setting-row">
       <span>Auto Backup</span>
       <label class="switch">
-        <input type="checkbox" bind:checked={dbSettings.autoBackup} on:change={(e) => updateDbSettings('autoBackup', e.currentTarget.checked)} />
+        <input type="checkbox" bind:checked={dbSettings.autoBackup} onchange={(e) => updateDbSettings('autoBackup', e.currentTarget.checked)} />
         <span class="slider"></span>
       </label>
     </div>
@@ -96,7 +96,7 @@
           max="86400"
           bind:value={dbSettings.backupInterval}
           class="number-input"
-          on:input={(e) => updateDbSettings('backupInterval', parseInt(e.currentTarget.value))}
+          oninput={(e) => updateDbSettings('backupInterval', parseInt(e.currentTarget.value))}
         />
       </div>
       <div class="setting-row">
@@ -107,7 +107,7 @@
           max="50"
           bind:value={dbSettings.maxBackups}
           class="number-input"
-          on:input={(e) => updateDbSettings('maxBackups', parseInt(e.currentTarget.value))}
+          oninput={(e) => updateDbSettings('maxBackups', parseInt(e.currentTarget.value))}
         />
       </div>
     {/if}

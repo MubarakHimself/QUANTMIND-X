@@ -5,10 +5,10 @@
 
   const dispatch = createEventDispatcher();
 
-  let showCustomWallpaper = false;
-  let customWallpaperUrl = '';
-  let uploading = false;
-  let uploadedWallpapers: CustomWallpaper[] = [];
+  let showCustomWallpaper = $state(false);
+  let customWallpaperUrl = $state('');
+  let uploading = $state(false);
+  let uploadedWallpapers: CustomWallpaper[] = $state([]);
 
   // Load custom wallpapers on mount
   onMount(async () => {
@@ -55,7 +55,7 @@
   }
 
   // Custom wallpaper upload handlers
-  let fileInput: HTMLInputElement;
+  let fileInput: HTMLInputElement = $state();
 
   async function handleFileSelect(event: Event) {
     const target = event.target as HTMLInputElement;
@@ -116,7 +116,7 @@
         <button
           class="theme-card"
           class:active={$currentTheme === name}
-          on:click={() => selectTheme(name)}
+          onclick={() => selectTheme(name)}
           title={theme.description}
         >
           <div class="theme-preview" style="background: {theme.colors.bg.primary}; border-color: {theme.colors.border.accent};">
@@ -152,7 +152,7 @@
         <input
           type="checkbox"
           checked={$wallpaperEnabled}
-          on:change={(e) => toggleWallpaper(e.currentTarget.checked)}
+          onchange={(e) => toggleWallpaper(e.currentTarget.checked)}
         />
         <span class="slider"></span>
       </label>
@@ -167,7 +167,7 @@
         <button
           class="wallpaper-card"
           class:active={customWallpaperUrl === (wallpaper.gradient || wallpaper.imageUrl)}
-          on:click={() => selectWallpaper(wallpaper)}
+          onclick={() => selectWallpaper(wallpaper)}
           title={wallpaper.name}
         >
           <div
@@ -201,12 +201,12 @@
         type="file"
         accept="image/jpeg,image/png,image/gif,image/webp"
         bind:this={fileInput}
-        on:change={handleFileSelect}
+        onchange={handleFileSelect}
         style="display: none;"
       />
       <button
         class="upload-btn"
-        on:click={() => fileInput.click()}
+        onclick={() => fileInput.click()}
         disabled={uploading}
       >
         {#if uploading}
@@ -233,14 +233,14 @@
               <div class="wallpaper-actions">
                 <button
                   class="action-btn activate"
-                  on:click={() => handleActivateWallpaper(wallpaper)}
+                  onclick={() => handleActivateWallpaper(wallpaper)}
                   title="Set as wallpaper"
                 >
                   <Check size={14} />
                 </button>
                 <button
                   class="action-btn delete"
-                  on:click={() => handleDeleteWallpaper(wallpaper.id)}
+                  onclick={() => handleDeleteWallpaper(wallpaper.id)}
                   title="Delete"
                 >
                   <Trash2 size={14} />
@@ -264,7 +264,7 @@
         <button
           class="font-card"
           class:active={$currentFont === font.id}
-          on:click={() => selectFont(font.id)}
+          onclick={() => selectFont(font.id)}
           style="font-family: {font.family}"
           title={font.category}
         >
@@ -283,7 +283,7 @@
       <div class="modal-content">
         <div class="modal-header">
           <h3>Custom Wallpaper</h3>
-          <button class="close-btn" on:click={() => showCustomWallpaper = false}>
+          <button class="close-btn" onclick={() => showCustomWallpaper = false}>
             <X size={18} />
           </button>
         </div>
@@ -298,10 +298,10 @@
             />
           </div>
           <div class="form-actions">
-            <button class="btn secondary" on:click={() => showCustomWallpaper = false}>
+            <button class="btn secondary" onclick={() => showCustomWallpaper = false}>
               Cancel
             </button>
-            <button class="btn primary" on:click={applyCustomWallpaper}>
+            <button class="btn primary" onclick={applyCustomWallpaper}>
               Apply
             </button>
           </div>

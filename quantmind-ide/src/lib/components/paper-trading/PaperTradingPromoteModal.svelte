@@ -1,16 +1,28 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { createEventDispatcher } from 'svelte';
   import { X, CheckCircle, AlertCircle } from 'lucide-svelte';
 
-  export let isOpen = false;
-  export let isLoading = false;
-  export let result: { success: boolean; bot_id?: string; error?: string } | null = null;
 
-  export let form = {
+  interface Props {
+    isOpen?: boolean;
+    isLoading?: boolean;
+    result?: { success: boolean; bot_id?: string; error?: string } | null;
+    form?: any;
+  }
+
+  let {
+    isOpen = false,
+    isLoading = false,
+    result = null,
+    form = $bindable({
     target_account: 'account_b_sniper',
     strategy_name: '',
     strategy_type: 'STRUCTURAL',
-  };
+  })
+  }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -23,11 +35,11 @@
 </script>
 
 {#if isOpen}
-  <div class="modal-overlay" on:click={() => dispatch('close')} on:keydown={(e) => e.key === 'Escape' && dispatch('close')} role="dialog" aria-modal="true">
-    <div class="modal-content" on:click|stopPropagation role="presentation">
+  <div class="modal-overlay" onclick={() => dispatch('close')} onkeydown={(e) => e.key === 'Escape' && dispatch('close')} role="dialog" aria-modal="true">
+    <div class="modal-content" onclick={stopPropagation(bubble('click'))} role="presentation">
       <div class="modal-header">
         <h3>Promote to Production</h3>
-        <button class="close-btn" on:click={() => dispatch('close')}>
+        <button class="close-btn" onclick={() => dispatch('close')}>
           <X size={18} />
         </button>
       </div>
@@ -101,8 +113,8 @@
       </div>
       {#if !result?.success}
         <div class="modal-footer">
-          <button class="btn secondary" on:click={() => dispatch('close')}>Cancel</button>
-          <button class="btn primary" on:click={() => dispatch('promote', form)} disabled={isLoading}>
+          <button class="btn secondary" onclick={() => dispatch('close')}>Cancel</button>
+          <button class="btn primary" onclick={() => dispatch('promote', form)} disabled={isLoading}>
             {isLoading ? 'Promoting...' : 'Promote to Production'}
           </button>
         </div>

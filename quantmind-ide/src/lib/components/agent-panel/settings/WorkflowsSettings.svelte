@@ -1,12 +1,15 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { fade, slide } from 'svelte/transition';
   import { Plus, Play, Trash2, Edit3, Copy, ChevronRight, Clock, CheckCircle } from 'lucide-svelte';
   import { settingsStore } from '../../../stores/settingsStore';
   import type { Workflow, WorkflowStep } from '../../../stores/settingsStore';
   
   // State
-  let showAddModal = false;
-  let selectedWorkflow: Workflow | null = null;
+  let showAddModal = $state(false);
+  let selectedWorkflow: Workflow | null = $state(null);
   
   // Predefined workflow templates
   const workflowTemplates: Workflow[] = [
@@ -56,12 +59,12 @@
   ];
   
   // Reactive state
-  $: workflows = $settingsStore.workflows;
-  $: customWorkflows = workflows.filter(w => !w.isTemplate);
-  $: templateWorkflows = workflows.filter(w => w.isTemplate);
+  let workflows = $derived($settingsStore.workflows);
+  let customWorkflows = $derived(workflows.filter(w => !w.isTemplate));
+  let templateWorkflows = $derived(workflows.filter(w => w.isTemplate));
   
   // Use templates if no workflows exist
-  $: displayTemplates = workflows.length === 0 ? workflowTemplates : templateWorkflows;
+  let displayTemplates = $derived(workflows.length === 0 ? workflowTemplates : templateWorkflows);
   
   // Create workflow from template
   function createFromTemplate(template: Workflow) {
@@ -122,7 +125,7 @@
       <h3>Workflows</h3>
       <p class="description">Automate repetitive tasks with predefined workflows.</p>
     </div>
-    <button class="btn primary" on:click={() => showAddModal = true}>
+    <button class="btn primary" onclick={() => showAddModal = true}>
       <Plus size={14} />
       Create Workflow
     </button>
@@ -157,7 +160,7 @@
           </div>
           
           <div class="card-actions">
-            <button class="btn secondary small" on:click={() => createFromTemplate(template)}>
+            <button class="btn secondary small" onclick={() => createFromTemplate(template)}>
               <Copy size={12} />
               Use Template
             </button>
@@ -190,17 +193,17 @@
             </div>
             
             <div class="workflow-actions">
-              <button class="btn primary small" on:click={() => runWorkflow(workflow)}>
+              <button class="btn primary small" onclick={() => runWorkflow(workflow)}>
                 <Play size={12} />
                 Run
               </button>
-              <button class="btn secondary small" on:click={() => duplicateWorkflow(workflow)}>
+              <button class="btn secondary small" onclick={() => duplicateWorkflow(workflow)}>
                 <Copy size={12} />
               </button>
-              <button class="btn secondary small" on:click={() => selectedWorkflow = workflow}>
+              <button class="btn secondary small" onclick={() => selectedWorkflow = workflow}>
                 <Edit3 size={12} />
               </button>
-              <button class="btn secondary small danger" on:click={() => deleteWorkflow(workflow.id)}>
+              <button class="btn secondary small danger" onclick={() => deleteWorkflow(workflow.id)}>
                 <Trash2 size={12} />
               </button>
             </div>
@@ -212,10 +215,10 @@
   
   <!-- Add Workflow Modal -->
   {#if showAddModal}
-    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-    <div class="modal-overlay" on:click={() => showAddModal = false} transition:fade role="button" tabindex="-1" aria-label="Close dialog">
-      <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions a11y-no-noninteractive-element-interactions -->
-      <div class="modal" on:click|stopPropagation transition:slide role="dialog" aria-modal="true" aria-labelledby="workflow-modal-title">
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div class="modal-overlay" onclick={() => showAddModal = false} transition:fade role="button" tabindex="-1" aria-label="Close dialog">
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions, a11y_no_noninteractive_element_interactions -->
+      <div class="modal" onclick={stopPropagation(bubble('click'))} transition:slide role="dialog" aria-modal="true" aria-labelledby="workflow-modal-title">
         <h4 id="workflow-modal-title">Create New Workflow</h4>
         <p class="modal-desc">Choose a template to start with or create from scratch.</p>
         
@@ -223,7 +226,7 @@
           {#each workflowTemplates as template}
             <button 
               class="template-option"
-              on:click={() => { createFromTemplate(template); showAddModal = false; }}
+              onclick={() => { createFromTemplate(template); showAddModal = false; }}
             >
               <span class="template-name">{template.name}</span>
               <span class="template-category">{template.category}</span>
@@ -236,7 +239,7 @@
         </div>
         
         <div class="modal-actions">
-          <button class="btn secondary" on:click={() => showAddModal = false}>Cancel</button>
+          <button class="btn secondary" onclick={() => showAddModal = false}>Cancel</button>
         </div>
       </div>
     </div>
@@ -244,10 +247,10 @@
   
   <!-- Workflow Detail Modal -->
   {#if selectedWorkflow}
-    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-    <div class="modal-overlay" on:click={() => selectedWorkflow = null} transition:fade role="button" tabindex="-1" aria-label="Close dialog">
-      <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions a11y-no-noninteractive-element-interactions -->
-      <div class="modal large" on:click|stopPropagation transition:slide role="dialog" aria-modal="true" aria-labelledby="workflow-detail-title">
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div class="modal-overlay" onclick={() => selectedWorkflow = null} transition:fade role="button" tabindex="-1" aria-label="Close dialog">
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions, a11y_no_noninteractive_element_interactions -->
+      <div class="modal large" onclick={stopPropagation(bubble('click'))} transition:slide role="dialog" aria-modal="true" aria-labelledby="workflow-detail-title">
         <div class="modal-header">
           <h4 id="workflow-detail-title">{selectedWorkflow.name}</h4>
           <span class="category-badge" style="background: {getCategoryColor(selectedWorkflow.category)}">
@@ -272,8 +275,8 @@
         </div>
         
         <div class="modal-actions">
-          <button class="btn secondary" on:click={() => selectedWorkflow = null}>Close</button>
-          <button class="btn primary" on:click={() => { if (selectedWorkflow) runWorkflow(selectedWorkflow); }}>
+          <button class="btn secondary" onclick={() => selectedWorkflow = null}>Close</button>
+          <button class="btn primary" onclick={() => { if (selectedWorkflow) runWorkflow(selectedWorkflow); }}>
             <Play size={12} />
             Run Workflow
           </button>

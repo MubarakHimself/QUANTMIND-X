@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import {
     Server, Zap, Activity, TrendingUp, AlertTriangle, Shield,
@@ -23,21 +25,21 @@
   const dispatch = createEventDispatcher();
 
   // Router State
-  let routerState = {
+  let routerState = $state({
     active: true,
     mode: 'auction' as 'auction' | 'priority' | 'round-robin',
     auctionInterval: 5000, // ms
     lastAuction: null as Date | null,
     queuedSignals: [] as Array<any>,
     activeAuctions: [] as Array<any>
-  };
+  });
 
   // Track initial load to avoid saving on first render
-  let initialLoadComplete = false;
+  let initialLoadComplete = $state(false);
 
   // Track previous values to detect changes
-  let previousMode = routerState.mode;
-  let previousAuctionInterval = routerState.auctionInterval;
+  let previousMode = $state(routerState.mode);
+  let previousAuctionInterval = $state(routerState.auctionInterval);
 
   // Market State
   let marketState = {
@@ -89,7 +91,7 @@
   ];
 
   // Auction Queue
-  let auctionQueue = [
+  let auctionQueue = $state([
     {
       id: 'auction-1',
       timestamp: new Date(),
@@ -98,7 +100,7 @@
       winningScore: 8.5,
       status: 'completed'
     }
-  ];
+  ]);
 
   // Rankings
   let rankings = {
@@ -153,14 +155,14 @@
   ];
 
   // HMM Training State
-  let hmmTraining = {
+  let hmmTraining = $state({
     isTraining: false,
     jobId: '',
     progress: 0,
     message: '',
     modelType: 'universal' as 'universal' | 'per_symbol' | 'per_symbol_timeframe',
     lastJob: null as { jobId: string; status: string; message: string } | null
-  };
+  });
 
   // HMM Training config
   let hmmConfig = {
@@ -234,9 +236,9 @@
   }
 
   // MT5 Connection State
-  let mt5Connected = false;
-  let mt5Testing = false;
-  let mt5Error = '';
+  let mt5Connected = $state(false);
+  let mt5Testing = $state(false);
+  let mt5Error = $state('');
   let mt5SymbolMappingPlaceholder = '{"EURUSDm": "EURUSD", "GBPUSDm": "GBPUSD", "USDJPYm": "USDJPY"}';
   let mt5Config = {
     server: '',
@@ -284,7 +286,7 @@
   }
 
   // Kelly Rankings
-  $: kellyRankings = Object.entries(kellyData)
+  let kellyRankings = $derived(Object.entries(kellyData)
     .map(([botId, data]) => ({
       botId,
       name: bots.find(b => b.id === botId)?.name || botId,
@@ -295,10 +297,10 @@
       suggestedFraction: data.suggestedFraction,
       kellyScore: (data.kellyFraction * data.expectedValue * 100).toFixed(2)
     }))
-    .sort((a, b) => parseFloat(b.kellyScore) - parseFloat(a.kellyScore));
+    .sort((a, b) => parseFloat(b.kellyScore) - parseFloat(a.kellyScore)));
 
   // View state
-  let activeTab: 'auction' | 'rankings' | 'kelly' | 'correlations' | 'settings' = 'auction';
+  let activeTab: 'auction' | 'rankings' | 'kelly' | 'correlations' | 'settings' = $state('auction');
   let autoRefresh = true;
   let refreshInterval: number | null = null;
 
@@ -367,11 +369,13 @@
   }
 
   // Save router settings when mode or auctionInterval changes (after initial load)
-  $: if (initialLoadComplete && (routerState.mode !== previousMode || routerState.auctionInterval !== previousAuctionInterval)) {
-    previousMode = routerState.mode;
-    previousAuctionInterval = routerState.auctionInterval;
-    saveRouterSettings();
-  }
+  run(() => {
+    if (initialLoadComplete && (routerState.mode !== previousMode || routerState.auctionInterval !== previousAuctionInterval)) {
+      previousMode = routerState.mode;
+      previousAuctionInterval = routerState.auctionInterval;
+      saveRouterSettings();
+    }
+  });
 
   async function runAuction() {
     try {
@@ -446,23 +450,23 @@
 
   <!-- Tabs -->
   <div class="router-tabs">
-    <button class="tab" class:active={activeTab === 'auction'} on:click={() => activeTab = 'auction'}>
+    <button class="tab" class:active={activeTab === 'auction'} onclick={() => activeTab = 'auction'}>
       <Scale size={14} />
       <span>Auction Queue</span>
     </button>
-    <button class="tab" class:active={activeTab === 'rankings'} on:click={() => activeTab = 'rankings'}>
+    <button class="tab" class:active={activeTab === 'rankings'} onclick={() => activeTab = 'rankings'}>
       <Trophy size={14} />
       <span>Rankings</span>
     </button>
-    <button class="tab" class:active={activeTab === 'kelly'} on:click={() => activeTab = 'kelly'}>
+    <button class="tab" class:active={activeTab === 'kelly'} onclick={() => activeTab = 'kelly'}>
       <Calculator size={14} />
       <span>Kelly Criterion</span>
     </button>
-    <button class="tab" class:active={activeTab === 'correlations'} on:click={() => activeTab = 'correlations'}>
+    <button class="tab" class:active={activeTab === 'correlations'} onclick={() => activeTab = 'correlations'}>
       <Layers size={14} />
       <span>Correlations</span>
     </button>
-    <button class="tab" class:active={activeTab === 'settings'} on:click={() => activeTab = 'settings'}>
+    <button class="tab" class:active={activeTab === 'settings'} onclick={() => activeTab = 'settings'}>
       <SettingsIcon size={14} />
       <span>Settings</span>
     </button>

@@ -1,22 +1,23 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { createEventDispatcher, onMount } from 'svelte';
   import hljs from 'highlight.js';
   import { theme } from '../stores/themeStore';
   import { FileText, Edit3, X, Copy, Download, ExternalLink } from 'lucide-svelte';
 
-  export let article: any;
-  export let onClose: () => void;
+  interface Props {
+    article: any;
+    onClose: () => void;
+  }
+
+  let { article, onClose }: Props = $props();
   
   const dispatch = createEventDispatcher();
   
-  let processedContent = '';
-  let currentThemeColors = $theme.colors;
+  let processedContent = $state('');
+  let currentThemeColors = $state($theme.colors);
 
-  // Subscribe to theme changes
-  $: if ($theme) {
-    currentThemeColors = $theme.colors;
-    processContent();
-  }
 
   function processContent() {
     if (!article?.content) {
@@ -132,6 +133,13 @@
     (window as any).copyCode = copyCode;
     (window as any).downloadCode = downloadCode;
   });
+  // Subscribe to theme changes
+  run(() => {
+    if ($theme) {
+      currentThemeColors = $theme.colors;
+      processContent();
+    }
+  });
 </script>
 
 <div class="article-viewer">
@@ -141,10 +149,10 @@
       <h2>{article.name}</h2>
     </div>
     <div class="article-actions">
-      <button class="action-btn" on:click={openInEditor} title="Open in Editor">
+      <button class="action-btn" onclick={openInEditor} title="Open in Editor">
         <Edit3 size={16} />
       </button>
-      <button class="action-btn" on:click={onClose} title="Close">
+      <button class="action-btn" onclick={onClose} title="Close">
         <X size={16} />
       </button>
     </div>

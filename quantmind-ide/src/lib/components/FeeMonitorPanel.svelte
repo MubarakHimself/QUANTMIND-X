@@ -3,10 +3,10 @@
   import { AlertTriangle, DollarSign, TrendingDown, Zap } from 'lucide-svelte';
   import { createTradingClient } from '$lib/ws-client';
   import type { WebSocketClient } from '$lib/ws-client';
-  import { PUBLIC_API_BASE } from '$env/static/public';
+  import { API_BASE } from '$lib/constants';
 
   // Use configured API base or default to same origin
-  const apiBase = PUBLIC_API_BASE || '';
+  const apiBase = API_BASE || '';
 
   // Interface matching backend response
   interface FeeBreakdownItem {
@@ -24,16 +24,16 @@
   }
 
   // Reactive state with defaults
-  let feeData: FeeData = {
+  let feeData: FeeData = $state({
     daily_fees: 0,
     daily_fee_burn_pct: 0,
     kill_switch_active: false,
     fee_breakdown: []
-  };
+  });
 
   let wsClient: WebSocketClient | null = null;
-  let isLoading = true;
-  let hasError = false;
+  let isLoading = $state(true);
+  let hasError = $state(false);
 
   onMount(async () => {
     try {

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { stopPropagation } from 'svelte/legacy';
+
   import { createEventDispatcher, onMount } from 'svelte';
   import {
     FileText, Save, RefreshCw, Plus, X, ChevronRight, ChevronDown,
@@ -11,13 +13,18 @@
 
   const dispatch = createEventDispatcher();
 
-  // TRD state
-  export let trdId: string | null = null;
-  export let strategyName = 'ICT Scalper v2';
-  export let readOnly = false;
+  
+  interface Props {
+    // TRD state
+    trdId?: string | null;
+    strategyName?: string;
+    readOnly?: boolean;
+  }
+
+  let { trdId = null, strategyName = 'ICT Scalper v2', readOnly = false }: Props = $props();
 
   // TRD Data Structure
-  let trdData = {
+  let trdData = $state({
     // Header
     id: trdId || crypto.randomUUID(),
     name: strategyName,
@@ -224,11 +231,11 @@
         version: '2.0'
       }
     ]
-  };
+  });
 
   // View state
-  let activeTab: 'vanilla' | 'spiced' | 'comparison' = 'comparison';
-  let expandedSections: Record<string, boolean> = {
+  let activeTab: 'vanilla' | 'spiced' | 'comparison' = $state('comparison');
+  let expandedSections: Record<string, boolean> = $state({
     overview: true,
     entry: true,
     exit: true,
@@ -236,7 +243,7 @@
     preferred: true,
     backtest: false,
     assets: false
-  };
+  });
 
   // Editing state
   let editingCondition: string | null = null;
@@ -374,7 +381,7 @@
   <!-- Header -->
   <div class="trd-header">
     <div class="header-left">
-      <button class="icon-btn" on:click={() => dispatch('close')}>
+      <button class="icon-btn" onclick={() => dispatch('close')}>
         <ArrowLeft size={18} />
       </button>
       <FileText size={24} class="trd-icon" />
@@ -390,16 +397,16 @@
       </div>
     </div>
     <div class="header-actions">
-      <button class="btn" on:click={exportTRD} title="Export TRD">
+      <button class="btn" onclick={exportTRD} title="Export TRD">
         <Download size={14} /> Export
       </button>
-      <button class="btn" on:click={runBacktest} title="Run Backtest">
+      <button class="btn" onclick={runBacktest} title="Run Backtest">
         <TestTube size={14} /> Backtest
       </button>
-      <button class="btn primary" on:click={generateEA} title="Generate EA Code">
+      <button class="btn primary" onclick={generateEA} title="Generate EA Code">
         <Code size={14} /> Generate EA
       </button>
-      <button class="btn" class:save-btn={true} on:click={saveTRD} title="Save TRD">
+      <button class="btn" class:save-btn={true} onclick={saveTRD} title="Save TRD">
         <Save size={14} /> Save
       </button>
     </div>
@@ -410,7 +417,7 @@
     <button
       class="tab"
       class:active={activeTab === 'vanilla'}
-      on:click={() => activeTab = 'vanilla'}
+      onclick={() => activeTab = 'vanilla'}
     >
       <Layers size={14} />
       <span>Vanilla</span>
@@ -419,7 +426,7 @@
     <button
       class="tab"
       class:active={activeTab === 'spiced'}
-      on:click={() => activeTab = 'spiced'}
+      onclick={() => activeTab = 'spiced'}
     >
       <Zap size={14} />
       <span>Spiced</span>
@@ -428,7 +435,7 @@
     <button
       class="tab"
       class:active={activeTab === 'comparison'}
-      on:click={() => activeTab = 'comparison'}
+      onclick={() => activeTab = 'comparison'}
     >
       <Copy size={14} />
       <span>Comparison</span>
@@ -443,7 +450,7 @@
       <div class="comparison-view">
         <!-- Overview Section -->
         <div class="trd-section">
-          <button class="section-header" on:click={() => toggleSection('overview')}>
+          <button class="section-header" onclick={() => toggleSection('overview')}>
             <FileText size={16} />
             <h3>Strategy Overview</h3>
             <span class:expanded={expandedSections.overview}><ChevronDown size={16} /></span>
@@ -481,7 +488,7 @@
 
         <!-- Entry Conditions Comparison -->
         <div class="trd-section">
-          <button class="section-header" on:click={() => toggleSection('entry')}>
+          <button class="section-header" onclick={() => toggleSection('entry')}>
             <Target size={16} />
             <h3>Entry Conditions</h3>
             <span class:expanded={expandedSections.entry}><ChevronDown size={16} /></span>
@@ -502,7 +509,7 @@
                         <button
                           class="toggle-btn"
                           class:active={condition.enabled}
-                          on:click|stopPropagation={() => toggleConditionEnabled(condition.id, 'vanilla')}
+                          onclick={stopPropagation(() => toggleConditionEnabled(condition.id, 'vanilla'))}
                         >
                           {#if condition.enabled}
                             <ToggleRight size={14} />
@@ -511,7 +518,7 @@
                           {/if}
                         </button>
                         <span class="condition-name">{condition.name}</span>
-                        <button class="icon-btn" on:click={() => startEditing(condition.id, 'vanilla')}>
+                        <button class="icon-btn" onclick={() => startEditing(condition.id, 'vanilla')}>
                           <Edit3 size={12} />
                         </button>
                       </div>
@@ -542,7 +549,7 @@
                         <button
                           class="toggle-btn"
                           class:active={condition.enabled}
-                          on:click|stopPropagation={() => toggleConditionEnabled(condition.id, 'spiced')}
+                          onclick={stopPropagation(() => toggleConditionEnabled(condition.id, 'spiced'))}
                         >
                           {#if condition.enabled}
                             <ToggleRight size={14} />
@@ -551,14 +558,15 @@
                           {/if}
                         </button>
                         <span class="condition-name">{condition.name}</span>
-                        <button class="icon-btn" on:click={() => startEditing(condition.id, 'spiced')}>
+                        <button class="icon-btn" onclick={() => startEditing(condition.id, 'spiced')}>
                           <Edit3 size={12} />
                         </button>
                       </div>
                       <p class="condition-desc">{condition.description}</p>
                       {#if condition.sharedAsset}
+                        {@const SvelteComponent = getSharedAssetIcon(condition.sharedAsset)}
                         <div class="shared-asset-badge">
-                          <svelte:component this={getSharedAssetIcon(condition.sharedAsset)} size={10} />
+                          <SvelteComponent size={10} />
                           <span>{condition.sharedAsset}</span>
                         </div>
                       {/if}
@@ -580,7 +588,7 @@
 
         <!-- Exit Management Comparison -->
         <div class="trd-section">
-          <button class="section-header" on:click={() => toggleSection('exit')}>
+          <button class="section-header" onclick={() => toggleSection('exit')}>
             <Activity size={16} />
             <h3>Exit Management</h3>
             <span class:expanded={expandedSections.exit}><ChevronDown size={16} /></span>
@@ -656,7 +664,7 @@
 
         <!-- Risk Management Comparison -->
         <div class="trd-section">
-          <button class="section-header" on:click={() => toggleSection('risk')}>
+          <button class="section-header" onclick={() => toggleSection('risk')}>
             <Shield size={16} />
             <h3>Risk Management</h3>
             <span class:expanded={expandedSections.risk}><ChevronDown size={16} /></span>
@@ -732,7 +740,7 @@
 
         <!-- Preferred Conditions (Router) -->
         <div class="trd-section">
-          <button class="section-header" on:click={() => toggleSection('preferred')}>
+          <button class="section-header" onclick={() => toggleSection('preferred')}>
             <BarChart3 size={16} />
             <h3>Preferred Conditions (Strategy Router)</h3>
             <span class:expanded={expandedSections.preferred}><ChevronDown size={16} /></span>
@@ -792,7 +800,7 @@
 
         <!-- Backtest Requirements -->
         <div class="trd-section">
-          <button class="section-header" on:click={() => toggleSection('backtest')}>
+          <button class="section-header" onclick={() => toggleSection('backtest')}>
             <TestTube size={16} />
             <h3>Backtest Requirements</h3>
             <span class:expanded={expandedSections.backtest}><ChevronDown size={16} /></span>
@@ -841,7 +849,7 @@
 
         <!-- Shared Assets -->
         <div class="trd-section">
-          <button class="section-header" on:click={() => toggleSection('assets')}>
+          <button class="section-header" onclick={() => toggleSection('assets')}>
             <FolderOpen size={16} />
             <h3>Shared Assets Dependencies</h3>
             <span class:expanded={expandedSections.assets}><ChevronDown size={16} /></span>
@@ -851,8 +859,9 @@
             <div class="section-content">
               <div class="assets-list">
                 {#each trdData.sharedAssets as asset}
+                  {@const SvelteComponent_1 = getSharedAssetIcon(asset.name)}
                   <div class="asset-item">
-                    <svelte:component this={getSharedAssetIcon(asset.name)} size={18} />
+                    <SvelteComponent_1 size={18} />
                     <div class="asset-info">
                       <span class="asset-name">{asset.name}</span>
                       <span class="asset-path">{asset.path}</span>

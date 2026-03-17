@@ -31,14 +31,19 @@
 
   const dispatch = createEventDispatcher();
 
-  // Props
-  export let initialDepartment: DepartmentId | null = null;
+  
+  interface Props {
+    // Props
+    initialDepartment?: DepartmentId | null;
+  }
+
+  let { initialDepartment = null }: Props = $props();
 
   // Local state
-  let message = "";
-  let textareaElement: HTMLTextAreaElement;
-  let messagesContainer: HTMLDivElement;
-  let showDepartmentSelector = false;
+  let message = $state("");
+  let textareaElement: HTMLTextAreaElement = $state();
+  let messagesContainer: HTMLDivElement = $state();
+  let showDepartmentSelector = $state(false);
 
   // Department icons mapping
   const departmentIcons: Record<DepartmentId, typeof BarChart2> = {
@@ -50,12 +55,12 @@
   };
 
   // Subscribe to store
-  $: activeDept = $departmentChatStore.activeDepartment;
-  $: activeChat = $activeDepartmentChat;
-  $: messages = $activeDepartmentMessages;
-  $: isLoading = $departmentChatStore.isLoading;
-  $: isTyping = activeChat?.isTyping || false;
-  $: activeDeptInfo = activeDept ? DEPARTMENTS[activeDept] : null;
+  let activeDept = $derived($departmentChatStore.activeDepartment);
+  let activeChat = $derived($activeDepartmentChat);
+  let messages = $derived($activeDepartmentMessages);
+  let isLoading = $derived($departmentChatStore.isLoading);
+  let isTyping = $derived(activeChat?.isTyping || false);
+  let activeDeptInfo = $derived(activeDept ? DEPARTMENTS[activeDept] : null);
 
   onMount(() => {
     if (initialDepartment) {
@@ -158,15 +163,16 @@
   <div class="panel-header">
     <div class="header-left">
       {#if activeDeptInfo}
+        {@const SvelteComponent = departmentIcons[activeDeptInfo.id]}
         <button
           class="department-selector-btn"
-          on:click={() => (showDepartmentSelector = !showDepartmentSelector)}
+          onclick={() => (showDepartmentSelector = !showDepartmentSelector)}
         >
           <div
             class="dept-icon"
             style="background: {activeDeptInfo.color}20; color: {activeDeptInfo.color}"
           >
-            <svelte:component this={departmentIcons[activeDeptInfo.id]} size={16} />
+            <SvelteComponent size={16} />
           </div>
           <span class="dept-name">{activeDeptInfo.name}</span>
           <span class="chevron" class:rotated={showDepartmentSelector}>
@@ -176,7 +182,7 @@
       {:else}
         <button
           class="department-selector-btn placeholder"
-          on:click={() => (showDepartmentSelector = !showDepartmentSelector)}
+          onclick={() => (showDepartmentSelector = !showDepartmentSelector)}
         >
           <Plus size={16} />
           <span>Select Department</span>
@@ -188,7 +194,7 @@
     </div>
 
     <div class="header-actions">
-      <button class="icon-btn" title="Close" on:click={closePanel}>
+      <button class="icon-btn" title="Close" onclick={closePanel}>
         <X size={16} />
       </button>
     </div>
@@ -198,13 +204,14 @@
   {#if showDepartmentSelector}
     <div class="department-selector" transition:fly={{ y: -10, duration: 150 }}>
       {#each Object.values(DEPARTMENTS) as dept}
+        {@const SvelteComponent_1 = departmentIcons[dept.id]}
         <button
           class="dept-option"
           class:active={activeDept === dept.id}
-          on:click={() => selectDepartment(dept.id)}
+          onclick={() => selectDepartment(dept.id)}
         >
           <div class="dept-icon-small" style="background: {dept.color}20; color: {dept.color}">
-            <svelte:component this={departmentIcons[dept.id]} size={14} />
+            <SvelteComponent_1 size={14} />
           </div>
           <div class="dept-info">
             <span class="dept-label">{dept.name}</span>
@@ -223,12 +230,13 @@
         <p>Select a department to start chatting</p>
       </div>
     {:else if messages.length === 0}
+      {@const SvelteComponent_2 = departmentIcons[activeDept]}
       <div class="empty-state">
         <div
           class="dept-icon-large"
           style="background: {activeDeptInfo?.color}20; color: {activeDeptInfo?.color}"
         >
-          <svelte:component this={departmentIcons[activeDept]} size={32} />
+          <SvelteComponent_2 size={32} />
         </div>
         <h4>{activeDeptInfo?.name} Department</h4>
         <p>{activeDeptInfo?.description}</p>
@@ -238,12 +246,13 @@
         <div class="message {msg.role}">
           <div class="message-content">
             {#if msg.role === "department"}
+              {@const SvelteComponent_3 = getStatusIcon(msg.metadata?.status)}
               <div class="message-header">
                 <span
                   class="status-indicator"
                   style="color: {getStatusColor(msg.metadata?.status)}"
                 >
-                  <svelte:component this={getStatusIcon(msg.metadata?.status)} size={12} />
+                  <SvelteComponent_3 size={12} />
                 </span>
                 <span class="dept-badge" style="background: {activeDeptInfo?.color}20; color: {activeDeptInfo?.color}">
                   {activeDeptInfo?.name}
@@ -286,8 +295,8 @@
       <textarea
         bind:this={textareaElement}
         bind:value={message}
-        on:keydown={handleKeydown}
-        on:input={autoResize}
+        onkeydown={handleKeydown}
+        oninput={autoResize}
         placeholder={activeDept ? `Message ${activeDeptInfo?.name}...` : "Select a department first..."}
         rows="1"
         disabled={!activeDept || isLoading}
@@ -306,7 +315,7 @@
       </div>
       <button
         class="send-btn"
-        on:click={sendMessage}
+        onclick={sendMessage}
         disabled={!message.trim() || !activeDept || isLoading}
       >
         {#if isLoading}

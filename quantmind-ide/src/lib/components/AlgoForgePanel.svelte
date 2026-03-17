@@ -2,9 +2,9 @@
   import { onMount } from 'svelte';
 
   // State
-  let iframeLoaded = false;
-  let currentUrl = 'https://forge.mql5.io/?lang=en';
-  let showGuide = false;
+  let iframeLoaded = $state(false);
+  let currentUrl = $state('https://forge.mql5.io/?lang=en');
+  let showGuide = $state(false);
 
   // Navigation items
   const navItems = [
@@ -52,13 +52,13 @@
       <span class="badge">Web Preview</span>
     </div>
     <div class="header-actions">
-      <button class="action-btn" on:click={refresh} title="Refresh">
+      <button class="action-btn" onclick={refresh} title="Refresh">
         🔄
       </button>
-      <button class="action-btn" on:click={openExternal} title="Open in new tab">
+      <button class="action-btn" onclick={openExternal} title="Open in new tab">
         🔗
       </button>
-      <button class="action-btn" on:click={toggleGuide} title="Toggle guide">
+      <button class="action-btn" onclick={toggleGuide} title="Toggle guide">
         ℹ️
       </button>
     </div>
@@ -70,7 +70,7 @@
       <button 
         class="nav-btn"
         class:active={currentUrl === item.url}
-        on:click={() => navigate(item.url)}
+        onclick={() => navigate(item.url)}
       >
         <span class="nav-icon">{item.icon}</span>
         <span class="nav-label">{item.label}</span>
@@ -109,7 +109,7 @@
       title="AlgoForge Web Preview"
       sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
       allow="clipboard-read; clipboard-write"
-      on:load={onIframeLoad}
+      onload={onIframeLoad}
     ></iframe>
   </div>
 

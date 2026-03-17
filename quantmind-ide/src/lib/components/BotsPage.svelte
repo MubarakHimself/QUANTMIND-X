@@ -1,12 +1,16 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
 
-  export let bots: Array<{
+  interface Props {
+    bots?: Array<{
     id: string;
     name: string;
     state: string;
     symbol?: string;
-  }> = [];
+  }>;
+  }
+
+  let { bots = [] }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -50,7 +54,7 @@
         </div>
         <select
           class="tag-select"
-          on:change={(e) => handleTagChange(bot.id, e.currentTarget.value)}
+          onchange={(e) => handleTagChange(bot.id, e.currentTarget.value)}
         >
           <option value="primal" selected={bot.state === "primal"}>Primal</option>
           <option value="ready" selected={bot.state === "ready"}>Ready</option>

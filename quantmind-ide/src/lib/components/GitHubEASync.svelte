@@ -14,7 +14,7 @@
     Search,
     ArrowLeft
   } from 'lucide-svelte';
-  import { PUBLIC_API_BASE } from '$env/static/public';
+  import { API_BASE } from '$lib/constants';
   import { goto } from '$app/navigation';
 
   // Types
@@ -57,17 +57,17 @@
   }
 
   // State
-  let status: SyncStatus | null = null;
-  let eas: EA[] = [];
-  let selectedEAs: Set<number> = new Set();
-  let isSyncing = false;
-  let isImporting = false;
-  let syncResult: SyncResult | null = null;
-  let searchQuery = '';
-  let statusFilter = '';
-  let isLoading = true;
+  let status: SyncStatus | null = $state(null);
+  let eas: EA[] = $state([]);
+  let selectedEAs: Set<number> = $state(new Set());
+  let isSyncing = $state(false);
+  let isImporting = $state(false);
+  let syncResult: SyncResult | null = $state(null);
+  let searchQuery = $state('');
+  let statusFilter = $state('');
+  let isLoading = $state(true);
 
-  const apiBase = PUBLIC_API_BASE || 'http://localhost:8000';
+  const apiBase = API_BASE || 'http://localhost:8000';
 
   // Fetch status
   async function fetchStatus() {
@@ -182,13 +182,13 @@
   }
 
   // Filter EAs
-  $: filteredEAs = eas.filter(ea => {
+  let filteredEAs = $derived(eas.filter(ea => {
     const matchesSearch = !searchQuery || 
       ea.ea_filename.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ea.strategy_type.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = !statusFilter || ea.status === statusFilter;
     return matchesSearch && matchesStatus;
-  });
+  }));
 
   // Format date
   function formatDate(dateStr: string | null): string {
@@ -219,7 +219,7 @@
   <!-- Header -->
   <div class="panel-header">
     <div class="header-nav">
-      <button class="back-button" on:click={() => goto('/?view=ea')}>
+      <button class="back-button" onclick={() => goto('/?view=ea')}>
         <ArrowLeft size={18} />
         <span>Back to EA Management</span>
       </button>
@@ -239,7 +239,7 @@
       <h3>Repository Status</h3>
       <button 
         class="sync-button"
-        on:click={triggerSync}
+        onclick={triggerSync}
         disabled={isSyncing}
       >
         {#if isSyncing}
@@ -326,7 +326,7 @@
         {#if selectedEAs.size > 0}
           <button 
             class="import-button"
-            on:click={importSelected}
+            onclick={importSelected}
             disabled={isImporting}
           >
             {#if isImporting}
@@ -336,11 +336,11 @@
             {/if}
             Import Selected ({selectedEAs.size})
           </button>
-          <button class="clear-button" on:click={clearSelection}>
+          <button class="clear-button" onclick={clearSelection}>
             Clear
           </button>
         {:else}
-          <button class="select-all-button" on:click={selectAll}>
+          <button class="select-all-button" onclick={selectAll}>
             Select All
           </button>
         {/if}
@@ -365,7 +365,7 @@
             <input 
               type="checkbox" 
               checked={selectedEAs.has(ea.id)}
-              on:change={() => toggleEA(ea.id)}
+              onchange={() => toggleEA(ea.id)}
             />
             
             <div class="ea-icon">

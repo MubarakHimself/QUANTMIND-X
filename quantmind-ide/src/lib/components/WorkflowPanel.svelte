@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { stopPropagation, createBubbler } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   /**
    * Workflow Panel Component
    *
@@ -16,17 +19,22 @@
     error,
   } from '$lib/stores/workflowStore';
 
-  // Props
-  export let showHistory = false;
+  
+  interface Props {
+    // Props
+    showHistory?: boolean;
+  }
+
+  let { showHistory = false }: Props = $props();
 
   // State
   let refreshInterval: number | null = null;
-  let showCreateModal = false;
-  let selectedTemplate: WorkflowTemplate = 'video_ingest_full';
-  let trdContent = '';
+  let showCreateModal = $state(false);
+  let selectedTemplate: WorkflowTemplate = $state('video_ingest_full');
+  let trdContent = $state('');
 
   // Computed
-  $: hasActiveWorkflows = $activeWorkflows.length > 0;
+  let hasActiveWorkflows = $derived($activeWorkflows.length > 0);
 
   // Methods
   function getStatusColor(status: string): string {
@@ -150,13 +158,13 @@
       {/if}
       <button
         class="px-3 py-1 text-sm bg-green-600 rounded hover:bg-green-700"
-        on:click={openCreateModal}
+        onclick={openCreateModal}
       >
         + Create Workflow
       </button>
       <button
         class="px-3 py-1 text-sm bg-blue-600 rounded hover:bg-blue-700"
-        on:click={() => workflowStore.fetchWorkflows()}
+        onclick={() => workflowStore.fetchWorkflows()}
       >
         Refresh
       </button>
@@ -167,7 +175,7 @@
   {#if $error}
     <div class="p-4 bg-red-900/50 text-red-300 text-sm">
       {$error}
-      <button class="ml-2 underline" on:click={() => workflowStore.clearError()}>
+      <button class="ml-2 underline" onclick={() => workflowStore.clearError()}>
         Dismiss
       </button>
     </div>
@@ -185,7 +193,7 @@
           <div
             class="p-4 bg-gray-800 rounded-lg border border-gray-700 hover:border-gray-600 cursor-pointer"
             class:border-blue-500={$selectedWorkflow?.workflow_id === workflow.workflow_id}
-            on:click={() => selectWorkflow(workflow)}
+            onclick={() => selectWorkflow(workflow)}
           >
             <div class="flex items-center justify-between mb-2">
               <div class="flex items-center gap-2">
@@ -246,21 +254,21 @@
                 {#if workflow.status === 'running'}
                   <button
                     class="px-3 py-1 text-xs bg-yellow-600 rounded hover:bg-yellow-700"
-                    on:click|stopPropagation={() => handlePause(workflow.workflow_id)}
+                    onclick={stopPropagation(() => handlePause(workflow.workflow_id))}
                   >
                     Pause
                   </button>
                 {:else}
                   <button
                     class="px-3 py-1 text-xs bg-green-600 rounded hover:bg-green-700"
-                    on:click|stopPropagation={() => handleResume(workflow.workflow_id)}
+                    onclick={stopPropagation(() => handleResume(workflow.workflow_id))}
                   >
                     Resume
                   </button>
                 {/if}
                 <button
                   class="px-3 py-1 text-xs bg-red-600 rounded hover:bg-red-700"
-                  on:click|stopPropagation={() => handleCancel(workflow.workflow_id)}
+                  onclick={stopPropagation(() => handleCancel(workflow.workflow_id))}
                 >
                   Cancel
                 </button>
@@ -308,8 +316,8 @@
 
 <!-- Create Workflow Modal -->
 {#if showCreateModal}
-  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" on:click={closeCreateModal}>
-    <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md" on:click|stopPropagation>
+  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onclick={closeCreateModal}>
+    <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md" onclick={stopPropagation(bubble('click'))}>
       <h3 class="text-lg font-semibold mb-4">Create New Workflow</h3>
 
       <!-- Template Selection -->
@@ -349,13 +357,13 @@
       <div class="flex justify-end gap-3">
         <button
           class="px-4 py-2 text-sm bg-gray-600 rounded hover:bg-gray-700"
-          on:click={closeCreateModal}
+          onclick={closeCreateModal}
         >
           Cancel
         </button>
         <button
           class="px-4 py-2 text-sm bg-green-600 rounded hover:bg-green-700"
-          on:click={handleCreateWorkflow}
+          onclick={handleCreateWorkflow}
           disabled={$loading}
         >
           {$loading ? 'Creating...' : 'Create Workflow'}

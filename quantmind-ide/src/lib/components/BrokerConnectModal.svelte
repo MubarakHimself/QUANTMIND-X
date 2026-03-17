@@ -1,10 +1,17 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { createEventDispatcher } from 'svelte';
   import { Server, Key, Wallet, Check, X, Loader, Eye, EyeOff } from 'lucide-svelte';
 
   const dispatch = createEventDispatcher();
 
-  export let show = false;
+  interface Props {
+    show?: boolean;
+  }
+
+  let { show = $bindable(false) }: Props = $props();
 
   // Declare brokers first before using it
   const brokers = [
@@ -34,21 +41,21 @@
     }
   ];
 
-  let selectedBroker = brokers[0];
-  let accountType = 'demo';
-  let isConnecting = false;
-  let connectionStatus: 'idle' | 'connecting' | 'success' | 'error' = 'idle';
-  let showPassword = false;
+  let selectedBroker = $state(brokers[0]);
+  let accountType = $state('demo');
+  let isConnecting = $state(false);
+  let connectionStatus: 'idle' | 'connecting' | 'success' | 'error' = $state('idle');
+  let showPassword = $state(false);
 
   // Form fields
-  let credentials = {
+  let credentials = $state({
     account: '',
     password: '',
     server: '',
     apiKey: '',
     apiSecret: '',
     token: ''
-  };
+  });
 
   function hasField(field: string): boolean {
     return selectedBroker.fields.includes(field);
@@ -124,14 +131,14 @@
 </script>
 
 {#if show}
-<div class="modal-overlay" on:click={close}>
-  <div class="modal broker-connect-modal" on:click|stopPropagation>
+<div class="modal-overlay" onclick={close}>
+  <div class="modal broker-connect-modal" onclick={stopPropagation(bubble('click'))}>
     <div class="modal-header">
       <div>
         <h2>Connect Broker</h2>
         <p>Connect your trading account to enable automated trading</p>
       </div>
-      <button class="icon-btn" on:click={close}><X size={20} /></button>
+      <button class="icon-btn" onclick={close}><X size={20} /></button>
     </div>
 
     <div class="modal-body">
@@ -187,7 +194,7 @@
                   placeholder="Your password"
                 />
               {/if}
-              <button class="icon-btn" on:click={() => showPassword = !showPassword}>
+              <button class="icon-btn" onclick={() => showPassword = !showPassword}>
                 {#if showPassword}<EyeOff size={16} />{:else}<Eye size={16} />{/if}
               </button>
             </div>
@@ -241,15 +248,15 @@
     </div>
 
     <div class="modal-footer">
-      <button class="btn secondary" on:click={close}>Cancel</button>
-      <button class="btn secondary" on:click={testConnection} disabled={isConnecting}>
+      <button class="btn secondary" onclick={close}>Cancel</button>
+      <button class="btn secondary" onclick={testConnection} disabled={isConnecting}>
         {#if connectionStatus === 'connecting'}
           <Loader size={14} class="spinning" />
         {:else}
           Test Connection
         {/if}
       </button>
-      <button class="btn primary" on:click={connect} disabled={isConnecting || connectionStatus !== 'idle'}>
+      <button class="btn primary" onclick={connect} disabled={isConnecting || connectionStatus !== 'idle'}>
         {#if isConnecting}
           <Loader size={14} class="spinning" />
           Connecting...

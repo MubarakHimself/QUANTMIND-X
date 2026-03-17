@@ -93,7 +93,7 @@
     if (interval) clearInterval(interval);
   });
 
-  $: timeToNextOpen = getTimeToNextOpen();
+  let timeToNextOpen = $derived(getTimeToNextOpen());
 </script>
 
 <div class="market-clock">
@@ -119,7 +119,7 @@
       {@const localTime = formatTimeInZone(market.timezone)}
       <div class="market-item" class:open={status === 'open'} class:soon={status === 'soon'}>
         <div class="market-icon" style="color: {market.color}">
-          <svelte:component this={market.icon} size={14} />
+          <market.icon size={14} />
         </div>
         <div class="market-info">
           <span class="market-name">{market.name}</span>

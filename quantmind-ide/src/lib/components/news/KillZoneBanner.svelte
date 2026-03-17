@@ -1,11 +1,15 @@
 <script lang="ts">
   import { AlertTriangle, Play, X } from "lucide-svelte";
 
-  export let killZoneSettings: {
+  interface Props {
+    killZoneSettings: {
     enabled: boolean;
     autoPause: boolean;
   };
-  export let currentKillZone: any = null;
+    currentKillZone?: any;
+  }
+
+  let { killZoneSettings = $bindable(), currentKillZone = $bindable(null) }: Props = $props();
 
   function resumeAnyway() {
     killZoneSettings.autoPause = false;
@@ -27,11 +31,11 @@
         </div>
       </div>
       <div class="banner-right">
-        <button class="btn" on:click={resumeAnyway}>
+        <button class="btn" onclick={resumeAnyway}>
           <Play size={14} />
           <span>Resume Anyway</span>
         </button>
-        <button class="btn close" on:click={closeBanner}>
+        <button class="btn close" onclick={closeBanner}>
           <X size={14} />
         </button>
       </div>

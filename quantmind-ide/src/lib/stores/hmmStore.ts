@@ -6,9 +6,9 @@
  */
 
 import { writable, derived, type Readable } from 'svelte/store';
-import { PUBLIC_API_BASE } from '$env/static/public';
+import { API_BASE } from '$lib/constants';
 
-const apiBase = PUBLIC_API_BASE || '';
+const apiBase = API_BASE || '';
 
 // ============================================================================
 // Types

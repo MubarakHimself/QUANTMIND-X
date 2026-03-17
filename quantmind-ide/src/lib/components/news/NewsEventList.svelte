@@ -1,21 +1,39 @@
 <script lang="ts">
   import { Clock, Globe, Eye, CheckCircle, AlertTriangle, Calendar, Newspaper, Shield, BarChart3, Info, TrendingUp, Zap } from "lucide-svelte";
 
-  export let events: Array<any> = [];
-  export let killZones: Array<any> = [];
-  export let calendarView: "list" | "weekly" | "monthly" = "list";
-  export let killZoneSettings: any;
-  export let activeTab: "calendar" | "timeline" | "settings" = "calendar";
 
-  export let onSelectEvent: (event: any) => void;
-  export let onToggleView: (view: "list" | "weekly" | "monthly") => void;
 
-  // Helper functions exposed for the template
-  export let getImpactBadgeClass: (impact: string) => string;
-  export let getCurrencyFlag: (currency: string) => string;
-  export let formatDateTime: (dateStr: string) => string;
-  export let isEventInKillZone: (event: any) => boolean;
-  export let getEventStatus: (event: any) => string;
+  
+  interface Props {
+    events?: Array<any>;
+    killZones?: Array<any>;
+    calendarView?: "list" | "weekly" | "monthly";
+    killZoneSettings: any;
+    activeTab?: "calendar" | "timeline" | "settings";
+    onSelectEvent: (event: any) => void;
+    onToggleView: (view: "list" | "weekly" | "monthly") => void;
+    // Helper functions exposed for the template
+    getImpactBadgeClass: (impact: string) => string;
+    getCurrencyFlag: (currency: string) => string;
+    formatDateTime: (dateStr: string) => string;
+    isEventInKillZone: (event: any) => boolean;
+    getEventStatus: (event: any) => string;
+  }
+
+  let {
+    events = [],
+    killZones = [],
+    calendarView = "list",
+    killZoneSettings = $bindable(),
+    activeTab = "calendar",
+    onSelectEvent,
+    onToggleView,
+    getImpactBadgeClass,
+    getCurrencyFlag,
+    formatDateTime,
+    isEventInKillZone,
+    getEventStatus
+  }: Props = $props();
 </script>
 
 <div class="news-content">
@@ -27,21 +45,21 @@
         <button
           class="view-btn"
           class:active={calendarView === "list"}
-          on:click={() => onToggleView("list")}
+          onclick={() => onToggleView("list")}
         >
           List
         </button>
         <button
           class="view-btn"
           class:active={calendarView === "weekly"}
-          on:click={() => onToggleView("weekly")}
+          onclick={() => onToggleView("weekly")}
         >
           Weekly
         </button>
         <button
           class="view-btn"
           class:active={calendarView === "monthly"}
-          on:click={() => onToggleView("monthly")}
+          onclick={() => onToggleView("monthly")}
         >
           Monthly
         </button>
@@ -54,8 +72,8 @@
             <div
               class="event-card"
               class:in-kill-zone={isEventInKillZone(event)}
-              on:click={() => onSelectEvent(event)}
-              on:keydown={(e) => e.key === "Enter" && onSelectEvent(event)}
+              onclick={() => onSelectEvent(event)}
+              onkeydown={(e) => e.key === "Enter" && onSelectEvent(event)}
               role="button"
               tabindex="0"
             >
@@ -227,21 +245,21 @@
             <button
               class="option-btn"
               class:active={killZoneSettings.duration === 15}
-              on:click={() => (killZoneSettings.duration = 15)}
+              onclick={() => (killZoneSettings.duration = 15)}
             >
               15 min
             </button>
             <button
               class="option-btn"
               class:active={killZoneSettings.duration === 30}
-              on:click={() => (killZoneSettings.duration = 30)}
+              onclick={() => (killZoneSettings.duration = 30)}
             >
               30 min
             </button>
             <button
               class="option-btn"
               class:active={killZoneSettings.duration === 60}
-              on:click={() => (killZoneSettings.duration = 60)}
+              onclick={() => (killZoneSettings.duration = 60)}
             >
               60 min
             </button>

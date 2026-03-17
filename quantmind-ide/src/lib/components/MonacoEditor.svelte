@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
   import { theme, currentTheme } from '../stores/themeStore';
   import { Save, FileText, Copy, Download, Upload, X, Edit3, Eye, History, GitBranch, Play, Bug } from 'lucide-svelte';
@@ -7,29 +9,43 @@
   import { registerMQL5Language, getMQL5ThemeColors } from '../monaco/mql5-language';
   import { registerIntelliSense } from '../monaco/intellisense-provider';
 
-  export let content = '';
-  export let language = 'plaintext';
-  export let filename = 'untitled';
-  export let readOnly = false;
-  export let showLineNumbers = true;
-  export let filePath = '';
-  export let fileId = '';
-  export let agent: AgentType = 'copilot';
-  export let breakpoints: number[] = [];
+  interface Props {
+    content?: string;
+    language?: string;
+    filename?: string;
+    readOnly?: boolean;
+    showLineNumbers?: boolean;
+    filePath?: string;
+    fileId?: string;
+    agent?: AgentType;
+    breakpoints?: number[];
+  }
+
+  let {
+    content = $bindable(''),
+    language = 'plaintext',
+    filename = 'untitled',
+    readOnly = false,
+    showLineNumbers = true,
+    filePath = '',
+    fileId = '',
+    agent = 'copilot',
+    breakpoints = []
+  }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
-  let editorContainer: HTMLDivElement;
-  let editor: any = null; // Monaco editor instance
-  let monaco: any = null; // Monaco module
+  let editorContainer: HTMLDivElement = $state();
+  let editor: any = $state(null); // Monaco editor instance
+  let monaco: any = $state(null); // Monaco module
 
   let previousContent = '';
-  let isFullscreen = false;
+  let isFullscreen = $state(false);
   let currentBreakpoints = new Set<number>();
 
   // Cursor position tracking
-  let cursorLine = 1;
-  let cursorColumn = 1;
+  let cursorLine = $state(1);
+  let cursorColumn = $state(1);
 
   // Git status decorations
   let gitDecorations: string[] = [];
@@ -318,20 +334,24 @@
   }
 
   // Watch for content changes from outside
-  $: if (editor && content !== editor.getValue()) {
-    const position = editor.getPosition();
-    editor.setValue(content);
-    if (position) editor.setPosition(position);
-  }
+  run(() => {
+    if (editor && content !== editor.getValue()) {
+      const position = editor.getPosition();
+      editor.setValue(content);
+      if (position) editor.setPosition(position);
+    }
+  });
 
   // Watch for theme changes
-  $: if (editor && monaco && $theme) {
-    const themeType = $theme.name.includes('dark') || $theme.name.includes('matrix') ||
-      $theme.name.includes('trading') ? 'dark' : 'light';
-    const customTheme = getMQL5ThemeColors(themeType);
-    monaco.editor.defineTheme('quantmindx-theme', customTheme);
-    monaco.editor.setTheme('quantmindx-theme');
-  }
+  run(() => {
+    if (editor && monaco && $theme) {
+      const themeType = $theme.name.includes('dark') || $theme.name.includes('matrix') ||
+        $theme.name.includes('trading') ? 'dark' : 'light';
+      const customTheme = getMQL5ThemeColors(themeType);
+      monaco.editor.defineTheme('quantmindx-theme', customTheme);
+      monaco.editor.setTheme('quantmindx-theme');
+    }
+  });
 
   onMount(() => {
     initMonaco();
@@ -365,26 +385,26 @@
 
     <div class="editor-actions">
       {#if !readOnly}
-        <button class="action-btn" on:click={saveFile} title="Save (Ctrl+S)">
+        <button class="action-btn" onclick={saveFile} title="Save (Ctrl+S)">
           <Save size={14} />
         </button>
-        <button class="action-btn" on:click={formatDocument} title="Format Document">
+        <button class="action-btn" onclick={formatDocument} title="Format Document">
           <Edit3 size={14} />
         </button>
       {/if}
-      <button class="action-btn" on:click={copyContent} title="Copy">
+      <button class="action-btn" onclick={copyContent} title="Copy">
         <Copy size={14} />
       </button>
-      <button class="action-btn" on:click={downloadFile} title="Download">
+      <button class="action-btn" onclick={downloadFile} title="Download">
         <Download size={14} />
       </button>
-      <button class="action-btn" on:click={() => dispatch('toggle-git')} title="Git Status">
+      <button class="action-btn" onclick={() => dispatch('toggle-git')} title="Git Status">
         <GitBranch size={14} />
       </button>
-      <button class="action-btn" on:click={() => dispatch('toggle-debug')} title="Debug">
+      <button class="action-btn" onclick={() => dispatch('toggle-debug')} title="Debug">
         <Bug size={14} />
       </button>
-      <button class="action-btn" on:click={toggleFullscreen} title="Toggle Fullscreen">
+      <button class="action-btn" onclick={toggleFullscreen} title="Toggle Fullscreen">
         {#if isFullscreen}
           <X size={14} />
         {:else}

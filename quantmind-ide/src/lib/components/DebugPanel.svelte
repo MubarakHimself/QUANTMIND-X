@@ -1,3 +1,7 @@
+<!-- @migration-task Error while migrating Svelte code: Directive value must be a JavaScript expression enclosed in curly braces
+https://svelte.dev/e/directive_invalid_value -->
+<!-- @migration-task Error while migrating Svelte code: Directive value must be a JavaScript expression enclosed in curly braces
+https://svelte.dev/e/directive_invalid_value -->
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import {

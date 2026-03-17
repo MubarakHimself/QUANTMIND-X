@@ -1,12 +1,22 @@
 <script lang="ts">
   import { X, Check } from "lucide-svelte";
 
-  export let open = false;
-  export let editingRow: Record<string, any> | null = null;
-  export let selectedTable: any = null;
 
-  export let getColumnTypeColor: (type: string) => string;
-  export let updateRow: () => Promise<void>;
+  interface Props {
+    open?: boolean;
+    editingRow?: Record<string, any> | null;
+    selectedTable?: any;
+    getColumnTypeColor: (type: string) => string;
+    updateRow: () => Promise<void>;
+  }
+
+  let {
+    open = $bindable(false),
+    editingRow = $bindable(null),
+    selectedTable = null,
+    getColumnTypeColor,
+    updateRow
+  }: Props = $props();
 
   function close() {
     open = false;
@@ -28,8 +38,8 @@
 {#if open && editingRow}
   <div
     class="modal-overlay"
-    on:click={handleOverlayClick}
-    on:keydown={handleKeyDown}
+    onclick={handleOverlayClick}
+    onkeydown={handleKeyDown}
     role="button"
     tabindex="0"
   >
@@ -41,7 +51,7 @@
             ID: {editingRow.id || editingRow[Object.keys(editingRow)[0]]}
           </p>
         </div>
-        <button class="icon-btn" on:click={close}>
+        <button class="icon-btn" onclick={close}>
           <X size={18} />
         </button>
       </div>
@@ -82,8 +92,8 @@
         {/if}
 
         <div class="modal-actions">
-          <button class="btn" on:click={close}>Cancel</button>
-          <button class="btn primary" on:click={updateRow}>
+          <button class="btn" onclick={close}>Cancel</button>
+          <button class="btn primary" onclick={updateRow}>
             <Check size={14} />
             <span>Save Changes</span>
           </button>

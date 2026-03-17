@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { stopPropagation } from 'svelte/legacy';
+
   import { createEventDispatcher } from "svelte";
   import {
     AlertTriangle,
@@ -20,19 +22,20 @@
   } from "../services/metricsWebSocket";
   import type { AlertData } from "../services/metricsWebSocket";
 
-  export let maxHeight = 400;
-  export let showFilters = true;
-  export let showAcknowledge = true;
+  interface Props {
+    maxHeight?: number;
+    showFilters?: boolean;
+    showAcknowledge?: boolean;
+  }
+
+  let { maxHeight = 400, showFilters = true, showAcknowledge = true }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
-  let filterSeverity: "all" | "info" | "warning" | "critical" = "all";
-  let sortBy: "time" | "severity" = "time";
-  let expanded = true;
+  let filterSeverity: "all" | "info" | "warning" | "critical" = $state("all");
+  let sortBy: "time" | "severity" = $state("time");
+  let expanded = $state(true);
 
-  $: filteredAlerts = getFilteredAlerts();
-  $: criticalCount = $criticalAlerts.length;
-  $: activeCount = $activeAlerts.length;
 
   function getFilteredAlerts(): AlertData[] {
     let result = $alerts;
@@ -105,13 +108,16 @@
       }
     });
   }
+  let filteredAlerts = $derived(getFilteredAlerts());
+  let criticalCount = $derived($criticalAlerts.length);
+  let activeCount = $derived($activeAlerts.length);
 </script>
 
 <div class="alerts-panel" style="max-height: {maxHeight}px;">
   <!-- Header -->
   <button
     class="panel-header"
-    on:click={() => (expanded = !expanded)}
+    onclick={() => (expanded = !expanded)}
     aria-expanded={expanded}
   >
     <div class="header-left">
@@ -130,7 +136,7 @@
       {#if expanded && showAcknowledge && activeCount > 0}
         <button
           class="action-btn"
-          on:click|stopPropagation={acknowledgeAll}
+          onclick={stopPropagation(acknowledgeAll)}
           title="Acknowledge All"
         >
           <Check size={14} />
@@ -139,7 +145,7 @@
       {#if expanded}
         <button
           class="action-btn"
-          on:click|stopPropagation={clearAll}
+          onclick={stopPropagation(clearAll)}
           title="Clear All"
         >
           <Trash2 size={14} />
@@ -185,13 +191,13 @@
         </div>
       {:else}
         {#each filteredAlerts as alert (alert.id)}
+          {@const SvelteComponent = getSeverityIcon(alert.severity)}
           <div
             class="alert-item {getSeverityClass(alert.severity)}"
             class:acknowledged={alert.acknowledged}
           >
             <div class="alert-icon">
-              <svelte:component
-                this={getSeverityIcon(alert.severity)}
+              <SvelteComponent
                 size={16}
               />
             </div>
@@ -206,7 +212,7 @@
               {#if !alert.acknowledged && showAcknowledge}
                 <button
                   class="action-btn"
-                  on:click={() => acknowledgeAlert(alert)}
+                  onclick={() => acknowledgeAlert(alert)}
                   title="Acknowledge"
                 >
                   <Check size={14} />
@@ -214,7 +220,7 @@
               {/if}
               <button
                 class="action-btn"
-                on:click={() => clearAlert(alert)}
+                onclick={() => clearAlert(alert)}
                 title="Dismiss"
               >
                 <X size={14} />

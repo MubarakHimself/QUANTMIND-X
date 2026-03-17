@@ -1,16 +1,27 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { onMount, onDestroy } from 'svelte';
   import Chart from 'chart.js/auto';
   import { cpuHistory, memoryHistory } from '../../services/metricsWebSocket';
   import { theme } from '../../stores/themeStore';
 
-  export let height = 200;
-  export let timeRange: '1m' | '5m' | '15m' | '1h' = '5m';
-  export let showCpu = true;
-  export let showMemory = true;
+  interface Props {
+    height?: number;
+    timeRange?: '1m' | '5m' | '15m' | '1h';
+    showCpu?: boolean;
+    showMemory?: boolean;
+  }
 
-  let canvas: HTMLCanvasElement;
-  let chart: Chart | null = null;
+  let {
+    height = 200,
+    timeRange = '5m',
+    showCpu = true,
+    showMemory = true
+  }: Props = $props();
+
+  let canvas: HTMLCanvasElement = $state();
+  let chart: Chart | null = $state(null);
 
   function getTimeRangeSeconds(): number {
     switch (timeRange) {
@@ -214,8 +225,12 @@
     }
   });
 
-  $: if (chart && $theme) updateChart();
-  $: if (chart && timeRange) updateChart();
+  run(() => {
+    if (chart && $theme) updateChart();
+  });
+  run(() => {
+    if (chart && timeRange) updateChart();
+  });
 </script>
 
 <div class="resource-usage-chart" style="height: {height}px;">

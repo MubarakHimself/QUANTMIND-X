@@ -2,7 +2,7 @@
   import { settingsStore } from '../../../stores/settingsStore';
   
   // Reactive state
-  $: general = $settingsStore.general;
+  let general = $derived($settingsStore.general);
   
   // Theme options
   const themeOptions = [
@@ -60,7 +60,7 @@
         <label for="theme">Theme</label>
         <span class="setting-description">Choose the application color scheme</span>
       </div>
-      <select id="theme" value={general.theme} on:change={handleThemeChange}>
+      <select id="theme" value={general.theme} onchange={handleThemeChange}>
         {#each themeOptions as option}
           <option value={option.value}>{option.label}</option>
         {/each}
@@ -72,7 +72,7 @@
         <label for="fontSize">Font Size</label>
         <span class="setting-description">Adjust the text size throughout the application</span>
       </div>
-      <select id="fontSize" value={general.fontSize} on:change={handleFontSizeChange}>
+      <select id="fontSize" value={general.fontSize} onchange={handleFontSizeChange}>
         {#each fontSizeOptions as option}
           <option value={option.value}>{option.label}</option>
         {/each}
@@ -89,7 +89,7 @@
           type="checkbox" 
           id="compactMode"
           checked={general.compactMode} 
-          on:change={() => handleToggle('compactMode')} 
+          onchange={() => handleToggle('compactMode')} 
         />
         <span class="toggle-slider"></span>
       </label>
@@ -110,7 +110,7 @@
           type="checkbox" 
           id="sendOnEnter"
           checked={general.sendOnEnter} 
-          on:change={() => handleToggle('sendOnEnter')} 
+          onchange={() => handleToggle('sendOnEnter')} 
         />
         <span class="toggle-slider"></span>
       </label>
@@ -126,7 +126,7 @@
           type="checkbox" 
           id="showTimestamps"
           checked={general.showTimestamps} 
-          on:change={() => handleToggle('showTimestamps')} 
+          onchange={() => handleToggle('showTimestamps')} 
         />
         <span class="toggle-slider"></span>
       </label>
@@ -142,7 +142,7 @@
           type="checkbox" 
           id="autoSave"
           checked={general.autoSave} 
-          on:change={() => handleToggle('autoSave')} 
+          onchange={() => handleToggle('autoSave')} 
         />
         <span class="toggle-slider"></span>
       </label>
@@ -161,7 +161,7 @@
           min="10"
           max="300"
           step="10"
-          on:input={(e) => handleNumberChange('autoSaveInterval', getInputValue(e))}
+          oninput={(e) => handleNumberChange('autoSaveInterval', getInputValue(e))}
         />
       </div>
     {/if}
@@ -181,7 +181,7 @@
           type="checkbox" 
           id="notifications"
           checked={general.notifications} 
-          on:change={() => handleToggle('notifications')} 
+          onchange={() => handleToggle('notifications')} 
         />
         <span class="toggle-slider"></span>
       </label>
@@ -197,7 +197,7 @@
           type="checkbox" 
           id="soundEffects"
           checked={general.soundEffects} 
-          on:change={() => handleToggle('soundEffects')} 
+          onchange={() => handleToggle('soundEffects')} 
         />
         <span class="toggle-slider"></span>
       </label>
@@ -213,7 +213,7 @@
         <label for="language">Display Language</label>
         <span class="setting-description">Choose your preferred language</span>
       </div>
-      <select id="language" value={general.language} on:change={(e) => settingsStore.updateGeneral({ language: getSelectValue(e) })}>
+      <select id="language" value={general.language} onchange={(e) => settingsStore.updateGeneral({ language: getSelectValue(e) })}>
         <option value="en">English</option>
         <option value="es">Español</option>
         <option value="fr">Français</option>

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import {
     Terminal,
     Activity,
@@ -21,7 +23,7 @@
 
   // Terminal color theme
   type TerminalTheme = 'default' | 'solarized' | 'dracula' | 'nord';
-  let terminalTheme: TerminalTheme = 'nord';
+  let terminalTheme: TerminalTheme = $state('nord');
 
   const themes: Record<TerminalTheme, {
     bg: string;
@@ -80,12 +82,12 @@
     },
   };
 
-  $: currentTheme = themes[terminalTheme];
+  let currentTheme = $derived(themes[terminalTheme]);
 
-  let activeTab = "output";  // Default to output, not terminal
-  let isExpanded = false;
-  let terminalInput = "";
-  let showThemePicker = false;
+  let activeTab = $state("output");  // Default to output, not terminal
+  let isExpanded = $state(false);
+  let terminalInput = $state("");
+  let showThemePicker = $state(false);
 
   // Tool call logging state
   let toolCalls: Array<{
@@ -99,9 +101,9 @@
     duration_ms?: number;
     success: boolean;
     error?: string;
-  }> = [];
-  let toolCallsLoading = false;
-  let toolCallsError: string | null = null;
+  }> = $state([]);
+  let toolCallsLoading = $state(false);
+  let toolCallsError: string | null = $state(null);
 
   // Fetch tool call logs from API
   async function fetchToolCalls(limit: number = 50) {
@@ -134,23 +136,23 @@
     type: "input" | "output" | "error" | "success" | "warning" | "info";
     content: string;
     timestamp?: string;
-  }> = [
+  }> = $state([
     { type: "info", content: "QuantMind Terminal v1.0.0", timestamp: getTimestamp() },
     { type: "info", content: 'Type "help" for available commands', timestamp: getTimestamp() },
     { type: "output", content: "", timestamp: getTimestamp() },
-  ];
+  ]);
 
   function getTimestamp(): string {
     return new Date().toLocaleTimeString('en-US', { hour12: false });
   }
 
-  let mt5Status = "disconnected";
-  let mt5Path = "/opt/MetaTrader5/terminal64";
+  let mt5Status = $state("disconnected");
+  let mt5Path = $state("/opt/MetaTrader5/terminal64");
 
   // Connection error state
   let mt5Error: string | null = null;
 
-  let logs: Array<{ type: string; message: string; time: string }> = [
+  let logs: Array<{ type: string; message: string; time: string }> = $state([
     {
       type: "info",
       message: "QuantMind IDE started",
@@ -166,7 +168,7 @@
       message: "Kelly router initialized (k=0.85)",
       time: new Date().toLocaleTimeString(),
     },
-  ];
+  ]);
 
   let errors: Array<{ message: string; file?: string; line?: number; timestamp?: string }> = [];
 
@@ -179,9 +181,11 @@
   ];
 
   // Auto-fetch tool calls when tab is activated
-  $: if (activeTab === "tool_calls" && toolCalls.length === 0) {
-    fetchToolCalls(50);
-  }
+  run(() => {
+    if (activeTab === "tool_calls" && toolCalls.length === 0) {
+      fetchToolCalls(50);
+    }
+  });
 
   // Enhanced terminal commands with better output
   const terminalCommands: Record<string, () => { type: string; content: string }> = {
@@ -381,21 +385,21 @@ VideoIngest Queue:
         <button
           class="tab"
           class:active={activeTab === tab.id}
-          on:click={() => (activeTab = tab.id)}
+          onclick={() => (activeTab = tab.id)}
         >
-          <svelte:component this={tab.icon} size={14} />
+          <tab.icon size={14} />
           <span>{tab.label}</span>
           {#if tab.count}<span class="badge">{tab.count}</span>{/if}
         </button>
       {/each}
     </div>
     <div class="actions">
-      <button on:click={() => (isExpanded = !isExpanded)}>
+      <button onclick={() => (isExpanded = !isExpanded)}>
         {#if isExpanded}<ChevronDown size={14} />{:else}<ChevronUp
             size={14}
           />{/if}
       </button>
-      <button on:click={() => (isExpanded = false)}><X size={14} /></button>
+      <button onclick={() => (isExpanded = false)}><X size={14} /></button>
     </div>
   </div>
 
@@ -408,10 +412,10 @@ VideoIngest Queue:
               <span class="terminal-tab active">bash</span>
             </div>
             <div class="terminal-actions">
-              <button class="term-btn" on:click={clearTerminal} title="Clear terminal">
+              <button class="term-btn" onclick={clearTerminal} title="Clear terminal">
                 <Trash2 size={12} />
               </button>
-              <button class="term-btn" on:click={toggleThemePicker} title="Change theme">
+              <button class="term-btn" onclick={toggleThemePicker} title="Change theme">
                 <Palette size={12} />
               </button>
             </div>
@@ -421,7 +425,7 @@ VideoIngest Queue:
                   <button
                     class="theme-option"
                     class:active={terminalTheme === theme}
-                    on:click={() => selectTheme(theme as TerminalTheme)}
+                    onclick={() => selectTheme(theme as TerminalTheme)}
                   >
                     {theme}
                   </button>
@@ -444,7 +448,7 @@ VideoIngest Queue:
             <input
               type="text"
               bind:value={terminalInput}
-              on:keydown={handleTerminalInput}
+              onkeydown={handleTerminalInput}
               placeholder="Enter command..."
               style="color: {currentTheme.fg}"
             />
@@ -467,15 +471,15 @@ VideoIngest Queue:
 
           <div class="mt5-actions">
             {#if mt5Status === "connected"}
-              <button class="mt5-btn" on:click={disconnectMT5}
+              <button class="mt5-btn" onclick={disconnectMT5}
                 >Disconnect</button
               >
             {:else if mt5Status !== "connecting"}
-              <button class="mt5-btn primary" on:click={connectMT5}
+              <button class="mt5-btn primary" onclick={connectMT5}
                 >Connect to MT5</button
               >
             {/if}
-            <button class="mt5-btn" on:click={openMT5Terminal}>
+            <button class="mt5-btn" onclick={openMT5Terminal}>
               <ExternalLink size={12} /> Open MT5 Terminal
             </button>
           </div>
@@ -530,7 +534,7 @@ VideoIngest Queue:
       {:else if activeTab === "tool_calls"}
         <div class="tool-calls-panel">
           <div class="tool-calls-toolbar">
-            <button class="tool-btn" on:click={() => fetchToolCalls(50)} title="Refresh tool calls">
+            <button class="tool-btn" onclick={() => fetchToolCalls(50)} title="Refresh tool calls">
               <RefreshCw size={12} />
             </button>
             <span class="tool-calls-count">{toolCalls.length} calls</span>

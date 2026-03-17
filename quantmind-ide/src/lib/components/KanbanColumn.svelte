@@ -8,13 +8,20 @@
     AlertCircle
   } from 'lucide-svelte';
 
-  export let title = '';
-  export let status: 'inbox' | 'processing' | 'extracting' | 'done' = 'inbox';
-  export let strategies: any[] = [];
-  export let isLoading = false;
+  interface Props {
+    title?: string;
+    status?: 'inbox' | 'processing' | 'extracting' | 'done';
+    strategies?: any[];
+    isLoading?: boolean;
+  }
 
-  $: columnIcon = getColumnIcon();
-  $: count = strategies.length;
+  let {
+    title = '',
+    status = 'inbox',
+    strategies = [],
+    isLoading = false
+  }: Props = $props();
+
 
   function getColumnIcon() {
     switch (status) {
@@ -50,13 +57,17 @@
     }
     return null;
   }
+  let columnIcon = $derived(getColumnIcon());
+  let count = $derived(strategies.length);
+
+  const SvelteComponent = $derived(columnIcon);
 </script>
 
 <div class="kanban-column" class:loading={isLoading}>
   <!-- Column Header -->
   <div class="column-header">
     <div class="header-left">
-      <svelte:component this={columnIcon} size={18} />
+      <SvelteComponent size={18} />
       <h3>{title}</h3>
     </div>
     <div class="count-badge" style="background-color: {getStatusColor()}">

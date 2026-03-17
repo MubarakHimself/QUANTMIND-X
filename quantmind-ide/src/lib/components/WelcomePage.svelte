@@ -9,12 +9,12 @@
 
   const dispatch = createEventDispatcher();
 
-  let marketData = {
+  let marketData = $state({
     eurUsd: { price: 1.0876, change: 0.0023, changePercent: 0.21 },
     gbpUsd: { price: 1.2743, change: -0.0018, changePercent: -0.14 },
     usdJpy: { price: 148.92, change: 0.47, changePercent: 0.32 },
     btcUsd: { price: 43256.78, change: 1256.34, changePercent: 2.98 }
-  };
+  });
 
   let activeBots = 3;
   let totalPnL = 2456.89;
@@ -22,8 +22,8 @@
   let winRate = 68.5;
 
   // Animated background based on theme
-  $: themeColors = $theme.colors;
-  $: themeEffects = $theme.effects;
+  let themeColors = $derived($theme.colors);
+  let themeEffects = $derived($theme.effects);
 
   function navigateToView(view: string) {
     dispatch('viewChange', { view });
@@ -79,15 +79,15 @@
       </div>
       
       <div class="header-actions">
-        <button class="action-btn primary" on:click={openLiveTrading}>
+        <button class="action-btn primary" onclick={openLiveTrading}>
           <MonitorPlay size={16} />
           Live Trading
         </button>
-        <button class="action-btn" on:click={openEditor}>
+        <button class="action-btn" onclick={openEditor}>
           <Edit3 size={16} />
           Editor
         </button>
-        <button class="action-btn" on:click={() => navigateToView('settings')}>
+        <button class="action-btn" onclick={() => navigateToView('settings')}>
           <Settings size={16} />
           Settings
         </button>
@@ -168,7 +168,7 @@
       <section class="quick-actions">
         <h2>Quick Actions</h2>
         <div class="actions-grid">
-          <button class="action-card" on:click={openLiveTrading}>
+          <button class="action-card" onclick={openLiveTrading}>
             <div class="action-icon">
               <MonitorPlay size={32} />
             </div>
@@ -179,7 +179,7 @@
             <ChevronRight size={20} class="action-arrow" />
           </button>
 
-          <button class="action-card" on:click={openEditor}>
+          <button class="action-card" onclick={openEditor}>
             <div class="action-icon">
               <Edit3 size={32} />
             </div>
@@ -190,7 +190,7 @@
             <ChevronRight size={20} class="action-arrow" />
           </button>
 
-          <button class="action-card" on:click={openKnowledge}>
+          <button class="action-card" onclick={openKnowledge}>
             <div class="action-icon">
               <BookOpen size={32} />
             </div>
@@ -201,7 +201,7 @@
             <ChevronRight size={20} class="action-arrow" />
           </button>
 
-          <button class="action-card" on:click={() => navigateToView('backtest')}>
+          <button class="action-card" onclick={() => navigateToView('backtest')}>
             <div class="action-icon">
               <Activity size={32} />
             </div>

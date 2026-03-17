@@ -1,13 +1,16 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { fade, slide } from 'svelte/transition';
   import { Plus, Trash2, Edit3, Save, X, GripVertical, FileText } from 'lucide-svelte';
   import { settingsStore } from '../../../stores/settingsStore';
   import type { Rule } from '../../../stores/settingsStore';
   
   // State
-  let showAddModal = false;
-  let editingRule: Rule | null = null;
-  let newRule = { name: '', content: '', priority: 0, enabled: true };
+  let showAddModal = $state(false);
+  let editingRule: Rule | null = $state(null);
+  let newRule = $state({ name: '', content: '', priority: 0, enabled: true });
   
   // Rule templates
   const ruleTemplates = [
@@ -30,8 +33,8 @@
   ];
   
   // Reactive state
-  $: rules = $settingsStore.rules;
-  $: sortedRules = [...rules].sort((a, b) => b.priority - a.priority);
+  let rules = $derived($settingsStore.rules);
+  let sortedRules = $derived([...rules].sort((a, b) => b.priority - a.priority));
   
   // Add new rule
   function handleAddRule() {
@@ -105,7 +108,7 @@
       <h3>Custom Rules</h3>
       <p class="description">Define custom rules and guidelines for agent behavior.</p>
     </div>
-    <button class="btn primary" on:click={() => showAddModal = true}>
+    <button class="btn primary" onclick={() => showAddModal = true}>
       <Plus size={14} />
       Add Rule
     </button>
@@ -118,7 +121,7 @@
         <FileText size={32} />
         <h4>No Custom Rules</h4>
         <p>Add custom rules to guide agent behavior and responses.</p>
-        <button class="btn primary" on:click={() => showAddModal = true}>
+        <button class="btn primary" onclick={() => showAddModal = true}>
           <Plus size={14} />
           Add Your First Rule
         </button>
@@ -154,10 +157,10 @@
                 />
               </div>
               <div class="edit-actions">
-                <button class="btn secondary" on:click={cancelEdit}>
+                <button class="btn secondary" onclick={cancelEdit}>
                   <X size={12} /> Cancel
                 </button>
-                <button class="btn primary" on:click={saveEdit}>
+                <button class="btn primary" onclick={saveEdit}>
                   <Save size={12} /> Save
                 </button>
               </div>
@@ -177,20 +180,20 @@
                   <input 
                     type="checkbox" 
                     checked={rule.enabled}
-                    on:change={() => toggleRule(rule.id, !rule.enabled)}
+                    onchange={() => toggleRule(rule.id, !rule.enabled)}
                   />
                   <span class="toggle-slider"></span>
                 </label>
                 <button 
                   class="icon-btn" 
-                  on:click={() => startEdit(rule)}
+                  onclick={() => startEdit(rule)}
                   title="Edit"
                 >
                   <Edit3 size={14} />
                 </button>
                 <button 
                   class="icon-btn danger" 
-                  on:click={() => handleRemoveRule(rule.id)}
+                  onclick={() => handleRemoveRule(rule.id)}
                   title="Delete"
                 >
                   <Trash2 size={14} />
@@ -211,10 +214,10 @@
   
   <!-- Add Rule Modal -->
   {#if showAddModal}
-    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-    <div class="modal-overlay" on:click={() => showAddModal = false} transition:fade role="button" tabindex="-1" aria-label="Close dialog">
-      <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions a11y-no-noninteractive-element-interactions -->
-      <div class="modal" on:click|stopPropagation transition:slide role="dialog" aria-modal="true" aria-labelledby="rule-modal-title">
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div class="modal-overlay" onclick={() => showAddModal = false} transition:fade role="button" tabindex="-1" aria-label="Close dialog">
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions, a11y_no_noninteractive_element_interactions -->
+      <div class="modal" onclick={stopPropagation(bubble('click'))} transition:slide role="dialog" aria-modal="true" aria-labelledby="rule-modal-title">
         <h4 id="rule-modal-title">Add New Rule</h4>
         
         <!-- Templates -->
@@ -224,7 +227,7 @@
             {#each ruleTemplates as template}
               <button 
                 class="template-btn"
-                on:click={() => applyTemplate(template)}
+                onclick={() => applyTemplate(template)}
               >
                 {template.name}
               </button>
@@ -272,10 +275,10 @@
         </div>
         
         <div class="modal-actions">
-          <button class="btn secondary" on:click={() => showAddModal = false}>Cancel</button>
+          <button class="btn secondary" onclick={() => showAddModal = false}>Cancel</button>
           <button 
             class="btn primary" 
-            on:click={handleAddRule}
+            onclick={handleAddRule}
             disabled={!newRule.name || !newRule.content}
           >
             Add Rule

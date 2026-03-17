@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
 
   // Get agent_id from URL
-  $: agentId = $page.params.id;
+  let agentId = $derived($page.params.id);
 
   // Types
   interface AgentConfig {
@@ -19,17 +19,17 @@
   }
 
   // State
-  let config: AgentConfig | null = null;
-  let loading = true;
-  let saving = false;
-  let error: string | null = null;
-  let successMessage: string | null = null;
+  let config: AgentConfig | null = $state(null);
+  let loading = $state(true);
+  let saving = $state(false);
+  let error: string | null = $state(null);
+  let successMessage: string | null = $state(null);
 
   // Editable fields
-  let llm_model = "";
-  let temperature = 0;
-  let max_tokens = 4096;
-  let customJson = "";
+  let llm_model = $state("");
+  let temperature = $state(0);
+  let max_tokens = $state(4096);
+  let customJson = $state("");
 
   // Load config
   async function loadConfig() {
@@ -113,7 +113,7 @@
       <h1>⚙️ Agent Configuration</h1>
       <p class="agent-id">Agent: <code>{agentId}</code></p>
     </div>
-    <button class="refresh-btn" on:click={loadConfig}>Reload</button>
+    <button class="refresh-btn" onclick={loadConfig}>Reload</button>
   </header>
 
   {#if loading && !config}
@@ -222,7 +222,7 @@
 
       <!-- Actions -->
       <div class="form-actions">
-        <button class="save-btn" on:click={saveConfig} disabled={saving}>
+        <button class="save-btn" onclick={saveConfig} disabled={saving}>
           {saving ? "Saving..." : "Save Configuration"}
         </button>
       </div>

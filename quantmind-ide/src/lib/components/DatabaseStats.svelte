@@ -8,7 +8,11 @@
     table_count: number;
   }
 
-  export let stats: DatabaseStats | null = null;
+  interface Props {
+    stats?: DatabaseStats | null;
+  }
+
+  let { stats = null }: Props = $props();
 
   function formatBytes(bytes: number): string {
     if (bytes === 0) return "0 B";

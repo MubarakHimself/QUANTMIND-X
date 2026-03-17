@@ -3,12 +3,12 @@
   import { Activity, TrendingUp, AlertTriangle, CheckCircle, XCircle } from 'lucide-svelte';
   import { createTradingClient } from '$lib/ws-client';
   import type { WebSocketClient } from '$lib/ws-client';
-  import { PUBLIC_API_BASE } from '$env/static/public';
+  import { API_BASE } from '$lib/constants';
 
-  const apiBase = PUBLIC_API_BASE || '';
+  const apiBase = API_BASE || '';
 
   // HMM Status data
-  let hmmStatus = {
+  let hmmStatus = $state({
     model_loaded: false,
     model_version: '',
     deployment_mode: 'ising_only',
@@ -22,13 +22,13 @@
       agreement_count: 0,
       agreement_pct: 0
     }
-  };
+  });
 
   // Latest predictions
-  let isingRegime = 'UNKNOWN';
-  let hmmRegime = 'UNKNOWN';
-  let hmmConfidence = 0;
-  let agreement = false;
+  let isingRegime = $state('UNKNOWN');
+  let hmmRegime = $state('UNKNOWN');
+  let hmmConfidence = $state(0);
+  let agreement = $state(false);
 
   let wsClient: WebSocketClient | null = null;
 

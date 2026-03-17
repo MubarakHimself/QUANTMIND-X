@@ -1,25 +1,40 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { X, Clock, Globe, AlertTriangle, BarChart3, Info, TrendingUp } from "lucide-svelte";
 
-  export let event: any = null;
-  export let isOpen = false;
 
-  export let onClose: () => void;
-  export let getCurrencyFlag: (currency: string) => string;
-  export let getImpactBadgeClass: (impact: string) => string;
-  export let formatDateTime: (dateStr: string) => string;
-  export let isEventInKillZone: (event: any) => boolean;
+  interface Props {
+    event?: any;
+    isOpen?: boolean;
+    onClose: () => void;
+    getCurrencyFlag: (currency: string) => string;
+    getImpactBadgeClass: (impact: string) => string;
+    formatDateTime: (dateStr: string) => string;
+    isEventInKillZone: (event: any) => boolean;
+  }
+
+  let {
+    event = null,
+    isOpen = false,
+    onClose,
+    getCurrencyFlag,
+    getImpactBadgeClass,
+    formatDateTime,
+    isEventInKillZone
+  }: Props = $props();
 </script>
 
 {#if isOpen && event}
   <div
     class="detail-panel-overlay"
-    on:click={onClose}
+    onclick={onClose}
     role="button"
     tabindex="0"
-    on:keydown={(e) => e.key === "Escape" && onClose()}
+    onkeydown={(e) => e.key === "Escape" && onClose()}
   >
-    <div class="detail-panel" on:click|stopPropagation role="presentation">
+    <div class="detail-panel" onclick={stopPropagation(bubble('click'))} role="presentation">
       <div class="detail-header">
         <div class="header-left">
           <span class="currency-flag large"
@@ -35,7 +50,7 @@
             </p>
           </div>
         </div>
-        <button class="icon-btn" on:click={onClose}>
+        <button class="icon-btn" onclick={onClose}>
           <X size={18} />
         </button>
       </div>

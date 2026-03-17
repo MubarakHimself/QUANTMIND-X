@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { createEventDispatcher, onMount } from 'svelte';
   import { fade, slide } from 'svelte/transition';
   import { X, FileText, TrendingUp, Link2, Activity, Loader, Search } from 'lucide-svelte';
@@ -6,21 +9,26 @@
   import type { FileReference, StrategyReference, BrokerReference, BacktestReference } from '../../stores/chatStore';
   import { contextManager } from '../../services/contextManager';
   
-  // Props
-  export let type: 'file' | 'strategy' | 'broker' | 'backtest';
-  export let isOpen = true;
+  
+  interface Props {
+    // Props
+    type: 'file' | 'strategy' | 'broker' | 'backtest';
+    isOpen?: boolean;
+  }
+
+  let { type, isOpen = true }: Props = $props();
   
   const dispatch = createEventDispatcher();
   
   // State
-  let searchQuery = '';
-  let isLoading = false;
-  let error: string | null = null;
+  let searchQuery = $state('');
+  let isLoading = $state(false);
+  let error: string | null = $state(null);
   
   // Data from API
-  let strategies: StrategyFolder[] = [];
-  let brokers: Bot[] = [];
-  let backtests: { id: string; name: string; status: string }[] = [];
+  let strategies: StrategyFolder[] = $state([]);
+  let brokers: Bot[] = $state([]);
+  let backtests: { id: string; name: string; status: string }[] = $state([]);
   let files: { path: string; name: string; type: string }[] = [];
   
   // Load data on mount
@@ -66,17 +74,17 @@
   }
   
   // Filter items based on search
-  $: filteredStrategies = strategies.filter(s => 
+  let filteredStrategies = $derived(strategies.filter(s => 
     s.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  ));
   
-  $: filteredBrokers = brokers.filter(b => 
+  let filteredBrokers = $derived(brokers.filter(b => 
     b.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  ));
   
-  $: filteredBacktests = backtests.filter(b => 
+  let filteredBacktests = $derived(backtests.filter(b => 
     b.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  ));
   
   // Handle selection
   function selectStrategy(strategy: StrategyFolder) {
@@ -170,15 +178,16 @@
 </script>
 
 {#if isOpen}
-  <div class="picker-overlay" transition:fade={{ duration: 150 }} on:click={close}>
-    <div class="picker-container" transition:slide={{ duration: 200 }} on:click|stopPropagation>
+  {@const SvelteComponent = getIcon()}
+  <div class="picker-overlay" transition:fade={{ duration: 150 }} onclick={close}>
+    <div class="picker-container" transition:slide={{ duration: 200 }} onclick={stopPropagation(bubble('click'))}>
       <!-- Header -->
       <div class="picker-header">
         <div class="header-title">
-          <svelte:component this={getIcon()} size={18} />
+          <SvelteComponent size={18} />
           <h3>{getTitle()}</h3>
         </div>
-        <button class="close-btn" on:click={close} aria-label="Close">
+        <button class="close-btn" onclick={close} aria-label="Close">
           <X size={18} />
         </button>
       </div>
@@ -191,9 +200,9 @@
             type="text" 
             bind:value={searchQuery}
             placeholder="Enter file path (e.g., strategies/my_strategy.mq5)"
-            on:keydown={(e) => e.key === 'Enter' && selectFile()}
+            onkeydown={(e) => e.key === 'Enter' && selectFile()}
           />
-          <button class="add-btn" on:click={selectFile}>Add</button>
+          <button class="add-btn" onclick={selectFile}>Add</button>
         {:else}
           <input 
             type="text" 
@@ -213,7 +222,7 @@
         {:else if error}
           <div class="error-state">
             <span>{error}</span>
-            <button on:click={loadData}>Retry</button>
+            <button onclick={loadData}>Retry</button>
           </div>
         {:else}
           <!-- File type shows path input only -->
@@ -227,7 +236,7 @@
               {:else}
                 <ul class="item-list">
                   {#each filteredStrategies as strategy}
-                    <li on:click={() => selectStrategy(strategy)}>
+                    <li onclick={() => selectStrategy(strategy)}>
                       <TrendingUp size={16} />
                       <div class="item-info">
                         <span class="item-name">{strategy.name}</span>
@@ -252,7 +261,7 @@
               {:else}
                 <ul class="item-list">
                   {#each filteredBrokers as broker}
-                    <li on:click={() => selectBroker(broker)}>
+                    <li onclick={() => selectBroker(broker)}>
                       <Link2 size={16} />
                       <div class="item-info">
                         <span class="item-name">{broker.name}</span>
@@ -275,7 +284,7 @@
               {:else}
                 <ul class="item-list">
                   {#each filteredBacktests as backtest}
-                    <li on:click={() => selectBacktest(backtest)}>
+                    <li onclick={() => selectBacktest(backtest)}>
                       <Activity size={16} />
                       <div class="item-info">
                         <span class="item-name">{backtest.name}</span>

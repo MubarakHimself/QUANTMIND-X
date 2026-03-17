@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   
   // Get agent_id from URL
-  $: agentId = $page.params.id;
+  let agentId = $derived($page.params.id);
   
   // Types
   interface MetricsData {
@@ -21,9 +21,9 @@
   }
   
   // State
-  let metrics: MetricsData | null = null;
-  let loading = true;
-  let error: string | null = null;
+  let metrics: MetricsData | null = $state(null);
+  let loading = $state(true);
+  let error: string | null = $state(null);
   
   // Load metrics
   async function loadMetrics() {
@@ -72,7 +72,7 @@
       <h1>📊 Agent Metrics</h1>
       <p class="agent-id">Agent: <code>{agentId}</code></p>
     </div>
-    <button class="refresh-btn" on:click={loadMetrics}>Refresh</button>
+    <button class="refresh-btn" onclick={loadMetrics}>Refresh</button>
   </header>
   
   {#if loading && !metrics}

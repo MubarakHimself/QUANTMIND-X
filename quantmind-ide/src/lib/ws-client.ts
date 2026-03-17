@@ -1,4 +1,5 @@
-import { PUBLIC_WS_BASE } from '$env/static/public';
+// WebSocket base URL - use empty string for relative URLs
+const WS_BASE = '';
 
 /**
  * WebSocket Client for QuantMind IDE real-time updates.
@@ -530,5 +531,5 @@ export async function createChartClient(
   return client;
 }
 
-export const wsClient = new WebSocketClient(`${PUBLIC_WS_BASE}/ws`);
+export const wsClient = new WebSocketClient(`${WS_BASE}/ws`);
 export default WebSocketClient;

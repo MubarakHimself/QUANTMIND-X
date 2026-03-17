@@ -608,9 +608,6 @@
     align-items: center;
     gap: 4px;
     font-size: 11px;
-  }
-    align-items: center;
-    gap: 6px;
     color: var(--text-secondary, #d1d5db);
   }
 </style>

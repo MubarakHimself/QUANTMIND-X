@@ -1,5 +1,6 @@
 <script lang="ts">
-  export let rankings: {
+  interface Props {
+    rankings: {
     daily: Array<{
       botId: string;
       name: string;
@@ -15,6 +16,9 @@
       winRate: number;
     }>;
   };
+  }
+
+  let { rankings }: Props = $props();
 
   function formatCurrency(value: number) {
     return new Intl.NumberFormat('en-US', {

@@ -2,17 +2,26 @@
   import { createEventDispatcher } from "svelte";
   import { File } from "lucide-svelte";
 
-  export let openFiles: Array<{
+
+  interface Props {
+    openFiles?: Array<{
     id: string;
     name: string;
     content?: string;
     type?: string;
     path?: string;
-  }> = [];
+  }>;
+    activeTabId?: string;
+    activeView: string;
+    viewConfig?: Record<string, any>;
+  }
 
-  export let activeTabId = "";
-  export let activeView: string;
-  export let viewConfig: Record<string, any> = {};
+  let {
+    openFiles = [],
+    activeTabId = $bindable(""),
+    activeView,
+    viewConfig = {}
+  }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -25,19 +34,20 @@
     e.stopPropagation();
     dispatch("closeTab", { fileId });
   }
+
+  const SvelteComponent = $derived(viewConfig[activeView]?.icon || File);
 </script>
 
 <div class="tab-bar">
   <button
     class="tab"
     class:active={!activeTabId || activeTabId === ""}
-    on:click={() => {
+    onclick={() => {
       activeTabId = "";
       dispatch("resetNavigation");
     }}
   >
-    <svelte:component
-      this={viewConfig[activeView]?.icon || File}
+    <SvelteComponent
       size={14}
     />
     <span>{viewConfig[activeView]?.title || "Explorer"}</span>
@@ -49,14 +59,14 @@
       class:active={activeTabId === file.id}
       role="button"
       tabindex="0"
-      on:click={() => handleTabClick(file.id)}
-      on:keydown={(e) => e.key === 'Enter' && handleTabClick(file.id)}
+      onclick={() => handleTabClick(file.id)}
+      onkeydown={(e) => e.key === 'Enter' && handleTabClick(file.id)}
     >
       <File size={14} />
       <span>{file.name}</span>
       <button
         class="tab-close"
-        on:click={(e) => handleCloseTab(e, file.id)}
+        onclick={(e) => handleCloseTab(e, file.id)}
       >×</button
       >
     </div>

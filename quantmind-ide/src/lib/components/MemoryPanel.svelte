@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation, self } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { onMount } from 'svelte';
   import {
     Database,
@@ -23,21 +26,21 @@
   import { memoryStore, type MemoryEntry, type MemoryFilters } from '$lib/stores/memoryStore';
   import * as memoryApi from '$lib/api/memory';
 
-  export let onClose = () => {};
+  let { onClose = () => {} } = $props();
 
-  let searchInput = '';
+  let searchInput = $state('');
   let searchTimeout: ReturnType<typeof setTimeout>;
-  let showAddModal = false;
-  let showEditModal = false;
-  let editingMemory: MemoryEntry | null = null;
+  let showAddModal = $state(false);
+  let showEditModal = $state(false);
+  let editingMemory: MemoryEntry | null = $state(null);
 
-  let newMemory = {
+  let newMemory = $state({
     key: '',
     content: '',
     namespace: 'default',
     tags: [] as string[],
     agent: ''
-  };
+  });
 
   let namespaceOptions = [
     { value: 'all', label: 'All Namespaces' },
@@ -49,15 +52,15 @@
   ];
 
   let agents: string[] = ['copilot', 'analyst', 'quantcode'];
-  let showFilters = false;
-  let minDecay = 0;
+  let showFilters = $state(false);
+  let minDecay = $state(0);
 
   // Subscribe to store
-  $: filteredMemories = $memoryStore.filteredMemories;
-  $: stats = $memoryStore.stats;
-  $: loading = $memoryStore.loading;
-  $: error = $memoryStore.error;
-  $: filters = $memoryStore.filters;
+  let filteredMemories = $derived($memoryStore.filteredMemories);
+  let stats = $derived($memoryStore.stats);
+  let loading = $derived($memoryStore.loading);
+  let error = $derived($memoryStore.error);
+  let filters = $derived($memoryStore.filters);
 
   onMount(() => {
     loadMemories();
@@ -182,8 +185,8 @@
   }
 </script>
 
-<div class="memory-panel-overlay" on:click={onClose}>
-  <div class="memory-panel" on:click|stopPropagation>
+<div class="memory-panel-overlay" onclick={onClose}>
+  <div class="memory-panel" onclick={stopPropagation(bubble('click'))}>
     <!-- Header -->
     <div class="panel-header">
       <div class="header-left">
@@ -196,13 +199,13 @@
         </div>
       </div>
       <div class="header-actions">
-        <button class="icon-btn" on:click={handleSync} title="Sync Memory" disabled={loading}>
+        <button class="icon-btn" onclick={handleSync} title="Sync Memory" disabled={loading}>
           <RefreshCw size={16} class={loading ? 'spinning' : ''} />
         </button>
-        <button class="icon-btn primary" on:click={() => showAddModal = true} title="Add Memory">
+        <button class="icon-btn primary" onclick={() => showAddModal = true} title="Add Memory">
           <Plus size={16} />
         </button>
-        <button class="icon-btn" on:click={onClose} title="Close">
+        <button class="icon-btn" onclick={onClose} title="Close">
           <X size={16} />
         </button>
       </div>
@@ -238,13 +241,13 @@
           type="text"
           placeholder="Search memories by content, key, or tags..."
           bind:value={searchInput}
-          on:input={() => handleFilterChange('searchQuery', searchInput)}
+          oninput={() => handleFilterChange('searchQuery', searchInput)}
         />
       </div>
       <button
         class="icon-btn"
         class:active={showFilters}
-        on:click={() => showFilters = !showFilters}
+        onclick={() => showFilters = !showFilters}
         title="Filters"
       >
         <Filter size={16} />
@@ -255,7 +258,7 @@
     <div class="filters-panel">
       <div class="filter-row">
         <label>Namespace</label>
-        <select bind:value={filters.namespace} on:change={() => handleFilterChange('namespace', filters.namespace)}>
+        <select bind:value={filters.namespace} onchange={() => handleFilterChange('namespace', filters.namespace)}>
           {#each namespaceOptions as opt}
             <option value={opt.value}>{opt.label}</option>
           {/each}
@@ -263,7 +266,7 @@
       </div>
       <div class="filter-row">
         <label>Agent</label>
-        <select bind:value={filters.agent} on:change={() => handleFilterChange('agent', filters.agent)}>
+        <select bind:value={filters.agent} onchange={() => handleFilterChange('agent', filters.agent)}>
           <option value="">All Agents</option>
           {#each agents as agent}
             <option value={agent}>{agent}</option>
@@ -278,7 +281,7 @@
           max="1"
           step="0.1"
           bind:value={minDecay}
-          on:input={() => handleFilterChange('minDecay', minDecay)}
+          oninput={() => handleFilterChange('minDecay', minDecay)}
         />
       </div>
     </div>
@@ -289,7 +292,7 @@
     <div class="error-banner">
       <AlertCircle size={16} />
       <span>{error}</span>
-      <button on:click={() => memoryStore.setError(null)}><X size={14} /></button>
+      <button onclick={() => memoryStore.setError(null)}><X size={14} /></button>
     </div>
     {/if}
 
@@ -304,7 +307,7 @@
       <div class="empty-state">
         <Database size={48} />
         <p>No memories found</p>
-        <button class="btn primary" on:click={() => showAddModal = true}>
+        <button class="btn primary" onclick={() => showAddModal = true}>
           <Plus size={14} /> Add Memory
         </button>
       </div>
@@ -322,10 +325,10 @@
               <div class="decay-bar" style="width: {memory.decay * 100}%"></div>
             </div>
             {/if}
-            <button class="icon-btn small" on:click={() => { editingMemory = memory; showEditModal = true; }} title="Edit">
+            <button class="icon-btn small" onclick={() => { editingMemory = memory; showEditModal = true; }} title="Edit">
               <Edit3 size={12} />
             </button>
-            <button class="icon-btn small danger" on:click={() => handleDeleteMemory(memory.id, memory.key, memory.namespace)} title="Delete">
+            <button class="icon-btn small danger" onclick={() => handleDeleteMemory(memory.id, memory.key, memory.namespace)} title="Delete">
               <Trash2 size={12} />
             </button>
           </div>
@@ -354,11 +357,11 @@
 
 <!-- Add Memory Modal -->
 {#if showAddModal}
-<div class="modal-overlay" on:click|self={() => showAddModal = false}>
+<div class="modal-overlay" onclick={self(() => showAddModal = false)}>
   <div class="modal">
     <div class="modal-header">
       <h3>Add Memory</h3>
-      <button on:click={() => showAddModal = false}><X size={18} /></button>
+      <button onclick={() => showAddModal = false}><X size={18} /></button>
     </div>
     <div class="modal-body">
       <div class="form-group">
@@ -394,8 +397,8 @@
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn secondary" on:click={() => showAddModal = false}>Cancel</button>
-      <button class="btn primary" on:click={handleAddMemory} disabled={!newMemory.key || !newMemory.content || loading}>
+      <button class="btn secondary" onclick={() => showAddModal = false}>Cancel</button>
+      <button class="btn primary" onclick={handleAddMemory} disabled={!newMemory.key || !newMemory.content || loading}>
         {#if loading}
         <RefreshCw size={14} class="spinning" />
         {:else}

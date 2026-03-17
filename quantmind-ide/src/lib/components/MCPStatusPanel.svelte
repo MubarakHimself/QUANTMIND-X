@@ -29,10 +29,10 @@
   }
 
   // State
-  let status: MCPStatusResponse | null = null;
-  let loading = true;
-  let error: string | null = null;
-  let autoRefresh = true;
+  let status: MCPStatusResponse | null = $state(null);
+  let loading = $state(true);
+  let error: string | null = $state(null);
+  let autoRefresh = $state(true);
   let refreshInterval: number | null = null;
 
   // Server icons mapping
@@ -120,7 +120,7 @@
     <div class="header-actions">
       <button 
         class="refresh-btn" 
-        on:click={fetchStatus}
+        onclick={fetchStatus}
         disabled={loading}
         title="Refresh status"
       >
@@ -146,7 +146,7 @@
     <div class="error-state" in:fade>
       <span class="error-icon">⚠️</span>
       <p>{error}</p>
-      <button class="retry-btn" on:click={fetchStatus}>Retry</button>
+      <button class="retry-btn" onclick={fetchStatus}>Retry</button>
     </div>
   {/if}
 
@@ -223,7 +223,7 @@
             <div class="server-actions">
               <button 
                 class="retry-btn" 
-                on:click={() => retryConnection(server.server_id)}
+                onclick={() => retryConnection(server.server_id)}
               >
                 Retry Connection
               </button>

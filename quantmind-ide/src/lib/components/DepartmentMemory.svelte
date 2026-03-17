@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { self } from 'svelte/legacy';
+
   import { onMount } from 'svelte';
   import { fade, slide, fly } from 'svelte/transition';
   import {
@@ -43,28 +45,28 @@
   ];
 
   // State
-  let selectedDepartment = 'development';
-  let memories: MemoryEntry[] = [];
-  let dailyLogs: DailyLog[] = [];
-  let stats: MemoryStats | null = null;
-  let loading = false;
-  let error: string | null = null;
+  let selectedDepartment = $state('development');
+  let memories: MemoryEntry[] = $state([]);
+  let dailyLogs: DailyLog[] = $state([]);
+  let stats: MemoryStats | null = $state(null);
+  let loading = $state(false);
+  let error: string | null = $state(null);
 
   // View state
-  let activeTab = 'memory'; // 'memory' or 'logs'
-  let expandedMemory: string | null = null;
-  let expandedLog: string | null = null;
-  let selectedLog: DailyLog | null = null;
-  let searchQuery = '';
-  let categoryFilter = 'all';
+  let activeTab = $state('memory'); // 'memory' or 'logs'
+  let expandedMemory: string | null = $state(null);
+  let expandedLog: string | null = $state(null);
+  let selectedLog: DailyLog | null = $state(null);
+  let searchQuery = $state('');
+  let categoryFilter = $state('all');
 
   // New memory modal
-  let addMemoryModalOpen = false;
-  let newMemory = {
+  let addMemoryModalOpen = $state(false);
+  let newMemory = $state({
     category: '',
     content: '',
     tags: [] as string[]
-  };
+  });
 
   const API_BASE = 'http://localhost:8000/api';
 
@@ -161,13 +163,13 @@
   }
 
   // Get filtered memories
-  $: filteredMemories = memories.filter(mem => {
+  let filteredMemories = $derived(memories.filter(mem => {
     if (categoryFilter !== 'all' && mem.category.toLowerCase() !== categoryFilter) return false;
     return true;
-  });
+  }));
 
   // Get categories from memories
-  $: categories = [...new Set(memories.map(m => m.category.toLowerCase()))];
+  let categories = $derived([...new Set(memories.map(m => m.category.toLowerCase()))]);
 
   // Get department color
   function getDepartmentColor(deptId: string): string {
@@ -199,12 +201,12 @@
       </div>
     </div>
     <div class="header-actions">
-      <button class="btn" on:click={loadDepartmentMemory}>
+      <button class="btn" onclick={loadDepartmentMemory}>
         <RefreshCw size={14} />
         <span>Refresh</span>
       </button>
       {#if activeTab === 'memory'}
-        <button class="btn primary" on:click={() => addMemoryModalOpen = true}>
+        <button class="btn primary" onclick={() => addMemoryModalOpen = true}>
           <Plus size={14} />
           <span>Add Memory</span>
         </button>
@@ -217,7 +219,7 @@
     <div class="error-banner" in:fly={{ y: -20 }}>
       <AlertCircle size={16} />
       <span>{error}</span>
-      <button class="dismiss-btn" on:click={() => error = null}>
+      <button class="dismiss-btn" onclick={() => error = null}>
         <X size={14} />
       </button>
     </div>
@@ -232,7 +234,7 @@
           class="dept-tab"
           class:active={selectedDepartment === dept.id}
           style="--dept-color: {dept.color}"
-          on:click={() => { selectedDepartment = dept.id; loadDepartmentMemory(); }}
+          onclick={() => { selectedDepartment = dept.id; loadDepartmentMemory(); }}
         >
           {dept.name}
         </button>
@@ -266,7 +268,7 @@
     <button
       class="tab-btn"
       class:active={activeTab === 'memory'}
-      on:click={() => activeTab = 'memory'}
+      onclick={() => activeTab = 'memory'}
     >
       <BookOpen size={14} />
       <span>Memory</span>
@@ -274,7 +276,7 @@
     <button
       class="tab-btn"
       class:active={activeTab === 'logs'}
-      on:click={() => activeTab = 'logs'}
+      onclick={() => activeTab = 'logs'}
     >
       <Clock size={14} />
       <span>Daily Logs</span>
@@ -290,9 +292,9 @@
           type="text"
           placeholder="Search memories..."
           bind:value={searchQuery}
-          on:keydown={(e) => e.key === 'Enter' && searchMemories()}
+          onkeydown={(e) => e.key === 'Enter' && searchMemories()}
         />
-        <button class="search-btn" on:click={searchMemories}>Search</button>
+        <button class="search-btn" onclick={searchMemories}>Search</button>
       </div>
 
       <div class="filter-group">
@@ -324,7 +326,7 @@
               class:expanded={expandedMemory === `${memory.timestamp}-${index}`}
               in:fly={{ y: 20 }}
             >
-              <div class="memory-header" on:click={() => toggleExpanded(`${memory.timestamp}-${index}`)}>
+              <div class="memory-header" onclick={() => toggleExpanded(`${memory.timestamp}-${index}`)}>
                 <div class="memory-info">
                   <div class="memory-category">
                     <Tag size={12} />
@@ -363,7 +365,7 @@
         <div class="empty-state">
           <Brain size={48} />
           <p>No memories found</p>
-          <button class="btn primary" on:click={() => addMemoryModalOpen = true}>
+          <button class="btn primary" onclick={() => addMemoryModalOpen = true}>
             <Plus size={14} />
             <span>Add First Memory</span>
           </button>
@@ -379,7 +381,7 @@
               class:expanded={expandedLog === log.date}
               in:slide={{ y: 20 }}
             >
-              <div class="log-header" on:click={() => viewDailyLog(log)}>
+              <div class="log-header" onclick={() => viewDailyLog(log)}>
                 <div class="log-info">
                   <div class="log-date">
                     <Calendar size={14} />
@@ -432,7 +434,7 @@
 {#if addMemoryModalOpen}
   <div
     class="modal-overlay"
-    on:click|self={() => addMemoryModalOpen = false}
+    onclick={self(() => addMemoryModalOpen = false)}
     role="dialog"
     aria-modal="true"
   >
@@ -442,7 +444,7 @@
           <h3>Add Memory</h3>
           <p class="modal-subtitle">Add to {selectedDepartment} department memory</p>
         </div>
-        <button class="icon-btn" on:click={() => addMemoryModalOpen = false}>
+        <button class="icon-btn" onclick={() => addMemoryModalOpen = false}>
           <X size={18} />
         </button>
       </div>
@@ -474,7 +476,7 @@
             id="tags-input"
             type="text"
             placeholder="e.g., strategy, risk, important"
-            on:change={(e) => {
+            onchange={(e) => {
               newMemory.tags = e.target.value.split(',').map(s => s.trim()).filter(s => s);
             }}
           />
@@ -482,8 +484,8 @@
       </div>
 
       <div class="modal-actions">
-        <button class="btn" on:click={() => addMemoryModalOpen = false}>Cancel</button>
-        <button class="btn primary" on:click={addMemory}>
+        <button class="btn" onclick={() => addMemoryModalOpen = false}>Cancel</button>
+        <button class="btn primary" onclick={addMemory}>
           <Plus size={14} />
           <span>Add Memory</span>
         </button>

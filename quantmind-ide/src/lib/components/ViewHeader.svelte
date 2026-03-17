@@ -14,12 +14,23 @@
     Home,
   } from "lucide-svelte";
 
-  export let breadcrumbs: Array<{ name: string; id?: string; type?: string }> = [];
-  export let subPage: string = "";
-  export let searchQuery: string = "";
-  export let viewMode: string = "grid";
-  export let activeView: string = "";
-  export let viewConfig: Record<string, any> = {};
+  interface Props {
+    breadcrumbs?: Array<{ name: string; id?: string; type?: string }>;
+    subPage?: string;
+    searchQuery?: string;
+    viewMode?: string;
+    activeView?: string;
+    viewConfig?: Record<string, any>;
+  }
+
+  let {
+    breadcrumbs = [],
+    subPage = "",
+    searchQuery = $bindable(""),
+    viewMode = "grid",
+    activeView = "",
+    viewConfig = {}
+  }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -57,7 +68,7 @@
     {#if breadcrumbs.length > 1 || subPage}
       <button
         class="back-btn"
-        on:click={navigateBack}
+        onclick={navigateBack}
         title="Navigate back"
       >
         <ArrowLeft size={16} />
@@ -70,12 +81,12 @@
       {:else}
         <button
           class="breadcrumb-item"
-          on:click={() => navigateToBreadcrumb(i)}
+          onclick={() => navigateToBreadcrumb(i)}
           title="Navigate to {crumb.name}"
         >
           {#if crumb.type === "view"}
-            <svelte:component
-              this={viewConfig[crumb.id]?.icon || Folder}
+            {@const SvelteComponent = viewConfig[crumb.id]?.icon || Folder}
+            <SvelteComponent
               size={16}
             />
           {:else}
@@ -104,36 +115,36 @@
     <div class="view-toggle">
       <button
         class:active={viewMode === "grid"}
-        on:click={() => setViewMode("grid")}
+        onclick={() => setViewMode("grid")}
       ><Grid size={14} /></button
       >
       <button
         class:active={viewMode === "list"}
-        on:click={() => setViewMode("list")}
+        onclick={() => setViewMode("list")}
       ><List size={14} /></button
       >
     </div>
     {/if}
-    <button class="toolbar-btn" on:click={handleRefresh}
+    <button class="toolbar-btn" onclick={handleRefresh}
       ><RefreshCw size={14} /></button
     >
     {#if activeView === "knowledge"}
       <button
         class="toolbar-btn primary"
-        on:click={handleUpload}
+        onclick={handleUpload}
       ><Upload size={14} /> Upload</button
       >
     {:else if activeView === "ea"}
       <button
         class="toolbar-btn primary"
-        on:click={handleVideoIngest}
+        onclick={handleVideoIngest}
       >
         <Plus size={14} /> Video Ingest
       </button>
     {:else if activeView === "backtest"}
       <button
         class="toolbar-btn primary"
-        on:click={handleRunBacktest}
+        onclick={handleRunBacktest}
       >
         <Play size={14} /> Run Backtest
       </button>

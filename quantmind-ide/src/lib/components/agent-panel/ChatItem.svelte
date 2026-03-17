@@ -4,14 +4,19 @@
   import { Pin, Trash2, MessageSquare } from "lucide-svelte";
   import type { Chat } from "../../stores/chatStore";
 
-  // Props
-  export let chat: Chat;
-  export let isActive: boolean = false;
+  
+  interface Props {
+    // Props
+    chat: Chat;
+    isActive?: boolean;
+  }
+
+  let { chat, isActive = false }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
   // State
-  let isHovered = false;
+  let isHovered = $state(false);
 
   // Format date for display
   function formatDate(date: Date): string {
@@ -58,16 +63,16 @@
   }
 </script>
 
-<!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
+<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
 <div
   class="chat-item"
   class:active={isActive}
   class:pinned={chat.isPinned}
-  on:click={handleClick}
-  on:contextmenu={handleContextMenu}
-  on:keydown={(e) => e.key === "Enter" && handleClick()}
-  on:mouseenter={() => (isHovered = true)}
-  on:mouseleave={() => (isHovered = false)}
+  onclick={handleClick}
+  oncontextmenu={handleContextMenu}
+  onkeydown={(e) => e.key === "Enter" && handleClick()}
+  onmouseenter={() => (isHovered = true)}
+  onmouseleave={() => (isHovered = false)}
   role="button"
   tabindex="0"
   aria-pressed={isActive}
@@ -104,7 +109,7 @@
     <div class="hover-actions" transition:fade={{ duration: 100 }}>
       <button
         class="action-btn pin-btn"
-        on:click={handlePinClick}
+        onclick={handlePinClick}
         title={chat.isPinned ? "Unpin" : "Pin"}
         aria-label={chat.isPinned ? "Unpin chat" : "Pin chat"}
       >
@@ -112,7 +117,7 @@
       </button>
       <button
         class="action-btn delete-btn"
-        on:click={handleDeleteClick}
+        onclick={handleDeleteClick}
         title="Delete"
         aria-label="Delete chat"
       >

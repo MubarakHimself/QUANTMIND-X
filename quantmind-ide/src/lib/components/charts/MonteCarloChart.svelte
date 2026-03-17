@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   /**
    * Monte Carlo Visualization Component
    * 
@@ -9,21 +11,25 @@
   import { onMount } from 'svelte';
   import { TrendingUp, TrendingDown, Activity, Target } from 'lucide-svelte';
   
-  export let data: {
+  interface Props {
+    data?: {
     returns: number[];
     confidence: number;
     worstCase: number;
     bestCase: number;
     median: number;
     mean: number;
-  } = {
+  };
+  }
+
+  let { data = {
     returns: [],
     confidence: 0,
     worstCase: 0,
     bestCase: 0,
     median: 0,
     mean: 0
-  };
+  } }: Props = $props();
   
   // Chart dimensions
   const width = 600;
@@ -33,14 +39,11 @@
   const chartHeight = height - margin.top - margin.bottom;
   
   // Histogram bins
-  let bins: { x: number; y: number; width: number; height: number; count: number; label: string }[] = [];
+  let bins: { x: number; y: number; width: number; height: number; count: number; label: string }[] = $state([]);
   let maxCount = 0;
-  let minValue = 0;
-  let maxValue = 0;
+  let minValue = $state(0);
+  let maxValue = $state(0);
   
-  $: if (data.returns.length > 0) {
-    calculateHistogram();
-  }
   
   function calculateHistogram() {
     const numBins = 30;
@@ -81,6 +84,11 @@
     const sign = value >= 0 ? '+' : '';
     return `${sign}${value.toFixed(2)}%`;
   }
+  run(() => {
+    if (data.returns.length > 0) {
+      calculateHistogram();
+    }
+  });
 </script>
 
 <div class="monte-carlo-chart">

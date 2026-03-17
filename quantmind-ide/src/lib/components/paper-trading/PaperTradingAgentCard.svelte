@@ -2,7 +2,10 @@
   import { createEventDispatcher } from 'svelte';
   import { Play, Square, FileText, Trash2 } from 'lucide-svelte';
 
-  export let agent: {
+
+
+  interface Props {
+    agent: {
     agent_id: string;
     container_id: string;
     container_name: string;
@@ -16,8 +19,7 @@
     uptime_seconds?: number;
     created_at: string;
   };
-
-  export let performanceMetrics: {
+    performanceMetrics: {
     agent_id: string;
     total_trades: number;
     winning_trades: number;
@@ -37,13 +39,15 @@
       min_validation_days: number;
     };
   } | undefined;
-
-  export let tickData: {
+    tickData: {
     bid: number;
     ask: number;
     spread: number;
     timestamp: string;
   } | undefined;
+  }
+
+  let { agent, performanceMetrics, tickData }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -200,19 +204,19 @@
   <!-- Actions -->
   <div class="agent-actions">
     {#if agent.status === 'running'}
-      <button class="action-btn stop" on:click={() => dispatch('stop', agent.agent_id)}>
+      <button class="action-btn stop" onclick={() => dispatch('stop', agent.agent_id)}>
         <Square size={14} /> Stop
       </button>
     {:else}
-      <button class="action-btn start" on:click={() => dispatch('start', agent.agent_id)}>
+      <button class="action-btn start" onclick={() => dispatch('start', agent.agent_id)}>
         <Play size={14} /> Start
       </button>
     {/if}
-    <button class="action-btn" on:click={() => dispatch('logs', agent.agent_id)}>
+    <button class="action-btn" onclick={() => dispatch('logs', agent.agent_id)}>
       <FileText size={14} /> Logs
     </button>
     {#if canPromote(performanceMetrics)}
-      <button class="action-btn promote" on:click={() => dispatch('promote', agent.agent_id)}>
+      <button class="action-btn promote" onclick={() => dispatch('promote', agent.agent_id)}>
         <Trash2 size={14} /> Promote
       </button>
     {/if}

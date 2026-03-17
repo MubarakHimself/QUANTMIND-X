@@ -17,7 +17,7 @@
   import { connectTradingFloorWS, disconnectTradingFloorWS, tradingFloorWS } from '$lib/services/tradingFloorWebSocket';
 
   // Demo state
-  let isRunning = false;
+  let isRunning = $state(false);
   let demoInterval: number | null = null;
 
   // Sample departments
@@ -164,8 +164,8 @@
   }
 
   // Subscribe to store
-  $: floorStats = $tradingFloorStore?.floorStats || { totalTasks: 0, activeTasks: 0 };
-  $: wsConnected = $tradingFloorWS?.connected || false;
+  let floorStats = $derived($tradingFloorStore?.floorStats || { totalTasks: 0, activeTasks: 0 });
+  let wsConnected = $derived($tradingFloorWS?.connected || false);
 </script>
 
 <div class="trading-floor-demo">
@@ -175,13 +175,13 @@
   </header>
 
   <div class="demo-controls">
-    <button class="btn" on:click={startDemo} disabled={isRunning}>
+    <button class="btn" onclick={startDemo} disabled={isRunning}>
       {isRunning ? 'Running...' : 'Start Demo'}
     </button>
-    <button class="btn btn-secondary" on:click={stopDemo} disabled={!isRunning}>
+    <button class="btn btn-secondary" onclick={stopDemo} disabled={!isRunning}>
       Stop
     </button>
-    <button class="btn btn-outline" on:click={initializeDemo}>
+    <button class="btn btn-outline" onclick={initializeDemo}>
       Reset
     </button>
   </div>

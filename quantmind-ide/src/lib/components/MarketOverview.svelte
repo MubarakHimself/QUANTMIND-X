@@ -1,7 +1,9 @@
 <script lang="ts">
   import { Activity, Currency, DollarSign } from 'lucide-svelte';
 
-  export let marketState: {
+
+  interface Props {
+    marketState: {
     regime: {
       quality: number;
       trend: 'bullish' | 'bearish' | 'ranging';
@@ -15,13 +17,15 @@
       spread: number;
     }>;
   };
-
-  export let houseMoney: {
+    houseMoney: {
     dailyProfit: number;
     threshold: number;
     houseMoneyAmount: number;
     mode: 'conservative' | 'normal' | 'aggressive';
   };
+  }
+
+  let { marketState, houseMoney }: Props = $props();
 
   function formatCurrency(value: number) {
     return new Intl.NumberFormat('en-US', {

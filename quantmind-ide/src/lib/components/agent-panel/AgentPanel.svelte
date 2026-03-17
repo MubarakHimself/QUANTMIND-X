@@ -34,16 +34,21 @@
   import { contextManager } from '../../services/contextManager';
   import { agentManager, activeStreams } from '../../agents';
   
-  // Props
-  export let isOpen = true;
+  
+  interface Props {
+    // Props
+    isOpen?: boolean;
+  }
+
+  let { isOpen = $bindable(true) }: Props = $props();
   
   // State
-  let showSettings = false;
-  let showChatList = true;
-  let chatListWidth = 200;
+  let showSettings = $state(false);
+  let showChatList = $state(true);
+  let chatListWidth = $state(200);
   let isResizing = false;
-  let showContextPicker = false;
-  let contextPickerType: 'file' | 'strategy' | 'broker' | 'backtest' = 'file';
+  let showContextPicker = $state(false);
+  let contextPickerType: 'file' | 'strategy' | 'broker' | 'backtest' = $state('file');
   
   // Agent configuration
   const agents: Array<{ id: AgentType; name: string; icon: any; description: string }> = [
@@ -193,11 +198,11 @@
   }
   
   // Reactive subscriptions
-  $: currentAgent = $chatStore.activeAgent;
-  $: currentChat = $activeChat;
-  $: messages = $activeMessages;
-  $: context = $activeContext;
-  $: isStreaming = $activeStreams.length > 0;
+  let currentAgent = $derived($chatStore.activeAgent);
+  let currentChat = $derived($activeChat);
+  let messages = $derived($activeMessages);
+  let context = $derived($activeContext);
+  let isStreaming = $derived($activeStreams.length > 0);
 </script>
 
 {#if isOpen}
@@ -256,20 +261,20 @@
     </div>
     
     <!-- Resize handle -->
-    <!-- svelte-ignore a11y-no-static-element-interactions a11y-no-noninteractive-element-interactions a11y-no-noninteractive-tabindex -->
+    <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
     <div 
       class="resize-handle" 
-      on:mousedown={startResize}
+      onmousedown={startResize}
       role="separator"
       aria-label="Resize panel"
       tabindex="0"
-      on:keydown={handleKeydown}
+      onkeydown={handleKeydown}
     ></div>
     
     <!-- Settings Panel Modal -->
     {#if showSettings}
-      <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-      <div class="settings-overlay" on:click={toggleSettings} transition:fade role="button" tabindex="-1" aria-label="Close settings">
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <div class="settings-overlay" onclick={toggleSettings} transition:fade role="button" tabindex="-1" aria-label="Close settings">
         <SettingsPanel on:close={toggleSettings} />
       </div>
     {/if}
@@ -288,7 +293,7 @@
   <!-- Toggle button when panel is closed -->
   <button 
     class="toggle-btn" 
-    on:click={togglePanel}
+    onclick={togglePanel}
     aria-label="Open agent panel"
   >
     <ChevronLeft size={16} />

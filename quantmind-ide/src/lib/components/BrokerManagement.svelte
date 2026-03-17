@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { onMount, onDestroy } from 'svelte';
   import { createEventDispatcher } from 'svelte';
   import {
@@ -18,17 +21,17 @@
   const dispatch = createEventDispatcher();
 
   // Add broker modal state
-  let showAddModal = false;
-  let newBrokerType: 'mt5' | 'binance' = 'mt5';
-  let newBrokerForm = {
+  let showAddModal = $state(false);
+  let newBrokerType: 'mt5' | 'binance' = $state('mt5');
+  let newBrokerForm = $state({
     account_id: '',
     server: '',
     api_key: '',
     api_secret: '',
     is_testnet: false
-  };
+  });
 
-  $: connectionStatus = $connectionState;
+  let connectionStatus = $derived($connectionState);
 
   function formatCurrency(value: number, currency: string = 'USD'): string {
     return new Intl.NumberFormat('en-US', {
@@ -177,7 +180,7 @@
     </div>
     <div class="header-right">
       <span class="broker-count">{$connectedBrokers.length} connected</span>
-      <button class="icon-btn" on:click={() => showAddModal = true} title="Add Broker">
+      <button class="icon-btn" onclick={() => showAddModal = true} title="Add Broker">
         <Plus size={16} />
       </button>
     </div>
@@ -198,11 +201,11 @@
               <span class="broker-account">{broker.account_id}</span>
             </div>
             <div class="pending-actions">
-              <button class="btn-confirm" on:click={() => handleConfirm(broker)}>
+              <button class="btn-confirm" onclick={() => handleConfirm(broker)}>
                 <Check size={14} />
                 Confirm
               </button>
-              <button class="btn-ignore" on:click={() => handleIgnore(broker)}>
+              <button class="btn-ignore" onclick={() => handleIgnore(broker)}>
                 <X size={14} />
                 Ignore
               </button>
@@ -219,7 +222,7 @@
       <div class="empty-state">
         <Server size={48} />
         <p>No brokers configured</p>
-        <button class="btn-primary" on:click={() => showAddModal = true}>
+        <button class="btn-primary" onclick={() => showAddModal = true}>
           <Plus size={16} />
           Add Broker
         </button>
@@ -237,18 +240,18 @@
               <span class="status-dot" style="background: {getStatusColor(broker.status)}"></span>
             </div>
             <div class="card-actions">
-              <button class="icon-btn small" on:click={() => handleSync(broker)} title="Sync Now">
+              <button class="icon-btn small" onclick={() => handleSync(broker)} title="Sync Now">
                 <RefreshCw size={14} />
               </button>
-              <button class="icon-btn small" on:click={() => openSettings(broker)} title="Settings">
+              <button class="icon-btn small" onclick={() => openSettings(broker)} title="Settings">
                 <Settings size={14} />
               </button>
               {#if broker.status === 'connected'}
-                <button class="icon-btn small danger" on:click={() => handleDisconnect(broker)} title="Disconnect">
+                <button class="icon-btn small danger" onclick={() => handleDisconnect(broker)} title="Disconnect">
                   <Unlink size={14} />
                 </button>
               {:else}
-                <button class="icon-btn small success" on:click={() => handleSync(broker)} title="Connect">
+                <button class="icon-btn small success" onclick={() => handleSync(broker)} title="Connect">
                   <Link2 size={14} />
                 </button>
               {/if}
@@ -301,21 +304,21 @@
 
   <!-- Add Broker Modal -->
   {#if showAddModal}
-    <div class="modal-overlay" on:click={() => showAddModal = false}>
-      <div class="modal" on:click|stopPropagation>
+    <div class="modal-overlay" onclick={() => showAddModal = false}>
+      <div class="modal" onclick={stopPropagation(bubble('click'))}>
         <div class="modal-header">
           <h4>Add Broker</h4>
-          <button class="icon-btn" on:click={() => showAddModal = false}>
+          <button class="icon-btn" onclick={() => showAddModal = false}>
             <X size={16} />
           </button>
         </div>
 
         <div class="modal-body">
           <div class="type-selector">
-            <button class:active={newBrokerType === 'mt5'} on:click={() => newBrokerType = 'mt5'}>
+            <button class:active={newBrokerType === 'mt5'} onclick={() => newBrokerType = 'mt5'}>
               MetaTrader 5
             </button>
-            <button class:active={newBrokerType === 'binance'} on:click={() => newBrokerType = 'binance'}>
+            <button class:active={newBrokerType === 'binance'} onclick={() => newBrokerType = 'binance'}>
               Binance
             </button>
           </div>
@@ -348,8 +351,8 @@
         </div>
 
         <div class="modal-footer">
-          <button class="btn-secondary" on:click={() => showAddModal = false}>Cancel</button>
-          <button class="btn-primary" on:click={handleAddBroker}>
+          <button class="btn-secondary" onclick={() => showAddModal = false}>Cancel</button>
+          <button class="btn-primary" onclick={handleAddBroker}>
             <Plus size={14} />
             Add Broker
           </button>

@@ -1,19 +1,24 @@
 <script lang="ts">
-  /**
+  
+  
+  interface Props {
+    /**
    * ModeIndicator Component
    * 
    * Displays a visual indicator for demo/live trading mode.
    * Demo: Yellow/amber badge with 🧪 icon
    * Live: Red badge with 🔴 icon
    */
+    mode?: 'demo' | 'live' | string;
+    size?: 'sm' | 'md' | 'lg';
+    showLabel?: boolean;
+  }
+
+  let { mode = 'live', size = 'md', showLabel = true }: Props = $props();
   
-  export let mode: 'demo' | 'live' | string = 'live';
-  export let size: 'sm' | 'md' | 'lg' = 'md';
-  export let showLabel: boolean = true;
-  
-  $: isDemo = mode === 'demo';
-  $: modeLabel = isDemo ? 'DEMO' : 'LIVE';
-  $: modeIcon = isDemo ? '🧪' : '🔴';
+  let isDemo = $derived(mode === 'demo');
+  let modeLabel = $derived(isDemo ? 'DEMO' : 'LIVE');
+  let modeIcon = $derived(isDemo ? '🧪' : '🔴');
   
   // Size classes
   const sizeClasses = {

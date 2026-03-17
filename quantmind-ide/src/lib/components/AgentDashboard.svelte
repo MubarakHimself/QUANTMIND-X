@@ -27,10 +27,10 @@
   }
   
   // State
-  let summary: AgentSummary | null = null;
-  let health: HealthStatus | null = null;
-  let loading = true;
-  let error: string | null = null;
+  let summary: AgentSummary | null = $state(null);
+  let health: HealthStatus | null = $state(null);
+  let loading = $state(true);
+  let error: string | null = $state(null);
   
   // Load data
   async function loadData() {
@@ -97,7 +97,7 @@
 <div class="agent-dashboard">
   <header class="dashboard-header">
     <h1>🤖 Agent Management</h1>
-    <button class="refresh-btn" on:click={loadData}>
+    <button class="refresh-btn" onclick={loadData}>
       Refresh
     </button>
   </header>

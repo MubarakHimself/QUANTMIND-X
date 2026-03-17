@@ -1,17 +1,28 @@
 <script lang="ts">
   import { TrendingUp, TrendingDown, Minus } from 'lucide-svelte';
 
-  export let title = '';
-  export let value: number | string = 0;
-  export let unit = '';
-  export let trend: 'up' | 'down' | 'neutral' = 'neutral';
-  export let trendValue = '';
-  export let threshold: { warning?: number; critical?: number } = {};
-  export let icon: any = null;
-  export let isLoading = false;
+  interface Props {
+    title?: string;
+    value?: number | string;
+    unit?: string;
+    trend?: 'up' | 'down' | 'neutral';
+    trendValue?: string;
+    threshold?: { warning?: number; critical?: number };
+    icon?: any;
+    isLoading?: boolean;
+  }
 
-  $: status = getStatus();
-  $: formattedValue = typeof value === 'number' ? formatNumber(value) : value;
+  let {
+    title = '',
+    value = 0,
+    unit = '',
+    trend = 'neutral',
+    trendValue = '',
+    threshold = {},
+    icon = null,
+    isLoading = false
+  }: Props = $props();
+
 
   function getStatus(): 'normal' | 'warning' | 'critical' {
     if (typeof value !== 'number') return 'normal';
@@ -50,13 +61,16 @@
     if (typeof value !== 'number' || !threshold.critical) return 0;
     return Math.min((value / threshold.critical) * 100, 100);
   }
+  let status = $derived(getStatus());
+  let formattedValue = $derived(typeof value === 'number' ? formatNumber(value) : value);
 </script>
 
 <div class="metric-card" class:warning={status === 'warning'} class:critical={status === 'critical'}>
   <div class="metric-header">
     {#if icon}
+      {@const SvelteComponent = icon}
       <div class="metric-icon">
-        <svelte:component this={icon} size={18} />
+        <SvelteComponent size={18} />
       </div>
     {/if}
     <span class="metric-title">{title}</span>
@@ -76,8 +90,9 @@
       </div>
 
       {#if trendValue}
+        {@const SvelteComponent_1 = getTrendIcon()}
         <div class="metric-trend" class:trend-up={trend === 'up'} class:trend-down={trend === 'down'}>
-          <svelte:component this={getTrendIcon()} size={14} />
+          <SvelteComponent_1 size={14} />
           <span>{trendValue}</span>
         </div>
       {/if}

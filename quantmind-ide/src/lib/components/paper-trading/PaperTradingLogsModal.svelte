@@ -1,20 +1,27 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { createEventDispatcher } from 'svelte';
   import { X } from 'lucide-svelte';
 
-  export let isOpen = false;
-  export let logs: string[] = [];
-  export let isLoading = false;
+  interface Props {
+    isOpen?: boolean;
+    logs?: string[];
+    isLoading?: boolean;
+  }
+
+  let { isOpen = false, logs = [], isLoading = false }: Props = $props();
 
   const dispatch = createEventDispatcher();
 </script>
 
 {#if isOpen}
-  <div class="modal-overlay" on:click={() => dispatch('close')} on:keydown={(e) => e.key === 'Escape' && dispatch('close')} role="dialog" aria-modal="true">
-    <div class="modal-content" on:click|stopPropagation role="presentation">
+  <div class="modal-overlay" onclick={() => dispatch('close')} onkeydown={(e) => e.key === 'Escape' && dispatch('close')} role="dialog" aria-modal="true">
+    <div class="modal-content" onclick={stopPropagation(bubble('click'))} role="presentation">
       <div class="modal-header">
         <h3>Agent Logs</h3>
-        <button class="close-btn" on:click={() => dispatch('close')}>
+        <button class="close-btn" onclick={() => dispatch('close')}>
           <X size={18} />
         </button>
       </div>
