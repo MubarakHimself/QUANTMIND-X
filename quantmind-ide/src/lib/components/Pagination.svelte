@@ -1,15 +1,29 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { ChevronLeft, ChevronRight } from 'lucide-svelte';
   
-  export let currentPage = 1;
-  export let totalPages = 1;
-  export let pageSize = 20;
-  export let totalItems = 0;
-  export let onPageChange: ((page: number) => void) | undefined = undefined;
+  interface Props {
+    currentPage?: number;
+    totalPages?: number;
+    pageSize?: number;
+    totalItems?: number;
+    onPageChange?: ((page: number) => void) | undefined;
+  }
+
+  let {
+    currentPage = $bindable(1),
+    totalPages = $bindable(1),
+    pageSize = $bindable(20),
+    totalItems = 0,
+    onPageChange = undefined
+  }: Props = $props();
   
-  $: showingStart = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-  $: showingEnd = Math.min(currentPage * pageSize, totalItems);
-  $: totalPages = Math.ceil(totalItems / pageSize) || 1;
+  let showingStart = $derived(totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1);
+  let showingEnd = $derived(Math.min(currentPage * pageSize, totalItems));
+  run(() => {
+    totalPages = Math.ceil(totalItems / pageSize) || 1;
+  });
   
   function goToPage(page: number) {
     if (page >= 1 && page <= totalPages && page !== currentPage) {
@@ -45,7 +59,7 @@
   <div class="pagination-controls" role="navigation" aria-label="Page navigation">
     <button 
       class="page-btn"
-      on:click={goToFirst}
+      onclick={goToFirst}
       disabled={currentPage === 1}
       aria-label="Go to first page"
       title="First page"
@@ -56,7 +70,7 @@
     
     <button 
       class="page-btn"
-      on:click={goToPrev}
+      onclick={goToPrev}
       disabled={currentPage === 1}
       aria-label="Go to previous page"
       title="Previous page"
@@ -72,7 +86,7 @@
     
     <button 
       class="page-btn"
-      on:click={goToNext}
+      onclick={goToNext}
       disabled={currentPage === totalPages}
       aria-label="Go to next page"
       title="Next page"
@@ -82,7 +96,7 @@
     
     <button 
       class="page-btn"
-      on:click={goToLast}
+      onclick={goToLast}
       disabled={currentPage === totalPages}
       aria-label="Go to last page"
       title="Last page"

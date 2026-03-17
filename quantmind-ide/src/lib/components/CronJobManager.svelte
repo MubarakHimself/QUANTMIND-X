@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation, self } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { onMount } from 'svelte';
   import {
     Clock,
@@ -20,18 +23,18 @@
   import { cronStore, type CronJob } from '$lib/stores/cronStore';
   import * as memoryApi from '$lib/api/memory';
 
-  export let onClose = () => {};
+  let { onClose = () => {} } = $props();
 
-  let showAddModal = false;
+  let showAddModal = $state(false);
   let showEditModal = false;
   let editingJob: CronJob | null = null;
 
-  let newJob = {
+  let newJob = $state({
     name: '',
     schedule: '',
     command: '',
     description: ''
-  };
+  });
 
   // Common cron schedule presets
   const schedulePresets = [
@@ -45,9 +48,9 @@
   ];
 
   // Subscribe to store
-  $: jobs = $cronStore.jobs;
-  $: loading = $cronStore.loading;
-  $: error = $cronStore.error;
+  let jobs = $derived($cronStore.jobs);
+  let loading = $derived($cronStore.loading);
+  let error = $derived($cronStore.error);
 
   onMount(() => {
     loadJobs();
@@ -175,8 +178,8 @@
   }
 </script>
 
-<div class="cron-panel-overlay" on:click={onClose}>
-  <div class="cron-panel" on:click|stopPropagation>
+<div class="cron-panel-overlay" onclick={onClose}>
+  <div class="cron-panel" onclick={stopPropagation(bubble('click'))}>
     <!-- Header -->
     <div class="panel-header">
       <div class="header-left">
@@ -187,13 +190,13 @@
         </div>
       </div>
       <div class="header-actions">
-        <button class="icon-btn" on:click={loadJobs} title="Refresh" disabled={loading}>
+        <button class="icon-btn" onclick={loadJobs} title="Refresh" disabled={loading}>
           <RefreshCw size={16} class={loading ? 'spinning' : ''} />
         </button>
-        <button class="icon-btn primary" on:click={() => showAddModal = true} title="Add Job">
+        <button class="icon-btn primary" onclick={() => showAddModal = true} title="Add Job">
           <Plus size={16} />
         </button>
-        <button class="icon-btn" on:click={onClose} title="Close">
+        <button class="icon-btn" onclick={onClose} title="Close">
           <X size={16} />
         </button>
       </div>
@@ -204,7 +207,7 @@
     <div class="error-banner">
       <AlertCircle size={16} />
       <span>{error}</span>
-      <button on:click={() => cronStore.setError(null)}><X size={14} /></button>
+      <button onclick={() => cronStore.setError(null)}><X size={14} /></button>
     </div>
     {/if}
 
@@ -219,18 +222,19 @@
       <div class="empty-state">
         <Clock size={48} />
         <p>No cron jobs configured</p>
-        <button class="btn primary" on:click={() => showAddModal = true}>
+        <button class="btn primary" onclick={() => showAddModal = true}>
           <Plus size={14} /> Add Job
         </button>
       </div>
       {:else}
       {#each jobs as job}
+      {@const SvelteComponent = getStatusBadge(job).icon}
       <div class="job-item" class:disabled={!job.enabled}>
         <div class="job-header">
           <div class="job-name">
             <button
               class="toggle-btn"
-              on:click={() => handleToggleJob(job)}
+              onclick={() => handleToggleJob(job)}
               title={job.enabled ? 'Disable' : 'Enable'}
             >
               {#if job.enabled}
@@ -244,13 +248,13 @@
           <div class="job-actions">
             <button
               class="icon-btn"
-              on:click={() => handleRunJob(job)}
+              onclick={() => handleRunJob(job)}
               title="Run now"
               disabled={job.status === 'running'}
             >
               <Play size={14} class={job.status === 'running' ? 'spinning' : ''} />
             </button>
-            <button class="icon-btn danger" on:click={() => handleDeleteJob(job)} title="Delete">
+            <button class="icon-btn danger" onclick={() => handleDeleteJob(job)} title="Delete">
               <Trash2 size={14} />
             </button>
           </div>
@@ -272,7 +276,7 @@
 
         <div class="job-status">
           <div class="status-item">
-            <svelte:component this={getStatusBadge(job).icon} size={12} class={getStatusBadge(job).class} />
+            <SvelteComponent size={12} class={getStatusBadge(job).class} />
             <span class="status-label">{getStatusBadge(job).label}</span>
           </div>
           <div class="status-item">
@@ -298,11 +302,11 @@
 
 <!-- Add Job Modal -->
 {#if showAddModal}
-<div class="modal-overlay" on:click|self={() => showAddModal = false}>
+<div class="modal-overlay" onclick={self(() => showAddModal = false)}>
   <div class="modal">
     <div class="modal-header">
       <h3>Add Cron Job</h3>
-      <button on:click={() => showAddModal = false}><X size={18} /></button>
+      <button onclick={() => showAddModal = false}><X size={18} /></button>
     </div>
     <div class="modal-body">
       <div class="form-group">
@@ -311,7 +315,7 @@
       </div>
       <div class="form-group">
         <label>Schedule (Cron Expression) *</label>
-        <select on:change={(e) => newJob.schedule = e.target.value}>
+        <select onchange={(e) => newJob.schedule = e.target.value}>
           <option value="">Select a preset...</option>
           {#each schedulePresets as preset}
           <option value={preset.value}>{preset.label} ({preset.value})</option>
@@ -343,8 +347,8 @@
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn secondary" on:click={() => showAddModal = false}>Cancel</button>
-      <button class="btn primary" on:click={handleAddJob} disabled={!newJob.name || !newJob.schedule || !newJob.command || loading}>
+      <button class="btn secondary" onclick={() => showAddModal = false}>Cancel</button>
+      <button class="btn primary" onclick={handleAddJob} disabled={!newJob.name || !newJob.schedule || !newJob.command || loading}>
         {#if loading}
         <RefreshCw size={14} class="spinning" />
         {:else}

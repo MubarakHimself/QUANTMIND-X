@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { createEventDispatcher, onMount } from 'svelte';
   import { fade, slide } from 'svelte/transition';
   import { X, Save, RotateCcw, Download, Upload, AlertCircle } from 'lucide-svelte';
@@ -19,9 +22,9 @@
   const dispatch = createEventDispatcher();
   
   // State
-  let activeTab = 'general';
-  let isSaving = false;
-  let showUnsavedWarning = false;
+  let activeTab = $state('general');
+  let isSaving = $state(false);
+  let showUnsavedWarning = $state(false);
   
   // Tab configuration
   const tabs = [
@@ -36,8 +39,8 @@
   ];
   
   // Reactive state
-  $: isDirty = $settingsStore.isDirty;
-  $: error = $settingsStore.error;
+  let isDirty = $derived($settingsStore.isDirty);
+  let error = $derived($settingsStore.error);
   
   // Initialize
   onMount(() => {
@@ -134,10 +137,10 @@
   }
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} />
 
-<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions a11y-no-noninteractive-element-interactions -->
-<div class="settings-panel" on:click|stopPropagation role="dialog" aria-label="Settings">
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions, a11y_no_noninteractive_element_interactions -->
+<div class="settings-panel" onclick={stopPropagation(bubble('click'))} role="dialog" aria-label="Settings">
   <!-- Header -->
   <header class="panel-header">
     <h2>Settings</h2>
@@ -145,20 +148,20 @@
       {#if isDirty}
         <span class="dirty-indicator">Unsaved changes</span>
       {/if}
-      <button class="icon-btn" on:click={handleClose} aria-label="Close settings">
+      <button class="icon-btn" onclick={handleClose} aria-label="Close settings">
         <X size={18} />
       </button>
     </div>
   </header>
   
   <!-- Tab Navigation -->
-  <!-- svelte-ignore a11y-no-interactive-element-to-noninteractive-role -->
+  <!-- svelte-ignore a11y_no_interactive_element_to_noninteractive_role -->
   <div class="tab-nav" role="tablist">
     {#each tabs as tab}
       <button
         class="tab-btn"
         class:active={activeTab === tab.id}
-        on:click={() => handleTabChange(tab.id)}
+        onclick={() => handleTabChange(tab.id)}
         role="tab"
         aria-selected={activeTab === tab.id}
         aria-controls="tab-panel-{tab.id}"
@@ -202,29 +205,29 @@
     <div class="error-banner" transition:slide>
       <AlertCircle size={16} />
       <span>{error}</span>
-      <button on:click={() => settingsStore.clearError()}>Dismiss</button>
+      <button onclick={() => settingsStore.clearError()}>Dismiss</button>
     </div>
   {/if}
   
   <!-- Footer Actions -->
   <footer class="panel-footer">
     <div class="footer-left">
-      <button class="btn secondary" on:click={handleReset} title="Reset to defaults">
+      <button class="btn secondary" onclick={handleReset} title="Reset to defaults">
         <RotateCcw size={14} />
         Reset
       </button>
       <div class="import-export">
-        <button class="btn secondary" on:click={handleExport} title="Export settings">
+        <button class="btn secondary" onclick={handleExport} title="Export settings">
           <Download size={14} />
         </button>
         <label class="btn secondary" title="Import settings">
           <Upload size={14} />
-          <input type="file" accept=".json" on:change={handleImport} hidden />
+          <input type="file" accept=".json" onchange={handleImport} hidden />
         </label>
       </div>
     </div>
     <div class="footer-right">
-      <button class="btn primary" on:click={handleSave} disabled={!isDirty || isSaving}>
+      <button class="btn primary" onclick={handleSave} disabled={!isDirty || isSaving}>
         {#if isSaving}
           <span class="spinner small"></span>
         {:else}
@@ -237,20 +240,20 @@
   
   <!-- Unsaved Warning Modal -->
   {#if showUnsavedWarning}
-    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-    <div class="modal-overlay" on:click={() => showUnsavedWarning = false} role="button" tabindex="-1" aria-label="Close dialog">
-      <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions a11y-no-noninteractive-element-interactions -->
-    <div class="warning-modal" on:click|stopPropagation transition:fade role="dialog" aria-modal="true" aria-labelledby="warning-title">
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div class="modal-overlay" onclick={() => showUnsavedWarning = false} role="button" tabindex="-1" aria-label="Close dialog">
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions, a11y_no_noninteractive_element_interactions -->
+    <div class="warning-modal" onclick={stopPropagation(bubble('click'))} transition:fade role="dialog" aria-modal="true" aria-labelledby="warning-title">
         <h3 id="warning-title">Unsaved Changes</h3>
         <p>You have unsaved changes. Do you want to save them before leaving?</p>
         <div class="modal-actions">
-          <button class="btn secondary" on:click={() => { showUnsavedWarning = false; dispatch('close'); }}>
+          <button class="btn secondary" onclick={() => { showUnsavedWarning = false; dispatch('close'); }}>
             Discard
           </button>
-          <button class="btn secondary" on:click={() => showUnsavedWarning = false}>
+          <button class="btn secondary" onclick={() => showUnsavedWarning = false}>
             Cancel
           </button>
-          <button class="btn primary" on:click={async () => { await handleSave(); showUnsavedWarning = false; dispatch('close'); }}>
+          <button class="btn primary" onclick={async () => { await handleSave(); showUnsavedWarning = false; dispatch('close'); }}>
             Save
           </button>
         </div>

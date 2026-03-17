@@ -1,6 +1,7 @@
 <script>
-  // Using actual Skeleton Labs components
-  import { Progress } from '@skeletonlabs/skeleton-svelte';
+  // Demo component - simplified for Svelte 5 migration
+  // The @skeletonlabs/skeleton-svelte package was not installed
+  // Using basic HTML/Tailwind instead
 </script>
 
 <div class="p-8 max-w-4xl mx-auto">
@@ -41,17 +42,17 @@
       </div>
     </section>
 
-    <!-- Progress Component -->
+    <!-- Progress Component - using native HTML -->
     <section class="bg-surface-100 p-6 rounded-xl">
       <h2 class="text-lg font-semibold mb-4">Progress Component</h2>
       <div class="space-y-4">
         <div>
           <p class="text-sm mb-2">Loading data...</p>
-          <Progress value={65} max={100} class="h-2" />
+          <progress value="65" max="100" class="h-2 w-full"></progress>
         </div>
         <div>
           <p class="text-sm mb-2">Processing...</p>
-          <Progress value={undefined} max={100} class="h-2" />
+          <progress value="0" max="100" class="h-2 w-full indeterminate"></progress>
         </div>
       </div>
     </section>

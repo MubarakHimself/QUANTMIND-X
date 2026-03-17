@@ -1,12 +1,22 @@
 <script lang="ts">
   import { RefreshCw, Newspaper, Bell } from "lucide-svelte";
 
-  export let tradingStatus: "active" | "paused" | "kill-zone" = "active";
-  export let countdown: { targetEvent: any } = { targetEvent: null };
-  export let autoRefresh = false;
 
-  export let onRefresh: () => void;
-  export let onToggleAutoRefresh: () => void;
+  interface Props {
+    tradingStatus?: "active" | "paused" | "kill-zone";
+    countdown?: { targetEvent: any };
+    autoRefresh?: boolean;
+    onRefresh: () => void;
+    onToggleAutoRefresh: () => void;
+  }
+
+  let {
+    tradingStatus = "active",
+    countdown = { targetEvent: null },
+    autoRefresh = false,
+    onRefresh,
+    onToggleAutoRefresh
+  }: Props = $props();
 
   function formatCountdown(): string {
     if (!countdown.targetEvent) return "";
@@ -70,7 +80,7 @@
     <!-- Auto Refresh -->
     <button
       class="btn"
-      on:click={onToggleAutoRefresh}
+      onclick={onToggleAutoRefresh}
       class:active={autoRefresh}
     >
       <RefreshCw size={14} />
@@ -78,7 +88,7 @@
     </button>
 
     <!-- Refresh Button -->
-    <button class="btn" on:click={onRefresh}>
+    <button class="btn" onclick={onRefresh}>
       <RefreshCw size={14} />
       <span>Refresh</span>
     </button>

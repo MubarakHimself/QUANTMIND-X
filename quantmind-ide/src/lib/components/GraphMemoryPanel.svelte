@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { onMount } from 'svelte';
   import {
     Database,
@@ -26,43 +28,43 @@
   import * as graphMemoryApi from '$lib/api/graphMemory';
   import type { GraphMemoryNode, GraphMemoryStats, CompactionStatus } from '$lib/api/graphMemory';
 
-  export let onClose = () => {};
+  let { onClose = () => {} } = $props();
 
   // State
-  let activeTab: 'search' | 'hot' | 'warm' | 'cold' | 'stats' = 'search';
-  let searchQuery = '';
+  let activeTab: 'search' | 'hot' | 'warm' | 'cold' | 'stats' = $state('search');
+  let searchQuery = $state('');
   let loading = false;
-  let error = '';
-  let stats: GraphMemoryStats | null = null;
-  let compactionStatus: CompactionStatus | null = null;
+  let error = $state('');
+  let stats: GraphMemoryStats | null = $state(null);
+  let compactionStatus: CompactionStatus | null = $state(null);
 
   // Search results
-  let searchResults: GraphMemoryNode[] = [];
+  let searchResults: GraphMemoryNode[] = $state([]);
 
   // Nodes by tier
-  let hotNodes: GraphMemoryNode[] = [];
-  let warmNodes: GraphMemoryNode[] = [];
-  let coldNodes: GraphMemoryNode[] = [];
+  let hotNodes: GraphMemoryNode[] = $state([]);
+  let warmNodes: GraphMemoryNode[] = $state([]);
+  let coldNodes: GraphMemoryNode[] = $state([]);
 
   // Add memory modal
-  let showAddModal = false;
-  let newMemory = {
+  let showAddModal = $state(false);
+  let newMemory = $state({
     content: '',
     source: 'user',
     department: '',
     agent_id: '',
     importance: 0.7,
     tags: ''
-  };
+  });
 
   // Reflect modal
-  let showReflectModal = false;
-  let reflectQuery = '';
-  let reflectAnswer = '';
-  let reflectLoading = false;
+  let showReflectModal = $state(false);
+  let reflectQuery = $state('');
+  let reflectAnswer = $state('');
+  let reflectLoading = $state(false);
 
   // Selected node for details
-  let selectedNode: GraphMemoryNode | null = null;
+  let selectedNode: GraphMemoryNode | null = $state(null);
 
   // Initialize
   onMount(() => {
@@ -232,9 +234,15 @@
   }
 
   // Load data when tab changes
-  $: if (activeTab === 'hot' && hotNodes.length === 0) loadHotNodes();
-  $: if (activeTab === 'warm' && warmNodes.length === 0) loadWarmNodes();
-  $: if (activeTab === 'cold' && coldNodes.length === 0) loadColdNodes();
+  run(() => {
+    if (activeTab === 'hot' && hotNodes.length === 0) loadHotNodes();
+  });
+  run(() => {
+    if (activeTab === 'warm' && warmNodes.length === 0) loadWarmNodes();
+  });
+  run(() => {
+    if (activeTab === 'cold' && coldNodes.length === 0) loadColdNodes();
+  });
 </script>
 
 <div class="flex flex-col h-full bg-gray-900 text-gray-100">
@@ -244,7 +252,7 @@
       <Network class="w-5 h-5 text-cyan-400" />
       <h2 class="text-lg font-semibold">Graph Memory</h2>
     </div>
-    <button on:click={onClose} class="p-1 hover:bg-gray-700 rounded">
+    <button onclick={onClose} class="p-1 hover:bg-gray-700 rounded">
       <X class="w-5 h-5" />
     </button>
   </div>
@@ -253,31 +261,31 @@
   <div class="flex border-b border-gray-700">
     <button
       class="flex-1 px-4 py-2 text-sm font-medium {activeTab === 'search' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-400 hover:text-gray-200'}"
-      on:click={() => activeTab = 'search'}
+      onclick={() => activeTab = 'search'}
     >
       <Search class="w-4 h-4 inline mr-1" /> Search
     </button>
     <button
       class="flex-1 px-4 py-2 text-sm font-medium {activeTab === 'hot' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-gray-400 hover:text-gray-200'}"
-      on:click={() => activeTab = 'hot'}
+      onclick={() => activeTab = 'hot'}
     >
       <Flame class="w-4 h-4 inline mr-1" /> Hot
     </button>
     <button
       class="flex-1 px-4 py-2 text-sm font-medium {activeTab === 'warm' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-gray-200'}"
-      on:click={() => activeTab = 'warm'}
+      onclick={() => activeTab = 'warm'}
     >
       <Layers class="w-4 h-4 inline mr-1" /> Warm
     </button>
     <button
       class="flex-1 px-4 py-2 text-sm font-medium {activeTab === 'cold' ? 'text-slate-400 border-b-2 border-slate-400' : 'text-gray-400 hover:text-gray-200'}"
-      on:click={() => activeTab = 'cold'}
+      onclick={() => activeTab = 'cold'}
     >
       <Snowflake class="w-4 h-4 inline mr-1" /> Cold
     </button>
     <button
       class="flex-1 px-4 py-2 text-sm font-medium {activeTab === 'stats' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-gray-200'}"
-      on:click={() => { activeTab = 'stats'; loadStats(); }}
+      onclick={() => { activeTab = 'stats'; loadStats(); }}
     >
       <Gauge class="w-4 h-4 inline mr-1" /> Stats
     </button>
@@ -300,16 +308,16 @@
             bind:value={searchQuery}
             placeholder="Search memories..."
             class="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm focus:border-cyan-500 focus:outline-none"
-            on:keydown={(e) => e.key === 'Enter' && searchMemories()}
+            onkeydown={(e) => e.key === 'Enter' && searchMemories()}
           />
           <button
-            on:click={searchMemories}
+            onclick={searchMemories}
             class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded text-sm font-medium"
           >
             Search
           </button>
           <button
-            on:click={() => { showAddModal = true; showReflectModal = false; }}
+            onclick={() => { showAddModal = true; showReflectModal = false; }}
             class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-sm font-medium"
           >
             <Plus class="w-4 h-4" />
@@ -317,7 +325,7 @@
         </div>
 
         <button
-          on:click={() => { showReflectModal = true; showAddModal = false; }}
+          onclick={() => { showReflectModal = true; showAddModal = false; }}
           class="w-full px-4 py-3 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-600/50 rounded-lg flex items-center justify-center gap-2"
         >
           <Sparkles class="w-4 h-4 text-purple-400" />
@@ -328,7 +336,7 @@
           <div class="space-y-2">
             {#each searchResults as node}
               <div class="p-3 bg-gray-800 rounded-lg border border-gray-700 hover:border-gray-600 cursor-pointer"
-                   on:click={() => selectedNode = node}>
+                   onclick={() => selectedNode = node}>
                 <div class="flex justify-between items-start">
                   <p class="text-sm text-gray-200 line-clamp-2">{node.content}</p>
                   <span class="text-xs {getTierColor(node.tier)}">{node.tier}</span>
@@ -357,13 +365,13 @@
           <div class="p-3 bg-gray-800 rounded-lg border border-gray-700 hover:border-gray-600">
             <div class="flex justify-between items-start">
               <p class="text-sm text-gray-200 line-clamp-2">{node.content}</p>
-              <button on:click={() => deleteNode(node.id)} class="text-red-400 hover:text-red-300">
+              <button onclick={() => deleteNode(node.id)} class="text-red-400 hover:text-red-300">
                 <Trash2 class="w-4 h-4" />
               </button>
             </div>
             <div class="mt-2 flex gap-1">
-              <button on:click={() => moveNode(node.id, 'warm')} class="text-xs px-2 py-1 bg-blue-600/50 hover:bg-blue-600 rounded">to Warm</button>
-              <button on:click={() => moveNode(node.id, 'cold')} class="text-xs px-2 py-1 bg-slate-600/50 hover:bg-slate-600 rounded">to Cold</button>
+              <button onclick={() => moveNode(node.id, 'warm')} class="text-xs px-2 py-1 bg-blue-600/50 hover:bg-blue-600 rounded">to Warm</button>
+              <button onclick={() => moveNode(node.id, 'cold')} class="text-xs px-2 py-1 bg-slate-600/50 hover:bg-slate-600 rounded">to Cold</button>
             </div>
           </div>
         {/each}
@@ -380,13 +388,13 @@
           <div class="p-3 bg-gray-800 rounded-lg border border-gray-700 hover:border-gray-600">
             <div class="flex justify-between items-start">
               <p class="text-sm text-gray-200 line-clamp-2">{node.content}</p>
-              <button on:click={() => deleteNode(node.id)} class="text-red-400 hover:text-red-300">
+              <button onclick={() => deleteNode(node.id)} class="text-red-400 hover:text-red-300">
                 <Trash2 class="w-4 h-4" />
               </button>
             </div>
             <div class="mt-2 flex gap-1">
-              <button on:click={() => moveNode(node.id, 'hot')} class="text-xs px-2 py-1 bg-orange-600/50 hover:bg-orange-600 rounded">to Hot</button>
-              <button on:click={() => moveNode(node.id, 'cold')} class="text-xs px-2 py-1 bg-slate-600/50 hover:bg-slate-600 rounded">to Cold</button>
+              <button onclick={() => moveNode(node.id, 'hot')} class="text-xs px-2 py-1 bg-orange-600/50 hover:bg-orange-600 rounded">to Hot</button>
+              <button onclick={() => moveNode(node.id, 'cold')} class="text-xs px-2 py-1 bg-slate-600/50 hover:bg-slate-600 rounded">to Cold</button>
             </div>
           </div>
         {/each}
@@ -403,13 +411,13 @@
           <div class="p-3 bg-gray-800 rounded-lg border border-gray-700 hover:border-gray-600">
             <div class="flex justify-between items-start">
               <p class="text-sm text-gray-400 line-clamp-2">{node.content}</p>
-              <button on:click={() => deleteNode(node.id)} class="text-red-400 hover:text-red-300">
+              <button onclick={() => deleteNode(node.id)} class="text-red-400 hover:text-red-300">
                 <Trash2 class="w-4 h-4" />
               </button>
             </div>
             <div class="mt-2 flex gap-1">
-              <button on:click={() => moveNode(node.id, 'hot')} class="text-xs px-2 py-1 bg-orange-600/50 hover:bg-orange-600 rounded">to Hot</button>
-              <button on:click={() => moveNode(node.id, 'warm')} class="text-xs px-2 py-1 bg-blue-600/50 hover:bg-blue-600 rounded">to Warm</button>
+              <button onclick={() => moveNode(node.id, 'hot')} class="text-xs px-2 py-1 bg-orange-600/50 hover:bg-orange-600 rounded">to Hot</button>
+              <button onclick={() => moveNode(node.id, 'warm')} class="text-xs px-2 py-1 bg-blue-600/50 hover:bg-blue-600 rounded">to Warm</button>
             </div>
           </div>
         {/each}
@@ -465,7 +473,7 @@
               </div>
               {#if compactionStatus.should_compact}
                 <button
-                  on:click={triggerCompaction}
+                  onclick={triggerCompaction}
                   class="w-full mt-3 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded text-sm font-medium"
                 >
                   Trigger Compaction
@@ -516,8 +524,8 @@
           <input type="text" bind:value={newMemory.tags} placeholder="trading, strategy, EURUSD" class="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm" />
         </div>
         <div class="flex justify-end gap-2 mt-4">
-          <button on:click={() => showAddModal = false} class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm">Cancel</button>
-          <button on:click={addMemory} class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded text-sm">Save</button>
+          <button onclick={() => showAddModal = false} class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm">Cancel</button>
+          <button onclick={addMemory} class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded text-sm">Save</button>
         </div>
       </div>
     </div>
@@ -533,10 +541,10 @@
           bind:value={reflectQuery}
           placeholder="What would you like to know from your memories?"
           class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm focus:border-purple-500 focus:outline-none"
-          on:keydown={(e) => e.key === 'Enter' && reflect()}
+          onkeydown={(e) => e.key === 'Enter' && reflect()}
         />
         <button
-          on:click={reflect}
+          onclick={reflect}
           disabled={reflectLoading}
           class="w-full mt-3 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded text-sm font-medium disabled:opacity-50"
         >
@@ -548,7 +556,7 @@
           </div>
         {/if}
         <div class="flex justify-end mt-4">
-          <button on:click={() => { showReflectModal = false; reflectAnswer = ''; }} class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm">Close</button>
+          <button onclick={() => { showReflectModal = false; reflectAnswer = ''; }} class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm">Close</button>
         </div>
       </div>
     </div>

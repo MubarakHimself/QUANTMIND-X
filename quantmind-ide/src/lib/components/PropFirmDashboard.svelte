@@ -1,3 +1,7 @@
+<!-- @migration-task Error while migrating Svelte code: This type of directive is not valid on components
+https://svelte.dev/e/component_invalid_directive -->
+<!-- @migration-task Error while migrating Svelte code: This type of directive is not valid on components
+https://svelte.dev/e/component_invalid_directive -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import {
@@ -5,9 +9,9 @@
     Target, AlertTriangle, CheckCircle, RefreshCw, Wallet,
     BarChart3, Calendar, Activity
   } from 'lucide-svelte';
-  import { PUBLIC_API_BASE } from '$env/static/public';
+  import { API_BASE } from '$lib/constants';
 
-  const apiBase = PUBLIC_API_BASE || '';
+  const apiBase = API_BASE || '';
 
   // Types
   interface Challenge {

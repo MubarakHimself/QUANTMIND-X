@@ -2,21 +2,26 @@
   import { onMount, onDestroy } from 'svelte';
   import { Activity, TrendingUp, AlertCircle, RefreshCw, Play, Cloud, Database, Zap } from 'lucide-svelte';
   import { hmmStore, type HMMStatus, type HMMRegime } from '../../stores/hmmStore';
-  import { PUBLIC_API_BASE } from '$env/static/public';
+  import { API_BASE } from '$lib/constants';
 
-  const apiBase = PUBLIC_API_BASE || '';
+  const apiBase = API_BASE || '';
 
-  // Current symbol and timeframe
-  export let symbol = 'EURUSD';
-  export let timeframe = 'H1';
+  
+  interface Props {
+    // Current symbol and timeframe
+    symbol?: string;
+    timeframe?: string;
+  }
+
+  let { symbol = 'EURUSD', timeframe = 'H1' }: Props = $props();
 
   // Local state
-  let status: HMMStatus | null = null;
-  let currentRegime: HMMRegime | null = null;
-  let isLoading = false;
-  let error: string | null = null;
-  let isSyncing = false;
-  let isTraining = false;
+  let status: HMMStatus | null = $state(null);
+  let currentRegime: HMMRegime | null = $state(null);
+  let isLoading = $state(false);
+  let error: string | null = $state(null);
+  let isSyncing = $state(false);
+  let isTraining = $state(false);
 
   // Subscribe to store
   const unsubscribe = hmmStore.subscribe(state => {
@@ -125,7 +130,7 @@
       <button
         class="action-btn"
         class:loading={isLoading}
-        on:click={handleRefresh}
+        onclick={handleRefresh}
         disabled={isLoading}
         title="Refresh status"
       >
@@ -134,7 +139,7 @@
       <button
         class="action-btn sync-btn"
         class:loading={isSyncing}
-        on:click={handleSync}
+        onclick={handleSync}
         disabled={isSyncing}
         title="Sync from Contabo"
       >
@@ -250,7 +255,7 @@
       <button
         class="train-btn"
         class:loading={isTraining}
-        on:click={handleTrain}
+        onclick={handleTrain}
         disabled={isTraining || !status?.model_loaded}
       >
         <Play size={14} />

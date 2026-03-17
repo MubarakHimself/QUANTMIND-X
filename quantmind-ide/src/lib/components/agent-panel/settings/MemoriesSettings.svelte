@@ -1,3 +1,7 @@
+<!-- @migration-task Error while migrating Svelte code: 'return' outside of function
+https://svelte.dev/e/js_parse_error -->
+<!-- @migration-task Error while migrating Svelte code: 'return' outside of function
+https://svelte.dev/e/js_parse_error -->
 <script lang="ts">
   import { Database, Brain, Clock, Trash2, Search, RefreshCw, BarChart3 } from 'lucide-svelte';
   import { settingsStore } from '../../../stores/settingsStore';

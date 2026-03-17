@@ -1,11 +1,15 @@
 <script lang="ts">
+  import { self } from 'svelte/legacy';
+
   import { createEventDispatcher } from 'svelte';
   import {
     Server, Terminal, Plus, Eye, EyeOff, Trash2, RefreshCw,
     AlertCircle
   } from 'lucide-svelte';
 
-  export let mcpServers: Array<{
+
+  interface Props {
+    mcpServers?: Array<{
     id: string;
     name: string;
     command: string;
@@ -13,15 +17,17 @@
     status: 'running' | 'stopped' | 'error';
     type: 'builtin' | 'custom';
     description?: string;
-  }> = [];
+  }>;
+    mcpModalOpen?: boolean;
+    newMcpServer?: any;
+  }
 
-  export let mcpModalOpen = false;
-  export let newMcpServer = {
+  let { mcpServers = [], mcpModalOpen = $bindable(false), newMcpServer = $bindable({
     name: '',
     command: '',
     args: '',
     description: ''
-  };
+  }) }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -69,7 +75,7 @@
 <div class="panel">
   <div class="panel-header">
     <h3>MCP Servers</h3>
-    <button class="btn primary" on:click={openModal}>
+    <button class="btn primary" onclick={openModal}>
       <Plus size={14} /> Add Server
     </button>
   </div>
@@ -100,7 +106,7 @@
         <div class="server-actions">
           <button
             class="icon-btn"
-            on:click={() => toggleMcpServer(server.id)}
+            onclick={() => toggleMcpServer(server.id)}
             title={server.status === 'running' ? 'Stop' : 'Start'}
           >
             {#if server.status === 'running'}
@@ -110,7 +116,7 @@
             {/if}
           </button>
           {#if server.type === 'custom'}
-            <button class="icon-btn danger" on:click={() => removeMcpServer(server.id)} title="Remove">
+            <button class="icon-btn danger" onclick={() => removeMcpServer(server.id)} title="Remove">
               <Trash2 size={14} />
             </button>
           {/if}
@@ -120,7 +126,7 @@
       <div class="empty-state">
         <Server size={32} />
         <p>No MCP servers configured</p>
-        <button class="btn primary" on:click={openModal}>
+        <button class="btn primary" onclick={openModal}>
           Add MCP Server
         </button>
       </div>
@@ -130,11 +136,11 @@
 
 <!-- MCP Server Modal -->
 {#if mcpModalOpen}
-  <div class="modal-overlay" on:click|self={closeModal}>
+  <div class="modal-overlay" onclick={self(closeModal)}>
     <div class="modal">
       <div class="modal-header">
         <h3>Add MCP Server</h3>
-        <button on:click={closeModal}><RefreshCw size={20} /></button>
+        <button onclick={closeModal}><RefreshCw size={20} /></button>
       </div>
       <div class="modal-body">
         <div class="quick-add-section">
@@ -143,7 +149,7 @@
             {#each DEFAULT_MCP_SERVERS as template}
               <button
                 class="template-card"
-                on:click={() => applyTemplate(template)}
+                onclick={() => applyTemplate(template)}
               >
                 <Terminal size={16} />
                 <span>{template.name}</span>
@@ -176,8 +182,8 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn secondary" on:click={closeModal}>Cancel</button>
-        <button class="btn primary" on:click={addMcpServer}>Add Server</button>
+        <button class="btn secondary" onclick={closeModal}>Cancel</button>
+        <button class="btn primary" onclick={addMcpServer}>Add Server</button>
       </div>
     </div>
   </div>

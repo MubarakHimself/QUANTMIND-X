@@ -18,15 +18,29 @@
     default_value?: any;
   }
 
-  export let tables: TableInfo[] = [];
-  export let filteredTables: TableInfo[] = [];
-  export let selectedTable: TableInfo | null = null;
-  export let isLoading: boolean = false;
-  export let searchQuery: string = "";
-  export let tableTypeFilter: "all" | "existing" | "new" = "all";
-  export let onSelectTable: (table: TableInfo) => void = () => {};
-  export let onSearchChange: () => void = () => {};
-  export let onFilterChange: () => void = () => {};
+  interface Props {
+    tables?: TableInfo[];
+    filteredTables?: TableInfo[];
+    selectedTable?: TableInfo | null;
+    isLoading?: boolean;
+    searchQuery?: string;
+    tableTypeFilter?: "all" | "existing" | "new";
+    onSelectTable?: (table: TableInfo) => void;
+    onSearchChange?: () => void;
+    onFilterChange?: () => void;
+  }
+
+  let {
+    tables = [],
+    filteredTables = [],
+    selectedTable = null,
+    isLoading = false,
+    searchQuery = $bindable(""),
+    tableTypeFilter = $bindable("all"),
+    onSelectTable = () => {},
+    onSearchChange = () => {},
+    onFilterChange = () => {}
+  }: Props = $props();
 
   function formatBytes(bytes: number): string {
     if (bytes === 0) return "0 B";
@@ -50,14 +64,14 @@
       type="text"
       placeholder="Search tables..."
       bind:value={searchQuery}
-      on:input={onSearchChange}
+      oninput={onSearchChange}
     />
   </div>
 
   <!-- Filter -->
   <div class="sidebar-filter">
     <Filter size={12} />
-    <select bind:value={tableTypeFilter} on:change={onFilterChange}>
+    <select bind:value={tableTypeFilter} onchange={onFilterChange}>
       <option value="all">All Tables</option>
       <option value="existing">Existing</option>
       <option value="new">New</option>
@@ -77,8 +91,8 @@
           class="table-item"
           class:selected={selectedTable?.name === table.name}
           class:new-table={table.is_new}
-          on:click={() => onSelectTable(table)}
-          on:keydown={(e) => e.key === "Enter" && onSelectTable(table)}
+          onclick={() => onSelectTable(table)}
+          onkeydown={(e) => e.key === "Enter" && onSelectTable(table)}
           role="button"
           tabindex="0"
           aria-label="Select table {table.name}"

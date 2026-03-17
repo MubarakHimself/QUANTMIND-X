@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { createEventDispatcher } from 'svelte';
   import { 
     FileText, Code, BookOpen, Image, File,
@@ -6,7 +8,9 @@
     Maximize2, Minimize2, ZoomIn, ZoomOut, RotateCw
   } from 'lucide-svelte';
 
-  export let file: {
+
+  interface Props {
+    file?: {
     id: string;
     name: string;
     path?: string;
@@ -18,21 +22,23 @@
       updated_at?: string;
       checksum?: string;
     };
-  } | null = null;
+  } | null;
+    showMetadata?: boolean;
+    allowDownload?: boolean;
+  }
 
-  export let showMetadata = true;
-  export let allowDownload = true;
+  let { file = null, showMetadata = true, allowDownload = true }: Props = $props();
 
   // Flag for external reference (not used internally)
   export const showNavigation = true;
 
   const dispatch = createEventDispatcher();
 
-  let isMaximized = false;
-  let copied = false;
-  let content = '';
-  let imageZoom = 1;
-  let imageRotation = 0;
+  let isMaximized = $state(false);
+  let copied = $state(false);
+  let content = $state('');
+  let imageZoom = $state(1);
+  let imageRotation = $state(0);
 
   const API_BASE = 'http://localhost:8000/api';
 
@@ -44,17 +50,7 @@
     document: ['pdf', 'doc', 'docx']
   };
 
-  $: fileType = getFileType(file?.name || '');
-  $: isImage = fileType === 'image';
-  $: isCode = fileType === 'code';
-  $: isMarkdown = fileType === 'markdown';
-  $: isBinary = fileType === 'binary';
 
-  $: if (file?.content) {
-    content = file.content;
-  } else if (file && !isImage) {
-    loadFileContent();
-  }
 
   function getFileType(filename: string): string {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
@@ -166,13 +162,27 @@
       .replace(/"/g, '"')
       .replace(/'/g, '&#039;');
   }
+  let fileType = $derived(getFileType(file?.name || ''));
+  let isImage = $derived(fileType === 'image');
+  let isCode = $derived(fileType === 'code');
+  let isMarkdown = $derived(fileType === 'markdown');
+  let isBinary = $derived(fileType === 'binary');
+  run(() => {
+    if (file?.content) {
+      content = file.content;
+    } else if (file && !isImage) {
+      loadFileContent();
+    }
+  });
+
+  const SvelteComponent = $derived(getFileIcon(file?.name || 'file'));
 </script>
 
 <div class="file-viewer" class:maximized={isMaximized}>
   <!-- Header -->
   <div class="viewer-header">
     <div class="header-left">
-      <svelte:component this={getFileIcon(file?.name || 'file')} size={20} class="file-icon" />
+      <SvelteComponent size={20} class="file-icon" />
       <div class="file-info">
         <span class="file-name">{file?.name || 'Untitled'}</span>
         {#if file?.path}
@@ -183,32 +193,32 @@
     
     <div class="header-actions">
       {#if allowDownload && content}
-        <button class="action-btn" on:click={copyContent} title="Copy content">
+        <button class="action-btn" onclick={copyContent} title="Copy content">
           {#if copied}
             <span class="copied-check">✓</span>
           {:else}
             <Copy size={16} />
           {/if}
         </button>
-        <button class="action-btn" on:click={downloadFile} title="Download">
+        <button class="action-btn" onclick={downloadFile} title="Download">
           <Download size={16} />
         </button>
       {/if}
       
       {#if isImage}
-        <button class="action-btn" on:click={zoomOut} title="Zoom out">
+        <button class="action-btn" onclick={zoomOut} title="Zoom out">
           <ZoomOut size={16} />
         </button>
         <span class="zoom-level">{Math.round(imageZoom * 100)}%</span>
-        <button class="action-btn" on:click={zoomIn} title="Zoom in">
+        <button class="action-btn" onclick={zoomIn} title="Zoom in">
           <ZoomIn size={16} />
         </button>
-        <button class="action-btn" on:click={rotateImage} title="Rotate">
+        <button class="action-btn" onclick={rotateImage} title="Rotate">
           <RotateCw size={16} />
         </button>
       {/if}
       
-      <button class="action-btn" on:click={toggleMaximize} title={isMaximized ? 'Minimize' : 'Maximize'}>
+      <button class="action-btn" onclick={toggleMaximize} title={isMaximized ? 'Minimize' : 'Maximize'}>
         {#if isMaximized}
           <Minimize2 size={16} />
         {:else}
@@ -216,7 +226,7 @@
         {/if}
       </button>
       
-      <button class="action-btn close-btn" on:click={handleClose} title="Close">
+      <button class="action-btn close-btn" onclick={handleClose} title="Close">
         <X size={16} />
       </button>
     </div>
@@ -287,7 +297,7 @@
         <h3>Binary File</h3>
         <p>This file type cannot be previewed directly.</p>
         {#if allowDownload}
-          <button class="download-btn" on:click={downloadFile}>
+          <button class="download-btn" onclick={downloadFile}>
             <Download size={16} />
             Download to view
           </button>
@@ -313,7 +323,7 @@
   </div>
 </div>
 
-<script context="module" lang="ts">
+<script module lang="ts">
   // Simple markdown renderer
   function renderMarkdown(text: string): string {
     let html = escapeHtml(text);

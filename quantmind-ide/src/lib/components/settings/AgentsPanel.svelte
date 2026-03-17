@@ -6,7 +6,9 @@
     Briefcase, Users, Layers
   } from 'lucide-svelte';
 
-  export let agentConfigs: Record<string, {
+
+  interface Props {
+    agentConfigs?: Record<string, {
     name: string;
     role: string;
     provider: string;
@@ -16,13 +18,22 @@
     systemPrompt: string;
     skills: Array<{ id: string; name: string; description: string; enabled: boolean }>;
     tools: string[];
-  }> = {};
+  }>;
+    selectedAgent?: string;
+    showRawEditor?: boolean;
+    agentsMdContent?: string;
+    agentsMdLoading?: boolean;
+    agentsMdSaved?: boolean;
+  }
 
-  export let selectedAgent: string = 'floor_manager';
-  export let showRawEditor: boolean = true;
-  export let agentsMdContent: string = '';
-  export let agentsMdLoading: boolean = false;
-  export let agentsMdSaved: boolean = false;
+  let {
+    agentConfigs = $bindable({}),
+    selectedAgent = $bindable('floor_manager'),
+    showRawEditor = $bindable(true),
+    agentsMdContent = $bindable(''),
+    agentsMdLoading = false,
+    agentsMdSaved = false
+  }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -61,15 +72,15 @@
   ];
 
   // Group agents by category for display
-  $: groupedAgents = {
+  let groupedAgents = $derived({
     floor: ALL_AGENTS.filter(a => a.category === 'floor'),
     heads: ALL_AGENTS.filter(a => a.category === 'head'),
     subagents: ALL_AGENTS.filter(a => a.category === 'subagent'),
     ui: ALL_AGENTS.filter(a => a.category === 'ui'),
-  };
+  });
 
   // Available providers from API
-  let availableProviders: Array<{ id: string; name: string; display_name: string; has_api_key: boolean; enabled: boolean }> = [];
+  let availableProviders: Array<{ id: string; name: string; display_name: string; has_api_key: boolean; enabled: boolean }> = $state([]);
 
   // Available models from API (keyed by provider)
   let availableModels: Record<string, Array<{ id: string; name: string; tier: string }>> = {};
@@ -111,7 +122,7 @@
   });
 
   // Get providers that have API keys configured
-  $: providersWithKeys = availableProviders.filter(p => p.has_api_key);
+  let providersWithKeys = $derived(availableProviders.filter(p => p.has_api_key));
 
   function setSelectedAgent(agent: string) {
     selectedAgent = agent;
@@ -218,15 +229,15 @@
   <div class="panel-header">
     <h3>Agent Configuration</h3>
     <div class="header-actions">
-      <button class="btn secondary" on:click={exportAgentsMd} title="Export AGENTS.md">
+      <button class="btn secondary" onclick={exportAgentsMd} title="Export AGENTS.md">
         <Download size={14} /> Export
       </button>
-      <button class="btn secondary" on:click={importAgentsMd} title="Import AGENTS.md">
+      <button class="btn secondary" onclick={importAgentsMd} title="Import AGENTS.md">
         <UploadIcon size={14} /> Import
       </button>
       <button
         class="btn primary"
-        on:click={saveAgentsMd}
+        onclick={saveAgentsMd}
         disabled={agentsMdLoading}
         class:loading={agentsMdLoading}
         class:saved={agentsMdSaved}
@@ -255,7 +266,7 @@
       <button
         class="agent-tab"
         class:active={selectedAgent === agent.id}
-        on:click={() => setSelectedAgent(agent.id)}
+        onclick={() => setSelectedAgent(agent.id)}
       >
         <Bot size={14} />
         <span>{agent.name}</span>
@@ -272,7 +283,7 @@
         <button
           class="agent-tab"
           class:active={selectedAgent === agent.id}
-          on:click={() => setSelectedAgent(agent.id)}
+          onclick={() => setSelectedAgent(agent.id)}
         >
           <span class="agent-name">{agent.name}</span>
           <span class="agent-dept">{agent.department}</span>
@@ -290,7 +301,7 @@
         <button
           class="agent-tab subagent"
           class:active={selectedAgent === agent.id}
-          on:click={() => setSelectedAgent(agent.id)}
+          onclick={() => setSelectedAgent(agent.id)}
         >
           <span class="agent-name">{agent.name}</span>
           <span class="agent-dept">{agent.department}</span>
@@ -303,7 +314,7 @@
       <button
         class="agent-tab"
         class:active={selectedAgent === agent.id}
-        on:click={() => setSelectedAgent(agent.id)}
+        onclick={() => setSelectedAgent(agent.id)}
       >
         <Bot size={14} />
         <span>{agent.name}</span>
@@ -316,14 +327,14 @@
     <button
       class="mode-btn"
       class:active={showRawEditor}
-      on:click={() => setShowRawEditor(true)}
+      onclick={() => setShowRawEditor(true)}
     >
       <Terminal size={14} /> Raw Markdown
     </button>
     <button
       class="mode-btn"
       class:active={!showRawEditor}
-      on:click={() => setShowRawEditor(false)}
+      onclick={() => setShowRawEditor(false)}
     >
       <Sliders size={14} /> Visual Editor
     </button>
@@ -354,7 +365,7 @@ Configure your agent behavior here..."
           </div>
           <div class="setting-row">
             <span>Role</span>
-            <input type="text" bind:value={agentConfigs[selectedAgent].role} class="text-input" on:input={(e) => updateAgentConfig('role', e.currentTarget.value)} />
+            <input type="text" bind:value={agentConfigs[selectedAgent].role} class="text-input" oninput={(e) => updateAgentConfig('role', e.currentTarget.value)} />
           </div>
         </div>
 
@@ -363,7 +374,7 @@ Configure your agent behavior here..."
           <label>Model Configuration</label>
           <div class="setting-row">
             <span>Provider</span>
-            <select bind:value={agentConfigs[selectedAgent].provider} on:change={(e) => updateAgentConfig('provider', e.currentTarget.value)}>
+            <select bind:value={agentConfigs[selectedAgent].provider} onchange={(e) => updateAgentConfig('provider', e.currentTarget.value)}>
               {#if providersWithKeys.length > 0}
                 {#each providersWithKeys as provider}
                   <option value={provider.name}>{provider.display_name}</option>
@@ -390,7 +401,7 @@ Configure your agent behavior here..."
               step="0.05"
               bind:value={agentConfigs[selectedAgent].temperature}
               class="slider-input"
-              on:input={(e) => updateAgentConfig('temperature', parseFloat(e.currentTarget.value))}
+              oninput={(e) => updateAgentConfig('temperature', parseFloat(e.currentTarget.value))}
             />
           </div>
           <div class="setting-row">
@@ -402,7 +413,7 @@ Configure your agent behavior here..."
               step="1024"
               bind:value={agentConfigs[selectedAgent].maxTokens}
               class="number-input"
-              on:input={(e) => updateAgentConfig('maxTokens', parseInt(e.currentTarget.value))}
+              oninput={(e) => updateAgentConfig('maxTokens', parseInt(e.currentTarget.value))}
             />
           </div>
         </div>
@@ -416,7 +427,7 @@ Configure your agent behavior here..."
               rows="12"
               class="prompt-textarea"
               placeholder="Enter the system prompt for this agent..."
-              on:input={(e) => updateAgentConfig('systemPrompt', e.currentTarget.value)}
+              oninput={(e) => updateAgentConfig('systemPrompt', e.currentTarget.value)}
             ></textarea>
           </div>
           <small class="help-text">This prompt defines the agent's behavior and responsibilities.</small>
@@ -426,7 +437,7 @@ Configure your agent behavior here..."
         <div class="setting-group">
           <label>
             Skills
-            <button class="add-skill-btn" on:click={addSkill}>
+            <button class="add-skill-btn" onclick={addSkill}>
               <Plus size={12} /> Add Skill
             </button>
           </label>
@@ -446,7 +457,7 @@ Configure your agent behavior here..."
                   />
                   <button
                     class="icon-btn danger"
-                    on:click={() => removeSkill(index)}
+                    onclick={() => removeSkill(index)}
                     title="Remove skill"
                   >
                     <Trash2 size={12} />
@@ -472,7 +483,7 @@ Configure your agent behavior here..."
                 <input
                   type="checkbox"
                   checked={agentConfigs[selectedAgent].tools.includes(tool)}
-                  on:change={(e) => toggleTool(tool, e.currentTarget.checked)}
+                  onchange={(e) => toggleTool(tool, e.currentTarget.checked)}
                 />
                 <code>{tool}</code>
               </label>

@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   
   // Get agent_id from URL
-  $: agentId = $page.params.id;
+  let agentId = $derived($page.params.id);
   
   // Types
   interface HealthStatus {
@@ -18,10 +18,10 @@
   }
   
   // State
-  let health: HealthStatus | null = null;
-  let loading = true;
-  let error: string | null = null;
-  let autoRefresh = true;
+  let health: HealthStatus | null = $state(null);
+  let loading = $state(true);
+  let error: string | null = $state(null);
+  let autoRefresh = $state(true);
   
   // Load health status
   async function loadHealth() {
@@ -107,10 +107,10 @@
     </div>
     <div class="header-actions">
       <label class="auto-refresh">
-        <input type="checkbox" bind:checked={autoRefresh} on:change={loadHealth} />
+        <input type="checkbox" bind:checked={autoRefresh} onchange={loadHealth} />
         Auto-refresh
       </label>
-      <button class="refresh-btn" on:click={loadHealth}>Refresh</button>
+      <button class="refresh-btn" onclick={loadHealth}>Refresh</button>
     </div>
   </header>
   

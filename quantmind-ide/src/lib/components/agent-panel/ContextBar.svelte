@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { stopPropagation, createBubbler } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { createEventDispatcher, onMount } from "svelte";
   import { fade, slide } from "svelte/transition";
   import {
@@ -20,25 +23,30 @@
     BacktestReference,
   } from "../../stores/chatStore";
 
-  // Props
-  export let context: ChatContext;
+  
+  interface Props {
+    // Props
+    context: ChatContext;
+  }
+
+  let { context }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
   // State
-  let showAddMenu = false;
-  let showAll = false;
+  let showAddMenu = $state(false);
+  let showAll = $state(false);
   const maxVisible = 3;
 
   // Count total context items
-  $: totalItems =
-    context.files.length +
+  let totalItems =
+    $derived(context.files.length +
     context.strategies.length +
     context.brokers.length +
-    context.backtests.length;
+    context.backtests.length);
 
   // Get all context items flattened with type info
-  $: allContextItems = [
+  let allContextItems = $derived([
     ...context.files.map((item) => ({
       ...item,
       type: "file" as const,
@@ -59,13 +67,13 @@
       type: "backtest" as const,
       icon: Activity,
     })),
-  ];
+  ]);
 
   // Visible items (limited unless showAll)
-  $: visibleItems = showAll
+  let visibleItems = $derived(showAll
     ? allContextItems
-    : allContextItems.slice(0, maxVisible);
-  $: hiddenCount = allContextItems.length - maxVisible;
+    : allContextItems.slice(0, maxVisible));
+  let hiddenCount = $derived(allContextItems.length - maxVisible);
 
   // Menu options for adding context
   const addOptions = [
@@ -110,7 +118,7 @@
   }
 </script>
 
-<svelte:window on:click={handleClickOutside} />
+<svelte:window onclick={handleClickOutside} />
 
 {#if totalItems > 0}
   <div class="context-bar" transition:slide={{ duration: 200 }}>
@@ -128,7 +136,7 @@
       {#if hiddenCount > 0 && !showAll}
         <button
           class="show-more-btn"
-          on:click|stopPropagation={toggleShowAll}
+          onclick={stopPropagation(toggleShowAll)}
           title="Show all context items"
         >
           +{hiddenCount} more
@@ -136,7 +144,7 @@
       {:else if showAll && allContextItems.length > maxVisible}
         <button
           class="show-more-btn"
-          on:click|stopPropagation={toggleShowAll}
+          onclick={stopPropagation(toggleShowAll)}
           title="Show fewer"
         >
           Show less
@@ -148,7 +156,7 @@
     <div class="add-menu-container">
       <button
         class="add-btn"
-        on:click|stopPropagation={toggleAddMenu}
+        onclick={stopPropagation(toggleAddMenu)}
         title="Add context"
         aria-label="Add context item"
       >
@@ -156,18 +164,18 @@
       </button>
 
       {#if showAddMenu}
-        <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <div
           class="add-menu"
           transition:fade={{ duration: 100 }}
-          on:click|stopPropagation
+          onclick={stopPropagation(bubble('click'))}
         >
           {#each addOptions as option}
             <button
               class="menu-option"
-              on:click={() => handleAddContext(option.type)}
+              onclick={() => handleAddContext(option.type)}
             >
-              <svelte:component this={option.icon} size={14} />
+              <option.icon size={14} />
               <span>{option.label}</span>
             </button>
           {/each}
@@ -181,7 +189,7 @@
     <div class="add-menu-container">
       <button
         class="add-btn empty"
-        on:click|stopPropagation={toggleAddMenu}
+        onclick={stopPropagation(toggleAddMenu)}
         title="Add context"
         aria-label="Add context item"
       >
@@ -190,18 +198,18 @@
       </button>
 
       {#if showAddMenu}
-        <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <div
           class="add-menu"
           transition:fade={{ duration: 100 }}
-          on:click|stopPropagation
+          onclick={stopPropagation(bubble('click'))}
         >
           {#each addOptions as option}
             <button
               class="menu-option"
-              on:click={() => handleAddContext(option.type)}
+              onclick={() => handleAddContext(option.type)}
             >
-              <svelte:component this={option.icon} size={14} />
+              <option.icon size={14} />
               <span>{option.label}</span>
             </button>
           {/each}

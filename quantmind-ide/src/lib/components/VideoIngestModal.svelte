@@ -2,22 +2,31 @@
   import { createEventDispatcher } from "svelte";
   import { X, AlertCircle, CheckCircle, Clock, Pause, Play, RefreshCw, ExternalLink, FileVideo, Zap } from "lucide-svelte";
 
-  export let videoIngestUrl = "";
-  export let videoIngestName = "";
-  export let videoIngestQueue: Array<{
+  interface Props {
+    videoIngestUrl?: string;
+    videoIngestName?: string;
+    videoIngestQueue?: Array<{
     id: string;
     name: string;
     status: string;
     progress: number;
     error?: string;
-  }> = [];
-  export let isOpen = false;
+  }>;
+    isOpen?: boolean;
+  }
+
+  let {
+    videoIngestUrl = $bindable(""),
+    videoIngestName = $bindable(""),
+    videoIngestQueue = [],
+    isOpen = false
+  }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
   // Error state
-  let submitError: string | null = null;
-  let isSubmitting = false;
+  let submitError: string | null = $state(null);
+  let isSubmitting = $state(false);
 
   function getStatusColor(status: string): string {
     const colors: Record<string, string> = {
@@ -106,14 +115,14 @@
     <div class="modal">
       <div class="modal-header">
         <h2>Video Ingest</h2>
-        <button on:click={handleClose}><X size={20} /></button>
+        <button onclick={handleClose}><X size={20} /></button>
       </div>
       <div class="modal-body">
         {#if submitError}
           <div class="error-banner">
             <AlertCircle size={14} />
             <span>{submitError}</span>
-            <button class="dismiss-btn" on:click={() => submitError = null}>x</button>
+            <button class="dismiss-btn" onclick={() => submitError = null}>x</button>
           </div>
         {/if}
 
@@ -150,11 +159,12 @@
               <span class="queue-count">{videoIngestQueue.length} item{videoIngestQueue.length > 1 ? 's' : ''}</span>
             </div>
             {#each videoIngestQueue as job}
+              {@const SvelteComponent = getStatusIcon(job.status)}
               <div class="queue-item">
                 <div class="queue-item-header">
                   <span class="job-name">{job.name}</span>
                   <span class="status" style="color: {getStatusColor(job.status)}">
-                    <svelte:component this={getStatusIcon(job.status)} size={12} />
+                    <SvelteComponent size={12} />
                     {job.status}
                   </span>
                 </div>
@@ -181,10 +191,10 @@
       <div class="modal-footer">
         <button
           class="btn secondary"
-          on:click={handleClose}
+          onclick={handleClose}
           disabled={isSubmitting}>Cancel</button
         >
-        <button class="btn primary" on:click={handleSubmit} disabled={isSubmitting}>
+        <button class="btn primary" onclick={handleSubmit} disabled={isSubmitting}>
           {#if isSubmitting}
             <RefreshCw size={14} class="spin" />
             Processing...

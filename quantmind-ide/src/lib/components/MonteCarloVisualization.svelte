@@ -9,36 +9,45 @@
   import MonteCarloHeatmap from './charts/MonteCarloHeatmap.svelte';
   import ProbabilityDistribution from './charts/ProbabilityDistribution.svelte';
 
-  export let runId: string = '';
-  export let initialCapital: number = 10000;
-  export let numSimulations: number = 10000;
-  export let tradingDays: number = 252;
+  interface Props {
+    runId?: string;
+    initialCapital?: number;
+    numSimulations?: number;
+    tradingDays?: number;
+  }
+
+  let {
+    runId = '',
+    initialCapital = 10000,
+    numSimulations = 10000,
+    tradingDays = 252
+  }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
   // Active tab
-  let activeTab: 'fan' | 'heatmap' | 'distribution' = 'fan';
+  let activeTab: 'fan' | 'heatmap' | 'distribution' = $state('fan');
 
   // Simulation state
-  let isRunning = false;
-  let progress = 0;
-  let completedSimulations = 0;
+  let isRunning = $state(false);
+  let progress = $state(0);
+  let completedSimulations = $state(0);
 
   // Results data
-  let fanChartData = {
+  let fanChartData = $state({
     percentiles: { p10: [], p25: [], p50: [], p75: [], p90: [] } as { p10: number[]; p25: number[]; p50: number[]; p75: number[]; p90: number[] },
     days: [] as number[],
     initialValue: initialCapital
-  };
+  });
 
-  let heatmapData = {
+  let heatmapData = $state({
     runs: [] as number[][],
     days: [] as number[],
     minValue: 0,
     maxValue: 0
-  };
+  });
 
-  let distributionData = {
+  let distributionData = $state({
     values: [] as number[],
     bins: [] as number[],
     frequencies: [] as number[],
@@ -50,10 +59,10 @@
       percentile95: 0,
       riskOfRuin: 0
     }
-  };
+  });
 
   // Summary statistics
-  let summaryStats = {
+  let summaryStats = $state({
     expectedValue: 0,
     worstCase: 0,
     bestCase: 0,
@@ -61,7 +70,7 @@
     sharpeRatio: 0,
     maxDrawdown: 0,
     winProbability: 0
-  };
+  });
 
   // WebSocket connection
   let ws: WebSocket | null = null;
@@ -291,17 +300,17 @@
     </div>
     <div class="header-actions">
       {#if !isRunning && progress < 100}
-        <button class="action-btn primary" on:click={startSimulation}>
+        <button class="action-btn primary" onclick={startSimulation}>
           <Play size={14} />
           <span>Run Simulation</span>
         </button>
       {:else if isRunning}
-        <button class="action-btn" on:click={pauseSimulation}>
+        <button class="action-btn" onclick={pauseSimulation}>
           <Pause size={14} />
           <span>Pause</span>
         </button>
       {:else}
-        <button class="action-btn" on:click={resumeSimulation}>
+        <button class="action-btn" onclick={resumeSimulation}>
           <Play size={14} />
           <span>Resume</span>
         </button>
@@ -313,9 +322,9 @@
           <ChevronDown size={12} />
         </button>
         <div class="dropdown-menu">
-          <button on:click={exportPNG}>PNG Image</button>
-          <button on:click={exportSVG}>SVG Vector</button>
-          <button on:click={exportCSV}>CSV Data</button>
+          <button onclick={exportPNG}>PNG Image</button>
+          <button onclick={exportSVG}>SVG Vector</button>
+          <button onclick={exportCSV}>CSV Data</button>
         </div>
       </div>
     </div>
@@ -323,15 +332,15 @@
 
   <!-- Tabs -->
   <div class="tab-bar">
-    <button class:active={activeTab === 'fan'} on:click={() => activeTab = 'fan'}>
+    <button class:active={activeTab === 'fan'} onclick={() => activeTab = 'fan'}>
       <TrendingUp size={16} />
       <span>Fan Chart</span>
     </button>
-    <button class:active={activeTab === 'heatmap'} on:click={() => activeTab = 'heatmap'}>
+    <button class:active={activeTab === 'heatmap'} onclick={() => activeTab = 'heatmap'}>
       <Grid size={16} />
       <span>Heatmap</span>
     </button>
-    <button class:active={activeTab === 'distribution'} on:click={() => activeTab = 'distribution'}>
+    <button class:active={activeTab === 'distribution'} onclick={() => activeTab = 'distribution'}>
       <BarChart2 size={16} />
       <span>Distribution</span>
     </button>

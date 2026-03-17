@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { onMount } from "svelte";
   import { fade, slide, fly } from "svelte/transition";
   import { navigationStore } from "../stores/navigationStore";
@@ -39,26 +41,26 @@
   }
 
   // State
-  let documents: PDFDocument[] = [];
-  let articles: KnowledgeArticle[] = [];
-  let namespaces: Namespace[] = [];
-  let loading = true;
-  let uploading = false;
-  let error: string | null = null;
-  let articlesLoading = false;
+  let documents: PDFDocument[] = $state([]);
+  let articles: KnowledgeArticle[] = $state([]);
+  let namespaces: Namespace[] = $state([]);
+  let loading = $state(true);
+  let uploading = $state(false);
+  let error: string | null = $state(null);
+  let articlesLoading = $state(false);
 
   // Upload state
-  let dragOver = false;
-  let uploadProgress = 0;
-  let currentUpload: string | null = null;
-  let indexingStatus: IndexingStatus | null = null;
+  let dragOver = $state(false);
+  let uploadProgress = $state(0);
+  let currentUpload: string | null = $state(null);
+  let indexingStatus: IndexingStatus | null = $state(null);
 
   // Selected namespace
-  let selectedNamespace = "knowledge";
+  let selectedNamespace = $state("knowledge");
 
   // Search state
-  let searchQuery = "";
-  let searchResults: any[] = [];
+  let searchQuery = $state("");
+  let searchResults: any[] = $state([]);
 
   // Sync state
   let syncStatus: {
@@ -69,17 +71,19 @@
     scraper_available: boolean;
     source_available: boolean;
     existing_articles: number;
-  } | null = null;
-  let syncLoading = false;
-  let syncing = false;
+  } | null = $state(null);
+  let syncLoading = $state(false);
+  let syncing = $state(false);
 
   // Update breadcrumbs when namespace changes
-  $: if (selectedNamespace) {
-    navigationStore.navigateToFolder(
-      selectedNamespace,
-      selectedNamespace.charAt(0).toUpperCase() + selectedNamespace.slice(1),
-    );
-  }
+  run(() => {
+    if (selectedNamespace) {
+      navigationStore.navigateToFolder(
+        selectedNamespace,
+        selectedNamespace.charAt(0).toUpperCase() + selectedNamespace.slice(1),
+      );
+    }
+  });
 
   // Fetch documents
   async function fetchDocuments() {
@@ -362,7 +366,7 @@
         </div>
         <button
           class="sync-btn"
-          on:click={triggerSync}
+          onclick={triggerSync}
           disabled={syncing || syncLoading}
           title="Sync knowledge articles"
         >
@@ -407,7 +411,7 @@
     <div class="error-banner" in:fly={{ y: -20 }}>
       <span class="error-icon">⚠️</span>
       <span>{error}</span>
-      <button class="dismiss-btn" on:click={() => (error = null)}>×</button>
+      <button class="dismiss-btn" onclick={() => (error = null)}>×</button>
     </div>
   {/if}
 
@@ -427,9 +431,9 @@
   <div
     class="upload-area"
     class:drag-over={dragOver}
-    on:dragover={handleDragOver}
-    on:dragleave={handleDragLeave}
-    on:drop={handleDrop}
+    ondragover={handleDragOver}
+    ondragleave={handleDragLeave}
+    ondrop={handleDrop}
     role="region"
     aria-label="File upload area"
   >
@@ -466,7 +470,7 @@
           <input
             type="file"
             accept=".pdf"
-            on:change={handleFileInput}
+            onchange={handleFileInput}
             style="display: none"
           />
         </label>
@@ -481,9 +485,9 @@
         type="text"
         placeholder="Search indexed documents..."
         bind:value={searchQuery}
-        on:keydown={(e) => e.key === "Enter" && searchDocuments()}
+        onkeydown={(e) => e.key === "Enter" && searchDocuments()}
       />
-      <button class="search-btn" on:click={searchDocuments}> 🔍 </button>
+      <button class="search-btn" onclick={searchDocuments}> 🔍 </button>
     </div>
 
     {#if searchResults.length > 0}
@@ -539,7 +543,7 @@
             <div class="doc-actions">
               <button
                 class="delete-btn"
-                on:click={() => deleteDocument(doc.id)}
+                onclick={() => deleteDocument(doc.id)}
                 title="Delete document"
               >
                 🗑️

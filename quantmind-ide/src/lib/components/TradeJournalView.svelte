@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { self } from 'svelte/legacy';
+
   import { createEventDispatcher, onMount } from 'svelte';
   import {
     BookOpen, Filter, Search, Download, RefreshCw, Eye, ChevronRight,
@@ -13,11 +15,11 @@
 
   // Trade Journal Data
   let trades: Array<any> = [];
-  let filteredTrades: Array<any> = [];
-  let selectedTrade: any = null;
+  let filteredTrades: Array<any> = $state([]);
+  let selectedTrade: any = $state(null);
 
   // Filters
-  let filters = {
+  let filters = $state({
     symbol: 'all',
     status: 'all',
     mode: 'all',
@@ -25,18 +27,18 @@
     dateTo: null as Date | null,
     minProfit: null as number | null,
     maxProfit: null as number | null
-  };
+  });
 
-  let searchQuery = '';
+  let searchQuery = $state('');
 
   // View state
-  let expandedTrade: string | null = null;
-  let detailViewOpen = false;
-  let sortField = 'timestamp';
-  let sortDirection = 'desc';
+  let expandedTrade: string | null = $state(null);
+  let detailViewOpen = $state(false);
+  let sortField = $state('timestamp');
+  let sortDirection = $state('desc');
 
   // Statistics
-  let stats = {
+  let stats = $state({
     total: 0,
     wins: 0,
     losses: 0,
@@ -45,7 +47,7 @@
     avgProfit: 0,
     largestWin: 0,
     largestLoss: 0
-  };
+  });
 
   onMount(() => {
     loadTrades();
@@ -221,11 +223,11 @@
       </div>
     </div>
     <div class="header-actions">
-      <button class="btn" on:click={loadTrades}>
+      <button class="btn" onclick={loadTrades}>
         <RefreshCw size={14} />
         <span>Refresh</span>
       </button>
-      <button class="btn" on:click={exportJournal}>
+      <button class="btn" onclick={exportJournal}>
         <Download size={14} />
         <span>Export</span>
       </button>
@@ -300,13 +302,13 @@
         type="text"
         placeholder="Search by symbol, strategy, reason..."
         bind:value={searchQuery}
-        on:input={applyFilters}
+        oninput={applyFilters}
       />
     </div>
 
     <div class="filter-group">
       <Filter size={14} />
-      <select bind:value={filters.symbol} on:change={applyFilters}>
+      <select bind:value={filters.symbol} onchange={applyFilters}>
         <option value="all">All Symbols</option>
         <option value="EURUSD">EURUSD</option>
         <option value="GBPUSD">GBPUSD</option>
@@ -315,7 +317,7 @@
     </div>
 
     <div class="filter-group">
-      <select bind:value={filters.status} on:change={applyFilters}>
+      <select bind:value={filters.status} onchange={applyFilters}>
         <option value="all">All Status</option>
         <option value="closed">Closed</option>
         <option value="open">Open</option>
@@ -325,7 +327,7 @@
 
     <div class="filter-group">
       <Filter size={14} />
-      <select bind:value={filters.mode} on:change={loadTrades}>
+      <select bind:value={filters.mode} onchange={loadTrades}>
         <option value="all">All Modes</option>
         <option value="demo">Demo</option>
         <option value="live">Live</option>
@@ -337,13 +339,13 @@
       <input
         type="date"
         bind:value={filters.dateFrom}
-        on:change={applyFilters}
+        onchange={applyFilters}
       />
       <span>to</span>
       <input
         type="date"
         bind:value={filters.dateTo}
-        on:change={applyFilters}
+        onchange={applyFilters}
       />
     </div>
   </div>
@@ -351,17 +353,17 @@
   <!-- Trades Table -->
   <div class="trades-table-container">
     <div class="table-header">
-      <div class="header-cell sortable" on:click={() => handleSort('timestamp')}>
+      <div class="header-cell sortable" onclick={() => handleSort('timestamp')}>
         <span>Time</span>
         <span class:active={sortField === 'timestamp' && sortDirection === 'desc'}><ChevronDown size={12} /></span>
       </div>
-      <div class="header-cell sortable" on:click={() => handleSort('symbol')}>
+      <div class="header-cell sortable" onclick={() => handleSort('symbol')}>
         <span>Symbol</span>
       </div>
       <div class="header-cell">Type</div>
       <div class="header-cell">Mode</div>
       <div class="header-cell">Strategy</div>
-      <div class="header-cell sortable" on:click={() => handleSort('profit')}>
+      <div class="header-cell sortable" onclick={() => handleSort('profit')}>
         <span>Profit</span>
         <span class:active={sortField === 'profit' && sortDirection === 'desc'}><ChevronDown size={12} /></span>
       </div>
@@ -414,14 +416,14 @@
           </div>
 
           <div class="cell actions">
-            <button class="icon-btn" on:click={() => toggleExpanded(trade.id)} title="Toggle details">
+            <button class="icon-btn" onclick={() => toggleExpanded(trade.id)} title="Toggle details">
               {#if expandedTrade === trade.id}
                 <ChevronUp size={14} />
               {:else}
                 <ChevronDown size={14} />
               {/if}
             </button>
-            <button class="icon-btn" on:click={() => selectTrade(trade)} title="View full details">
+            <button class="icon-btn" onclick={() => selectTrade(trade)} title="View full details">
               <Eye size={14} />
             </button>
           </div>
@@ -532,14 +534,14 @@
 
   <!-- Detail Modal -->
   {#if detailViewOpen && selectedTrade}
-    <div class="modal-overlay" on:click|self={() => detailViewOpen = false}>
+    <div class="modal-overlay" onclick={self(() => detailViewOpen = false)}>
       <div class="modal">
         <div class="modal-header">
           <div>
             <h3>Trade Details</h3>
             <p class="trade-id">{selectedTrade.id}</p>
           </div>
-          <button class="icon-btn" on:click={() => detailViewOpen = false}>
+          <button class="icon-btn" onclick={() => detailViewOpen = false}>
             <X size={18} />
           </button>
         </div>
@@ -583,11 +585,11 @@
 
           <!-- Action Buttons -->
           <div class="detail-actions">
-            <button class="btn" on:click={() => window.open(`/api/journal/export/${selectedTrade.id}`, '_blank')}>
+            <button class="btn" onclick={() => window.open(`/api/journal/export/${selectedTrade.id}`, '_blank')}>
               <Download size={14} />
               <span>Export Trade</span>
             </button>
-            <button class="btn" on:click={() => dispatch('viewInBacktest', { trade: selectedTrade })}>
+            <button class="btn" onclick={() => dispatch('viewInBacktest', { trade: selectedTrade })}>
               <BarChart3 size={14} />
               <span>View in Backtest</span>
             </button>

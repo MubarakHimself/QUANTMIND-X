@@ -1,7 +1,10 @@
 <script lang="ts">
   import { Server, Clock, Award } from 'lucide-svelte';
 
-  export let auctionQueue: Array<{
+
+
+  interface Props {
+    auctionQueue: Array<{
     id: string;
     timestamp: Date;
     participants: string[];
@@ -9,8 +12,7 @@
     winningScore: number;
     status: string;
   }>;
-
-  export let bots: Array<{
+    bots: Array<{
     id: string;
     name: string;
     symbol: string;
@@ -20,10 +22,18 @@
     score: number;
     lastSignal: Date | null;
   }>;
+    getScoreColor: (score: number) => string;
+    getStatusColor: (status: string) => string;
+    timeAgo: (date: Date | null) => string;
+  }
 
-  export let getScoreColor: (score: number) => string;
-  export let getStatusColor: (status: string) => string;
-  export let timeAgo: (date: Date | null) => string;
+  let {
+    auctionQueue,
+    bots,
+    getScoreColor,
+    getStatusColor,
+    timeAgo
+  }: Props = $props();
 </script>
 
 <div class="auction-section">

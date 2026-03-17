@@ -1,12 +1,16 @@
 <script lang="ts">
   import { Brain } from 'lucide-svelte';
 
-  export let hmmTraining: {
+  interface Props {
+    hmmTraining: {
     isTraining: boolean;
     progress: number;
     message: string;
     lastJob: { jobId: string; status: string; message: string } | null;
   };
+  }
+
+  let { hmmTraining }: Props = $props();
 </script>
 
 {#if hmmTraining.isTraining || hmmTraining.lastJob}

@@ -13,33 +13,64 @@
     ChevronDown,
   } from "lucide-svelte";
 
-  export let tableData: any = null;
-  export let selectedTable: any = null;
-  export let selectedRows: Set<string> = new Set();
-  export let currentPage = 1;
-  export let rowsPerPage = 25;
-  export let sortColumn: string | null = null;
-  export let sortDirection: "asc" | "desc" = "asc";
-  export let isLoading = false;
-  export let showTableInfo = false;
 
-  // Function imports
-  export let formatBytes: (bytes: number) => string;
-  export let formatTimestamp: (dateStr: string) => string;
-  export let getColumnTypeColor: (type: string) => string;
-  export let isJsonColumn: (value: any) => boolean;
-  export let previewJson: (data: any) => void;
-  export let toggleRowSelection: (rowId: string) => void;
-  export let toggleAllRows: () => void;
-  export let sortTable: (column: string) => void;
-  export let getPaginatedRows: () => any[];
-  export let getTotalPages: () => number;
-  export let loadTableData: (tableName: string, page: number) => Promise<void>;
-  export let deleteSelectedRows: () => Promise<void>;
-  export let openInsertModal: () => void;
-  export let openEditModal: (row: any) => void;
-  export let exportTable: (format: "csv" | "json") => Promise<void>;
-  export let importTable: (file: File) => Promise<void>;
+  
+  interface Props {
+    tableData?: any;
+    selectedTable?: any;
+    selectedRows?: Set<string>;
+    currentPage?: number;
+    rowsPerPage?: number;
+    sortColumn?: string | null;
+    sortDirection?: "asc" | "desc";
+    isLoading?: boolean;
+    showTableInfo?: boolean;
+    // Function imports
+    formatBytes: (bytes: number) => string;
+    formatTimestamp: (dateStr: string) => string;
+    getColumnTypeColor: (type: string) => string;
+    isJsonColumn: (value: any) => boolean;
+    previewJson: (data: any) => void;
+    toggleRowSelection: (rowId: string) => void;
+    toggleAllRows: () => void;
+    sortTable: (column: string) => void;
+    getPaginatedRows: () => any[];
+    getTotalPages: () => number;
+    loadTableData: (tableName: string, page: number) => Promise<void>;
+    deleteSelectedRows: () => Promise<void>;
+    openInsertModal: () => void;
+    openEditModal: (row: any) => void;
+    exportTable: (format: "csv" | "json") => Promise<void>;
+    importTable: (file: File) => Promise<void>;
+  }
+
+  let {
+    tableData = null,
+    selectedTable = null,
+    selectedRows = $bindable(new Set()),
+    currentPage = $bindable(1),
+    rowsPerPage = $bindable(25),
+    sortColumn = null,
+    sortDirection = "asc",
+    isLoading = false,
+    showTableInfo = $bindable(false),
+    formatBytes,
+    formatTimestamp,
+    getColumnTypeColor,
+    isJsonColumn,
+    previewJson,
+    toggleRowSelection,
+    toggleAllRows,
+    sortTable,
+    getPaginatedRows,
+    getTotalPages,
+    loadTableData,
+    deleteSelectedRows,
+    openInsertModal,
+    openEditModal,
+    exportTable,
+    importTable
+  }: Props = $props();
 
   function handleDeleteRow(row: any) {
     if (confirm("Delete this row?")) {
@@ -65,17 +96,17 @@
       <div class="header-actions">
         <button
           class="btn"
-          on:click={() => (showTableInfo = !showTableInfo)}
+          onclick={() => (showTableInfo = !showTableInfo)}
           class:active={showTableInfo}
         >
           <FileText size={14} />
           <span>Schema</span>
         </button>
-        <button class="btn" on:click={() => exportTable("csv")}>
+        <button class="btn" onclick={() => exportTable("csv")}>
           <FileText size={14} />
           <span>Export CSV</span>
         </button>
-        <button class="btn" on:click={() => exportTable("json")}>
+        <button class="btn" onclick={() => exportTable("json")}>
           <FileCode size={14} />
           <span>Export JSON</span>
         </button>
@@ -85,7 +116,7 @@
           <input
             type="file"
             accept=".csv,.json"
-            on:change={(e) => {
+            onchange={(e) => {
               const input = e.currentTarget;
               const file = input.files?.[0];
               if (file) importTable(file);
@@ -93,13 +124,13 @@
             hidden
           />
         </label>
-        <button class="btn" on:click={openInsertModal}>
+        <button class="btn" onclick={openInsertModal}>
           <Plus size={14} />
           <span>Insert</span>
         </button>
         <button
           class="btn danger"
-          on:click={deleteSelectedRows}
+          onclick={deleteSelectedRows}
           disabled={selectedRows.size === 0}
           class:disabled={selectedRows.size === 0}
         >
@@ -173,7 +204,7 @@
               type="checkbox"
               checked={selectedRows.size === tableData.rows.length &&
                 tableData.rows.length > 0}
-              on:change={toggleAllRows}
+              onchange={toggleAllRows}
             />
           </div>
           {#each tableData.columns as column}
@@ -181,8 +212,8 @@
               class="grid-cell header-cell {sortColumn === column
                 ? 'sorted'
                 : ''}"
-              on:click={() => sortTable(column)}
-              on:keydown={(e) => e.key === "Enter" && sortTable(column)}
+              onclick={() => sortTable(column)}
+              onkeydown={(e) => e.key === "Enter" && sortTable(column)}
               role="button"
               tabindex="0"
               aria-label="Sort by {column}"
@@ -213,7 +244,7 @@
                   checked={selectedRows.has(
                     String(row.id || Object.values(row)[0]),
                   )}
-                  on:change={() =>
+                  onchange={() =>
                     toggleRowSelection(
                       String(row.id || Object.values(row)[0]),
                     )}
@@ -224,8 +255,8 @@
                   {#if isJsonColumn(row[column])}
                     <span
                       class="json-link"
-                      on:click={() => previewJson(row[column])}
-                      on:keydown={(e) =>
+                      onclick={() => previewJson(row[column])}
+                      onkeydown={(e) =>
                         e.key === "Enter" && previewJson(row[column])}
                       role="button"
                       tabindex="0"
@@ -246,14 +277,14 @@
               <div class="grid-cell actions-cell">
                 <button
                   class="icon-btn"
-                  on:click={() => openEditModal(row)}
+                  onclick={() => openEditModal(row)}
                   title="Edit row"
                 >
                   <Edit size={12} />
                 </button>
                 <button
                   class="icon-btn danger"
-                  on:click={() => handleDeleteRow(row)}
+                  onclick={() => handleDeleteRow(row)}
                   title="Delete row"
                 >
                   <Trash2 size={12} />
@@ -276,7 +307,7 @@
           <div class="pagination-controls">
             <select
               bind:value={rowsPerPage}
-              on:change={() =>
+              onchange={() =>
                 selectedTable && loadTableData(selectedTable.name, 1)}
             >
               <option value="25">25 per page</option>
@@ -285,7 +316,7 @@
             </select>
             <button
               class="page-btn"
-              on:click={() => {
+              onclick={() => {
                 if (currentPage > 1) {
                   currentPage--;
                   selectedTable &&
@@ -301,7 +332,7 @@
             >
             <button
               class="page-btn"
-              on:click={() => {
+              onclick={() => {
                 if (currentPage < getTotalPages()) {
                   currentPage++;
                   selectedTable &&
@@ -318,7 +349,7 @@
         <div class="empty-state">
           <Table size={48} />
           <p>No data in this table</p>
-          <button class="btn primary" on:click={openInsertModal}>
+          <button class="btn primary" onclick={openInsertModal}>
             <Plus size={14} />
             <span>Insert First Row</span>
           </button>

@@ -1,7 +1,7 @@
 <script lang="ts">
   import CopilotPanel from './trading-floor/CopilotPanel.svelte';
 
-  let activeTab: 'copilot' | 'floor-manager' = 'floor-manager';
+  let activeTab: 'copilot' | 'floor-manager' = $state('floor-manager');
   const tabs = [
     { id: 'floor-manager', label: 'Floor Manager' },
     { id: 'copilot', label: 'QuantMind Copilot' }
@@ -18,7 +18,7 @@
       <button
         class="tab-btn"
         class:active={activeTab === tab.id}
-        on:click={() => selectTab(tab.id)}
+        onclick={() => selectTab(tab.id)}
       >
         {tab.label}
       </button>

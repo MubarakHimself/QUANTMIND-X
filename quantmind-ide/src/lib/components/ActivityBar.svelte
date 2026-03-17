@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { createEventDispatcher } from "svelte";
   import {
     BookOpen,
@@ -50,10 +52,16 @@
     { id: "workflow-builder", icon: Workflow, label: "Workflow Builder" },
   ];
 
-  export let activeView = "live";
+  interface Props {
+    activeView?: string;
+  }
+
+  let { activeView = $bindable("live") }: Props = $props();
 
   // Subscribe to navigation store for view changes
-  $: activeView = $navigationStore.currentView;
+  run(() => {
+    activeView = $navigationStore.currentView;
+  });
 
   function selectView(viewId: string) {
     const activity = activities.find((a) => a.id === viewId);
@@ -75,10 +83,10 @@
       <button
         class="activity-icon"
         class:active={activeView === activity.id}
-        on:click={() => selectView(activity.id)}
+        onclick={() => selectView(activity.id)}
         title={activity.label}
       >
-        <svelte:component this={activity.icon} size={22} />
+        <activity.icon size={22} />
       </button>
     {/each}
   </div>

@@ -11,12 +11,23 @@
 
   const dispatch = createEventDispatcher();
 
-  export let articles: Array<any> = [];
-  export let filteredArticles: Array<any> = [];
-  export let currentFolder: string | null = null;
-  export let selectedCategory = "all";
-  export let categoryTree: Record<string, { count: number; label: string }> = {};
-  export let categories: Array<{ id: string; name: string; count: number }> = [];
+  interface Props {
+    articles?: Array<any>;
+    filteredArticles?: Array<any>;
+    currentFolder?: string | null;
+    selectedCategory?: string;
+    categoryTree?: Record<string, { count: number; label: string }>;
+    categories?: Array<{ id: string; name: string; count: number }>;
+  }
+
+  let {
+    articles = [],
+    filteredArticles = [],
+    currentFolder = null,
+    selectedCategory = $bindable("all"),
+    categoryTree = {},
+    categories = []
+  }: Props = $props();
 
   function getCategoryLabel(key: string): string {
     return categoryTree[key]?.label || key.replace(/_/g, " ").toUpperCase();
@@ -45,7 +56,7 @@
         <button
           class="category-btn"
           class:active={selectedCategory === "all"}
-          on:click={() => (selectedCategory = "all")}
+          onclick={() => (selectedCategory = "all")}
         >
           <Folder size={16} />
           <span>All Articles</span>
@@ -56,7 +67,7 @@
           <button
             class="category-btn"
             class:active={selectedCategory === key}
-            on:click={() => (selectedCategory = key)}
+            onclick={() => (selectedCategory = key)}
           >
             <FolderOpen size={16} />
             <span>{cat.label}</span>
@@ -120,7 +131,7 @@
                 <div class="article-actions">
                   <button
                     class="btn-icon"
-                    on:click={() => openArticleViewer(article)}
+                    onclick={() => openArticleViewer(article)}
                     title="View Article"
                   >
                     <FileText size={14} />
@@ -138,10 +149,10 @@
       {#each categories as cat}
         <div
           class="category-card"
-          on:click={() => navigateTo(cat.id, cat.name)}
+          onclick={() => navigateTo(cat.id, cat.name)}
           role="button"
           tabindex="0"
-          on:keydown={(e) =>
+          onkeydown={(e) =>
             e.key === "Enter" && navigateTo(cat.id, cat.name)}
         >
           <Folder size={40} />
@@ -157,10 +168,10 @@
         {#each articles.slice(0, 5) as article}
           <div
             class="recent-article-card"
-            on:click={() => openArticleViewer(article)}
+            onclick={() => openArticleViewer(article)}
             role="button"
             tabindex="0"
-            on:keydown={(e) =>
+            onkeydown={(e) =>
               e.key === "Enter" && openArticleViewer(article)}
           >
             <div class="recent-article-icon">

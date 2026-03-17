@@ -1,8 +1,12 @@
 <script lang="ts">
   import { Database, RefreshCw, HardDrive } from "lucide-svelte";
 
-  export let onRefresh: () => void = () => {};
-  export let onLoadStats: () => void = () => {};
+  interface Props {
+    onRefresh?: () => void;
+    onLoadStats?: () => void;
+  }
+
+  let { onRefresh = () => {}, onLoadStats = () => {} }: Props = $props();
 </script>
 
 <div class="db-header">
@@ -14,11 +18,11 @@
     </div>
   </div>
   <div class="header-actions">
-    <button class="btn" on:click={onRefresh}>
+    <button class="btn" onclick={onRefresh}>
       <RefreshCw size={14} />
       <span>Refresh</span>
     </button>
-    <button class="btn" on:click={onLoadStats}>
+    <button class="btn" onclick={onLoadStats}>
       <HardDrive size={14} />
       <span>Stats</span>
     </button>

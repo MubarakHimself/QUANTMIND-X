@@ -1,21 +1,32 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
   import { X, GitBranch, ChevronDown, ChevronUp, RefreshCw, Check, XCircle } from 'lucide-svelte';
   import { theme } from '../stores/themeStore';
   import { getMQL5ThemeColors } from '../monaco/mql5-language';
 
-  export let originalContent = '';
-  export let modifiedContent = '';
-  export let filename = 'diff';
-  export let language = 'mql5';
+  interface Props {
+    originalContent?: string;
+    modifiedContent?: string;
+    filename?: string;
+    language?: string;
+  }
+
+  let {
+    originalContent = '',
+    modifiedContent = '',
+    filename = 'diff',
+    language = 'mql5'
+  }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
-  let diffContainer: HTMLDivElement;
-  let diffEditor: any = null;
-  let monaco: any = null;
-  let diffSummary = { additions: 0, deletions: 0, modifications: 0 };
-  let showUnified = false;
+  let diffContainer: HTMLDivElement = $state();
+  let diffEditor: any = $state(null);
+  let monaco: any = $state(null);
+  let diffSummary = $state({ additions: 0, deletions: 0, modifications: 0 });
+  let showUnified = $state(false);
 
   async function initDiffEditor() {
     try {
@@ -128,25 +139,29 @@
   }
 
   // Watch for content changes
-  $: if (diffEditor && (originalContent || modifiedContent)) {
-    const originalModel = monaco?.editor.createModel(originalContent, language);
-    const modifiedModel = monaco?.editor.createModel(modifiedContent, language);
-    if (originalModel && modifiedModel) {
-      diffEditor.setModel({
-        original: originalModel,
-        modified: modifiedModel
-      });
-      calculateDiffSummary();
+  run(() => {
+    if (diffEditor && (originalContent || modifiedContent)) {
+      const originalModel = monaco?.editor.createModel(originalContent, language);
+      const modifiedModel = monaco?.editor.createModel(modifiedContent, language);
+      if (originalModel && modifiedModel) {
+        diffEditor.setModel({
+          original: originalModel,
+          modified: modifiedModel
+        });
+        calculateDiffSummary();
+      }
     }
-  }
+  });
 
   // Watch for theme changes
-  $: if (diffEditor && monaco && $theme) {
-    const themeType = $theme.name.includes('dark') ? 'dark' : 'light';
-    const customTheme = getMQL5ThemeColors(themeType);
-    monaco.editor.defineTheme('quantmindx-diff-theme', customTheme);
-    monaco.editor.setTheme('quantmindx-diff-theme');
-  }
+  run(() => {
+    if (diffEditor && monaco && $theme) {
+      const themeType = $theme.name.includes('dark') ? 'dark' : 'light';
+      const customTheme = getMQL5ThemeColors(themeType);
+      monaco.editor.defineTheme('quantmindx-diff-theme', customTheme);
+      monaco.editor.setTheme('quantmindx-diff-theme');
+    }
+  });
 
   onMount(() => {
     initDiffEditor();
@@ -182,19 +197,19 @@
     </div>
 
     <div class="diff-actions">
-      <button class="action-btn" on:click={toggleView} title="Toggle View">
+      <button class="action-btn" onclick={toggleView} title="Toggle View">
         {showUnified ? 'Side by Side' : 'Unified'}
       </button>
-      <button class="action-btn" on:click={refresh} title="Refresh">
+      <button class="action-btn" onclick={refresh} title="Refresh">
         <RefreshCw size={14} />
       </button>
-      <button class="action-btn accept" on:click={acceptChanges} title="Accept Changes">
+      <button class="action-btn accept" onclick={acceptChanges} title="Accept Changes">
         <Check size={14} />
       </button>
-      <button class="action-btn reject" on:click={rejectChanges} title="Reject Changes">
+      <button class="action-btn reject" onclick={rejectChanges} title="Reject Changes">
         <XCircle size={14} />
       </button>
-      <button class="action-btn" on:click={close} title="Close">
+      <button class="action-btn" onclick={close} title="Close">
         <X size={14} />
       </button>
     </div>

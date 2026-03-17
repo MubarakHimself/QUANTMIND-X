@@ -4,25 +4,25 @@
   import * as evaluationApi from "$lib/api/evaluation";
 
   // State
-  let loading = false;
-  let error = "";
-  let report: evaluationApi.EvaluationReport | null = null;
-  let criteriaTypes: evaluationApi.CriteriaInfo[] = [];
+  let loading = $state(false);
+  let error = $state("");
+  let report: evaluationApi.EvaluationReport | null = $state(null);
+  let criteriaTypes: evaluationApi.CriteriaInfo[] = $state([]);
 
   // Form state
-  let testCaseName = "Basic Test";
-  let inputDataKey = "value";
-  let inputDataValue = "5";
-  let expectedOutputKey = "result";
-  let expectedOutputValue = "10";
-  let selectedCriteria = "partial";
-  let threshold = 0.8;
-  let runParallel = true;
+  let testCaseName = $state("Basic Test");
+  let inputDataKey = $state("value");
+  let inputDataValue = $state("5");
+  let expectedOutputKey = $state("result");
+  let expectedOutputValue = $state("10");
+  let selectedCriteria = $state("partial");
+  let threshold = $state(0.8);
+  let runParallel = $state(true);
 
   // Benchmark state
-  let benchmarkLoading = false;
-  let benchmarkResult: evaluationApi.BenchmarkResult | null = null;
-  let benchmarkIterations = 10;
+  let benchmarkLoading = $state(false);
+  let benchmarkResult: evaluationApi.BenchmarkResult | null = $state(null);
+  let benchmarkIterations = $state(10);
 
   onMount(async () => {
     await loadCriteriaTypes();
@@ -104,7 +104,7 @@
 <div class="evaluation-panel">
   <div class="panel-header-row">
     <h3>Agent Evaluation</h3>
-    <button class="refresh-btn" on:click={clearResults}>
+    <button class="refresh-btn" onclick={clearResults}>
       Clear
     </button>
   </div>
@@ -208,7 +208,7 @@
 
       <button
         class="run-btn"
-        on:click={runEvaluation}
+        onclick={runEvaluation}
         disabled={loading}
       >
         {#if loading}
@@ -241,7 +241,7 @@
 
       <button
         class="run-btn"
-        on:click={runBenchmark}
+        onclick={runBenchmark}
         disabled={benchmarkLoading}
       >
         {#if benchmarkLoading}

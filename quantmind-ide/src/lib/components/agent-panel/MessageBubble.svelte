@@ -4,20 +4,31 @@
   import { Copy, Check, RefreshCw, Edit3, MoreHorizontal } from "lucide-svelte";
   import type { Message } from "../../stores/chatStore";
 
-  // Props
-  export let message: Message;
-  export let agent:
+  
+  interface Props {
+    // Props
+    message: Message;
+    agent: 
     | { id: string; name: string; icon: string; description: string }
     | undefined;
-  export let AgentIcon: any;
-  export let showHeader: boolean = true;
-  export let showTimestamp: boolean = true;
+    AgentIcon: any;
+    showHeader?: boolean;
+    showTimestamp?: boolean;
+  }
+
+  let {
+    message,
+    agent,
+    AgentIcon,
+    showHeader = true,
+    showTimestamp = true
+  }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
   // State
-  let isHovered = false;
-  let copied = false;
+  let isHovered = $state(false);
+  let copied = $state(false);
   let showActions = false;
 
   // Format timestamp
@@ -104,15 +115,15 @@
 
 <div
   class="message-bubble {message.role}"
-  on:mouseenter={() => (isHovered = true)}
-  on:mouseleave={() => (isHovered = false)}
+  onmouseenter={() => (isHovered = true)}
+  onmouseleave={() => (isHovered = false)}
   role="article"
   aria-label={message.role === "user" ? "Your message" : "Assistant response"}
 >
   <!-- Avatar for assistant messages -->
   {#if message.role === "assistant" && showHeader}
     <div class="avatar">
-      <svelte:component this={AgentIcon} size={14} />
+      <AgentIcon size={14} />
     </div>
   {/if}
 
@@ -171,7 +182,7 @@
       {#if message.role === "assistant"}
         <button
           class="action-btn"
-          on:click={copyContent}
+          onclick={copyContent}
           title="Copy"
           aria-label="Copy message"
         >
@@ -183,7 +194,7 @@
         </button>
         <button
           class="action-btn"
-          on:click={regenerate}
+          onclick={regenerate}
           title="Regenerate"
           aria-label="Regenerate response"
         >
@@ -192,7 +203,7 @@
       {:else}
         <button
           class="action-btn"
-          on:click={edit}
+          onclick={edit}
           title="Edit"
           aria-label="Edit message"
         >
@@ -200,7 +211,7 @@
         </button>
         <button
           class="action-btn"
-          on:click={copyContent}
+          onclick={copyContent}
           title="Copy"
           aria-label="Copy message"
         >

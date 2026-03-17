@@ -1,9 +1,13 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { onMount, onDestroy } from 'svelte';
   import Chart from 'chart.js/auto';
   import { theme } from '../../stores/themeStore';
 
-  export let data: {
+
+  interface Props {
+    data?: {
     percentiles: {
       p10: number[];
       p25: number[];
@@ -13,17 +17,19 @@
     };
     days: number[];
     initialValue: number;
-  } = {
+  };
+    height?: number;
+    showLegend?: boolean;
+  }
+
+  let { data = {
     percentiles: { p10: [], p25: [], p50: [], p75: [], p90: [] },
     days: [],
     initialValue: 10000
-  };
+  }, height = 300, showLegend = true }: Props = $props();
 
-  export let height = 300;
-  export let showLegend = true;
-
-  let canvas: HTMLCanvasElement;
-  let chart: Chart | null = null;
+  let canvas: HTMLCanvasElement = $state();
+  let chart: Chart | null = $state(null);
 
   function getChartColors() {
     const isDark = $theme.name.includes('dark') || $theme.name.includes('matrix') || $theme.name.includes('trading');
@@ -265,13 +271,17 @@
     }
   });
 
-  $: if (chart && data) {
-    updateChart();
-  }
+  run(() => {
+    if (chart && data) {
+      updateChart();
+    }
+  });
 
-  $: if (chart && $theme) {
-    updateChart();
-  }
+  run(() => {
+    if (chart && $theme) {
+      updateChart();
+    }
+  });
 </script>
 
 <div class="fan-chart" style="height: {height}px;">

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { createEventDispatcher, tick } from 'svelte';
   import { slide } from 'svelte/transition';
   import {
@@ -18,9 +20,14 @@
   import skillChatService from '../../services/skillChatService';
   import type { AgentType } from '../../stores/chatStore';
 
-  // Props
-  export let agent: AgentType;
-  export let filter: string = '';
+  
+  interface Props {
+    // Props
+    agent: AgentType;
+    filter?: string;
+  }
+
+  let { agent, filter = '' }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -36,29 +43,12 @@
     general: Sparkles
   };
 
-  // Get available skills
-  $: allSkills = skillChatService.getSuggestions(agent);
 
-  // Filter skills based on input
-  $: filteredSkills = filter.trim()
-    ? allSkills.filter(skill =>
-        skill.name.toLowerCase().includes(filter.toLowerCase()) ||
-        skill.description.toLowerCase().includes(filter.toLowerCase()) ||
-        skill.id.toLowerCase().includes(filter.toLowerCase())
-      )
-    : allSkills;
 
-  // Group skills by category
-  $: groupedSkills = groupSkillsByCategory(filteredSkills);
 
   // State
-  let selectedIndex = 0;
+  let selectedIndex = $state(0);
 
-  // Reset selection when filter changes
-  $: {
-    filter;
-    selectedIndex = 0;
-  }
 
   function groupSkillsByCategory(skills: typeof allSkills) {
     const groups: Record<string, typeof skills> = {};
@@ -146,6 +136,23 @@
     }
     return index + skillIndex;
   }
+  // Get available skills
+  let allSkills = $derived(skillChatService.getSuggestions(agent));
+  // Filter skills based on input
+  let filteredSkills = $derived(filter.trim()
+    ? allSkills.filter(skill =>
+        skill.name.toLowerCase().includes(filter.toLowerCase()) ||
+        skill.description.toLowerCase().includes(filter.toLowerCase()) ||
+        skill.id.toLowerCase().includes(filter.toLowerCase())
+      )
+    : allSkills);
+  // Group skills by category
+  let groupedSkills = $derived(groupSkillsByCategory(filteredSkills));
+  // Reset selection when filter changes
+  run(() => {
+    filter;
+    selectedIndex = 0;
+  });
 </script>
 
 <div
@@ -176,16 +183,17 @@
           </div>
           {#each skills as skill, skillIndex}
             {@const globalIndex = getGlobalIndex(categoryIndex, skillIndex)}
+            {@const SvelteComponent = getSkillIcon(category)}
             <button
               class="skill-item"
               class:selected={selectedIndex === globalIndex}
-              on:click={() => selectSkill(skill)}
-              on:mouseenter={() => selectedIndex = globalIndex}
+              onclick={() => selectSkill(skill)}
+              onmouseenter={() => selectedIndex = globalIndex}
               role="option"
               aria-selected={selectedIndex === globalIndex}
             >
               <div class="skill-icon" style="color: {getCategoryColor(category)}">
-                <svelte:component this={getSkillIcon(category)} size={14} />
+                <SvelteComponent size={14} />
               </div>
               <div class="skill-info">
                 <span class="skill-name">@{skill.id.replace(/_/g, ' ')}</span>

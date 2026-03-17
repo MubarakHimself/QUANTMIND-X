@@ -4,7 +4,7 @@
 
   const dispatch = createEventDispatcher();
   
-  let killSwitchArmed = false;
+  let killSwitchArmed = $state(false);
   
   async function toggleKillSwitch() {
     if (!killSwitchArmed) {
@@ -46,7 +46,7 @@
   <div class="right-section">
     <button
       class="settings-btn"
-      on:click={openSettings}
+      onclick={openSettings}
       title="System Settings"
     >
       <Settings size={16} />
@@ -55,7 +55,7 @@
     <button
       class="kill-switch"
       class:armed={killSwitchArmed}
-      on:click={toggleKillSwitch}
+      onclick={toggleKillSwitch}
       title={killSwitchArmed ? 'Click again to KILL ALL' : 'Emergency Kill Switch'}
     >
       <Power size={16} />

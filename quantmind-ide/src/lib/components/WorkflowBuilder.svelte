@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { stopPropagation } from 'svelte/legacy';
+
   import { onMount } from 'svelte';
   import {
     Workflow,
@@ -123,21 +125,21 @@
   ];
 
   // State
-  let workflowName = '';
-  let workflowDescription = '';
-  let workflowCategory = 'custom';
-  let steps: WorkflowStep[] = [];
+  let workflowName = $state('');
+  let workflowDescription = $state('');
+  let workflowCategory = $state('custom');
+  let steps: WorkflowStep[] = $state([]);
   let selectedStepType: string | null = null;
-  let expandedStep: string | null = null;
+  let expandedStep: string | null = $state(null);
   let editingStep: WorkflowStep | null = null;
-  let isEditing = false;
+  let isEditing = $state(false);
   let editWorkflowId: string | null = null;
-  let saving = false;
-  let error = '';
-  let showStepSelector = false;
-  let showTemplates = false;
+  let saving = $state(false);
+  let error = $state('');
+  let showStepSelector = $state(false);
+  let showTemplates = $state(false);
   let dragIndex: number | null = null;
-  let runningWorkflow: string | null = null;
+  let runningWorkflow: string | null = $state(null);
 
   // Run workflow (only for video_ingest_to_ea type)
   async function runWorkflow(workflow: WorkflowType) {
@@ -336,7 +338,7 @@
       <h2>Workflow Builder</h2>
     </div>
     <div class="header-actions">
-      <button class="btn secondary" on:click={() => showTemplates = !showTemplates}>
+      <button class="btn secondary" onclick={() => showTemplates = !showTemplates}>
         <Layers size={14} />
         {showTemplates ? 'Hide' : 'Templates'}
       </button>
@@ -348,7 +350,7 @@
     <div class="error-banner">
       <AlertCircle size={16} />
       <span>{error}</span>
-      <button on:click={() => error = ''}><XCircle size={16} /></button>
+      <button onclick={() => error = ''}><XCircle size={16} /></button>
     </div>
   {/if}
 
@@ -359,7 +361,7 @@
         <h3>Pre-built Templates</h3>
         <div class="templates-grid">
           {#each templates as template}
-            <div class="template-card" on:click={() => loadTemplate(template)}>
+            <div class="template-card" onclick={() => loadTemplate(template)}>
               <div class="template-icon">
                 <Workflow size={24} />
               </div>
@@ -417,7 +419,7 @@
       <div class="steps-section">
         <div class="steps-header">
           <h3>Workflow Steps</h3>
-          <button class="btn primary" on:click={() => showStepSelector = !showStepSelector}>
+          <button class="btn primary" onclick={() => showStepSelector = !showStepSelector}>
             <Plus size={14} />
             Add Step
           </button>
@@ -428,7 +430,7 @@
           <div class="step-selector">
             <div class="selector-header">
               <span>Select Step Type</span>
-              <button class="close-btn" on:click={() => showStepSelector = false}>
+              <button class="close-btn" onclick={() => showStepSelector = false}>
                 <XCircle size={16} />
               </button>
             </div>
@@ -437,7 +439,7 @@
                 <div
                   class="step-type-option"
                   class:selected={selectedStepType === stepType.id}
-                  on:click={() => addStep(stepType)}
+                  onclick={() => addStep(stepType)}
                 >
                   <span class="step-type-icon">{stepType.icon}</span>
                   <div class="step-type-info">
@@ -466,7 +468,7 @@
                 class:has-issues={hasStepIssues(step)}
               >
                 <!-- Step Header -->
-                <div class="step-header" on:click={() => toggleStep(step.id)}>
+                <div class="step-header" onclick={() => toggleStep(step.id)}>
                   <div class="step-drag">
                     <GripVertical size={16} />
                   </div>
@@ -490,7 +492,7 @@
                   <div class="step-actions">
                     <button
                       class="action-btn"
-                      on:click|stopPropagation={() => moveStepUp(index)}
+                      onclick={stopPropagation(() => moveStepUp(index))}
                       disabled={index === 0}
                       title="Move up"
                     >
@@ -498,7 +500,7 @@
                     </button>
                     <button
                       class="action-btn"
-                      on:click|stopPropagation={() => moveStepDown(index)}
+                      onclick={stopPropagation(() => moveStepDown(index))}
                       disabled={index === steps.length - 1}
                       title="Move down"
                     >
@@ -506,7 +508,7 @@
                     </button>
                     <button
                       class="action-btn danger"
-                      on:click|stopPropagation={() => removeStep(step.id)}
+                      onclick={stopPropagation(() => removeStep(step.id))}
                       title="Remove step"
                     >
                       <Trash2 size={14} />
@@ -527,21 +529,21 @@
                               type="checkbox"
                               id="param-{step.id}-{key}"
                               checked={value}
-                              on:change={(e) => updateStepParam(step.id, key, e.currentTarget.checked)}
+                              onchange={(e) => updateStepParam(step.id, key, e.currentTarget.checked)}
                             />
                           {:else if typeof value === 'number'}
                             <input
                               type="number"
                               id="param-{step.id}-{key}"
                               value={value}
-                              on:change={(e) => updateStepParam(step.id, key, parseFloat(e.currentTarget.value))}
+                              onchange={(e) => updateStepParam(step.id, key, parseFloat(e.currentTarget.value))}
                             />
                           {:else if Array.isArray(value)}
                             <input
                               type="text"
                               id="param-{step.id}-{key}"
                               value={value.join(', ')}
-                              on:change={(e) => updateStepParam(step.id, key, e.currentTarget.value.split(',').map(s => s.trim()))}
+                              onchange={(e) => updateStepParam(step.id, key, e.currentTarget.value.split(',').map(s => s.trim()))}
                               placeholder="Comma-separated values"
                             />
                           {:else}
@@ -549,7 +551,7 @@
                               type="text"
                               id="param-{step.id}-{key}"
                               value={value}
-                              on:change={(e) => updateStepParam(step.id, key, e.currentTarget.value)}
+                              onchange={(e) => updateStepParam(step.id, key, e.currentTarget.value)}
                             />
                           {/if}
                         </div>
@@ -573,13 +575,13 @@
       <!-- Form Actions -->
       <div class="form-actions">
         {#if isEditing}
-          <button class="btn secondary" on:click={clearForm}>
+          <button class="btn secondary" onclick={clearForm}>
             Cancel
           </button>
         {/if}
         <button
           class="btn primary"
-          on:click={saveWorkflow}
+          onclick={saveWorkflow}
           disabled={saving || !workflowName.trim() || steps.length === 0}
         >
           {#if saving}
@@ -617,7 +619,7 @@
               <div class="workflow-actions">
                 <button
                   class="action-btn success"
-                  on:click={() => runWorkflow(workflow)}
+                  onclick={() => runWorkflow(workflow)}
                   title="Run Workflow"
                   disabled={runningWorkflow === workflow.id}
                 >
@@ -627,10 +629,10 @@
                     <Play size={14} />
                   {/if}
                 </button>
-                <button class="action-btn" on:click={() => editWorkflow(workflow)} title="Edit">
+                <button class="action-btn" onclick={() => editWorkflow(workflow)} title="Edit">
                   <Settings size={14} />
                 </button>
-                <button class="action-btn danger" on:click={() => deleteWorkflow(workflow.id)} title="Delete">
+                <button class="action-btn danger" onclick={() => deleteWorkflow(workflow.id)} title="Delete">
                   <Trash2 size={14} />
                 </button>
               </div>

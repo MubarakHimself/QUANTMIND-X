@@ -15,12 +15,12 @@
   } from '$lib/stores/approvalStore';
 
   // Local state
-  let showPanel = false;
-  let showHistory = false;
-  let approverName = 'User';
-  let notes = '';
-  let actionInProgress = false;
-  let expandedGates: Set<string> = new Set();
+  let showPanel = $state(false);
+  let showHistory = $state(false);
+  let approverName = $state('User');
+  let notes = $state('');
+  let actionInProgress = $state(false);
+  let expandedGates: Set<string> = $state(new Set());
 
   // Initialize
   onMount(() => {
@@ -118,7 +118,7 @@
   <button
     class="approval-toggle"
     class:has-approvals={$hasPendingApprovals}
-    on:click={togglePanel}
+    onclick={togglePanel}
     title="Workflow Approvals"
   >
     <Workflow size={18} />
@@ -132,7 +132,7 @@
     <div class="panel">
       <div class="panel-header">
         <h3>Approval Gates</h3>
-        <button class="close-btn" on:click={togglePanel}>
+        <button class="close-btn" onclick={togglePanel}>
           <X size={16} />
         </button>
       </div>
@@ -141,7 +141,7 @@
         <div class="error-message">
           <AlertCircle size={16} />
           <span>{$approvalError}</span>
-          <button on:click={() => approvalStore.clearError()}>Dismiss</button>
+          <button onclick={() => approvalStore.clearError()}>Dismiss</button>
         </div>
       {/if}
 
@@ -169,7 +169,7 @@
               <div class="gate-card pending">
                 <button
                   class="gate-header"
-                  on:click={() => toggleGateExpand(gate.gate_id)}
+                  onclick={() => toggleGateExpand(gate.gate_id)}
                 >
                   <div class="gate-info">
                     <span class="gate-type">{getGateTypeLabel(gate.gate_type)}</span>
@@ -226,7 +226,7 @@
                     <div class="action-buttons">
                       <button
                         class="btn approve"
-                        on:click={() => handleApprove(gate)}
+                        onclick={() => handleApprove(gate)}
                         disabled={actionInProgress}
                       >
                         <Check size={14} />
@@ -234,7 +234,7 @@
                       </button>
                       <button
                         class="btn reject"
-                        on:click={() => handleReject(gate)}
+                        onclick={() => handleReject(gate)}
                         disabled={actionInProgress || !notes.trim()}
                       >
                         <X size={14} />
@@ -260,7 +260,7 @@
       {/if}
 
       <!-- History Toggle -->
-      <button class="history-toggle" on:click={toggleHistory}>
+      <button class="history-toggle" onclick={toggleHistory}>
         {showHistory ? 'Hide History' : 'Show History'}
         {#if $approvalHistory.length > 0}
           <span class="history-count">{$approvalHistory.length}</span>

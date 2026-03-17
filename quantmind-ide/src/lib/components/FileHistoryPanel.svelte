@@ -7,17 +7,21 @@
   import { fileHistoryManager, type FileHistory, type FileVersion } from '../services/fileHistoryManager';
   import type { AgentType } from '../stores/chatStore';
 
-  export let fileId: string;
-  export let fileName: string;
-  export let currentContent: string = '';
+  interface Props {
+    fileId: string;
+    fileName: string;
+    currentContent?: string;
+  }
+
+  let { fileId, fileName, currentContent = '' }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
-  let history: FileHistory | null = null;
-  let selectedVersion: FileVersion | null = null;
+  let history: FileHistory | null = $state(null);
+  let selectedVersion: FileVersion | null = $state(null);
   let compareVersion: FileVersion | null = null;
   let showDiff = false;
-  let expandedVersions: Set<string> = new Set();
+  let expandedVersions: Set<string> = $state(new Set());
 
   onMount(() => {
     loadHistory();
@@ -111,7 +115,7 @@
       <History size={18} />
       <span>File History</span>
     </div>
-    <button class="close-btn" on:click={() => dispatch('close')}>
+    <button class="close-btn" onclick={() => dispatch('close')}>
       <X size={16} />
     </button>
   </div>
@@ -135,7 +139,7 @@
           class:selected={selectedVersion?.id === version.id}
           class:latest={i === 0}
         >
-          <div class="version-header" on:click={() => toggleVersionExpand(version.id)}>
+          <div class="version-header" onclick={() => toggleVersionExpand(version.id)}>
             <div class="version-meta">
               <span class="action-icon">{getActionIcon(version.action)}</span>
               <span class="action-label">{version.action}</span>
@@ -183,7 +187,7 @@
               <div class="version-actions">
                 <button 
                   class="action-btn primary" 
-                  on:click={() => revertToVersion(version)}
+                  onclick={() => revertToVersion(version)}
                   title="Revert to this version"
                 >
                   <RotateCcw size={14} />
@@ -191,7 +195,7 @@
                 </button>
                 <button 
                   class="action-btn" 
-                  on:click={() => viewDiff(version)}
+                  onclick={() => viewDiff(version)}
                   title="View diff with current"
                 >
                   <Eye size={14} />
@@ -205,7 +209,7 @@
     </div>
 
     <div class="panel-footer">
-      <button class="clear-btn" on:click={clearHistory}>
+      <button class="clear-btn" onclick={clearHistory}>
         <Trash2 size={14} />
         Clear History
       </button>

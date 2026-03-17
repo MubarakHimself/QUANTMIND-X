@@ -3,19 +3,19 @@
   import { settingsStore } from '../../../stores/settingsStore';
   
   // State
-  let visibleKeys: Record<string, boolean> = {
+  let visibleKeys: Record<string, boolean> = $state({
     google: false,
     anthropic: false,
     openai: false,
     qwen: false,
     zhipu: false,
     minimax: false
-  };
+  });
   
   let savedKeys: Record<string, boolean> = {};
   
   // Reactive state
-  $: apiKeys = $settingsStore.apiKeys;
+  let apiKeys = $derived($settingsStore.apiKeys);
   
   // Provider configuration
   const providers = [
@@ -129,13 +129,13 @@
             type={visibleKeys[provider.id] ? 'text' : 'password'}
             placeholder={provider.placeholder}
             value={key}
-            on:input={(e) => updateKey(provider.id, getInputValue(e))}
+            oninput={(e) => updateKey(provider.id, getInputValue(e))}
             class:invalid={status === 'invalid'}
           />
           
           <button 
             class="input-btn" 
-            on:click={() => toggleVisibility(provider.id)}
+            onclick={() => toggleVisibility(provider.id)}
             title={visibleKeys[provider.id] ? 'Hide' : 'Show'}
             aria-label={visibleKeys[provider.id] ? 'Hide API key' : 'Show API key'}
           >
@@ -149,7 +149,7 @@
           {#if key}
             <button 
               class="input-btn danger" 
-              on:click={() => clearKey(provider.id)}
+              onclick={() => clearKey(provider.id)}
               title="Clear"
               aria-label="Clear API key"
             >

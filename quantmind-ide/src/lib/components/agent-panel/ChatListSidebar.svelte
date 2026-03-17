@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { createEventDispatcher, onMount } from "svelte";
   import { fade, slide } from "svelte/transition";
   import { Search, Plus, Pin, Trash2, MoreVertical } from "lucide-svelte";
@@ -11,18 +14,18 @@
   import type { Chat, AgentType } from "../../stores/chatStore";
 
   // State
-  let searchQuery = "";
+  let searchQuery = $state("");
   let filteredChats: Chat[] = [];
-  let showContextMenu = false;
-  let contextMenuChat: Chat | null = null;
-  let contextMenuPosition = { x: 0, y: 0 };
+  let showContextMenu = $state(false);
+  let contextMenuChat: Chat | null = $state(null);
+  let contextMenuPosition = $state({ x: 0, y: 0 });
 
   // Reactive filtering
-  $: allPinned = $pinnedChats;
-  $: allUnpinned = $unpinnedChats;
-  $: currentAgent = $chatStore.activeAgent;
+  let allPinned = $derived($pinnedChats);
+  let allUnpinned = $derived($unpinnedChats);
+  let currentAgent = $derived($chatStore.activeAgent);
 
-  $: filteredPinned = searchQuery.trim()
+  let filteredPinned = $derived(searchQuery.trim()
     ? allPinned.filter(
         (chat) =>
           chat.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -30,9 +33,9 @@
             m.content.toLowerCase().includes(searchQuery.toLowerCase()),
           ),
       )
-    : allPinned;
+    : allPinned);
 
-  $: filteredUnpinned = searchQuery.trim()
+  let filteredUnpinned = $derived(searchQuery.trim()
     ? allUnpinned.filter(
         (chat) =>
           chat.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -40,9 +43,9 @@
             m.content.toLowerCase().includes(searchQuery.toLowerCase()),
           ),
       )
-    : allUnpinned;
+    : allUnpinned);
 
-  $: activeChatId = $chatStore.activeChatId;
+  let activeChatId = $derived($chatStore.activeChatId);
 
   // Handle chat selection
   function handleSelectChat(chatId: string) {
@@ -113,7 +116,7 @@
   }
 </script>
 
-<svelte:window on:click={handleClickOutside} />
+<svelte:window onclick={handleClickOutside} />
 
 <div class="chat-list-sidebar" role="navigation" aria-label="Chat history">
   <!-- Search Header -->
@@ -129,7 +132,7 @@
     </div>
     <button
       class="new-chat-btn"
-      on:click={handleNewChat}
+      onclick={handleNewChat}
       title="New Chat"
       aria-label="Create new chat"
     >
@@ -184,7 +187,7 @@
           {/if}
         </p>
         {#if !searchQuery}
-          <button class="start-chat-btn" on:click={handleNewChat}>
+          <button class="start-chat-btn" onclick={handleNewChat}>
             <Plus size={14} />
             Start Chat
           </button>
@@ -195,18 +198,18 @@
 
   <!-- Context Menu -->
   {#if showContextMenu && contextMenuChat}
-    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div
       class="context-menu"
       style="left: {contextMenuPosition.x}px; top: {contextMenuPosition.y}px;"
       transition:slide={{ duration: 100 }}
       role="menu"
       tabindex="-1"
-      on:click|stopPropagation
+      onclick={stopPropagation(bubble('click'))}
     >
       <button
         class="menu-item"
-        on:click={() => handlePinToggle(getChatId(contextMenuChat))}
+        onclick={() => handlePinToggle(getChatId(contextMenuChat))}
         role="menuitem"
       >
         <Pin size={14} />
@@ -214,7 +217,7 @@
       </button>
       <button
         class="menu-item danger"
-        on:click={() => handleDelete(getChatId(contextMenuChat))}
+        onclick={() => handleDelete(getChatId(contextMenuChat))}
         role="menuitem"
       >
         <Trash2 size={14} />

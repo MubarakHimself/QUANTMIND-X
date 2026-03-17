@@ -2,10 +2,10 @@
   import { createEventDispatcher } from 'svelte';
   import { RefreshCw, Lock } from 'lucide-svelte';
 
-  export let securitySettings = {
+  let { securitySettings = {
     secretKeyConfigured: false,
     secretKeyPrefix: ''
-  };
+  } } = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -29,7 +29,7 @@
   </div>
 
   <div class="setting-group">
-    <button class="btn btn-secondary" on:click={generateNewKey}>
+    <button class="btn btn-secondary" onclick={generateNewKey}>
       <RefreshCw size={16} />
       Generate New Key
     </button>

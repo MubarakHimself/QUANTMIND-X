@@ -9,15 +9,19 @@
 
   const dispatch = createEventDispatcher();
 
-  export let videoIngestQueue: Array<{
+
+  interface Props {
+    videoIngestQueue?: Array<{
     id: string;
     name: string;
     status: string;
     progress: number;
-  }> = [];
+  }>;
+    currentFolder?: string;
+    viewMode?: "grid" | "list";
+  }
 
-  export let currentFolder = "";
-  export let viewMode: "grid" | "list" = "grid";
+  let { videoIngestQueue = [], currentFolder = $bindable(""), viewMode = "grid" }: Props = $props();
 
   function openSubPage(page: string) {
     dispatch("openSubPage", page);
@@ -38,8 +42,8 @@
       class="ea-card add-new"
       role="button"
       tabindex="0"
-      on:click={() => openSubPage("video-ingest-modal")}
-      on:keydown={(e) => e.key === "Enter" && openSubPage("video-ingest-modal")}
+      onclick={() => openSubPage("video-ingest-modal")}
+      onkeydown={(e) => e.key === "Enter" && openSubPage("video-ingest-modal")}
     >
       <Plus size={32} />
       <span>Video Ingest</span>
@@ -53,7 +57,7 @@
       <div class="folder-breadcrumb">
         <button
           class="breadcrumb-btn"
-          on:click={() => (currentFolder = "")}
+          onclick={() => (currentFolder = "")}
         >
           <Home size={14} />
           <span>EA Management</span>
@@ -81,8 +85,8 @@
             class="folder-item"
             role="button"
             tabindex="0"
-            on:click={() => (currentFolder = "video_ingest")}
-            on:keydown={(e) =>
+            onclick={() => (currentFolder = "video_ingest")}
+            onkeydown={(e) =>
               e.key === "Enter" && (currentFolder = "video_ingest")}
           >
             <Folder size={40} color="#f59e0b" />
@@ -92,8 +96,8 @@
             class="folder-item"
             role="button"
             tabindex="0"
-            on:click={() => (currentFolder = "trd")}
-            on:keydown={(e) =>
+            onclick={() => (currentFolder = "trd")}
+            onkeydown={(e) =>
               e.key === "Enter" && (currentFolder = "trd")}
           >
             <Folder size={40} color="#3b82f6" />
@@ -103,8 +107,8 @@
             class="folder-item"
             role="button"
             tabindex="0"
-            on:click={() => (currentFolder = "ea")}
-            on:keydown={(e) =>
+            onclick={() => (currentFolder = "ea")}
+            onkeydown={(e) =>
               e.key === "Enter" && (currentFolder = "ea")}
           >
             <Folder size={40} color="#10b981" />
@@ -114,8 +118,8 @@
             class="folder-item"
             role="button"
             tabindex="0"
-            on:click={() => (currentFolder = "backtest")}
-            on:keydown={(e) =>
+            onclick={() => (currentFolder = "backtest")}
+            onkeydown={(e) =>
               e.key === "Enter" && (currentFolder = "backtest")}
           >
             <Folder size={40} color="#8b5cf6" />

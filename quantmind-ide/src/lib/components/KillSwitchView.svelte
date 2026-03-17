@@ -1,10 +1,13 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { onMount, onDestroy } from "svelte";
 
   // Simple toast notification system
-  let toastMessage = "";
-  let toastVisible = false;
-  let toastType: "success" | "error" = "success";
+  let toastMessage = $state("");
+  let toastVisible = $state(false);
+  let toastType: "success" | "error" = $state("success");
 
   function showToast(message: string, type: "success" | "error" = "success") {
     toastMessage = message;
@@ -14,12 +17,12 @@
   }
 
   // Simple confirmation dialog
-  let confirmDialog = {
+  let confirmDialog = $state({
     open: false,
     title: "",
     message: "",
     onConfirm: () => {},
-  };
+  });
 
   function showConfirmDialog(
     title: string,
@@ -69,15 +72,15 @@
   }
 
   // Reactive state
-  let selectedStrategy: KillSwitchStrategy = "immediate";
-  let showHistory = false;
+  let selectedStrategy: KillSwitchStrategy = $state("immediate");
+  let showHistory = $state(false);
   let pollingInterval: number | null = null;
 
   // Data loaded from API
-  let bots: BotKillSwitchConfig[] = [];
-  let killSwitchHistory: KillSwitchEvent[] = [];
+  let bots: BotKillSwitchConfig[] = $state([]);
+  let killSwitchHistory: KillSwitchEvent[] = $state([]);
 
-  let killZoneConfig: KillZoneConfig = {
+  let killZoneConfig: KillZoneConfig = $state({
     enabled: true,
     timeRanges: [
       {
@@ -92,16 +95,16 @@
       },
     ],
     newsImpactThreshold: "high",
-  };
+  });
 
   // Computed metrics
-  $: totalPositions = bots.reduce((sum, bot) => sum + bot.positions_open, 0);
-  $: totalDailyPnL = bots.reduce((sum, bot) => sum + bot.today_pnl, 0);
-  $: activeBots = bots.filter((b) => b.status === "active").length;
-  $: circuitBreakerTripped = bots.some((b) => b.loss_count >= b.max_losses);
-  $: dailyDrawdown = Math.min(0, totalDailyPnL);
-  $: dailyDrawdownPercent =
-    dailyDrawdown < 0 ? (Math.abs(dailyDrawdown) / 10000) * 100 : 0; // Assume 10k account
+  let totalPositions = $derived(bots.reduce((sum, bot) => sum + bot.positions_open, 0));
+  let totalDailyPnL = $derived(bots.reduce((sum, bot) => sum + bot.today_pnl, 0));
+  let activeBots = $derived(bots.filter((b) => b.status === "active").length);
+  let circuitBreakerTripped = $derived(bots.some((b) => b.loss_count >= b.max_losses));
+  let dailyDrawdown = $derived(Math.min(0, totalDailyPnL));
+  let dailyDrawdownPercent =
+    $derived(dailyDrawdown < 0 ? (Math.abs(dailyDrawdown) / 10000) * 100 : 0); // Assume 10k account
 
   // Strategy display names and descriptions
   const strategies = {
@@ -319,7 +322,7 @@
       </p>
     </div>
     <button
-      on:click={() => (showHistory = !showHistory)}
+      onclick={() => (showHistory = !showHistory)}
       class="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
     >
       {showHistory ? "Hide" : "Show"} History
@@ -354,7 +357,7 @@
         </div>
       </div>
       <button
-        on:click={handleEmergencyStop}
+        onclick={handleEmergencyStop}
         class="px-6 py-3 text-lg font-bold bg-red-600 hover:bg-red-700 text-white rounded-lg animate-pulse-slow transition-colors"
       >
         🛑 EMERGENCY STOP ALL
@@ -550,7 +553,7 @@
               <td class="py-3 px-4">
                 <select
                   value={bot.strategy}
-                  on:change={(e) =>
+                  onchange={(e) =>
                     updateBotStrategy(bot.bot_id, e.currentTarget.value)}
                   class="px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-700 text-sm"
                 >
@@ -590,14 +593,14 @@
                 <div class="flex items-center gap-2">
                   {#if bot.status === "active"}
                     <button
-                      on:click={() => suspendBot(bot.bot_id)}
+                      onclick={() => suspendBot(bot.bot_id)}
                       class="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
                       title="Suspend bot"
                     >
                       ⏸️
                     </button>
                     <button
-                      on:click={() => killBot(bot.bot_id)}
+                      onclick={() => killBot(bot.bot_id)}
                       class="px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-white text-sm"
                       title="Kill bot"
                     >
@@ -605,7 +608,7 @@
                     </button>
                   {:else}
                     <button
-                      on:click={() => {
+                      onclick={() => {
                         bot.status = "active";
                         showToast(`Resumed ${bot.bot_name}`);
                       }}
@@ -637,7 +640,7 @@
         <input
           type="checkbox"
           bind:checked={killZoneConfig.enabled}
-          on:change={toggleKillZone}
+          onchange={toggleKillZone}
           class="w-4 h-4 rounded border-gray-300 dark:border-gray-700"
         />
         <span class="text-sm font-medium">Enable Auto-Pause</span>
@@ -822,16 +825,16 @@
   {#if confirmDialog.open}
     <div
       class="dialog-overlay"
-      on:click={() => (confirmDialog.open = false)}
-      on:keydown={(e) => e.key === "Escape" && (confirmDialog.open = false)}
+      onclick={() => (confirmDialog.open = false)}
+      onkeydown={(e) => e.key === "Escape" && (confirmDialog.open = false)}
       role="button"
       tabindex="-1"
       aria-label="Close dialog"
     >
       <div
         class="dialog"
-        on:click|stopPropagation
-        on:keydown={(e) => e.key === "Escape" && (confirmDialog.open = false)}
+        onclick={stopPropagation(bubble('click'))}
+        onkeydown={(e) => e.key === "Escape" && (confirmDialog.open = false)}
         role="document"
         tabindex="-1"
       >
@@ -839,8 +842,8 @@
         <p>{confirmDialog.message}</p>
         <div class="dialog-actions">
           <button
-            on:click={() => (confirmDialog.open = false)}
-            on:keydown={(e) =>
+            onclick={() => (confirmDialog.open = false)}
+            onkeydown={(e) =>
               (e.key === "Enter" || e.key === " ") &&
               (confirmDialog.open = false)}
           >
@@ -848,11 +851,11 @@
           </button>
           <button
             class="danger"
-            on:click={() => {
+            onclick={() => {
               confirmDialog.onConfirm();
               confirmDialog.open = false;
             }}
-            on:keydown={(e) => {
+            onkeydown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 confirmDialog.onConfirm();
                 confirmDialog.open = false;

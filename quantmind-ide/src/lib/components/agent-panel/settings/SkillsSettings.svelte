@@ -6,11 +6,11 @@
   import { onMount } from 'svelte';
 
   // State
-  let selectedAgent: AgentType = 'research';
-  let selectedDepartment: DepartmentId | 'all' = 'all';
-  let backendSkills: any[] = [];
+  let selectedAgent: AgentType = $state('research');
+  let selectedDepartment: DepartmentId | 'all' = $state('all');
+  let backendSkills: any[] = $state([]);
   let isLoadingBackend = false;
-  let executingSkill: string | null = null;
+  let executingSkill: string | null = $state(null);
   let executionResults: Record<string, any> = {};
 
   // Agent configuration - using department-based agents
@@ -49,7 +49,7 @@
   }
 
   // Reactive state - merge backend skills department info with settings store skills
-  $: currentSkills = (() => {
+  let currentSkills = $derived((() => {
     const storeSkills = $settingsStore.skills[selectedAgent]?.skills || [];
     return storeSkills.map(skill => {
       const backendSkill = backendSkills.find((b: any) => b.id === skill.id);
@@ -58,13 +58,13 @@
         departments: backendSkill?.departments || skill.departments || []
       };
     });
-  })();
-  $: filteredByDepartment = selectedDepartment === 'all'
+  })());
+  let filteredByDepartment = $derived(selectedDepartment === 'all'
     ? currentSkills
-    : currentSkills.filter(s => !s.departments || s.departments.length === 0 || s.departments.includes(selectedDepartment));
-  $: coreSkills = filteredByDepartment.filter(s => s.category === 'core');
-  $: advancedSkills = filteredByDepartment.filter(s => s.category === 'advanced');
-  $: customSkills = filteredByDepartment.filter(s => s.category === 'custom');
+    : currentSkills.filter(s => !s.departments || s.departments.length === 0 || s.departments.includes(selectedDepartment)));
+  let coreSkills = $derived(filteredByDepartment.filter(s => s.category === 'core'));
+  let advancedSkills = $derived(filteredByDepartment.filter(s => s.category === 'advanced'));
+  let customSkills = $derived(filteredByDepartment.filter(s => s.category === 'custom'));
 
   // Get department info for badges
   function getDepartmentInfo(deptId: string) {
@@ -158,9 +158,9 @@
       <button
         class="agent-chip"
         class:active={selectedAgent === agent.id}
-        on:click={() => selectedAgent = agent.id}
+        onclick={() => selectedAgent = agent.id}
       >
-        <svelte:component this={agent.icon} size={14} />
+        <agent.icon size={14} />
         {agent.name}
       </button>
     {/each}
@@ -196,7 +196,7 @@
             <span class="count">{getEnabledCount('core')}</span>
             <button 
               class="toggle-all"
-              on:click={() => toggleCategory('core', !isCategoryFullyEnabled('core'))}
+              onclick={() => toggleCategory('core', !isCategoryFullyEnabled('core'))}
             >
               {#if isCategoryFullyEnabled('core')}
                 <ToggleRight size={18} />
@@ -246,7 +246,7 @@
                     class="run-btn"
                     title="Execute skill"
                     disabled={executingSkill === skill.id}
-                    on:click={() => executeSkill(skill.id)}
+                    onclick={() => executeSkill(skill.id)}
                   >
                     {#if executingSkill === skill.id}
                       <Loader2 size={14} class="spin" />
@@ -259,7 +259,7 @@
                   <input
                     type="checkbox"
                     checked={skill.enabled}
-                    on:change={() => toggleSkill(skill.id)}
+                    onchange={() => toggleSkill(skill.id)}
                   />
                   <span class="toggle-slider"></span>
                 </label>
@@ -282,7 +282,7 @@
             <span class="count">{getEnabledCount('advanced')}</span>
             <button 
               class="toggle-all"
-              on:click={() => toggleCategory('advanced', !isCategoryFullyEnabled('advanced'))}
+              onclick={() => toggleCategory('advanced', !isCategoryFullyEnabled('advanced'))}
             >
               {#if isCategoryFullyEnabled('advanced')}
                 <ToggleRight size={18} />
@@ -332,7 +332,7 @@
                     class="run-btn"
                     title="Execute skill"
                     disabled={executingSkill === skill.id}
-                    on:click={() => executeSkill(skill.id)}
+                    onclick={() => executeSkill(skill.id)}
                   >
                     {#if executingSkill === skill.id}
                       <Loader2 size={14} class="spin" />
@@ -345,7 +345,7 @@
                   <input
                     type="checkbox"
                     checked={skill.enabled}
-                    on:change={() => toggleSkill(skill.id)}
+                    onchange={() => toggleSkill(skill.id)}
                   />
                   <span class="toggle-slider"></span>
                 </label>
@@ -368,7 +368,7 @@
             <span class="count">{getEnabledCount('custom')}</span>
             <button 
               class="toggle-all"
-              on:click={() => toggleCategory('custom', !isCategoryFullyEnabled('custom'))}
+              onclick={() => toggleCategory('custom', !isCategoryFullyEnabled('custom'))}
             >
               {#if isCategoryFullyEnabled('custom')}
                 <ToggleRight size={18} />
@@ -418,7 +418,7 @@
                     class="run-btn"
                     title="Execute skill"
                     disabled={executingSkill === skill.id}
-                    on:click={() => executeSkill(skill.id)}
+                    onclick={() => executeSkill(skill.id)}
                   >
                     {#if executingSkill === skill.id}
                       <Loader2 size={14} class="spin" />
@@ -431,7 +431,7 @@
                   <input
                     type="checkbox"
                     checked={skill.enabled}
-                    on:change={() => toggleSkill(skill.id)}
+                    onchange={() => toggleSkill(skill.id)}
                   />
                   <span class="toggle-slider"></span>
                 </label>

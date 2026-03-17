@@ -7,8 +7,13 @@
   } from '../ws-client';
   import type { WebSocketMessage } from '../ws-client';
 
-  // Props
-  export let baseUrl: string = 'http://localhost:8000';
+  
+  interface Props {
+    // Props
+    baseUrl?: string;
+  }
+
+  let { baseUrl = 'http://localhost:8000' }: Props = $props();
 
   // Types
   interface BacktestMetrics {
@@ -60,19 +65,19 @@
   }
 
   // State
-  let result: BacktestResult | null = null;
-  let loading = true;
+  let result: BacktestResult | null = $state(null);
+  let loading = $state(true);
   let error: string | null = null;
-  let activeTab = 'overview';
+  let activeTab = $state('overview');
 
   // WebSocket streaming state
   let wsClient: WebSocketClient | null = null;
-  let wsConnected = false;
+  let wsConnected = $state(false);
   let currentBacktestId: string | null = null;
-  let isRunning = false;
-  let progress = 0;
-  let status = '';
-  let liveLogs: Array<{ timestamp: string; level: string; message: string }> = [];
+  let isRunning = $state(false);
+  let progress = $state(0);
+  let status = $state('');
+  let liveLogs: Array<{ timestamp: string; level: string; message: string }> = $state([]);
 
 
   // Fetch backtest result
@@ -295,7 +300,7 @@
       <div class="connection-status" class:connected={wsConnected}>
         {wsConnected ? 'Connected' : 'Disconnected'}
       </div>
-      <button class="export-btn" on:click={exportResults} disabled={!result}>
+      <button class="export-btn" onclick={exportResults} disabled={!result}>
         Export
       </button>
     </div>
@@ -346,21 +351,21 @@
       <button 
         class="tab" 
         class:active={activeTab === 'overview'}
-        on:click={() => activeTab = 'overview'}
+        onclick={() => activeTab = 'overview'}
       >
         Overview
       </button>
       <button 
         class="tab" 
         class:active={activeTab === 'trades'}
-        on:click={() => activeTab = 'trades'}
+        onclick={() => activeTab = 'trades'}
       >
         Trades
       </button>
       <button 
         class="tab" 
         class:active={activeTab === 'equity'}
-        on:click={() => activeTab = 'equity'}
+        onclick={() => activeTab = 'equity'}
       >
         Equity Curve
       </button>

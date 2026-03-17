@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run, stopPropagation } from 'svelte/legacy';
+
   import { onMount } from "svelte";
   import { createEventDispatcher } from "svelte";
   import {
@@ -12,7 +14,11 @@
   import { navigationStore } from "../stores/navigationStore";
   import Breadcrumbs from "./Breadcrumbs.svelte";
 
-  export let activeView = "knowledge";
+  interface Props {
+    activeView?: string;
+  }
+
+  let { activeView = "knowledge" }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -20,18 +26,18 @@
   const API_BASE = "http://localhost:8000/api";
 
   // Tree data state
-  let treeData: Record<string, any[]> = {
+  let treeData: Record<string, any[]> = $state({
     knowledge: [],
     assets: [],
     ea: [],
     backtest: [],
     live: [],
     settings: [],
-  };
+  });
 
-  let expandedFolders: Set<string> = new Set();
-  let loading = false;
-  let error = "";
+  let expandedFolders: Set<string> = $state(new Set());
+  let loading = $state(false);
+  let error = $state("");
 
   const viewConfig: Record<string, { title: string; endpoint: string }> = {
     knowledge: { title: "Knowledge Hub", endpoint: "/knowledge" },
@@ -51,14 +57,6 @@
     );
   });
 
-  $: if (activeView) {
-    loadData(activeView);
-    // Update navigation when view changes
-    navigationStore.navigateToView(
-      activeView,
-      viewConfig[activeView]?.title || "Explorer",
-    );
-  }
 
   async function loadData(view: string) {
     const config = viewConfig[view];
@@ -257,6 +255,16 @@
     };
     return badges[status] || "";
   }
+  run(() => {
+    if (activeView) {
+      loadData(activeView);
+      // Update navigation when view changes
+      navigationStore.navigateToView(
+        activeView,
+        viewConfig[activeView]?.title || "Explorer",
+      );
+    }
+  });
 </script>
 
 <aside class="sidebar">
@@ -265,7 +273,7 @@
       <span class="title">{viewConfig[activeView]?.title || "Explorer"}</span>
       <button
         class="refresh-btn"
-        on:click={() => loadData(activeView)}
+        onclick={() => loadData(activeView)}
         title="Refresh"
       >
         <span class:spinning={loading}>
@@ -292,7 +300,7 @@
       <div class="empty-state">
         <span class="empty-text">No items to display</span>
         {#if error}
-          <button class="retry-btn" on:click={() => loadData(activeView)}>
+          <button class="retry-btn" onclick={() => loadData(activeView)}>
             Retry
           </button>
         {/if}
@@ -302,8 +310,8 @@
       <div
         class="tree-item folder"
         class:expanded={expandedFolders.has(folder.id)}
-        on:click={() => handleItemClick(folder)}
-        on:keypress={(e) => e.key === "Enter" && handleItemClick(folder)}
+        onclick={() => handleItemClick(folder)}
+        onkeypress={(e) => e.key === "Enter" && handleItemClick(folder)}
         role="treeitem"
         aria-selected={expandedFolders.has(folder.id)}
         tabindex="0"
@@ -333,8 +341,8 @@
             <div
               class="tree-item folder nested"
               class:expanded={expandedFolders.has(child.id)}
-              on:click|stopPropagation={() => handleItemClick(child)}
-              on:keypress={(e) => e.key === "Enter" && handleItemClick(child)}
+              onclick={stopPropagation(() => handleItemClick(child))}
+              onkeypress={(e) => e.key === "Enter" && handleItemClick(child)}
               role="treeitem"
               aria-selected={expandedFolders.has(child.id)}
               tabindex="0"
@@ -351,8 +359,8 @@
           {:else}
             <div
               class="tree-item file"
-              on:click|stopPropagation={() => handleItemClick(child)}
-              on:keypress={(e) => e.key === "Enter" && handleItemClick(child)}
+              onclick={stopPropagation(() => handleItemClick(child))}
+              onkeypress={(e) => e.key === "Enter" && handleItemClick(child)}
               role="treeitem"
               aria-selected="false"
               tabindex="0"

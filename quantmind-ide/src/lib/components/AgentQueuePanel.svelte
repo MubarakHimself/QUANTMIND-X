@@ -32,10 +32,10 @@
   }
 
   // State
-  let queueStatuses: QueueStatus[] = [];
-  let selectedAgent: string | null = null;
-  let agentTasks: Task[] = [];
-  let loading = false;
+  let queueStatuses: QueueStatus[] = $state([]);
+  let selectedAgent: string | null = $state(null);
+  let agentTasks: Task[] = $state([]);
+  let loading = $state(false);
   let tasksLoading = false;
 
   // Agent display names
@@ -175,7 +175,7 @@
     <h2 class="text-lg font-semibold">Agent Queues</h2>
     <button
       class="px-3 py-1 text-sm bg-blue-600 rounded hover:bg-blue-700"
-      on:click={fetchQueueStatuses}
+      onclick={fetchQueueStatuses}
       disabled={loading}
     >
       Refresh
@@ -189,7 +189,7 @@
         <button
           class="w-full p-3 bg-gray-800 rounded-lg border border-gray-700 hover:border-gray-600 text-left transition-colors"
           class:border-blue-500={selectedAgent === queue.agent_type}
-          on:click={() => selectAgentQueue(queue.agent_type)}
+          onclick={() => selectAgentQueue(queue.agent_type)}
         >
           <div class="flex items-center justify-between">
             <span class="font-medium">{agentNames[queue.agent_type] || queue.agent_type}</span>
@@ -264,7 +264,7 @@
                 {#if task.status === 'pending' || task.status === 'queued'}
                   <button
                     class="px-2 py-0.5 text-xs bg-red-600 rounded hover:bg-red-700"
-                    on:click={() => cancelTask(task.task_id)}
+                    onclick={() => cancelTask(task.task_id)}
                   >
                     Cancel
                   </button>
@@ -272,7 +272,7 @@
                 {#if task.status === 'failed' && task.retries < 3}
                   <button
                     class="px-2 py-0.5 text-xs bg-blue-600 rounded hover:bg-blue-700"
-                    on:click={() => retryTask(task.task_id)}
+                    onclick={() => retryTask(task.task_id)}
                   >
                     Retry
                   </button>

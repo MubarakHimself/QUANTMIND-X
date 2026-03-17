@@ -4,12 +4,16 @@
 
   const dispatch = createEventDispatcher();
 
-  export let currentFolder: string | null = null;
-  export let assetTabs: Array<{
+  interface Props {
+    currentFolder?: string | null;
+    assetTabs?: Array<{
     id: string;
     name: string;
     icon?: any;
-  }> = [];
+  }>;
+  }
+
+  let { currentFolder = $bindable(null), assetTabs = [] }: Props = $props();
 
   function openSubPage(page: string) {
     dispatch("openSubPage", page);
@@ -23,13 +27,13 @@
         class="tab-item"
         class:active={currentFolder === tab.id ||
           (!currentFolder && tab.id === "indicators")}
-        on:click={() =>
+        onclick={() =>
           tab.id === "database"
             ? openSubPage("database")
             : (currentFolder = tab.id)}
       >
         {#if tab.icon}
-          <svelte:component this={tab.icon} size={14} />
+          <tab.icon size={14} />
         {/if}
         {tab.name}
       </button>
@@ -44,8 +48,8 @@
             class="folder-item"
             role="button"
             tabindex="0"
-            on:click={() => (currentFolder = tab.id)}
-            on:keydown={(e) =>
+            onclick={() => (currentFolder = tab.id)}
+            onkeydown={(e) =>
               e.key === "Enter" && (currentFolder = tab.id)}
           >
             <Folder size={40} class="text-accent" />
@@ -56,8 +60,8 @@
           class="folder-item"
           role="button"
           tabindex="0"
-          on:click={() => openSubPage("database")}
-          on:keydown={(e) =>
+          onclick={() => openSubPage("database")}
+          onkeydown={(e) =>
             e.key === "Enter" && openSubPage("database")}
         >
           <Database size={40} class="text-accent" />
@@ -70,7 +74,7 @@
         <div class="list-header">
           <button
             class="back-link"
-            on:click={() => (currentFolder = null)}
+            onclick={() => (currentFolder = null)}
           >
             <ArrowLeft size={14} /> Back to Assets
           </button>

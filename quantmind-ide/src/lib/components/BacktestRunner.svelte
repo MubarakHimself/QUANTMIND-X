@@ -6,30 +6,35 @@
   } from '../ws-client';
   import type { WebSocketMessage } from '../ws-client';
   
-  // Props
-  export let baseUrl: string = 'http://localhost:8000';
-  export let strategyCode: string = '';
-  export let strategyName: string = 'MyStrategy';
+  
+  interface Props {
+    // Props
+    baseUrl?: string;
+    strategyCode?: string;
+    strategyName?: string;
+  }
+
+  let { baseUrl = 'http://localhost:8000', strategyCode = '', strategyName = 'MyStrategy' }: Props = $props();
   
   // Backtest parameters
-  let symbol = 'EURUSD';
-  let timeframe = 'H1';
-  let variant: 'vanilla' | 'spiced' | 'vanilla_full' | 'spiced_full' = 'spiced';
-  let startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  let endDate = new Date().toISOString().split('T')[0];
+  let symbol = $state('EURUSD');
+  let timeframe = $state('H1');
+  let variant: 'vanilla' | 'spiced' | 'vanilla_full' | 'spiced_full' = $state('spiced');
+  let startDate = $state(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+  let endDate = $state(new Date().toISOString().split('T')[0]);
   
   // State
-  let isRunning = false;
+  let isRunning = $state(false);
   let currentBacktestId: string | null = null;
-  let progress = 0;
-  let status = '';
-  let logs: Array<{ timestamp: string; level: string; message: string }> = [];
-  let results: Record<string, unknown> | null = null;
-  let error: string | null = null;
+  let progress = $state(0);
+  let status = $state('');
+  let logs: Array<{ timestamp: string; level: string; message: string }> = $state([]);
+  let results: Record<string, unknown> | null = $state(null);
+  let error: string | null = $state(null);
   
   // WebSocket
   let wsClient: WebSocketClient | null = null;
-  let wsConnected = false;
+  let wsConnected = $state(false);
   
   // Options
   const symbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD', 'BTCUSD'];
@@ -42,19 +47,19 @@
   ];
   
   // Log level filtering
-  let logLevelFilter = 'ALL';
+  let logLevelFilter = $state('ALL');
   const logLevels = ['ALL', 'INFO', 'WARNING', 'ERROR', 'PROGRESS', 'COMPLETE'];
   
   // Filtered logs based on selected level
-  $: filteredLogs = logLevelFilter === 'ALL' 
+  let filteredLogs = $derived(logLevelFilter === 'ALL' 
     ? logs 
-    : logs.filter(log => log.level === logLevelFilter);
+    : logs.filter(log => log.level === logLevelFilter));
   
   // Auto-scroll control
-  let autoScroll = true;
+  let autoScroll = $state(true);
   
   // Log container reference for auto-scroll
-  let logContainer: HTMLDivElement;
+  let logContainer: HTMLDivElement = $state();
   
   const dispatch = createEventDispatcher();
   
@@ -326,21 +331,21 @@
   
   <div class="actions">
     {#if isRunning}
-      <button class="btn btn-stop" on:click={stopBacktest} disabled={!isRunning}>
+      <button class="btn btn-stop" onclick={stopBacktest} disabled={!isRunning}>
         Stop
       </button>
     {:else}
-      <button class="btn btn-run" on:click={runBacktest} disabled={!wsConnected}>
+      <button class="btn btn-run" onclick={runBacktest} disabled={!wsConnected}>
         Run Backtest
       </button>
     {/if}
     
-    <button class="btn btn-clear" on:click={clearLogs} disabled={isRunning}>
+    <button class="btn btn-clear" onclick={clearLogs} disabled={isRunning}>
       Clear Logs
     </button>
     
     {#if results}
-      <button class="btn btn-download" on:click={downloadResults}>
+      <button class="btn btn-download" onclick={downloadResults}>
         Download Results
       </button>
     {/if}
@@ -372,15 +377,15 @@
             <option value={level}>{level}</option>
           {/each}
         </select>
-        <button class="btn btn-small" class:active={autoScroll} on:click={toggleAutoScroll}>
+        <button class="btn btn-small" class:active={autoScroll} onclick={toggleAutoScroll}>
           {autoScroll ? 'Auto-Scroll ON' : 'Auto-Scroll OFF'}
         </button>
-        <button class="btn btn-small btn-export" on:click={exportLogs} disabled={logs.length === 0}>
+        <button class="btn btn-small btn-export" onclick={exportLogs} disabled={logs.length === 0}>
           Export Logs
         </button>
       </div>
     </div>
-    <div class="logs-container" data-testid="logs-container" bind:this={logContainer} on:scroll={handleLogScroll}>
+    <div class="logs-container" data-testid="logs-container" bind:this={logContainer} onscroll={handleLogScroll}>
       {#if filteredLogs.length === 0}
         <div class="empty-logs">{logs.length === 0 ? 'No logs yet' : 'No logs match filter'}</div>
       {:else}

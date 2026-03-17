@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   
   // Get agent_id from URL
-  $: agentId = $page.params.id;
+  let agentId = $derived($page.params.id);
   
   // Types
   interface LifecycleEvent {
@@ -27,10 +27,10 @@
   }
   
   // State
-  let agent: AgentInfo | null = null;
-  let events: LifecycleEvent[] = [];
-  let loading = true;
-  let error: string | null = null;
+  let agent: AgentInfo | null = $state(null);
+  let events: LifecycleEvent[] = $state([]);
+  let loading = $state(true);
+  let error: string | null = $state(null);
   
   // Load agent and lifecycle events
   async function loadData() {
@@ -133,7 +133,7 @@
         </p>
       {/if}
     </div>
-    <button class="refresh-btn" on:click={loadData}>Refresh</button>
+    <button class="refresh-btn" onclick={loadData}>Refresh</button>
   </header>
   
   {#if loading && !agent}

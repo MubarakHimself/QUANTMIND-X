@@ -1,11 +1,18 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { createEventDispatcher } from 'svelte';
   import { X } from 'lucide-svelte';
 
-  export let isOpen = false;
-  export let isLoading = false;
 
-  export let form = {
+  interface Props {
+    isOpen?: boolean;
+    isLoading?: boolean;
+    form?: any;
+  }
+
+  let { isOpen = false, isLoading = false, form = $bindable({
     strategy_name: '',
     strategy_code: '',
     symbol: 'EURUSD',
@@ -14,7 +21,7 @@
     mt5_password: '',
     mt5_server: 'MetaQuotes-Demo',
     magic_number: Math.floor(Math.random() * 100000000),
-  };
+  }) }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
@@ -28,11 +35,11 @@
 </script>
 
 {#if isOpen}
-  <div class="modal-overlay" on:click={() => dispatch('close')} on:keydown={(e) => e.key === 'Escape' && dispatch('close')} role="dialog" aria-modal="true">
-    <div class="modal-content" on:click|stopPropagation role="presentation">
+  <div class="modal-overlay" onclick={() => dispatch('close')} onkeydown={(e) => e.key === 'Escape' && dispatch('close')} role="dialog" aria-modal="true">
+    <div class="modal-content" onclick={stopPropagation(bubble('click'))} role="presentation">
       <div class="modal-header">
         <h3>Deploy New Agent</h3>
-        <button class="close-btn" on:click={() => dispatch('close')}>
+        <button class="close-btn" onclick={() => dispatch('close')}>
           <X size={18} />
         </button>
       </div>
@@ -110,8 +117,8 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn secondary" on:click={() => dispatch('close')}>Cancel</button>
-        <button class="btn primary" on:click={() => dispatch('deploy', form)} disabled={isLoading}>
+        <button class="btn secondary" onclick={() => dispatch('close')}>Cancel</button>
+        <button class="btn primary" onclick={() => dispatch('deploy', form)} disabled={isLoading}>
           {isLoading ? 'Deploying...' : 'Deploy Agent'}
         </button>
       </div>

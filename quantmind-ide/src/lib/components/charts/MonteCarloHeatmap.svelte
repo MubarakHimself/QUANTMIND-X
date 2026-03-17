@@ -1,27 +1,32 @@
 <script lang="ts">
+  import { run as run_1 } from 'svelte/legacy';
+
   import { onMount, onDestroy } from 'svelte';
   import * as d3 from 'd3';
   import { theme } from '../../stores/themeStore';
 
-  export let data: {
+
+  interface Props {
+    data?: {
     runs: number[][];
     days: number[];
     minValue: number;
     maxValue: number;
-  } = {
+  };
+    height?: number;
+    showAxis?: boolean;
+  }
+
+  let { data = {
     runs: [],
     days: [],
     minValue: 0,
     maxValue: 0
-  };
+  }, height = 400, showAxis = true }: Props = $props();
 
-  export let height = 400;
-  export let showAxis = true;
-
-  let container: HTMLDivElement;
+  let container: HTMLDivElement = $state();
   let svg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null;
 
-  $: colors = getColors();
 
   function getColors() {
     const isDark = $theme.name.includes('dark') || $theme.name.includes('matrix') || $theme.name.includes('trading');
@@ -223,13 +228,18 @@
     }
   });
 
-  $: if (data) {
-    updateHeatmap();
-  }
 
-  $: if ($theme) {
-    updateHeatmap();
-  }
+  let colors = $derived(getColors());
+  run_1(() => {
+    if (data) {
+      updateHeatmap();
+    }
+  });
+  run_1(() => {
+    if ($theme) {
+      updateHeatmap();
+    }
+  });
 </script>
 
 <div class="heatmap-container" bind:this={container} style="height: {height}px;">

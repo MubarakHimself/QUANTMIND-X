@@ -31,14 +31,14 @@
   const API_BASE = API_CONFIG.API_BASE;
 
   // Simplified tabs
-  let activeTab = "trading-floor";
-  let tradingFloorCollapsed = false;
+  let activeTab = $state("trading-floor");
+  let tradingFloorCollapsed = $state(false);
 
   // Resizable panel widths
-  let leftPanelWidth = 280;
-  let rightPanelWidth = 320;
-  let isDraggingLeft = false;
-  let isDraggingRight = false;
+  let leftPanelWidth = $state(280);
+  let rightPanelWidth = $state(320);
+  let isDraggingLeft = $state(false);
+  let isDraggingRight = $state(false);
 
   function startResizeLeft(e: MouseEvent) {
     isDraggingLeft = true;
@@ -83,14 +83,14 @@
   ];
 
   // Memory state
-  $: memories = $memoryStore.filteredMemories;
-  $: memoryStats = $memoryStore.stats;
-  $: memoryLoading = $memoryStore.loading;
-  $: memoryError = $memoryStore.error;
+  let memories = $derived($memoryStore.filteredMemories);
+  let memoryStats = $derived($memoryStore.stats);
+  let memoryLoading = $derived($memoryStore.loading);
+  let memoryError = $derived($memoryStore.error);
 
   // Trading Floor state
-  $: floorStats = $tradingFloorStore.floorStats || { totalTasks: 0, activeTasks: 0 };
-  $: isConnected = $wsConnected || false;
+  let floorStats = $derived($tradingFloorStore.floorStats || { totalTasks: 0, activeTasks: 0 });
+  let isConnected = $derived($wsConnected || false);
 
   onMount(() => {
     loadMemoryData();
@@ -161,10 +161,10 @@
       <button
         class="nav-icon-btn"
         class:active={activeTab === tab.id}
-        on:click={() => activeTab = tab.id}
+        onclick={() => activeTab = tab.id}
         title={tab.label}
       >
-        <svelte:component this={tab.icon} size={18} />
+        <tab.icon size={18} />
       </button>
     {/each}
   </div>
@@ -180,7 +180,7 @@
       </div>
 
       <!-- Resize Handle Left -->
-      <div class="resize-handle" on:mousedown={startResizeLeft}></div>
+      <div class="resize-handle" onmousedown={startResizeLeft}></div>
 
       <!-- Center: Trading Floor Canvas -->
       <div class="tf-center-panel" class:collapsed={tradingFloorCollapsed}>
@@ -188,10 +188,10 @@
           <Users size={16} />
           <span>Department Flow</span>
           <div class="tf-controls">
-            <button class="tf-btn-sm tf-btn-outline" on:click={initializeTradingFloor}>
+            <button class="tf-btn-sm tf-btn-outline" onclick={initializeTradingFloor}>
               Reset
             </button>
-            <button class="tf-btn-sm tf-btn-outline" on:click={() => tradingFloorCollapsed = !tradingFloorCollapsed}>
+            <button class="tf-btn-sm tf-btn-outline" onclick={() => tradingFloorCollapsed = !tradingFloorCollapsed}>
               {#if tradingFloorCollapsed}
                 <ChevronDown size={14} />
               {:else}
@@ -222,7 +222,7 @@
       </div>
 
       <!-- Resize Handle Right -->
-      <div class="resize-handle" on:mousedown={startResizeRight}></div>
+      <div class="resize-handle" onmousedown={startResizeRight}></div>
 
       <!-- Right Panel: Department Chat -->
       <div class="tf-right-panel" style="width: {rightPanelWidth}px; flex: none;">

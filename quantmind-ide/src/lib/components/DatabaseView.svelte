@@ -51,44 +51,44 @@
   // ============================================================================
 
   // Table list
-  let tables: TableInfo[] = [];
-  let filteredTables: TableInfo[] = [];
-  let selectedTable: TableInfo | null = null;
+  let tables: TableInfo[] = $state([]);
+  let filteredTables: TableInfo[] = $state([]);
+  let selectedTable: TableInfo | null = $state(null);
 
   // Data grid
-  let tableData: QueryResult | null = null;
-  let selectedRows: Set<string> = new Set();
-  let currentPage = 1;
+  let tableData: QueryResult | null = $state(null);
+  let selectedRows: Set<string> = $state(new Set());
+  let currentPage = $state(1);
   let rowsPerPage = 25;
-  let sortColumn: string | null = null;
-  let sortDirection: "asc" | "desc" = "asc";
+  let sortColumn: string | null = $state(null);
+  let sortDirection: "asc" | "desc" = $state("asc");
 
   // Query editor
-  let queryInput = "";
-  let queryHistory: string[] = [];
-  let queryResults: QueryResult | null = null;
+  let queryInput = $state("");
+  let queryHistory: string[] = $state([]);
+  let queryResults: QueryResult | null = $state(null);
   let queryHistoryIndex = -1;
 
   // Table info
-  let showTableInfo = false;
+  let showTableInfo = $state(false);
   let tableSchema: ColumnInfo[] = [];
 
   // Database stats
-  let dbStats: DatabaseStats | null = null;
+  let dbStats: DatabaseStats | null = $state(null);
 
   // Modals
-  let insertModalOpen = false;
-  let editModalOpen = false;
-  let jsonPreviewModalOpen = false;
-  let jsonPreviewData: any = null;
+  let insertModalOpen = $state(false);
+  let editModalOpen = $state(false);
+  let jsonPreviewModalOpen = $state(false);
+  let jsonPreviewData: any = $state(null);
 
   // Forms
-  let newRowData: Record<string, any> = {};
-  let editingRow: Record<string, any> | null = null;
+  let newRowData: Record<string, any> = $state({});
+  let editingRow: Record<string, any> | null = $state(null);
 
   // Loading states
-  let isLoading = false;
-  let isQueryRunning = false;
+  let isLoading = $state(false);
+  let isQueryRunning = $state(false);
 
   // Search/filter
   let searchQuery = "";

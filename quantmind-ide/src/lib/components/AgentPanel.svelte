@@ -12,18 +12,25 @@
 -->
 
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { createEventDispatcher, onMount, tick } from 'svelte';
   import { Bot, Code, Wand2, Settings, History, Server, X, ChevronLeft, ChevronRight, Send, Paperclip, Loader, Key, FileText, Slash, ChevronDown, Plus, Trash2, Eye, EyeOff, Edit3, Clock, List, FolderOpen } from 'lucide-svelte';
   
   const dispatch = createEventDispatcher();
-  export let isOpen = true;
+  interface Props {
+    isOpen?: boolean;
+  }
+
+  let { isOpen = $bindable(true) }: Props = $props();
   
-  let activeAgent = 'copilot';
-  let activeSection: 'chat' | 'history' | 'settings' | 'mcp' = 'chat';
-  let message = '';
-  let loading = false;
-  let textareaElement: HTMLTextAreaElement;
-  let messagesContainer: HTMLDivElement;
+  let activeAgent = $state('copilot');
+  let activeSection: 'chat' | 'history' | 'settings' | 'mcp' = $state('chat');
+  let message = $state('');
+  let loading = $state(false);
+  let textareaElement: HTMLTextAreaElement = $state();
+  let messagesContainer: HTMLDivElement = $state();
   
   // Auto-resize textarea
   function autoResize() {
@@ -35,11 +42,11 @@
   }
   
   // Character counter
-  $: charCount = message.length;
-  let selectedProvider = 'google';
-  let selectedModel = 'gemini-2.5-pro';
-  let showModelDropdown = false;
-  let attachedFiles: string[] = [];
+  let charCount = $derived(message.length);
+  let selectedProvider = $state('google');
+  let selectedModel = $state('gemini-2.5-pro');
+  let showModelDropdown = $state(false);
+  let attachedFiles: string[] = $state([]);
   
   // API Keys management
   type Provider = 'google' | 'anthropic' | 'openai' | 'qwen';
@@ -60,8 +67,8 @@
     // Simple toast notification - can be replaced with a proper toast store/component
     console.log(`Toast [${type}]: ${message}`);
   }
-  let showAddMcpModal = false;
-  let newMcpServer = { name: '', url: '' };
+  let showAddMcpModal = $state(false);
+  let newMcpServer = $state({ name: '', url: '' });
   
   onMount(() => {
     // Load API keys from localStorage
@@ -122,14 +129,14 @@
   }
   
   // Per-agent message history
-  let agentMessages: Record<string, Array<{role: string, content: string}>> = {
+  let agentMessages: Record<string, Array<{role: string, content: string}>> = $state({
     copilot: [{ role: 'assistant', content: "Hello! I'm the QuantMind Copilot. I can help analyze strategies, run backtests, and manage bots." }],
     quantcode: [{ role: 'assistant', content: "I'm QuantCode. I can help write MQ5 code, debug EAs, and optimize parameters." }],
     analyst: [{ role: 'assistant', content: "I'm the Analyst. I analyze VideoIngest outputs and help interpret trading patterns." }]
-  };
+  });
   
   // Per-agent chat history (saved conversations)
-  let agentHistory: Record<string, Array<{id: string, title: string, date: string}>> = {
+  let agentHistory: Record<string, Array<{id: string, title: string, date: string}>> = $state({
     copilot: [
       { id: 'c1', title: 'Backtest ICT Scalper', date: 'Today' },
       { id: 'c2', title: 'Setup Risk Management', date: 'Yesterday' }
@@ -140,7 +147,7 @@
     analyst: [
       { id: 'a1', title: 'Analyze SMC patterns', date: '2 days ago' }
     ]
-  };
+  });
   
   // Agent Queues (pending tasks)
   let agentQueues: Record<string, Array<{id: string, task: string, status: 'pending' | 'processing' | 'completed', timestamp: Date}>> = {
@@ -225,7 +232,7 @@
   };
   
   // MCP servers per agent
-  let mcpServers: Record<string, Array<{name: string, status: string, url?: string}>> = {
+  let mcpServers: Record<string, Array<{name: string, status: string, url?: string}>> = $state({
     copilot: [
       { name: 'PageIndex', status: 'connected' },
       { name: 'File System', status: 'connected' }
@@ -234,7 +241,7 @@
       { name: 'MQL Reference', status: 'connected' }
     ],
     analyst: []
-  };
+  });
   
   const providers = [
     { id: 'google', name: 'Google', models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'] },
@@ -249,10 +256,10 @@
     { id: 'analyst', name: 'Analyst', icon: Wand2, description: 'Strategy analysis' },
   ];
   
-  $: currentMessages = agentMessages[activeAgent] || [];
-  $: currentHistory = agentHistory[activeAgent] || [];
-  $: currentSettings = agentSettings[activeAgent] || { systemPrompt: '', temperature: 0.7 };
-  $: currentMcp = mcpServers[activeAgent] || [];
+  let currentMessages = $derived(agentMessages[activeAgent] || []);
+  let currentHistory = $derived(agentHistory[activeAgent] || []);
+  let currentSettings = $derived(agentSettings[activeAgent] || { systemPrompt: '', temperature: 0.7 });
+  let currentMcp = $derived(mcpServers[activeAgent] || []);
   
   function switchAgent(id: string) { 
     activeAgent = id; 
@@ -326,9 +333,9 @@
       <button 
         class="agent-btn" 
         class:active={activeAgent === agent.id} 
-        on:click={() => switchAgent(agent.id)}
+        onclick={() => switchAgent(agent.id)}
       >
-        <svelte:component this={agent.icon} size={18} />
+        <agent.icon size={18} />
         <span class="agent-name">{agent.name}</span>
       </button>
     {/each}
@@ -336,19 +343,19 @@
   
   <!-- Section tabs below agents -->
   <div class="section-tabs">
-    <button class:active={activeSection === 'chat'} on:click={() => activeSection = 'chat'}>
+    <button class:active={activeSection === 'chat'} onclick={() => activeSection = 'chat'}>
       <Bot size={14} /> Chat
     </button>
-    <button class:active={activeSection === 'history'} on:click={() => activeSection = 'history'}>
+    <button class:active={activeSection === 'history'} onclick={() => activeSection = 'history'}>
       <History size={14} /> History
     </button>
-    <button class:active={activeSection === 'settings'} on:click={() => activeSection = 'settings'}>
+    <button class:active={activeSection === 'settings'} onclick={() => activeSection = 'settings'}>
       <Settings size={14} /> Settings
     </button>
-    <button class:active={activeSection === 'mcp'} on:click={() => activeSection = 'mcp'}>
+    <button class:active={activeSection === 'mcp'} onclick={() => activeSection = 'mcp'}>
       <Server size={14} /> MCP
     </button>
-    <button class="close-btn" on:click={() => isOpen = false}>
+    <button class="close-btn" onclick={() => isOpen = false}>
       <ChevronRight size={14} />
     </button>
   </div>
@@ -361,8 +368,9 @@
         {#each currentMessages as msg}
           <div class="message {msg.role}">
             {#if msg.role === 'assistant'}
+              {@const SvelteComponent = agents.find(a => a.id === activeAgent)?.icon || Bot}
               <div class="msg-header">
-                <svelte:component this={agents.find(a => a.id === activeAgent)?.icon || Bot} size={14} />
+                <SvelteComponent size={14} />
                 <span>{agents.find(a => a.id === activeAgent)?.name}</span>
               </div>
             {/if}
@@ -381,11 +389,11 @@
       <div class="history-section">
         <div class="history-header">
           <span>{agents.find(a => a.id === activeAgent)?.name} History</span>
-          <button on:click={newChat}><Plus size={14} /> New Chat</button>
+          <button onclick={newChat}><Plus size={14} /> New Chat</button>
         </div>
         {#if currentHistory.length > 0}
           {#each currentHistory as chat}
-            <div class="history-item" on:click={() => loadChat(chat.id)}>
+            <div class="history-item" onclick={() => loadChat(chat.id)}>
               <span class="chat-title">{chat.title}</span>
               <span class="chat-date">{chat.date}</span>
             </div>
@@ -436,7 +444,7 @@
                     type="text"
                     placeholder="Enter API key..."
                     value={getApiKey(provider)}
-                    on:input={(e) => setApiKey(provider, e.currentTarget.value)}
+                    oninput={(e) => setApiKey(provider, e.currentTarget.value)}
                     aria-label={`${provider.charAt(0).toUpperCase() + provider.slice(1)} API key`}
                   />
                 {:else}
@@ -445,13 +453,13 @@
                     type="password"
                     placeholder="Enter API key..."
                     value={getApiKey(provider)}
-                    on:input={(e) => setApiKey(provider, e.currentTarget.value)}
+                    oninput={(e) => setApiKey(provider, e.currentTarget.value)}
                     aria-label={`${provider.charAt(0).toUpperCase() + provider.slice(1)} API key`}
                   />
                 {/if}
                 <button
                   class="toggle-visibility"
-                  on:click={() => toggleApiKeyVisibility(provider)}
+                  onclick={() => toggleApiKeyVisibility(provider)}
                   aria-label={getShowApiKey(provider) ? 'Hide API key' : 'Show API key'}
                 >
                   {#if getShowApiKey(provider)}
@@ -463,7 +471,7 @@
               </div>
             </div>
           {/each}
-          <button class="save-keys-btn" on:click={saveApiKeys} aria-label="Save all API keys">Save API Keys</button>
+          <button class="save-keys-btn" onclick={saveApiKeys} aria-label="Save all API keys">Save API Keys</button>
         </div>
         
         <div class="setting-group">
@@ -490,7 +498,7 @@
               </div>
               <div class="server-actions">
                 <span class="server-status" class:connected={server.status === 'connected'}>{server.status}</span>
-                <button class="remove-mcp-btn" on:click={() => removeMcpServer(server.name)} title="Remove server">
+                <button class="remove-mcp-btn" onclick={() => removeMcpServer(server.name)} title="Remove server">
                   <Trash2 size={12} />
                 </button>
               </div>
@@ -500,12 +508,12 @@
           <p class="empty-msg">No MCP servers configured for this agent</p>
         {/if}
         
-        <button class="add-mcp-btn" on:click={() => showAddMcpModal = true}><Plus size={14} /> Add MCP Server</button>
+        <button class="add-mcp-btn" onclick={() => showAddMcpModal = true}><Plus size={14} /> Add MCP Server</button>
       </div>
       
       {#if showAddMcpModal}
-        <div class="modal-overlay" on:click={() => showAddMcpModal = false}>
-          <div class="modal-content" on:click|stopPropagation>
+        <div class="modal-overlay" onclick={() => showAddMcpModal = false}>
+          <div class="modal-content" onclick={stopPropagation(bubble('click'))}>
             <h4>Add MCP Server</h4>
             <div class="modal-form">
               <div class="form-group">
@@ -518,8 +526,8 @@
               </div>
             </div>
             <div class="modal-actions">
-              <button class="btn-cancel" on:click={() => showAddMcpModal = false}>Cancel</button>
-              <button class="btn-confirm" on:click={addMcpServer}>Add Server</button>
+              <button class="btn-cancel" onclick={() => showAddMcpModal = false}>Cancel</button>
+              <button class="btn-confirm" onclick={addMcpServer}>Add Server</button>
             </div>
           </div>
         </div>
@@ -537,28 +545,28 @@
             <div class="attachment-chip">
               <FileText size={12} />
               <span>{file}</span>
-              <button on:click={() => removeAttachment(file)}><X size={10} /></button>
+              <button onclick={() => removeAttachment(file)}><X size={10} /></button>
             </div>
           {/each}
         </div>
       {/if}
       
       <div class="input-container">
-        <button class="input-btn" on:click={attachFile} title="Attach file">
+        <button class="input-btn" onclick={attachFile} title="Attach file">
           <Paperclip size={16} />
         </button>
         
         <textarea
           placeholder="Message {agents.find(a => a.id === activeAgent)?.name}... (/ for commands)"
           bind:value={message}
-          on:keydown={handleKeydown}
-          on:input={autoResize}
+          onkeydown={handleKeydown}
+          oninput={autoResize}
           bind:this={textareaElement}
           rows="1"
         ></textarea>
         
         <!-- Model selector inside input -->
-        <div class="model-selector" on:click={() => showModelDropdown = !showModelDropdown}>
+        <div class="model-selector" onclick={() => showModelDropdown = !showModelDropdown}>
           <span class="selected-model">{selectedModel.startsWith('glm-') ? selectedModel.replace('glm-', 'GLM-').toUpperCase() : selectedModel.split('-').slice(0, 2).join('-')}</span>
           <ChevronDown size={12} />
           
@@ -570,7 +578,7 @@
                   {#each provider.models as model}
                     <button 
                       class:selected={selectedModel === model}
-                      on:click|stopPropagation={() => { selectedModel = model; selectedProvider = provider.id; showModelDropdown = false; }}
+                      onclick={stopPropagation(() => { selectedModel = model; selectedProvider = provider.id; showModelDropdown = false; })}
                     >
                       {model}
                     </button>
@@ -581,7 +589,7 @@
           {/if}
         </div>
         
-        <button class="send-btn" on:click={sendMessage} disabled={!message.trim()}>
+        <button class="send-btn" onclick={sendMessage} disabled={!message.trim()}>
           <Send size={16} />
         </button>
       </div>
@@ -594,7 +602,7 @@
   {/if}
 </aside>
 {:else}
-<button class="toggle-btn" on:click={() => isOpen = true}><ChevronLeft size={16} /></button>
+<button class="toggle-btn" onclick={() => isOpen = true}><ChevronLeft size={16} /></button>
 {/if}
 
 <style>

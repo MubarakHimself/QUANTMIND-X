@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { createEventDispatcher, onMount, onDestroy, tick } from "svelte";
   import {
     Newspaper,
@@ -56,46 +59,46 @@
   }
 
   // View state
-  let activeTab: "calendar" | "timeline" | "settings" = "calendar";
-  let selectedEvent: NewsEvent | null = null;
-  let detailPanelOpen = false;
-  let calendarView: "list" | "weekly" | "monthly" = "list";
-  let autoRefresh = true;
+  let activeTab: "calendar" | "timeline" | "settings" = $state("calendar");
+  let selectedEvent: NewsEvent | null = $state(null);
+  let detailPanelOpen = $state(false);
+  let calendarView: "list" | "weekly" | "monthly" = $state("list");
+  let autoRefresh = $state(true);
   let refreshInterval: number | null = null;
 
   // Trading state
-  let tradingStatus = "active" as "active" | "paused" | "kill-zone";
+  let tradingStatus = $state("active" as "active" | "paused" | "kill-zone");
   let nextHighImpactEvent: NewsEvent | null = null;
 
   // Kill zone settings
-  let killZoneSettings = {
+  let killZoneSettings = $state({
     enabled: true,
     duration: 30, // minutes before news
     autoPause: true,
     resumeDelay: 15, // minutes after news
-  };
+  });
 
   // Filter settings
-  let filters = {
+  let filters = $state({
     impactThreshold: "high" as "high" | "medium" | "low", // 'high' = only high, 'medium' = high+medium, 'low' = all
     currencies: ["USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF"] as string[],
-  };
+  });
 
   // Economic calendar data loaded from API
-  let newsEvents: NewsEvent[] = [];
-  let filteredEvents: NewsEvent[] = [];
-  let killZones: KillZone[] = [];
+  let newsEvents: NewsEvent[] = $state([]);
+  let filteredEvents: NewsEvent[] = $state([]);
+  let killZones: KillZone[] = $state([]);
 
   // Countdown state
-  let countdown = {
+  let countdown = $state({
     hours: 0,
     minutes: 0,
     seconds: 0,
     targetEvent: null as NewsEvent | null,
-  };
+  });
 
   // Current kill zone status
-  let currentKillZone: KillZone | null = null;
+  let currentKillZone: KillZone | null = $state(null);
 
   onMount(() => {
     loadNewsEvents();
@@ -360,12 +363,12 @@
         <div class="banner-right">
           <button
             class="btn"
-            on:click={() => (killZoneSettings.autoPause = false)}
+            onclick={() => (killZoneSettings.autoPause = false)}
           >
             <Play size={14} />
             <span>Resume Anyway</span>
           </button>
-          <button class="btn close" on:click={() => (currentKillZone = null)}>
+          <button class="btn close" onclick={() => (currentKillZone = null)}>
             <X size={14} />
           </button>
         </div>
@@ -414,7 +417,7 @@
       <!-- Auto Refresh -->
       <button
         class="btn"
-        on:click={() => (autoRefresh = !autoRefresh)}
+        onclick={() => (autoRefresh = !autoRefresh)}
         class:active={autoRefresh}
       >
         <RefreshCw size={14} />
@@ -422,7 +425,7 @@
       </button>
 
       <!-- Refresh Button -->
-      <button class="btn" on:click={loadNewsEvents}>
+      <button class="btn" onclick={loadNewsEvents}>
         <RefreshCw size={14} />
         <span>Refresh</span>
       </button>
@@ -434,7 +437,7 @@
     <button
       class="tab"
       class:active={activeTab === "calendar"}
-      on:click={() => (activeTab = "calendar")}
+      onclick={() => (activeTab = "calendar")}
     >
       <Calendar size={14} />
       <span>Calendar</span>
@@ -442,7 +445,7 @@
     <button
       class="tab"
       class:active={activeTab === "timeline"}
-      on:click={() => (activeTab = "timeline")}
+      onclick={() => (activeTab = "timeline")}
     >
       <Clock size={14} />
       <span>Timeline</span>
@@ -450,7 +453,7 @@
     <button
       class="tab"
       class:active={activeTab === "settings"}
-      on:click={() => (activeTab = "settings")}
+      onclick={() => (activeTab = "settings")}
     >
       <SettingsIcon size={14} />
       <span>Settings</span>
@@ -467,21 +470,21 @@
           <button
             class="view-btn"
             class:active={calendarView === "list"}
-            on:click={() => (calendarView = "list")}
+            onclick={() => (calendarView = "list")}
           >
             List
           </button>
           <button
             class="view-btn"
             class:active={calendarView === "weekly"}
-            on:click={() => (calendarView = "weekly")}
+            onclick={() => (calendarView = "weekly")}
           >
             Weekly
           </button>
           <button
             class="view-btn"
             class:active={calendarView === "monthly"}
-            on:click={() => (calendarView = "monthly")}
+            onclick={() => (calendarView = "monthly")}
           >
             Monthly
           </button>
@@ -494,8 +497,8 @@
               <div
                 class="event-card"
                 class:in-kill-zone={isEventInKillZone(event)}
-                on:click={() => selectEvent(event)}
-                on:keydown={(e) => e.key === "Enter" && selectEvent(event)}
+                onclick={() => selectEvent(event)}
+                onkeydown={(e) => e.key === "Enter" && selectEvent(event)}
                 role="button"
                 tabindex="0"
               >
@@ -667,21 +670,21 @@
               <button
                 class="option-btn"
                 class:active={killZoneSettings.duration === 15}
-                on:click={() => (killZoneSettings.duration = 15)}
+                onclick={() => (killZoneSettings.duration = 15)}
               >
                 15 min
               </button>
               <button
                 class="option-btn"
                 class:active={killZoneSettings.duration === 30}
-                on:click={() => (killZoneSettings.duration = 30)}
+                onclick={() => (killZoneSettings.duration = 30)}
               >
                 30 min
               </button>
               <button
                 class="option-btn"
                 class:active={killZoneSettings.duration === 60}
-                on:click={() => (killZoneSettings.duration = 60)}
+                onclick={() => (killZoneSettings.duration = 60)}
               >
                 60 min
               </button>
@@ -725,7 +728,7 @@
             <select
               id="impact-threshold"
               bind:value={filters.impactThreshold}
-              on:change={applyFilters}
+              onchange={applyFilters}
             >
               <option value="high">High Impact Only</option>
               <option value="medium">High + Medium</option>
@@ -742,7 +745,7 @@
                     type="checkbox"
                     bind:group={filters.currencies}
                     value={currency}
-                    on:change={applyFilters}
+                    onchange={applyFilters}
                   />
                   <span>{getCurrencyFlag(currency)} {currency}</span>
                 </label>
@@ -759,7 +762,7 @@
               class="trading-toggle-btn"
               class:active={tradingStatus === "active"}
               class:paused={tradingStatus === "paused"}
-              on:click={toggleTrading}
+              onclick={toggleTrading}
             >
               {#if tradingStatus === "active"}
                 <Pause size={16} />
@@ -779,12 +782,12 @@
   {#if detailPanelOpen && selectedEvent}
     <div
       class="detail-panel-overlay"
-      on:click={closeDetailPanel}
+      onclick={closeDetailPanel}
       role="button"
       tabindex="0"
-      on:keydown={(e) => e.key === "Escape" && closeDetailPanel()}
+      onkeydown={(e) => e.key === "Escape" && closeDetailPanel()}
     >
-      <div class="detail-panel" on:click|stopPropagation role="presentation">
+      <div class="detail-panel" onclick={stopPropagation(bubble('click'))} role="presentation">
         <div class="detail-header">
           <div class="header-left">
             <span class="currency-flag large"
@@ -800,7 +803,7 @@
               </p>
             </div>
           </div>
-          <button class="icon-btn" on:click={closeDetailPanel}>
+          <button class="icon-btn" onclick={closeDetailPanel}>
             <X size={18} />
           </button>
         </div>

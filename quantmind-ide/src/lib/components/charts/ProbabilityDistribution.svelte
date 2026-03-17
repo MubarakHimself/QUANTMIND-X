@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { onMount, onDestroy } from 'svelte';
   import Chart from 'chart.js/auto';
   import annotationPlugin from 'chartjs-plugin-annotation';
@@ -7,7 +9,9 @@
   // Register the annotation plugin with Chart.js
   Chart.register(annotationPlugin);
 
-  export let data: {
+
+  interface Props {
+    data?: {
     values: number[];
     bins: number[];
     frequencies: number[];
@@ -19,7 +23,12 @@
       percentile95: number;
       riskOfRuin: number;
     };
-  } = {
+  };
+    height?: number;
+    showStatistics?: boolean;
+  }
+
+  let { data = {
     values: [],
     bins: [],
     frequencies: [],
@@ -31,13 +40,10 @@
       percentile95: 0,
       riskOfRuin: 0
     }
-  };
+  }, height = 300, showStatistics = true }: Props = $props();
 
-  export let height = 300;
-  export let showStatistics = true;
-
-  let canvas: HTMLCanvasElement;
-  let chart: Chart | null = null;
+  let canvas: HTMLCanvasElement = $state();
+  let chart: Chart | null = $state(null);
 
   function getChartColors() {
     const isDark = $theme.name.includes('dark') || $theme.name.includes('matrix') || $theme.name.includes('trading');
@@ -218,13 +224,17 @@
     }
   });
 
-  $: if (chart && data) {
-    updateChart();
-  }
+  run(() => {
+    if (chart && data) {
+      updateChart();
+    }
+  });
 
-  $: if (chart && $theme) {
-    updateChart();
-  }
+  run(() => {
+    if (chart && $theme) {
+      updateChart();
+    }
+  });
 </script>
 
 <div class="probability-distribution" style="height: {height}px;">

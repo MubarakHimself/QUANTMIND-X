@@ -25,16 +25,12 @@
   const dispatch = createEventDispatcher();
 
   // Time range for charts
-  let chartTimeRange: '1m' | '5m' | '15m' | '1h' = '5m';
+  let chartTimeRange: '1m' | '5m' | '15m' | '1h' = $state('5m');
 
   // Auto-refresh state
-  let isFullscreen = false;
+  let isFullscreen = $state(false);
   let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
-  // Connection status display
-  $: connectionStatus = $connectionState;
-  $: connectionColor = getConnectionColor($connectionState);
-  $: formattedLastUpdate = formatTime($lastUpdate);
 
   function getConnectionColor(state: string): string {
     switch (state) {
@@ -85,6 +81,10 @@
     // Keep connection alive, don't disconnect on component destroy
     // as other components might use it
   });
+  // Connection status display
+  let connectionStatus = $derived($connectionState);
+  let connectionColor = $derived(getConnectionColor($connectionState));
+  let formattedLastUpdate = $derived(formatTime($lastUpdate));
 </script>
 
 <div class="monitoring-dashboard" class:fullscreen={isFullscreen}>
@@ -103,13 +103,13 @@
         {#each ['1m', '5m', '15m', '1h'] as range (range)}
           <button
             class:active={chartTimeRange === range}
-            on:click={() => chartTimeRange = range}
+            onclick={() => chartTimeRange = range}
           >
             {range}
           </button>
         {/each}
       </div>
-      <button class="icon-btn" on:click={toggleFullscreen} title="Toggle Fullscreen">
+      <button class="icon-btn" onclick={toggleFullscreen} title="Toggle Fullscreen">
         {#if isFullscreen}
           <Minimize2 size={18} />
         {:else}

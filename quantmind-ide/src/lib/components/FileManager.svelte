@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { stopPropagation } from 'svelte/legacy';
+
   import { createEventDispatcher, onMount } from 'svelte';
   import {
     Folder, FolderOpen, File, FileCode, ChevronRight, ChevronDown,
@@ -33,26 +35,26 @@
   }
 
   // State
-  let fileTree: FileNode[] = [];
-  let currentPath = '/';
-  let selectedFile: FileNode | null = null;
-  let selectedFileContent: string | null = null;
+  let fileTree: FileNode[] = $state([]);
+  let currentPath = $state('/');
+  let selectedFile: FileNode | null = $state(null);
+  let selectedFileContent: string | null = $state(null);
   
   // View options
-  let viewMode: 'tree' | 'list' = 'tree';
+  let viewMode: 'tree' | 'list' = $state('tree');
   let showHiddenFiles = false;
-  let sortBy: 'name' | 'date' | 'size' | 'type' = 'name';
-  let sortOrder: 'asc' | 'desc' = 'asc';
-  let searchQuery = '';
-  let isLoading = false;
+  let sortBy: 'name' | 'date' | 'size' | 'type' = $state('name');
+  let sortOrder: 'asc' | 'desc' = $state('asc');
+  let searchQuery = $state('');
+  let isLoading = $state(false);
   
   // Pagination
-  let currentPage = 1;
+  let currentPage = $state(1);
   let itemsPerPage = 50;
   
   // Preview/Edit
-  let showPreview = false;
-  let showEditor = false;
+  let showPreview = $state(false);
+  let showEditor = $state(false);
   let isEditing = false;
 
   const API_BASE = 'http://localhost:8000/api';
@@ -214,9 +216,9 @@
     return files;
   }
 
-  $: filteredFiles = getFilteredFiles();
-  $: totalPages = Math.ceil(filteredFiles.length / itemsPerPage);
-  $: paginatedFiles = filteredFiles.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  let filteredFiles = $derived(getFilteredFiles());
+  let totalPages = $derived(Math.ceil(filteredFiles.length / itemsPerPage));
+  let paginatedFiles = $derived(filteredFiles.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage));
 
   function handlePreview() {
     showPreview = true;
@@ -284,10 +286,10 @@
   <!-- Toolbar -->
   <div class="fm-toolbar">
     <div class="toolbar-left">
-      <button class="toolbar-btn" on:click={navigateUp} disabled={currentPath === '/'}>
+      <button class="toolbar-btn" onclick={navigateUp} disabled={currentPath === '/'}>
         <ArrowLeft size={16} />
       </button>
-      <button class="toolbar-btn" on:click={loadFileTree}>
+      <button class="toolbar-btn" onclick={loadFileTree}>
         <Home size={16} />
       </button>
       <div class="path-bar">
@@ -295,7 +297,7 @@
         {#each getBreadcrumbs() as part, i}
           <button 
             class="path-segment" 
-            on:click={() => navigateToFolder('/' + getBreadcrumbs().slice(0, i + 1).join('/'))}
+            onclick={() => navigateToFolder('/' + getBreadcrumbs().slice(0, i + 1).join('/'))}
           >
             {part}
           </button>
@@ -318,7 +320,7 @@
         <button 
           class="toggle-btn" 
           class:active={viewMode === 'tree'}
-          on:click={() => viewMode = 'tree'}
+          onclick={() => viewMode = 'tree'}
           title="Tree view"
         >
           <List size={16} />
@@ -326,7 +328,7 @@
         <button 
           class="toggle-btn" 
           class:active={viewMode === 'list'}
-          on:click={() => viewMode = 'list'}
+          onclick={() => viewMode = 'list'}
           title="List view"
         >
           <Grid size={16} />
@@ -340,7 +342,7 @@
         <option value="type">Type</option>
       </select>
       
-      <button class="toolbar-btn" on:click={() => sortOrder = sortOrder === 'asc' ? 'desc' : 'asc'}>
+      <button class="toolbar-btn" onclick={() => sortOrder = sortOrder === 'asc' ? 'desc' : 'asc'}>
         {#if sortOrder === 'asc'}
           <ChevronDown size={16} class="rotate-180" />
         {:else}
@@ -359,25 +361,27 @@
       </div>
       <div class="folder-tree">
         {#each fileTree as node}
+          {@const SvelteComponent = getIcon(node)}
           <div class="tree-node">
             <button 
               class="node-button"
               class:selected={selectedFile?.id === node.id}
-              on:click={() => selectNode(node)}
+              onclick={() => selectNode(node)}
             >
-              <svelte:component this={getIcon(node)} size={14} />
+              <SvelteComponent size={14} />
               <span class="node-name">{node.name}</span>
             </button>
             {#if node.type === 'folder' && node.expanded && node.children}
               <div class="node-children">
                 {#each node.children as child}
+                  {@const SvelteComponent_1 = getIcon(child)}
                   <div class="tree-node nested">
                     <button 
                       class="node-button"
                       class:selected={selectedFile?.id === child.id}
-                      on:click={() => selectNode(child)}
+                      onclick={() => selectNode(child)}
                     >
-                      <svelte:component this={getIcon(child)} size={14} />
+                      <SvelteComponent_1 size={14} />
                       <span class="node-name">{child.name}</span>
                     </button>
                   </div>
@@ -411,26 +415,27 @@
           </div>
         {:else}
           {#each paginatedFiles as file}
+            {@const SvelteComponent_2 = getIcon(file)}
             <div 
               class="file-row"
               class:selected={selectedFile?.id === file.id}
-              on:click={() => selectNode(file)}
-              on:keypress={(e) => e.key === 'Enter' && selectNode(file)}
+              onclick={() => selectNode(file)}
+              onkeypress={(e) => e.key === 'Enter' && selectNode(file)}
               role="button"
               tabindex="0"
             >
               <div class="col-name">
-                <svelte:component this={getIcon(file)} size={16} />
+                <SvelteComponent_2 size={16} />
                 <span class="file-name">{file.name}</span>
               </div>
               <div class="col-size">{formatSize(file.metadata?.size)}</div>
               <div class="col-date">{formatDate(file.metadata?.updated_at)}</div>
               <div class="col-actions">
-                <button class="action-icon" on:click|stopPropagation={() => handlePreview()} title="Preview">
+                <button class="action-icon" onclick={stopPropagation(() => handlePreview())} title="Preview">
                   <Eye size={14} />
                 </button>
                 {#if file.name.match(/\.(mq5|mqh|py|ts|js|json|md|txt)$/i)}
-                  <button class="action-icon" on:click|stopPropagation={() => { selectNode(file); handleEdit(); }} title="Edit">
+                  <button class="action-icon" onclick={stopPropagation(() => { selectNode(file); handleEdit(); })} title="Edit">
                     <Edit2 size={14} />
                   </button>
                 {/if}
@@ -457,12 +462,12 @@
           <span class="preview-title">{selectedFile.name}</span>
           <div class="preview-actions">
             {#if showPreview}
-              <button class="preview-btn" on:click={handleEdit}>
+              <button class="preview-btn" onclick={handleEdit}>
                 <Edit2 size={14} />
                 Edit
               </button>
             {/if}
-            <button class="close-preview" on:click={() => { showPreview = false; showEditor = false; }}>
+            <button class="close-preview" onclick={() => { showPreview = false; showEditor = false; }}>
               <X size={16} />
             </button>
           </div>

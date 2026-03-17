@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { onMount, createEventDispatcher } from 'svelte';
   import hljs from 'highlight.js';
   import { theme, currentTheme } from '../stores/themeStore';
@@ -6,35 +8,41 @@
   import { fileHistoryManager } from '../services/fileHistoryManager';
   import type { AgentType } from '../stores/chatStore';
 
-  export let content = '';
-  export let language = 'plaintext';
-  export let filename = 'untitled';
-  export let readOnly = false;
-  export let showLineNumbers = true;
-  export let filePath = '';
-  export let fileId = '';
-  export let agent: AgentType = 'copilot';
+  interface Props {
+    content?: string;
+    language?: string;
+    filename?: string;
+    readOnly?: boolean;
+    showLineNumbers?: boolean;
+    filePath?: string;
+    fileId?: string;
+    agent?: AgentType;
+  }
+
+  let {
+    content = $bindable(''),
+    language = 'plaintext',
+    filename = 'untitled',
+    readOnly = false,
+    showLineNumbers = true,
+    filePath = '',
+    fileId = '',
+    agent = 'copilot'
+  }: Props = $props();
 
   const dispatch = createEventDispatcher();
   
   // Track previous content for diff computation
   let previousContent = '';
-  let showHistoryPanel = false;
+  let showHistoryPanel = $state(false);
 
-  let editorElement: HTMLTextAreaElement;
-  let highlightedContent = '';
-  let cursorPosition = 0;
-  let isFullscreen = false;
-  let currentThemeColors = $theme.colors;
-  let currentThemeEffects = $theme.effects;
+  let editorElement: HTMLTextAreaElement = $state();
+  let highlightedContent = $state('');
+  let cursorPosition = $state(0);
+  let isFullscreen = $state(false);
+  let currentThemeColors = $state($theme.colors);
+  let currentThemeEffects = $state($theme.effects);
   
-  // Subscribe to theme changes
-  $: if ($theme) {
-    currentThemeColors = $theme.colors;
-    currentThemeEffects = $theme.effects;
-    updateHighlighting();
-    updateThemeStyles();
-  }
 
   // Language detection and highlighting
   function detectLanguage(filename: string): string {
@@ -190,14 +198,27 @@
     return lines.map((_, i) => i + 1).join('\n');
   }
 
-  $: if (content) updateHighlighting();
-  $: if (filename) updateHighlighting();
 
   onMount(() => {
     updateHighlighting();
     updateThemeStyles();
     // Initialize previous content for tracking changes
     previousContent = content;
+  });
+  // Subscribe to theme changes
+  run(() => {
+    if ($theme) {
+      currentThemeColors = $theme.colors;
+      currentThemeEffects = $theme.effects;
+      updateHighlighting();
+      updateThemeStyles();
+    }
+  });
+  run(() => {
+    if (content) updateHighlighting();
+  });
+  run(() => {
+    if (filename) updateHighlighting();
   });
 </script>
 
@@ -217,22 +238,22 @@
     
     <div class="editor-actions">
       {#if !readOnly}
-        <button class="action-btn" on:click={saveFile} title="Save (Ctrl+S)">
+        <button class="action-btn" onclick={saveFile} title="Save (Ctrl+S)">
           <Save size={14} />
         </button>
       {/if}
-      <button class="action-btn" on:click={copyContent} title="Copy">
+      <button class="action-btn" onclick={copyContent} title="Copy">
         <Copy size={14} />
       </button>
-      <button class="action-btn" on:click={downloadFile} title="Download">
+      <button class="action-btn" onclick={downloadFile} title="Download">
         <Download size={14} />
       </button>
       {#if fileId}
-        <button class="action-btn" on:click={toggleHistoryPanel} title="File History" class:active={showHistoryPanel}>
+        <button class="action-btn" onclick={toggleHistoryPanel} title="File History" class:active={showHistoryPanel}>
           <History size={14} />
         </button>
       {/if}
-      <button class="action-btn" on:click={toggleFullscreen} title="Toggle Fullscreen">
+      <button class="action-btn" onclick={toggleFullscreen} title="Toggle Fullscreen">
         {#if isFullscreen}
           <X size={14} />
         {:else}
@@ -259,9 +280,9 @@
         class="editor-textarea"
         class:readonly={readOnly}
         bind:value={content}
-        on:input={handleInput}
-        on:scroll={handleScroll}
-        on:keydown={(e) => {
+        oninput={handleInput}
+        onscroll={handleScroll}
+        onkeydown={(e) => {
           if (e.key === 's' && e.ctrlKey && !readOnly) {
             e.preventDefault();
             saveFile();

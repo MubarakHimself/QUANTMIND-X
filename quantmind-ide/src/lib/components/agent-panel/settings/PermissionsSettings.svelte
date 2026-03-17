@@ -4,7 +4,7 @@
   import type { AgentType, AgentPermissions } from '../../../stores/settingsStore';
   
   // State
-  let selectedAgent: AgentType = 'copilot';
+  let selectedAgent: AgentType = $state('copilot');
   let selectedPreset: 'restricted' | 'standard' | 'fullAccess' = 'standard';
   
   // Agent configuration
@@ -34,7 +34,7 @@
   ];
   
   // Reactive state
-  $: permissions = $settingsStore.permissions[selectedAgent];
+  let permissions = $derived($settingsStore.permissions[selectedAgent]);
   
   // Apply preset
   function applyPreset(preset: 'restricted' | 'standard' | 'fullAccess') {
@@ -106,9 +106,9 @@
       <button 
         class="agent-chip"
         class:active={selectedAgent === agent.id}
-        on:click={() => selectedAgent = agent.id}
+        onclick={() => selectedAgent = agent.id}
       >
-        <svelte:component this={agent.icon} size={14} />
+        <agent.icon size={14} />
         {agent.name}
       </button>
     {/each}
@@ -121,7 +121,7 @@
       <button 
         class="preset-card"
         class:active={matchesPreset('restricted')}
-        on:click={() => applyPreset('restricted')}
+        onclick={() => applyPreset('restricted')}
       >
         <span class="preset-icon"><Shield size={20} /></span>
         <span class="preset-name">Restricted</span>
@@ -131,7 +131,7 @@
       <button 
         class="preset-card"
         class:active={matchesPreset('standard')}
-        on:click={() => applyPreset('standard')}
+        onclick={() => applyPreset('standard')}
       >
         <span class="preset-icon"><Info size={20} /></span>
         <span class="preset-name">Standard</span>
@@ -141,7 +141,7 @@
       <button 
         class="preset-card"
         class:active={matchesPreset('fullAccess')}
-        on:click={() => applyPreset('fullAccess')}
+        onclick={() => applyPreset('fullAccess')}
       >
         <span class="preset-icon"><AlertTriangle size={20} /></span>
         <span class="preset-name">Full Access</span>
@@ -166,7 +166,7 @@
                 class="level-btn"
                 class:active={checkPermissionActive(perm.key, level.value)}
                 style="--level-color: {getAccessColor(level.value)}"
-                on:click={() => checkUpdatePermission(perm.key, level.value)}
+                onclick={() => checkUpdatePermission(perm.key, level.value)}
               >
                 {level.label}
               </button>
@@ -188,7 +188,7 @@
             <input 
               type="checkbox" 
               checked={getBooleanPermission(perm.key)}
-              on:change={() => toggleBooleanPermission(perm.key)}
+              onchange={() => toggleBooleanPermission(perm.key)}
             />
             <span class="toggle-slider"></span>
           </label>

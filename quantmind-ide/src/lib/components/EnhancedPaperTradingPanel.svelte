@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { onMount, onDestroy } from "svelte";
   import { WebSocketClient } from "../ws-client";
   import type { WebSocketMessage } from "../ws-client";
@@ -19,8 +22,13 @@
     Upload,
   } from "lucide-svelte";
 
-  // Props
-  export let baseUrl: string = "http://localhost:8000";
+  
+  interface Props {
+    // Props
+    baseUrl?: string;
+  }
+
+  let { baseUrl = "http://localhost:8000" }: Props = $props();
 
   // ==========================================================================
   // Type Definitions
@@ -88,31 +96,31 @@
   // ==========================================================================
 
   // Bots organized by tag
-  let botsByTag: Record<string, BotManifest[]> = {
+  let botsByTag: Record<string, BotManifest[]> = $state({
     "@primal": [],
     "@pending": [],
     "@perfect": [],
     "@live": [],
-  };
+  });
 
   // All bots flat list
-  let allBots: BotManifest[] = [];
+  let allBots: BotManifest[] = $state([]);
 
   // Demo accounts
   let demoAccounts: DemoAccount[] = [];
 
   // Selected tag filter
-  let selectedTag: string = "@primal";
+  let selectedTag: string = $state("@primal");
 
   // UI State
-  let isLoading = false;
-  let isDeploying = false;
-  let error: string | null = null;
+  let isLoading = $state(false);
+  let isDeploying = $state(false);
+  let error: string | null = $state(null);
   let wsClient: WebSocketClient | null = null;
-  let showDeployModal = false;
+  let showDeployModal = $state(false);
 
   // Deploy form state
-  let deployForm: DeploymentRequest = {
+  let deployForm: DeploymentRequest = $state({
     format: "pine_script",
     source: "inline",
     strategy_name: "",
@@ -127,7 +135,7 @@
     mt5_demo_login: undefined,
     mt5_demo_password: undefined,
     mt5_demo_server: undefined,
-  };
+  });
 
   // Tag thresholds for progress bars
   const tagThresholds = {
@@ -370,9 +378,9 @@
   }
 
   // Filter bots by selected tag
-  $: filteredBots = selectedTag 
+  let filteredBots = $derived(selectedTag 
     ? botsByTag[selectedTag] || [] 
-    : allBots;
+    : allBots);
 </script>
 
 <div class="enhanced-paper-trading-panel">
@@ -384,7 +392,7 @@
     </div>
     <button 
       class="deploy-button"
-      on:click={() => showDeployModal = true}
+      onclick={() => showDeployModal = true}
     >
       <Plus size={16} />
       Deploy New Bot
@@ -396,7 +404,7 @@
     <div class="error-banner">
       <AlertCircle size={16} />
       <span>{error}</span>
-      <button on:click={() => error = null}>
+      <button onclick={() => error = null}>
         <X size={14} />
       </button>
     </div>
@@ -409,7 +417,7 @@
         class="tag-tab"
         class:active={selectedTag === tag}
         style="--tag-color: {getTagColor(tag)}"
-        on:click={() => selectedTag = tag}
+        onclick={() => selectedTag = tag}
       >
         <span class="tag-dot" style="background-color: {getTagColor(tag)}"></span>
         {tag}
@@ -430,7 +438,7 @@
         <Bot size={48} />
         <h3>No bots in {selectedTag}</h3>
         <p>Deploy a new bot to get started with paper trading</p>
-        <button class="deploy-button" on:click={() => showDeployModal = true}>
+        <button class="deploy-button" onclick={() => showDeployModal = true}>
           <Plus size={16} />
           Deploy Bot
         </button>
@@ -497,7 +505,7 @@
               {#if bot.promotion_eligible}
                 <button 
                   class="action-btn primary"
-                  on:click={() => promoteBot(bot.bot_id)}
+                  onclick={() => promoteBot(bot.bot_id)}
                 >
                   <ArrowUp size={14} />
                   Promote
@@ -516,11 +524,11 @@
 
   <!-- Deploy Modal -->
   {#if showDeployModal}
-    <div class="modal-overlay" on:click={() => showDeployModal = false}>
-      <div class="modal-content" on:click|stopPropagation>
+    <div class="modal-overlay" onclick={() => showDeployModal = false}>
+      <div class="modal-content" onclick={stopPropagation(bubble('click'))}>
         <div class="modal-header">
           <h3>Deploy New Bot</h3>
-          <button class="close-btn" on:click={() => showDeployModal = false}>
+          <button class="close-btn" onclick={() => showDeployModal = false}>
             <X size={18} />
           </button>
         </div>
@@ -534,7 +542,7 @@
                 <button
                   class="toggle-btn"
                   class:active={deployForm.format === format.value}
-                  on:click={() => deployForm.format = format.value as any}
+                  onclick={() => deployForm.format = format.value as any}
                 >
                   {format.label}
                 </button>
@@ -550,7 +558,7 @@
                 <button
                   class="toggle-btn"
                   class:active={deployForm.source === source.value}
-                  on:click={() => deployForm.source = source.value as any}
+                  onclick={() => deployForm.source = source.value as any}
                 >
                   {source.label}
                 </button>
@@ -664,14 +672,14 @@
         <div class="modal-footer">
           <button 
             class="cancel-btn" 
-            on:click={() => showDeployModal = false}
+            onclick={() => showDeployModal = false}
           >
             Cancel
           </button>
           <button 
             class="submit-btn"
             disabled={isDeploying || !deployForm.strategy_name}
-            on:click={deployBot}
+            onclick={deployBot}
           >
             {#if isDeploying}
               <div class="spinner-small"></div>

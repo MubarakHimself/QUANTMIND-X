@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { onMount } from 'svelte';
   import {
     GitBranch,
@@ -20,25 +23,25 @@
   import { hooksStore, type Hook, type HookLogEntry } from '$lib/stores/hooksStore';
   import * as memoryApi from '$lib/api/memory';
 
-  export let onClose = () => {};
+  let { onClose = () => {} } = $props();
 
   let showLogs = true;
-  let selectedHookName = '';
-  let logFilter: 'all' | 'success' | 'failed' = 'all';
+  let selectedHookName = $state('');
+  let logFilter: 'all' | 'success' | 'failed' = $state('all');
 
   // Subscribe to store
-  $: hooks = $hooksStore.hooks;
-  $: logs = $hooksStore.logs;
-  $: loading = $hooksStore.loading;
-  $: error = $hooksStore.error;
-  $: selectedHook = hooks.find(h => h.name === selectedHookName) || null;
+  let hooks = $derived($hooksStore.hooks);
+  let logs = $derived($hooksStore.logs);
+  let loading = $derived($hooksStore.loading);
+  let error = $derived($hooksStore.error);
+  let selectedHook = $derived(hooks.find(h => h.name === selectedHookName) || null);
 
   // Filter logs by selected hook and status
-  $: filteredLogs = logs.filter(log => {
+  let filteredLogs = $derived(logs.filter(log => {
     if (selectedHookName && log.hookName !== selectedHookName) return false;
     if (logFilter !== 'all' && log.status !== logFilter) return false;
     return true;
-  });
+  }));
 
   onMount(() => {
     loadHooks();
@@ -118,8 +121,8 @@
   }
 </script>
 
-<div class="hooks-panel-overlay" on:click={onClose}>
-  <div class="hooks-panel" on:click|stopPropagation>
+<div class="hooks-panel-overlay" onclick={onClose}>
+  <div class="hooks-panel" onclick={stopPropagation(bubble('click'))}>
     <!-- Header -->
     <div class="panel-header">
       <div class="header-left">
@@ -130,16 +133,16 @@
         </div>
       </div>
       <div class="header-actions">
-        <button class="icon-btn" on:click={loadHooks} title="Refresh hooks" disabled={loading}>
+        <button class="icon-btn" onclick={loadHooks} title="Refresh hooks" disabled={loading}>
           <RefreshCw size={16} class={loading ? 'spinning' : ''} />
         </button>
-        <button class="icon-btn" on:click={loadLogs} title="Refresh logs">
+        <button class="icon-btn" onclick={loadLogs} title="Refresh logs">
           <FileText size={16} />
         </button>
-        <button class="icon-btn danger" on:click={handleClearLogs} title="Clear logs">
+        <button class="icon-btn danger" onclick={handleClearLogs} title="Clear logs">
           <Trash2 size={16} />
         </button>
-        <button class="icon-btn" on:click={onClose} title="Close">
+        <button class="icon-btn" onclick={onClose} title="Close">
           <X size={16} />
         </button>
       </div>
@@ -150,7 +153,7 @@
     <div class="error-banner">
       <AlertCircle size={16} />
       <span>{error}</span>
-      <button on:click={() => hooksStore.setError(null)}><X size={14} /></button>
+      <button onclick={() => hooksStore.setError(null)}><X size={14} /></button>
     </div>
     {/if}
 
@@ -177,13 +180,13 @@
           <div
             class="hook-item"
             class:selected={selectedHookName === hook.name}
-            on:click={() => selectedHookName = hook.name}
+            onclick={() => selectedHookName = hook.name}
           >
             <div class="hook-header">
               <div class="hook-info">
                 <button
                   class="toggle-btn"
-                  on:click|stopPropagation={() => handleToggleHook(hook)}
+                  onclick={stopPropagation(() => handleToggleHook(hook))}
                   title={hook.enabled ? 'Disable' : 'Enable'}
                 >
                   {#if hook.enabled}
@@ -198,7 +201,7 @@
               <div class="hook-actions">
                 <button
                   class="icon-btn small"
-                  on:click|stopPropagation={() => handleExecuteHook(hook)}
+                  onclick={stopPropagation(() => handleExecuteHook(hook))}
                   title="Execute"
                   disabled={!hook.enabled}
                 >
@@ -238,17 +241,17 @@
             <button
               class="filter-btn"
               class:active={logFilter === 'all'}
-              on:click={() => logFilter = 'all'}
+              onclick={() => logFilter = 'all'}
             >All</button>
             <button
               class="filter-btn"
               class:active={logFilter === 'success'}
-              on:click={() => logFilter = 'success'}
+              onclick={() => logFilter = 'success'}
             >Success</button>
             <button
               class="filter-btn"
               class:active={logFilter === 'failed'}
-              on:click={() => logFilter = 'failed'}
+              onclick={() => logFilter = 'failed'}
             >Failed</button>
           </div>
         </div>

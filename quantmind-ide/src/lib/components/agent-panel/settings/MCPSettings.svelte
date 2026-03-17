@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { createBubbler, stopPropagation } from 'svelte/legacy';
+
+  const bubble = createBubbler();
   import { fade, slide } from 'svelte/transition';
   import { onMount } from 'svelte';
   import { Plus, Trash2, RefreshCw, Server, Check, X, AlertCircle, ExternalLink, Loader2, Terminal, Globe, Zap, AlertTriangle, Wifi, WifiOff } from 'lucide-svelte';
@@ -9,7 +12,7 @@
   const API_BASE = API_CONFIG.API_BASE;
 
   // Error state for each server
-  let serverErrors: Record<string, { message: string; timestamp: Date } | null> = {};
+  let serverErrors: Record<string, { message: string; timestamp: Date } | null> = $state({});
   let connectingServers: Set<string> = new Set();
   let showErrorDetails: Record<string, boolean> = {};
 
@@ -54,24 +57,24 @@
   ];
 
   // State
-  let showAddModal = false;
-  let serverType: 'http' | 'stdio' = 'stdio';
-  let newServer = {
+  let showAddModal = $state(false);
+  let serverType: 'http' | 'stdio' = $state('stdio');
+  let newServer = $state({
     name: '',
     description: '',
     url: '',
     command: '',
     args: '',
     autoConnect: false
-  };
+  });
   let editingServer: MCPServer | null = null;
-  let loading = false;
-  let backendAvailable = false;
+  let loading = $state(false);
+  let backendAvailable = $state(false);
 
   // Reactive state
-  $: mcpServers = $settingsStore.mcpServers;
-  $: connectedCount = mcpServers.filter(s => s.status === 'connected').length;
-  $: errorCount = Object.values(serverErrors).filter(Boolean).length;
+  let mcpServers = $derived($settingsStore.mcpServers);
+  let connectedCount = $derived(mcpServers.filter(s => s.status === 'connected').length);
+  let errorCount = $derived(Object.values(serverErrors).filter(Boolean).length);
 
   // Fetch servers from backend on mount
   onMount(async () => {
@@ -319,7 +322,7 @@
         <Server size={32} />
         <h4>No MCP Servers</h4>
         <p>Add an MCP server to extend agent capabilities with tools, resources, and prompts.</p>
-        <button class="btn primary" on:click={() => showAddModal = true}>
+        <button class="btn primary" onclick={() => showAddModal = true}>
           <Plus size={14} />
           Add Server
         </button>
@@ -339,7 +342,8 @@
               {#if isConnecting(server.id)}
                 <Loader2 size={12} class="spin" />
               {:else}
-                <svelte:component this={getStatusIcon(server.status)} size={12} />
+                {@const SvelteComponent = getStatusIcon(server.status)}
+                <SvelteComponent size={12} />
               {/if}
               <span class="status-text">{server.status === 'connecting' ? 'Connecting...' : server.status}</span>
             </div>
@@ -351,11 +355,11 @@
               <div class="error-header">
                 <AlertTriangle size={12} />
                 <span>Connection Error</span>
-                <button class="error-dismiss" on:click={() => dismissError(server.id)}>x</button>
+                <button class="error-dismiss" onclick={() => dismissError(server.id)}>x</button>
               </div>
               <div class="error-message">{serverErrors[server.id]?.message}</div>
               <div class="error-time">{formatErrorTime(serverErrors[server.id]?.timestamp)}</div>
-              <button class="btn small retry-btn" on:click={() => retryConnection(server)}>
+              <button class="btn small retry-btn" onclick={() => retryConnection(server)}>
                 <Zap size={10} /> Retry
               </button>
             </div>
@@ -375,7 +379,7 @@
               <input
                 type="checkbox"
                 checked={server.autoConnect}
-                on:change={() => settingsStore.updateMCPServer(server.id, { autoConnect: !server.autoConnect })}
+                onchange={() => settingsStore.updateMCPServer(server.id, { autoConnect: !server.autoConnect })}
               />
               Auto-connect
             </label>
@@ -384,7 +388,7 @@
           <div class="server-actions">
             <button
               class="btn secondary small"
-              on:click={() => handleToggleConnection(server)}
+              onclick={() => handleToggleConnection(server)}
               disabled={isConnecting(server.id)}
             >
               {#if isConnecting(server.id)}
@@ -397,7 +401,7 @@
             </button>
             <button
               class="btn secondary small"
-              on:click={() => handleRefreshServer(server)}
+              onclick={() => handleRefreshServer(server)}
               title="Refresh capabilities"
               disabled={isConnecting(server.id)}
             >
@@ -405,7 +409,7 @@
             </button>
             <button
               class="btn secondary small danger"
-              on:click={() => handleRemoveServer(server.id)}
+              onclick={() => handleRemoveServer(server.id)}
               title="Remove server"
               disabled={isConnecting(server.id)}
             >
@@ -419,7 +423,7 @@
   
   <!-- Add Server Button -->
   {#if mcpServers.length > 0}
-    <button class="btn primary add-btn" on:click={() => showAddModal = true}>
+    <button class="btn primary add-btn" onclick={() => showAddModal = true}>
       <Plus size={14} />
       Add MCP Server
     </button>
@@ -427,10 +431,10 @@
   
   <!-- Add Server Modal -->
   {#if showAddModal}
-    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-    <div class="modal-overlay" on:click={() => showAddModal = false} transition:fade role="button" tabindex="-1" aria-label="Close dialog">
-      <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions a11y-no-noninteractive-element-interactions -->
-      <div class="modal" on:click|stopPropagation transition:slide role="dialog" aria-modal="true" aria-labelledby="mcp-modal-title">
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div class="modal-overlay" onclick={() => showAddModal = false} transition:fade role="button" tabindex="-1" aria-label="Close dialog">
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions, a11y_no_noninteractive_element_interactions -->
+      <div class="modal" onclick={stopPropagation(bubble('click'))} transition:slide role="dialog" aria-modal="true" aria-labelledby="mcp-modal-title">
         <h4 id="mcp-modal-title">Add MCP Server</h4>
 
         <!-- Quick Add Templates -->
@@ -438,7 +442,7 @@
           <h5>Quick Add</h5>
           <div class="template-grid">
             {#each DEFAULT_SERVERS as template}
-              <button class="template-btn" on:click={() => addFromTemplate(template)}>
+              <button class="template-btn" onclick={() => addFromTemplate(template)}>
                 <Terminal size={14} />
                 {template.name}
               </button>
@@ -457,7 +461,7 @@
             <button
               class="type-btn"
               class:active={serverType === 'http'}
-              on:click={() => serverType = 'http'}
+              onclick={() => serverType = 'http'}
             >
               <Globe size={14} />
               HTTP URL
@@ -465,7 +469,7 @@
             <button
               class="type-btn"
               class:active={serverType === 'stdio'}
-              on:click={() => serverType = 'stdio'}
+              onclick={() => serverType = 'stdio'}
             >
               <Terminal size={14} />
               Command (Stdio)
@@ -533,10 +537,10 @@
         </div>
 
         <div class="modal-actions">
-          <button class="btn secondary" on:click={() => showAddModal = false}>Cancel</button>
+          <button class="btn secondary" onclick={() => showAddModal = false}>Cancel</button>
           <button
             class="btn primary"
-            on:click={handleAddServer}
+            onclick={handleAddServer}
             disabled={!newServer.name || (serverType === 'http' ? !newServer.url : !newServer.command)}
           >
             Add Server

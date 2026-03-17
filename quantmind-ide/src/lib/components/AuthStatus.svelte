@@ -4,7 +4,7 @@
   import { CheckCircle, XCircle, AlertCircle, Key, User, Wifi, WifiOff } from 'lucide-svelte';
 
   // Reactive state from settings store
-  $: apiKeys = $settingsStore.apiKeys;
+  let apiKeys = $derived($settingsStore.apiKeys);
 
   // Auth status for each provider
   interface AuthStatus {
@@ -14,17 +14,17 @@
     user?: string;
   }
 
-  let geminiStatus: AuthStatus = {
+  let geminiStatus: AuthStatus = $state({
     connected: false,
     hasKey: false,
     keyValid: false
-  };
+  });
 
-  let qwenStatus: AuthStatus = {
+  let qwenStatus: AuthStatus = $state({
     connected: false,
     hasKey: false,
     keyValid: false
-  };
+  });
 
   let checkingConnection = false;
 
@@ -140,12 +140,15 @@
     if (status.connected) return 'connected';
     return 'testing';
   }
+
+  const SvelteComponent = $derived(getStatusIcon(geminiStatus));
+  const SvelteComponent_1 = $derived(getStatusIcon(qwenStatus));
 </script>
 
 <div class="auth-status">
   <!-- Gemini (Google AI) Status -->
   <div class="auth-item" class:connected={geminiStatus.connected}>
-    <svelte:component this={getStatusIcon(geminiStatus)} size={12} />
+    <SvelteComponent size={12} />
     <span class="status-text">{getStatusText(geminiStatus, 'Gemini')}</span>
     {#if geminiStatus.hasKey && geminiStatus.keyValid}
       <Key size={10} class="key-indicator" />
@@ -154,7 +157,7 @@
 
   <!-- Qwen Status -->
   <div class="auth-item" class:connected={qwenStatus.connected}>
-    <svelte:component this={getStatusIcon(qwenStatus)} size={12} />
+    <SvelteComponent_1 size={12} />
     <span class="status-text">{getStatusText(qwenStatus, 'Qwen')}</span>
     {#if qwenStatus.hasKey && qwenStatus.keyValid}
       <Key size={10} class="key-indicator" />

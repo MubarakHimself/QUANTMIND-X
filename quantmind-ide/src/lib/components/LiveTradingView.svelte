@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from 'svelte/legacy';
+
   import { onMount, onDestroy } from 'svelte';
   import { createEventDispatcher } from 'svelte';
   import { PlayCircle, ShieldAlert, Newspaper, FileText, Activity, Bot, Wallet, TrendingUp, ExternalLink, ArrowRightLeft } from 'lucide-svelte';
@@ -12,14 +14,18 @@
   import { accountStore, activeAccount, accounts, type BrokerAccount } from '../stores/accountStore';
   import { createTradingClient } from '$lib/ws-client';
   import type { WebSocketClient } from '$lib/ws-client';
-  import { PUBLIC_API_BASE } from '$env/static/public';
+  import { API_BASE } from '$lib/constants';
 
   const dispatch = createEventDispatcher();
 
   // Use configured API base or default to same origin
-  const apiBase = PUBLIC_API_BASE || '';
+  const apiBase = API_BASE || '';
 
-  export let activeView = 'dashboard';
+  interface Props {
+    activeView?: string;
+  }
+
+  let { activeView = $bindable('dashboard') }: Props = $props();
 
   const subTabs = [
     { id: 'dashboard', icon: Activity, label: 'Dashboard' },
@@ -31,32 +37,34 @@
   ];
   
   // Chart settings
-  let chartSymbol = 'EURUSD';
-  let chartTimeframe = 'H1';
+  let chartSymbol = $state('EURUSD');
+  let chartTimeframe = $state('H1');
 
   // Real-time data from API
-  let systemStatus = {
+  let systemStatus = $state({
     active_bots: 0,
     pnl_today: 0,
     regime: 'UNKNOWN',
     kelly: 0
-  };
+  });
   
-  let bots: Array<{id: string, name: string, state: string, symbol: string}> = [];
-  let brokerAccounts: Array<BrokerAccount> = [];
-  let selectedBook = 'all';
+  let bots: Array<{id: string, name: string, state: string, symbol: string}> = $state([]);
+  let brokerAccounts: Array<BrokerAccount> = $state([]);
+  let selectedBook = $state('all');
   let wsClient: WebSocketClient | null = null;
   let isConnected = false;
-  let selectedAccountId = '';
+  let selectedAccountId = $state('');
 
   // Subscribe to account store
-  $: activeAccountData = $activeAccount;
-  $: accountList = $accounts;
+  let activeAccountData = $derived($activeAccount);
+  let accountList = $derived($accounts);
 
   // Update selectedAccountId when active account changes
-  $: if (activeAccountData) {
-    selectedAccountId = activeAccountData.account_id;
-  }
+  run(() => {
+    if (activeAccountData) {
+      selectedAccountId = activeAccountData.account_id;
+    }
+  });
 
   // Handle account switch
   async function handleAccountSwitch(event: Event) {
@@ -147,9 +155,9 @@
     }).format(value);
   }
 
-  $: filteredAccounts = selectedBook === 'all'
+  let filteredAccounts = $derived(selectedBook === 'all'
     ? brokerAccounts
-    : brokerAccounts.filter(a => (a.account_type || 'personal') === selectedBook);
+    : brokerAccounts.filter(a => (a.account_type || 'personal') === selectedBook));
 
   function getBookColor(type: string | undefined): string {
     return type === 'prop_firm' ? '#f97316' : '#a855f7';
@@ -166,9 +174,9 @@
       <button
         class="sub-tab"
         class:active={activeView === tab.id}
-        on:click={() => selectSubTab(tab.id)}
+        onclick={() => selectSubTab(tab.id)}
       >
-        <svelte:component this={tab.icon} size={16} />
+        <tab.icon size={16} />
         <span>{tab.label}</span>
       </button>
     {/each}
@@ -187,7 +195,7 @@
           <select
             class="account-select"
             bind:value={selectedAccountId}
-            on:change={handleAccountSwitch}
+            onchange={handleAccountSwitch}
           >
             <option value="">Select Account</option>
             {#each accountList as account}
@@ -244,11 +252,11 @@
         <MultiTimeframeRegimePanel />
 
         <div class="sections-row">
-          <div class="section-card clickable" on:click={() => selectSubTab('bots')}>
+          <div class="section-card clickable" onclick={() => selectSubTab('bots')}>
             <PlayCircle size={20} />
             <span>View All Bots</span>
           </div>
-          <div class="section-card danger" on:click={() => selectSubTab('kill-switch')}>
+          <div class="section-card danger" onclick={() => selectSubTab('kill-switch')}>
             <ShieldAlert size={20} />
             <span>Kill Switch</span>
           </div>
@@ -272,10 +280,10 @@
                 <div
                   class="account-card"
                   class:active={account.is_active}
-                  on:click={() => { if (account.account_id) accountStore.switchAccount(account.account_id); }}
+                  onclick={() => { if (account.account_id) accountStore.switchAccount(account.account_id); }}
                   role="button"
                   tabindex="0"
-                  on:keypress={(e) => { if (e.key === 'Enter' && account.account_id) accountStore.switchAccount(account.account_id); }}
+                  onkeypress={(e) => { if (e.key === 'Enter' && account.account_id) accountStore.switchAccount(account.account_id); }}
                 >
                   <div class="account-card-header">
                     <span class="broker-name">{account.broker_name}</span>

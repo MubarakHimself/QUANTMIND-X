@@ -1,24 +1,36 @@
 <script lang="ts">
   import { Globe, AlertCircle, Settings2, Shield, Radio, Timer } from 'lucide-svelte';
 
-  export let routerState: {
+
+
+  interface Props {
+    routerState: {
     mode: 'auction' | 'priority' | 'round-robin';
     auctionInterval: number;
   };
-
-  export let mt5Connected: boolean;
-  export let mt5Testing: boolean;
-  export let mt5Error: string;
-  export let mt5Config: {
+    mt5Connected: boolean;
+    mt5Testing: boolean;
+    mt5Error: string;
+    mt5Config: {
     server: string;
     port: number;
     login: string;
     password: string;
     symbolMapping: string;
   };
+    testMt5Connection: () => Promise<void>;
+    saveMt5Config: () => Promise<void>;
+  }
 
-  export let testMt5Connection: () => Promise<void>;
-  export let saveMt5Config: () => Promise<void>;
+  let {
+    routerState = $bindable(),
+    mt5Connected,
+    mt5Testing,
+    mt5Error,
+    mt5Config = $bindable(),
+    testMt5Connection,
+    saveMt5Config
+  }: Props = $props();
 
   let mt5SymbolMappingPlaceholder = '{"EURUSDm": "EURUSD", "GBPUSDm": "GBPUSD", "USDJPYm": "USDJPY"}';
 </script>
@@ -156,11 +168,11 @@
     </div>
 
     <div class="mt5-actions">
-      <button class="btn" on:click={testMt5Connection} disabled={mt5Testing}>
+      <button class="btn" onclick={testMt5Connection} disabled={mt5Testing}>
         <Settings2 size={14} />
         {mt5Testing ? 'Testing...' : 'Test Connection'}
       </button>
-      <button class="btn primary" on:click={saveMt5Config}>
+      <button class="btn primary" onclick={saveMt5Config}>
         Save Configuration
       </button>
     </div>

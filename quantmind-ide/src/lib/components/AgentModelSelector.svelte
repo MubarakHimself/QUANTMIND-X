@@ -2,8 +2,12 @@
   import { onMount } from 'svelte';
   import { API_CONFIG } from '$lib/config/api';
 
-  export let agentId: string;
-  export let currentModel: string = 'sonnet';
+  interface Props {
+    agentId: string;
+    currentModel?: string;
+  }
+
+  let { agentId, currentModel = 'sonnet' }: Props = $props();
 
   interface Model {
     id: string;
@@ -27,9 +31,9 @@
     models: Model[];
   }
 
-  let providerGroups: ProviderGroup[] = [];
-  let selectedModel = currentModel;
-  let loading = true;
+  let providerGroups: ProviderGroup[] = $state([]);
+  let selectedModel = $state(currentModel);
+  let loading = $state(true);
 
   const API_BASE = API_CONFIG.API_BASE;
 
@@ -114,7 +118,7 @@
 {:else}
   <select
     bind:value={selectedModel}
-    on:change={updateModel}
+    onchange={updateModel}
     class="model-selector"
   >
     {#each providerGroups as group}

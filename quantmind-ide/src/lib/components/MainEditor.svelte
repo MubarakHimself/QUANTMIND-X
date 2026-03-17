@@ -3,10 +3,15 @@
   import MonacoEditor from './MonacoEditor.svelte';
   import CodeEditor from './CodeEditor.svelte';
 
-  // Tabs and content state
-  export let openFiles: Array<{id: string, name: string, path?: string, content?: string, type?: string}> = [];
-  export let activeTabId: string = '';
-  export let useMonaco: boolean = true; // Toggle between Monaco and legacy editor
+  
+  interface Props {
+    // Tabs and content state
+    openFiles?: Array<{id: string, name: string, path?: string, content?: string, type?: string}>;
+    activeTabId?: string;
+    useMonaco?: boolean; // Toggle between Monaco and legacy editor
+  }
+
+  let { openFiles = $bindable([]), activeTabId = $bindable(''), useMonaco = $bindable(true) }: Props = $props();
 
   const API_BASE = 'http://localhost:8000/api';
 
@@ -93,7 +98,7 @@
     console.log('Saving file:', filename);
   }
 
-  $: activeFile = openFiles.find(f => f.id === activeTabId);
+  let activeFile = $derived(openFiles.find(f => f.id === activeTabId));
 </script>
 
 <main class="main-editor">
@@ -105,17 +110,18 @@
       </div>
     {:else}
       {#each openFiles as file}
+        {@const SvelteComponent = getFileIcon(file.name)}
         <div
           class="tab"
           class:active={activeTabId === file.id}
-          on:click={() => activeTabId = file.id}
-          on:keypress={(e) => e.key === 'Enter' && (activeTabId = file.id)}
+          onclick={() => activeTabId = file.id}
+          onkeypress={(e) => e.key === 'Enter' && (activeTabId = file.id)}
           role="tab"
           tabindex="0"
         >
-          <svelte:component this={getFileIcon(file.name)} size={14} />
+          <SvelteComponent size={14} />
           <span class="tab-name">{file.name}</span>
-          <button class="tab-close" on:click={(e) => closeTab(e, file.id)}>
+          <button class="tab-close" onclick={(e) => closeTab(e, file.id)}>
             <X size={14} />
           </button>
         </div>
@@ -126,14 +132,14 @@
     <div class="editor-toggle">
       <button
         class:active={useMonaco}
-        on:click={() => useMonaco = true}
+        onclick={() => useMonaco = true}
         title="Use Monaco Editor"
       >
         <Code size={12} />
       </button>
       <button
         class:active={!useMonaco}
-        on:click={() => useMonaco = false}
+        onclick={() => useMonaco = false}
         title="Use Legacy Editor"
       >
         <FileText size={12} />

@@ -1,7 +1,11 @@
 <script lang="ts">
   import { Calculator } from 'lucide-svelte';
 
-  export let kellyData: Record<string, {
+
+
+
+  interface Props {
+    kellyData: Record<string, {
     kellyFraction: number;
     halfKelly: number;
     winRate: number;
@@ -10,13 +14,11 @@
     expectedValue: number;
     suggestedFraction: number;
   }>;
-
-  export let bots: Array<{
+    bots: Array<{
     id: string;
     name: string;
   }>;
-
-  export let kellyRankings: Array<{
+    kellyRankings: Array<{
     botId: string;
     name: string;
     kellyFraction: number;
@@ -26,13 +28,20 @@
     suggestedFraction: number;
     kellyScore: string;
   }>;
-
-  export let kellyHistory: Array<{
+    kellyHistory: Array<{
     date: string;
     botId: string;
     fraction: number;
     result: number;
   }>;
+  }
+
+  let {
+    kellyData,
+    bots,
+    kellyRankings,
+    kellyHistory
+  }: Props = $props();
 
   function formatCurrency(value: number) {
     return new Intl.NumberFormat('en-US', {
@@ -42,9 +51,9 @@
     }).format(value);
   }
 
-  $: avgKelly = Object.values(kellyData).reduce((a, b) => a + b.kellyFraction, 0) / Object.values(kellyData).length * 100;
-  $: avgHalfKelly = Object.values(kellyData).reduce((a, b) => a + b.halfKelly, 0) / Object.values(kellyData).length * 100;
-  $: maxKelly = Math.max(...Object.values(kellyData).map(k => k.kellyFraction * 100));
+  let avgKelly = $derived(Object.values(kellyData).reduce((a, b) => a + b.kellyFraction, 0) / Object.values(kellyData).length * 100);
+  let avgHalfKelly = $derived(Object.values(kellyData).reduce((a, b) => a + b.halfKelly, 0) / Object.values(kellyData).length * 100);
+  let maxKelly = $derived(Math.max(...Object.values(kellyData).map(k => k.kellyFraction * 100)));
 </script>
 
 <div class="kelly-section">

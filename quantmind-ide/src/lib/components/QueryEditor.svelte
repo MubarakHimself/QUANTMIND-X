@@ -8,15 +8,28 @@
     AlertCircle,
   } from "lucide-svelte";
 
-  export let queryInput = "";
-  export let queryHistory: string[] = [];
-  export let queryResults: any = null;
-  export let isQueryRunning = false;
 
-  export let executeQuery: () => Promise<void>;
-  export let navigateHistory: (direction: "up" | "down") => void;
-  export let isJsonColumn: (value: any) => boolean;
-  export let previewJson: (data: any) => void;
+  interface Props {
+    queryInput?: string;
+    queryHistory?: string[];
+    queryResults?: any;
+    isQueryRunning?: boolean;
+    executeQuery: () => Promise<void>;
+    navigateHistory: (direction: "up" | "down") => void;
+    isJsonColumn: (value: any) => boolean;
+    previewJson: (data: any) => void;
+  }
+
+  let {
+    queryInput = $bindable(""),
+    queryHistory = [],
+    queryResults = null,
+    isQueryRunning = false,
+    executeQuery,
+    navigateHistory,
+    isJsonColumn,
+    previewJson
+  }: Props = $props();
 
   function handleKeyDown(e: KeyboardEvent) {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
@@ -48,7 +61,7 @@ Examples:
   SELECT COUNT(*) FROM trade_proposals WHERE status = 'active'
   SELECT strategy_name, AVG(profit) FROM crypto_trades GROUP BY strategy_name"
       bind:value={queryInput}
-      on:keydown={handleKeyDown}
+      onkeydown={handleKeyDown}
     ></textarea>
   </div>
 
@@ -59,7 +72,7 @@ Examples:
     </div>
     <button
       class="btn primary"
-      on:click={executeQuery}
+      onclick={executeQuery}
       disabled={isQueryRunning || !queryInput.trim()}
     >
       {#if isQueryRunning}
@@ -80,8 +93,8 @@ Examples:
         {#each queryHistory.slice(0, 5) as query}
           <div
             class="history-item"
-            on:click={() => (queryInput = query)}
-            on:keydown={(e) => e.key === "Enter" && (queryInput = query)}
+            onclick={() => (queryInput = query)}
+            onkeydown={(e) => e.key === "Enter" && (queryInput = query)}
             role="button"
             tabindex="0"
             aria-label="Use query: {query.slice(0, 30)}..."
@@ -127,8 +140,8 @@ Examples:
                   {#if isJsonColumn(row[column])}
                     <span
                       class="json-link"
-                      on:click={() => previewJson(row[column])}
-                      on:keydown={(e) =>
+                      onclick={() => previewJson(row[column])}
+                      onkeydown={(e) =>
                         e.key === "Enter" && previewJson(row[column])}
                       role="button"
                       tabindex="0"

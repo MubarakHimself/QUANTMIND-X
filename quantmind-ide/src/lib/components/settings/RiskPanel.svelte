@@ -2,7 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import { Shield } from 'lucide-svelte';
 
-  export let riskSettings = {
+  let { riskSettings = $bindable({
     houseMoneyEnabled: true,
     houseMoneyThreshold: 0.5,
     dailyLossLimit: 5,
@@ -15,7 +15,7 @@
       scaling: 5000,
       guardian: Infinity
     }
-  };
+  }) } = $props();
 
   const PROP_FIRM_PRESETS = {
     ftmo: { name: 'FTMO', maxRisk: 2, dailyLoss: 5, totalLoss: 10 },
@@ -59,7 +59,7 @@
     <div class="setting-row">
       <span>Enable House Money</span>
       <label class="switch">
-        <input type="checkbox" bind:checked={riskSettings.houseMoneyEnabled} on:change={(e) => updateRiskSettings('houseMoneyEnabled', e.currentTarget.checked)} />
+        <input type="checkbox" bind:checked={riskSettings.houseMoneyEnabled} onchange={(e) => updateRiskSettings('houseMoneyEnabled', e.currentTarget.checked)} />
         <span class="slider"></span>
       </label>
     </div>
@@ -71,7 +71,7 @@
         max="100"
         bind:value={riskSettings.houseMoneyThreshold}
         class="number-input"
-        on:input={(e) => updateRiskSettings('houseMoneyThreshold', parseFloat(e.currentTarget.value))}
+        oninput={(e) => updateRiskSettings('houseMoneyThreshold', parseFloat(e.currentTarget.value))}
       />
     </div>
   </div>
@@ -86,7 +86,7 @@
         max="20"
         bind:value={riskSettings.dailyLossLimit}
         class="number-input"
-        on:input={(e) => updateRiskSettings('dailyLossLimit', parseFloat(e.currentTarget.value))}
+        oninput={(e) => updateRiskSettings('dailyLossLimit', parseFloat(e.currentTarget.value))}
       />
     </div>
     <div class="setting-row">
@@ -97,7 +97,7 @@
         max="50"
         bind:value={riskSettings.maxDrawdown}
         class="number-input"
-        on:input={(e) => updateRiskSettings('maxDrawdown', parseFloat(e.currentTarget.value))}
+        oninput={(e) => updateRiskSettings('maxDrawdown', parseFloat(e.currentTarget.value))}
       />
     </div>
   </div>
@@ -106,7 +106,7 @@
     <label>Prop Firm Preset</label>
     <div class="setting-row">
       <span>Select Preset</span>
-      <select bind:value={riskSettings.propFirmPreset} class="select-input" on:change={handlePresetChange}>
+      <select bind:value={riskSettings.propFirmPreset} class="select-input" onchange={handlePresetChange}>
         <option value="ftmo">FTMO</option>
         <option value="the5ers">The5ers</option>
         <option value="fundingpips">FundingPips</option>
@@ -127,7 +127,7 @@
     <label>Risk Mode</label>
     <div class="setting-row">
       <span>Mode</span>
-      <select bind:value={riskSettings.riskMode} on:change={(e) => updateRiskSettings('riskMode', e.currentTarget.value)}>
+      <select bind:value={riskSettings.riskMode} onchange={(e) => updateRiskSettings('riskMode', e.currentTarget.value)}>
         <option value="fixed">Fixed (constant risk)</option>
         <option value="dynamic">Dynamic (adjusts to conditions)</option>
         <option value="conservative">Conservative (protects capital)</option>

@@ -1,21 +1,21 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { Code, Copy, Check, AlertCircle, Loader, Send, ArrowRight, FileCode } from 'lucide-svelte';
-  import { PUBLIC_API_BASE } from '$env/static/public';
+  import { API_BASE } from '$lib/constants';
 
   // State
-  let strategyDescription = '';
-  let pineScriptCode = '';
-  let mql5Source = '';
-  let mode: 'generate' | 'convert' = 'generate';
-  let isGenerating = false;
-  let status: 'idle' | 'generating' | 'validating' | 'complete' | 'error' = 'idle';
-  let errors: string[] = [];
-  let copiedToClipboard = false;
-  let copyButtonText = 'Copy to TradingView';
+  let strategyDescription = $state('');
+  let pineScriptCode = $state('');
+  let mql5Source = $state('');
+  let mode: 'generate' | 'convert' = $state('generate');
+  let isGenerating = $state(false);
+  let status: 'idle' | 'generating' | 'validating' | 'complete' | 'error' = $state('idle');
+  let errors: string[] = $state([]);
+  let copiedToClipboard = $state(false);
+  let copyButtonText = $state('Copy to TradingView');
 
   // API base URL
-  const apiBase = PUBLIC_API_BASE || 'http://localhost:8000';
+  const apiBase = API_BASE || 'http://localhost:8000';
 
   // Generate Pine Script from natural language
   async function generatePineScript() {
@@ -118,14 +118,14 @@
   <div class="mode-selector">
     <button 
       class:active={mode === 'generate'}
-      on:click={() => mode = 'generate'}
+      onclick={() => mode = 'generate'}
     >
       <Send size={16} />
       Generate from Description
     </button>
     <button 
       class:active={mode === 'convert'}
-      on:click={() => mode = 'convert'}
+      onclick={() => mode = 'convert'}
     >
       <Code size={16} />
       Convert MQL5
@@ -151,7 +151,7 @@
           {#each exampleStrategies as example, i}
             <button 
               class="example-chip" 
-              on:click={() => insertExample(example)}
+              onclick={() => insertExample(example)}
               disabled={isGenerating}
             >
               {example.substring(0, 30)}...
@@ -177,7 +177,7 @@
   <!-- Generate Button -->
   <button 
     class="generate-button"
-    on:click={generatePineScript}
+    onclick={generatePineScript}
     disabled={isGenerating || (mode === 'generate' ? !strategyDescription.trim() : !mql5Source.trim())}
   >
     {#if isGenerating}
@@ -231,7 +231,7 @@
         <button 
           class="copy-button"
           class:copied={copiedToClipboard}
-          on:click={copyToClipboard}
+          onclick={copyToClipboard}
         >
           {#if copiedToClipboard}
             <Check size={16} />

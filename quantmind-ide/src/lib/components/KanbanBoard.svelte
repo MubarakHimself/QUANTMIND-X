@@ -1,3 +1,7 @@
+<!-- @migration-task Error while migrating Svelte code: This type of directive is not valid on components
+https://svelte.dev/e/component_invalid_directive -->
+<!-- @migration-task Error while migrating Svelte code: This type of directive is not valid on components
+https://svelte.dev/e/component_invalid_directive -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { RefreshCw, Plus, Settings } from 'lucide-svelte';

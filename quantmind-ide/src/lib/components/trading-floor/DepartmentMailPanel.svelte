@@ -23,12 +23,12 @@
   import { approvalStore, type ApprovalGate } from '$lib/stores/approvalStore';
 
   // Local state
-  let viewMode: 'inbox' | 'sent' | 'stats' = 'inbox';
+  let viewMode: 'inbox' | 'sent' | 'stats' = $state('inbox');
   let refreshInterval: number | null = null;
-  let selectedMsg: DepartmentMailMessage | null = null;
-  let approvingGate = false;
-  let approverName = 'user'; // Default approver name
-  let approvalNotes = '';
+  let selectedMsg: DepartmentMailMessage | null = $state(null);
+  let approvingGate = $state(false);
+  let approverName = $state('user'); // Default approver name
+  let approvalNotes = $state('');
 
   // Check if message is an approval request
   function isApprovalMessage(msg: DepartmentMailMessage): boolean {
@@ -85,16 +85,16 @@
   }
 
   // Reactive state from store
-  $: inbox = $filteredInbox;
-  $: sent = $sentMessages;
-  $: stats = $mailStats;
-  $: loading = $mailLoading;
-  $: error = $mailError;
-  $: selectedDept = $selectedDepartment;
-  $: unread = $unreadCount;
+  let inbox = $derived($filteredInbox);
+  let sent = $derived($sentMessages);
+  let stats = $derived($mailStats);
+  let loading = $derived($mailLoading);
+  let error = $derived($mailError);
+  let selectedDept = $derived($selectedDepartment);
+  let unread = $derived($unreadCount);
 
   // Check if selected message is an approval request that can be acted upon
-  $: canApprove = selectedMsg?.type === 'approval_request' && selectedMsg?.gate_id;
+  let canApprove = $derived(selectedMsg?.type === 'approval_request' && selectedMsg?.gate_id);
 
   // Departments for filtering
   const departments = ['development', 'research', 'risk', 'trading', 'portfolio'];
@@ -206,7 +206,7 @@
       {/if}
     </div>
     <div class="header-actions">
-      <button class="refresh-btn" on:click={handleRefresh} disabled={loading}>
+      <button class="refresh-btn" onclick={handleRefresh} disabled={loading}>
         <RefreshCw size={14} class={loading ? 'spinning' : ''} />
       </button>
     </div>
@@ -217,7 +217,7 @@
     <button
       class="tab-btn"
       class:active={viewMode === 'inbox'}
-      on:click={() => viewMode = 'inbox'}
+      onclick={() => viewMode = 'inbox'}
     >
       <Inbox size={14} />
       Inbox
@@ -228,7 +228,7 @@
     <button
       class="tab-btn"
       class:active={viewMode === 'sent'}
-      on:click={() => viewMode = 'sent'}
+      onclick={() => viewMode = 'sent'}
     >
       <Send size={14} />
       Sent
@@ -236,7 +236,7 @@
     <button
       class="tab-btn"
       class:active={viewMode === 'stats'}
-      on:click={() => viewMode = 'stats'}
+      onclick={() => viewMode = 'stats'}
     >
       <Clock size={14} />
       Stats
@@ -254,7 +254,7 @@
       <button
         class="chip"
         class:active={!selectedDept}
-        on:click={() => handleSelectDepartment(null)}
+        onclick={() => handleSelectDepartment(null)}
       >
         All
       </button>
@@ -263,7 +263,7 @@
           class="chip"
           class:active={selectedDept === dept}
           style="--dept-color: {DEPARTMENT_COLORS[dept]}"
-          on:click={() => handleSelectDepartment(dept)}
+          onclick={() => handleSelectDepartment(dept)}
         >
           <span class="chip-dot"></span>
           {dept}
@@ -281,7 +281,7 @@
   <div class="error-banner">
     <AlertCircle size={14} />
     {error}
-    <button class="dismiss-btn" on:click={() => ({})}>
+    <button class="dismiss-btn" onclick={() => ({})}>
       <X size={12} />
     </button>
   </div>
@@ -298,7 +298,7 @@
       <!-- Message Detail View -->
       <div class="message-detail">
         <div class="detail-header">
-          <button class="back-btn" on:click={handleCloseMessage}>
+          <button class="back-btn" onclick={handleCloseMessage}>
             <ChevronRight size={16} />
             Back
           </button>
@@ -386,11 +386,11 @@
               ></textarea>
             </div>
             <div class="action-buttons">
-              <button class="approve-btn" on:click={handleApprove} disabled={approvingGate || !approverName}>
+              <button class="approve-btn" onclick={handleApprove} disabled={approvingGate || !approverName}>
                 <ThumbsUp size={14} />
                 {approvingGate ? 'Approving...' : 'Approve'}
               </button>
-              <button class="reject-btn" on:click={handleReject} disabled={approvingGate || !approverName}>
+              <button class="reject-btn" onclick={handleReject} disabled={approvingGate || !approverName}>
                 <ThumbsDown size={14} />
                 {approvingGate ? 'Rejecting...' : 'Reject'}
               </button>
@@ -424,7 +424,7 @@
             <button
               class="message-item"
               class:unread={!message.read}
-              on:click={() => handleSelectMessage(message)}
+              onclick={() => handleSelectMessage(message)}
             >
               <div class="item-indicator" style="background-color: {DEPARTMENT_COLORS[message.from]}"></div>
               <div class="item-content">

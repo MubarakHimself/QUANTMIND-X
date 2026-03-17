@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { stopPropagation } from 'svelte/legacy';
+
   import { onMount } from "svelte";
   import { fade, fly } from "svelte/transition";
 
@@ -18,11 +20,11 @@
   }
 
   // State
-  let features: Feature[] = [];
-  let loading = true;
-  let error: string | null = null;
-  let selectedFeature: Feature | null = null;
-  let viewMode: "cards" | "iframe" = "cards";
+  let features: Feature[] = $state([]);
+  let loading = $state(true);
+  let error: string | null = $state(null);
+  let selectedFeature: Feature | null = $state(null);
+  let viewMode: "cards" | "iframe" = $state("cards");
 
   // API Base URL for feature endpoints
   const FEATURE_API_BASE = "http://localhost:3002/api";
@@ -114,7 +116,7 @@
     </div>
     <button
       class="refresh-btn"
-      on:click={refreshFeatures}
+      onclick={refreshFeatures}
       disabled={loading}
       title="Refresh features"
     >
@@ -128,7 +130,7 @@
     <div class="error-banner" in:fly={{ y: -20 }}>
       <span class="error-icon">&#9888;</span>
       <span>{error}</span>
-      <button class="dismiss-btn" on:click={() => (error = null)}>&times;</button>
+      <button class="dismiss-btn" onclick={() => (error = null)}>&times;</button>
     </div>
   {/if}
 
@@ -143,12 +145,12 @@
         <div class="iframe-actions">
           <button
             class="action-btn"
-            on:click={() => openFeatureInNewTab(selectedFeature)}
+            onclick={() => openFeatureInNewTab(selectedFeature)}
             title="Open in new tab"
           >
             &#8599; Open External
           </button>
-          <button class="close-btn" on:click={closeIframe} title="Close">
+          <button class="close-btn" onclick={closeIframe} title="Close">
             &times;
           </button>
         </div>
@@ -190,8 +192,8 @@
             in:fly={{ y: 20 }}
             role="button"
             tabindex="0"
-            on:click={() => openFeatureInNewTab(feature)}
-            on:keydown={(e) => e.key === "Enter" && openFeatureInNewTab(feature)}
+            onclick={() => openFeatureInNewTab(feature)}
+            onkeydown={(e) => e.key === "Enter" && openFeatureInNewTab(feature)}
           >
             <div class="card-header">
               <span class="feature-icon">{feature.icon}</span>
@@ -215,14 +217,14 @@
               <div class="card-actions">
                 <button
                   class="action-icon"
-                  on:click|stopPropagation={() => openFeatureInIframe(feature)}
+                  onclick={stopPropagation(() => openFeatureInIframe(feature))}
                   title="Open in panel"
                 >
                   &#9633;
                 </button>
                 <button
                   class="action-icon"
-                  on:click|stopPropagation={() => openFeatureInNewTab(feature)}
+                  onclick={stopPropagation(() => openFeatureInNewTab(feature))}
                   title="Open in new tab"
                 >
                   &#8599;

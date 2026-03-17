@@ -7,23 +7,35 @@
     Brain
   } from 'lucide-svelte';
 
-  export let routerState: {
+
+
+  interface Props {
+    routerState: {
     active: boolean;
     mode: 'auction' | 'priority' | 'round-robin';
     auctionInterval: number;
   };
-
-  export let hmmTraining: {
+    hmmTraining: {
     isTraining: boolean;
     progress: number;
     message: string;
   };
+    autoRefresh: boolean;
+    toggleRouter: () => Promise<void>;
+    loadRouterState: () => Promise<void>;
+    runAuction: () => Promise<void>;
+    startHMMTraining: () => Promise<void>;
+  }
 
-  export let autoRefresh: boolean;
-  export let toggleRouter: () => Promise<void>;
-  export let loadRouterState: () => Promise<void>;
-  export let runAuction: () => Promise<void>;
-  export let startHMMTraining: () => Promise<void>;
+  let {
+    routerState,
+    hmmTraining,
+    autoRefresh = $bindable(),
+    toggleRouter,
+    loadRouterState,
+    runAuction,
+    startHMMTraining
+  }: Props = $props();
 
   function handleAutoRefreshToggle() {
     autoRefresh = !autoRefresh;
@@ -46,23 +58,23 @@
     <button
       class="btn"
       class:active={autoRefresh}
-      on:click={handleAutoRefreshToggle}
+      onclick={handleAutoRefreshToggle}
     >
       <MonitorPlay size={14} />
       <span>Auto</span>
     </button>
-    <button class="btn" on:click={loadRouterState}>
+    <button class="btn" onclick={loadRouterState}>
       <RefreshCw size={14} />
       <span>Refresh</span>
     </button>
-    <button class="btn primary" on:click={runAuction}>
+    <button class="btn primary" onclick={runAuction}>
       <Play size={14} />
       <span>Run Auction</span>
     </button>
     <button
       class="btn hmm-train-btn"
       class:training={hmmTraining.isTraining}
-      on:click={startHMMTraining}
+      onclick={startHMMTraining}
       disabled={hmmTraining.isTraining}
       title="Train HMM Model"
     >

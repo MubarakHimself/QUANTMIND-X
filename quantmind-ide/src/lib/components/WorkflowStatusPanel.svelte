@@ -26,11 +26,11 @@
   }
 
   // State
-  let workflows: Workflow[] = [];
-  let selectedWorkflow: Workflow | null = null;
-  let loading = true;
-  let error: string | null = null;
-  let autoRefresh = true;
+  let workflows: Workflow[] = $state([]);
+  let selectedWorkflow: Workflow | null = $state(null);
+  let loading = $state(true);
+  let error: string | null = $state(null);
+  let autoRefresh = $state(true);
   let refreshInterval: number | null = null;
 
   // Stage display info
@@ -170,7 +170,7 @@
   <div class="panel-header">
     <h3>Workflow Status</h3>
     <div class="header-actions">
-      <button class="refresh-btn" on:click={fetchWorkflows} title="Refresh">
+      <button class="refresh-btn" onclick={fetchWorkflows} title="Refresh">
         🔄
       </button>
       <label class="auto-refresh-toggle">
@@ -185,7 +185,7 @@
     <div class="error-banner" in:fly={{ y: -20 }}>
       <span>⚠️</span>
       <span>{error}</span>
-      <button on:click={() => error = null}>×</button>
+      <button onclick={() => error = null}>×</button>
     </div>
   {/if}
 
@@ -213,7 +213,7 @@
               <div 
                 class="workflow-card"
                 class:selected={selectedWorkflow?.workflow_id === workflow.workflow_id}
-                on:click={() => selectWorkflow(workflow)}
+                onclick={() => selectWorkflow(workflow)}
                 in:fly={{ y: 20 }}
               >
                 <div class="card-header">
@@ -250,7 +250,7 @@
               {#if selectedWorkflow.status === 'running'}
                 <button 
                   class="cancel-btn"
-                  on:click={() => cancelWorkflow(selectedWorkflow.workflow_id)}
+                  onclick={() => cancelWorkflow(selectedWorkflow.workflow_id)}
                 >
                   Cancel
                 </button>
@@ -258,12 +258,12 @@
               {#if selectedWorkflow.status === 'failed'}
                 <button 
                   class="retry-btn"
-                  on:click={() => retryWorkflow(selectedWorkflow.workflow_id)}
+                  onclick={() => retryWorkflow(selectedWorkflow.workflow_id)}
                 >
                   Retry
                 </button>
               {/if}
-              <button class="close-btn" on:click={() => selectedWorkflow = null}>×</button>
+              <button class="close-btn" onclick={() => selectedWorkflow = null}>×</button>
             </div>
           </div>
 
