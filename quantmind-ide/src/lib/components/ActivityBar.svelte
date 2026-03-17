@@ -13,6 +13,7 @@
     FileText,
   } from "lucide-svelte";
   import { navigationStore } from "../stores/navigationStore";
+  import { activeCanvasStore, CANVAS_SHORTCUTS, CANVASES } from "../stores/canvasStore";
 
   const dispatch = createEventDispatcher();
   let unsubscribe: (() => void) | null = null;
@@ -99,6 +100,9 @@
         <span class="shortcut-badge">{canvas.shortcut}</span>
       </button>
     {/each}
+  </div>
+  <div class="shortcut-hint">
+    <span class="hint">1-9</span>
   </div>
 </aside>
 

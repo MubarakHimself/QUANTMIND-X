@@ -1,7 +1,7 @@
 <!-- @migration-task Error while migrating Svelte code: Can't migrate code with afterUpdate. Please migrate by hand. -->
 <!-- @migration-task Error while migrating Svelte code: Can't migrate code with afterUpdate. Please migrate by hand. -->
 <script lang="ts">
-  import { createEventDispatcher, onMount, afterUpdate } from "svelte";
+  import { createEventDispatcher, onMount, onDestroy, afterUpdate } from "svelte";
   import hljs from "highlight.js";
   import "highlight.js/styles/github-dark.css";
   import { API_CONFIG } from "../config/api";
@@ -94,6 +94,21 @@
   import TabBar from "./TabBar.svelte";
   import BatchProcessingPanel from "./BatchProcessingPanel.svelte";
 
+  // Canvas routing imports
+  import { activeCanvasStore, CANVASES, CANVAS_SHORTCUTS, type Canvas } from "../stores/canvasStore";
+  import BreadcrumbNav from "./BreadcrumbNav.svelte";
+  import {
+    LiveTradingCanvas,
+    ResearchCanvas,
+    DevelopmentCanvas,
+    RiskCanvas,
+    TradingCanvas,
+    PortfolioCanvas,
+    SharedAssetsCanvas,
+    WorkshopCanvas,
+    FlowForgeCanvas,
+  } from "./canvas/index";
+
   const dispatch = createEventDispatcher();
 
   export let activeView = "ea";
@@ -111,6 +126,41 @@
   let currentFolder = $navigationStore.currentFolder;
   let subPage = $navigationStore.subPage;
   let viewMode = $navigationStore.viewMode;
+
+  // Canvas routing state - subscribe to canvas store (Svelte 4 reactive)
+  let activeCanvas = "workshop";
+  let canvasBreadcrumbs: Array<{ id: string; label: string; type: 'canvas' | 'subpage' }> = [];
+
+  // Subscribe to canvas store
+  $: activeCanvas = $activeCanvasStore;
+
+  // Get current canvas info
+  $: currentCanvasInfo = CANVASES.find(c => c.id === activeCanvas);
+
+  // Handle keyboard shortcuts (1-9 for canvas switching)
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.ctrlKey || event.metaKey) return; // Ignore with modifier keys
+
+    const key = event.key;
+    if (CANVAS_SHORTCUT[key]) {
+      event.preventDefault();
+      activeCanvasStore.setActiveCanvas(CANVAS_SHORTCUT[key]);
+    }
+  }
+
+  // Add keyboard event listener on mount
+  let keydownHandler: (e: KeyboardEvent) => void;
+
+  onMount(() => {
+    keydownHandler = handleKeydown;
+    window.addEventListener('keydown', keydownHandler);
+  });
+
+  onDestroy(() => {
+    if (typeof window !== 'undefined' && keydownHandler) {
+      window.removeEventListener('keydown', keydownHandler);
+    }
+  });
 
   // Local state (not navigation-related)
   let editingFileId: string | null = null;
@@ -1296,6 +1346,31 @@
     on:resetNavigation={resetNavigation}
   />
 
+  <!-- Canvas Router - 9 canvas routing skeleton -->
+  <div class="canvas-host">
+    <BreadcrumbNav breadcrumbs={canvasBreadcrumbs} />
+
+    {#if activeCanvas === 'live-trading'}
+      <LiveTradingCanvas />
+    {:else if activeCanvas === 'research'}
+      <ResearchCanvas />
+    {:else if activeCanvas === 'development'}
+      <DevelopmentCanvas />
+    {:else if activeCanvas === 'risk'}
+      <RiskCanvas />
+    {:else if activeCanvas === 'trading'}
+      <TradingCanvas />
+    {:else if activeCanvas === 'portfolio'}
+      <PortfolioCanvas />
+    {:else if activeCanvas === 'shared-assets'}
+      <SharedAssetsCanvas />
+    {:else if activeCanvas === 'workshop'}
+      <WorkshopCanvas />
+    {:else if activeCanvas === 'flowforge'}
+      <FlowForgeCanvas />
+    {/if}
+  </div>
+
   <div class="content-area">
     {#if activeTabId && openFiles.find((f) => f.id === activeTabId)}
       <!-- File Editor View -->
@@ -2042,6 +2117,14 @@
     display: flex;
     flex-direction: column;
     background: var(--bg-primary);
+    overflow: hidden;
+  }
+
+  /* Canvas Host - 9 canvas routing skeleton */
+  .canvas-host {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
   }
 
