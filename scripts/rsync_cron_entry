@@ -1,0 +1,26 @@
+# =============================================================================
+# Rsync Cron Entry - Cloudzy to Contabo Backup
+# =============================================================================
+# Nightly rsync from Cloudzy to Contabo backup
+# Runs at 02:00 UTC daily
+# NFR-R6: 3-day backup cadence
+# NFR-D5: Data integrity verification
+#
+# Installation:
+#   Copy this entry to /etc/cron.d/quantmindx-rsync
+#   OR add manually: crontab -e
+#
+# Log file: /var/log/quantmindx/rsync_cloudzy_contabo.log
+# =============================================================================
+
+# Environment
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+PROJECT_DIR=/opt/quantmindx
+LOG_DIR=/var/log/quantmindx
+VENV_DIR=/opt/quantmindx/venv
+
+# =============================================================================
+# Nightly rsync: Cloudzy → Contabo (02:00 UTC daily)
+# =============================================================================
+0 2 * * * quantmind cd ${PROJECT_DIR} && bash scripts/sync_cloudzy_to_contabo.sh >> ${LOG_DIR}/rsync_cloudzy_contabo.log 2>&1
