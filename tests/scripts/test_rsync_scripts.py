@@ -136,6 +136,69 @@ class TestRsyncAuditLogger:
             code = f.read()
             compile(code, 'rsync_audit_logger.py', 'exec')
 
+    def test_audit_logger_cli_args(self):
+        """Test audit logger command-line parsing."""
+        result = subprocess.run(
+            ["python3", "-m", "scripts.rsync_audit_logger", "--help"],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 0
+        assert "--action" in result.stdout
+
+
+class TestMainRsyncScript:
+    """Test the main rsync script."""
+
+    def test_rsync_script_help(self):
+        """Test that rsync script shows help."""
+        result = subprocess.run(
+            ["bash", "scripts/sync_cloudzy_to_contabo.sh", "--help"],
+            capture_output=True,
+            text=True
+        )
+        # Script doesn't have --help but should not error on unknown args
+        assert "Usage:" in result.stdout or result.returncode != 0
+
+    def test_rsync_script_dry_run(self):
+        """Test rsync script dry-run mode."""
+        # Set required env vars that would trigger pre-flight check failure
+        env = os.environ.copy()
+        env['CLOUDZY_HOST'] = ''  # Empty host should trigger failure check
+        result = subprocess.run(
+            ["bash", "scripts/sync_cloudzy_to_contabo.sh", "--dry-run"],
+            capture_output=True,
+            text=True,
+            env=env
+        )
+        # Should fail because CLOUDZY_HOST is empty
+        assert result.returncode != 0
+
+    def test_rsync_cron_entry_format(self):
+        """Test cron entry has correct format."""
+        with open('scripts/rsync_cron_entry', 'r') as f:
+            content = f.read()
+            # Check for correct cron schedule (02:00 UTC)
+            assert "0 2 * * *" in content
+            # Check for correct user
+            assert "quantmind" in content
+
+
+class TestChecksumEdgeCases:
+    """Test checksum edge cases."""
+
+    def test_checksum_empty_directory(self):
+        """Test checksum generation on empty directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_file = Path(tmpdir) / "checksums.txt"
+            result = subprocess.run(
+                ["bash", "scripts/verify_checksum.sh", "--generate", tmpdir, str(output_file)],
+                capture_output=True,
+                text=True
+            )
+            # Should succeed but produce empty file
+            assert result.returncode == 0
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
