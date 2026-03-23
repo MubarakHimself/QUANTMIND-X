@@ -35,7 +35,7 @@
     flex-direction: column;
     height: 100%;
     padding: 24px;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
   }
 
   .canvas-header {
@@ -44,13 +44,13 @@
     gap: 16px;
     margin-bottom: 32px;
     padding-bottom: 16px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .canvas-title {
     font-size: 24px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     margin: 0;
   }
 
@@ -58,7 +58,7 @@
     display: inline-flex;
     align-items: center;
     padding: 4px 12px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     color: var(--text-inverse);
     border-radius: 12px;
     font-size: 12px;
@@ -77,14 +77,14 @@
     flex-direction: column;
     align-items: center;
     gap: 16px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .coming-soon h3 {
     font-size: 20px;
     font-weight: 500;
     margin: 0;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .coming-soon p {
@@ -96,11 +96,11 @@
 
   .canvas-footer {
     padding-top: 16px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
 
   .status {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 </style>

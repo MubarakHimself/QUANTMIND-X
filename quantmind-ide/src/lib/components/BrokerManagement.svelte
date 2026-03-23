@@ -53,11 +53,11 @@
 
   function getStatusColor(status: BrokerInfo['status']): string {
     switch (status) {
-      case 'connected': return 'var(--accent-success)';
-      case 'pending': return 'var(--accent-warning)';
-      case 'disconnected': return 'var(--accent-danger)';
-      case 'error': return 'var(--accent-danger)';
-      default: return 'var(--text-muted)';
+      case 'connected': return 'var(--color-accent-green)';
+      case 'pending': return 'var(--color-accent-amber)';
+      case 'disconnected': return 'var(--color-accent-red)';
+      case 'error': return 'var(--color-accent-red)';
+      default: return 'var(--color-text-muted)';
     }
   }
 
@@ -367,8 +367,8 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -378,8 +378,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .header-left {
@@ -392,7 +392,7 @@
     margin: 0;
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .connection-dot {
@@ -409,7 +409,7 @@
 
   .broker-count {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .icon-btn {
@@ -419,16 +419,16 @@
     width: 28px;
     height: 28px;
     background: transparent;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     cursor: pointer;
     transition: all 0.2s ease;
   }
 
   .icon-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .icon-btn.small {
@@ -438,20 +438,20 @@
 
   .icon-btn.danger:hover {
     background: rgba(244, 67, 54, 0.1);
-    border-color: var(--accent-danger);
-    color: var(--accent-danger);
+    border-color: var(--color-accent-red);
+    color: var(--color-accent-red);
   }
 
   .icon-btn.success:hover {
     background: rgba(76, 175, 80, 0.1);
-    border-color: var(--accent-success);
-    color: var(--accent-success);
+    border-color: var(--color-accent-green);
+    color: var(--color-accent-green);
   }
 
   .pending-section {
     padding: 12px;
     background: rgba(255, 152, 0, 0.1);
-    border-bottom: 1px solid var(--accent-warning);
+    border-bottom: 1px solid var(--color-accent-amber);
   }
 
   .section-header {
@@ -461,7 +461,7 @@
     margin-bottom: 8px;
     font-size: 12px;
     font-weight: 600;
-    color: var(--accent-warning);
+    color: var(--color-accent-amber);
   }
 
   .pending-list {
@@ -475,7 +475,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 10px 12px;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     border-radius: 6px;
   }
 
@@ -496,15 +496,15 @@
   }
 
   .btn-confirm {
-    background: var(--accent-success);
+    background: var(--color-accent-green);
     border: none;
     color: #000;
   }
 
   .btn-ignore {
     background: transparent;
-    border: 1px solid var(--border-subtle);
-    color: var(--text-secondary);
+    border: 1px solid var(--color-border-subtle);
+    color: var(--color-text-secondary);
   }
 
   .broker-list {
@@ -523,7 +523,7 @@
     justify-content: center;
     gap: 16px;
     padding: 40px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .btn-primary {
@@ -531,7 +531,7 @@
     align-items: center;
     gap: 6px;
     padding: 10px 16px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border: none;
     border-radius: 6px;
     color: #000;
@@ -541,22 +541,22 @@
   }
 
   .btn-primary:hover {
-    background: var(--accent-secondary);
+    background: var(--color-accent-amber);
   }
 
   .btn-secondary {
     padding: 10px 16px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
     cursor: pointer;
   }
 
   .broker-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     overflow: hidden;
     transition: all 0.2s ease;
@@ -575,8 +575,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 10px 12px;
-    background: var(--bg-tertiary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .broker-type {
@@ -628,17 +628,17 @@
   .broker-name {
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .broker-account {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .broker-server {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .broker-metrics {
@@ -655,22 +655,22 @@
 
   .metric-label {
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-transform: uppercase;
   }
 
   .metric-value {
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .metric-value.positive {
-    color: var(--accent-success);
+    color: var(--color-accent-green);
   }
 
   .metric-value.negative {
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
 
   .card-footer {
@@ -678,14 +678,14 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .testnet-badge {
     padding: 2px 6px;
-    background: var(--accent-warning);
+    background: var(--color-accent-amber);
     color: #000;
     border-radius: 4px;
     font-size: 10px;
@@ -705,8 +705,8 @@
 
   .modal {
     width: 400px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 12px;
     overflow: hidden;
   }
@@ -716,14 +716,14 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .modal-header h4 {
     margin: 0;
     font-size: 16px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .modal-body {
@@ -739,18 +739,18 @@
   .type-selector button {
     flex: 1;
     padding: 10px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 13px;
     cursor: pointer;
     transition: all 0.2s ease;
   }
 
   .type-selector button.active {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
     color: #000;
   }
 
@@ -763,23 +763,23 @@
     margin-bottom: 6px;
     font-size: 12px;
     font-weight: 500;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .form-group input[type="text"],
   .form-group input[type="password"] {
     width: 100%;
     padding: 10px 12px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
   }
 
   .form-group input:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
   }
 
   .checkbox-label {
@@ -790,7 +790,7 @@
   }
 
   .checkbox-label input {
-    accent-color: var(--accent-primary);
+    accent-color: var(--color-accent-cyan);
   }
 
   .modal-footer {
@@ -798,6 +798,6 @@
     justify-content: flex-end;
     gap: 8px;
     padding: 16px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
 </style>

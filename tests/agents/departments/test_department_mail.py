@@ -49,7 +49,8 @@ class TestDepartmentMailSchema:
             columns = {row[1] for row in cursor.fetchall()}
             expected_columns = {
                 'id', 'from_dept', 'to_dept', 'type', 'subject',
-                'body', 'priority', 'timestamp', 'read'
+                'body', 'priority', 'timestamp', 'read',
+                'gate_id', 'workflow_id', 'from_stage', 'to_stage'
             }
             assert columns == expected_columns
 

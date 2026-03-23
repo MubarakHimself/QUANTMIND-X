@@ -77,12 +77,12 @@
   
   function getCategoryColor(category: string): string {
     const colors: Record<string, string> = {
-      trading: 'var(--accent-primary)',
-      context: 'var(--accent-secondary)',
-      agent: 'var(--accent-success)',
-      system: 'var(--accent-warning)'
+      trading: 'var(--color-accent-cyan)',
+      context: 'var(--color-accent-amber)',
+      agent: 'var(--color-accent-green)',
+      system: 'var(--color-accent-amber)'
     };
-    return colors[category] || 'var(--text-muted)';
+    return colors[category] || 'var(--color-text-muted)';
   }
   
   // Handle command selection
@@ -234,8 +234,8 @@
     bottom: calc(100% + 8px);
     left: 0;
     right: 0;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 12px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     z-index: 100;
@@ -250,14 +250,14 @@
     align-items: center;
     gap: 8px;
     padding: 10px 12px;
-    border-bottom: 1px solid var(--border-subtle);
-    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-elevated);
   }
   
   .header-title {
     font-size: 11px;
     font-weight: 600;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
@@ -265,8 +265,8 @@
   .filter-badge {
     font-size: 10px;
     padding: 2px 6px;
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
     border-radius: 4px;
     font-family: monospace;
   }
@@ -282,7 +282,7 @@
     align-items: center;
     justify-content: center;
     padding: 24px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 12px;
   }
   
@@ -310,7 +310,7 @@
     padding: 8px 12px;
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     cursor: pointer;
     transition: background 0.1s;
     text-align: left;
@@ -318,7 +318,7 @@
   
   .command-item:hover,
   .command-item.selected {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
   
   .command-item.selected {
@@ -331,7 +331,7 @@
     justify-content: center;
     width: 24px;
     height: 24px;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     border-radius: 6px;
     flex-shrink: 0;
   }
@@ -351,21 +351,21 @@
   
   .command-params {
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-family: monospace;
   }
   
   .command-description {
     flex: 1;
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     text-align: right;
   }
   
   .palette-footer {
     padding: 8px 12px;
-    border-top: 1px solid var(--border-subtle);
-    background: var(--bg-tertiary);
+    border-top: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-elevated);
   }
   
   .hint {
@@ -373,7 +373,7 @@
     align-items: center;
     gap: 8px;
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
   
   .hint kbd {
@@ -381,8 +381,8 @@
     align-items: center;
     justify-content: center;
     padding: 2px 6px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
     font-family: inherit;
     font-size: 9px;

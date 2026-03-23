@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from enum import Enum
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class BacktestVariant(str, Enum):
@@ -62,7 +62,8 @@ class BacktestRunRequest(BaseModel):
         description="Custom strategy code (Python with on_bar function)"
     )
 
-    @validator('symbol')
+    @field_validator('symbol')
+    @classmethod
     def validate_symbol(cls, v):
         """Validate and normalize symbol format."""
         v = v.replace('.', '').replace('_', '').upper()
@@ -70,7 +71,8 @@ class BacktestRunRequest(BaseModel):
             raise ValueError(f"Invalid symbol format: {v}")
         return v
 
-    @validator('start_date', 'end_date')
+    @field_validator('start_date', 'end_date')
+    @classmethod
     def validate_date_format(cls, v):
         """Validate date format YYYY-MM-DD."""
         try:
@@ -145,7 +147,8 @@ class DataUploadRequest(BaseModel):
     # URL for remote upload
     data_url: Optional[str] = Field(default=None, description="URL to fetch data from")
 
-    @validator('data_format')
+    @field_validator('data_format')
+    @classmethod
     def validate_format(cls, v):
         """Validate data format."""
         if v not in ['csv', 'parquet']:
@@ -253,6 +256,39 @@ class BotStatusResponse(BaseModel):
 
 
 # -----------------------------------------------------------------------------
+# Bot Parameters API Models (Story 3-3)
+# -----------------------------------------------------------------------------
+
+class BotParamsResponse(BaseModel):
+    """Response model for GET /api/v1/trading/bots/{bot_id}/params
+
+    Returns bot trading parameters including session mask, Islamic compliance,
+    and loss cap information.
+    """
+
+    bot_id: str = Field(..., description="Bot identifier")
+
+    # Session parameters
+    session_mask: str = Field(..., description="Active trading sessions (ASIAN, LONDON, NEW_YORK, OVERLAP, CLOSED)")
+    force_close_hour: int = Field(..., description="Hour of force-close in UTC (21 for Islamic mode)")
+    overnight_hold: bool = Field(..., description="Whether overnight positions are held")
+
+    # Loss cap parameters
+    daily_loss_cap: float = Field(..., description="Daily loss cap percentage")
+    current_loss_pct: float = Field(..., description="Current daily loss as percentage")
+
+    # Islamic compliance
+    islamic_compliance: bool = Field(..., description="Whether Islamic compliance mode is enabled")
+    swap_free: bool = Field(..., description="Whether swap-free account is used")
+
+    # Optional: force close countdown (only within 60 min of cutoff)
+    force_close_countdown_seconds: Optional[int] = Field(
+        default=None,
+        description="Seconds until force-close (only present within 60 min of cutoff)"
+    )
+
+
+# -----------------------------------------------------------------------------
 # Broker Connection API Models (Phase 5)
 # -----------------------------------------------------------------------------
 
@@ -320,3 +356,43 @@ class BrokersListResponse(BaseModel):
     """Response model for GET /api/v1/brokers"""
     brokers: List[Dict[str, Any]]
     count: int
+
+
+# -----------------------------------------------------------------------------
+# Position Close Models (Story 3-6)
+# -----------------------------------------------------------------------------
+
+class ClosePositionRequest(BaseModel):
+    """Request model for POST /api/v1/trading/close"""
+    position_ticket: int = Field(..., gt=0, description="MT5 position ticket number")
+    bot_id: str = Field(..., min_length=1, description="Bot identifier")
+
+
+class ClosePositionResponse(BaseModel):
+    """Response model for POST /api/v1/trading/close"""
+    success: bool
+    filled_price: Optional[float] = None
+    slippage: Optional[float] = None
+    final_pnl: Optional[float] = None
+    message: str
+
+
+class CloseAllRequest(BaseModel):
+    """Request model for POST /api/v1/trading/close-all"""
+    bot_id: Optional[str] = Field(default=None, min_length=1, description="Optional bot ID to filter positions")
+
+
+class CloseAllResultItem(BaseModel):
+    """Individual position close result"""
+    position_ticket: int
+    status: str  # 'filled', 'partial', 'rejected'
+    filled_price: Optional[float] = None
+    slippage: Optional[float] = None
+    final_pnl: Optional[float] = None
+    message: Optional[str] = None
+
+
+class CloseAllResponse(BaseModel):
+    """Response model for POST /api/v1/trading/close-all"""
+    success: bool
+    results: List[CloseAllResultItem]

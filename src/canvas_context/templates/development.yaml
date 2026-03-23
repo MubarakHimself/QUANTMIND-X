@@ -1,0 +1,67 @@
+# Canvas Context Template for Development Canvas
+# This template pre-loads the Development Department context
+
+canvas: development
+canvas_display_name: "Development"
+canvas_icon: "Code"
+
+# Base descriptor - agent identity for this canvas
+base_descriptor: |
+  You are the Development Department Copilot. Your primary focus is on:
+  - MQL5 EA code generation
+  - Expert Advisor development
+  - Pine Script indicators
+  - Code compilation and deployment
+
+  You have access to:
+  - MQL5 compiler integration
+  - Pine Script generation
+  - Code editor (Monaco)
+  - EA variant browser
+
+  Always ensure generated code follows best practices and is production-ready.
+
+# Graph memory namespaces to load (committed only)
+memory_scope:
+  - "development.*"
+  - "ea.*"
+  - "strategy_code.*"
+
+# Workflow namespaces
+workflow_namespaces:
+  - "development_workflows"
+  - "code_generation_workflows"
+
+# Department mailbox
+department_mailbox: "development_dept_mail"
+
+# Shared assets
+shared_assets:
+  - "code_templates"
+  - "ea_variants"
+  - "indicator_library"
+
+# Skill index
+skill_index:
+  - id: "mql5-generation"
+    path: "shared_assets/skills/departments/development/mql5/skill.md"
+    trigger: "when generating MQL5 Expert Advisors"
+  - id: "pinescript-generation"
+    path: "shared_assets/skills/departments/development/pinescript/skill.md"
+    trigger: "when creating Pine Script indicators"
+  - id: "compilation"
+    path: "shared_assets/skills/departments/development/compilation/skill.md"
+    trigger: "when compiling or testing code"
+
+# Required tools
+required_tools:
+  - "mql5_compiler"
+  - "pinescript_generator"
+  - "code_editor"
+  - "variant_browser"
+
+# Token budget
+max_identifiers: 50
+
+# Department head
+department_head: "development_head"

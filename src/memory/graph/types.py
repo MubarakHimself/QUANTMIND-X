@@ -152,6 +152,20 @@ class RelationType:
     TRANSFORMS = "transforms"
     IMPLIES = "implies"
 
+    # OPINION-specific
+    SUPPORTED_BY = "supported_by"
+
+
+class SessionStatus:
+    """Session status for memory nodes (draft vs committed).
+
+    - DRAFT: Memory is being written, invisible to other sessions
+    - COMMITTED: Memory is finalized and visible to downstream agents
+    """
+
+    DRAFT = "draft"
+    COMMITTED = "committed"
+
 
 @dataclass
 class MemoryNode:
@@ -173,16 +187,25 @@ class MemoryNode:
         importance: Importance score (0-1)
         relevance_score: Relevance score (0-1)
         access_count: Number of times accessed
-        last_accessed: Last access timestamp
+        last_accessed_utc: Last access timestamp (UTC)
         created_by: Creator identifier
-        created_at: Creation timestamp
-        updated_at: Last update timestamp
-        expires_at: Expiration timestamp
-        event_time: Event timestamp (when the memory occurred)
+        created_at_utc: Creation timestamp (UTC)
+        updated_at_utc: Last update timestamp (UTC)
+        expires_at_utc: Expiration timestamp (UTC)
+        event_time_utc: Event timestamp (when the memory occurred, UTC)
         tier: Storage tier (hot, warm, cold)
         compaction_level: Compaction level (0=raw, 1=summarized, 2=compressed)
         original_id: ID of original node (for compacted versions)
         entity_id: Optional entity identifier for entity-based grouping
+        session_status: Session status (draft | committed)
+        embedding: Vector embedding for semantic search (bytes)
+        # OPINION-specific fields
+        action: What the agent did (for OPINION nodes)
+        reasoning: Why they did it (for OPINION nodes)
+        confidence: Confidence score 0.0-1.0 (for OPINION nodes)
+        alternatives_considered: Options evaluated (for OPINION nodes)
+        constraints_applied: Constraints that influenced the decision (for OPINION nodes)
+        agent_role: Which agent/role took the action (for OPINION nodes)
     """
 
     node_type: MemoryNodeType
@@ -200,16 +223,25 @@ class MemoryNode:
     importance: float = 0.0
     relevance_score: float = 0.0
     access_count: int = 0
-    last_accessed: Optional[datetime] = None
+    last_accessed_utc: Optional[datetime] = None
     created_by: Optional[str] = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    expires_at: Optional[datetime] = None
-    event_time: Optional[datetime] = None
+    created_at_utc: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at_utc: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at_utc: Optional[datetime] = None
+    event_time_utc: Optional[datetime] = None
     tier: MemoryTier = MemoryTier.HOT
     compaction_level: int = 0
     original_id: Optional[uuid.UUID] = None
     entity_id: Optional[str] = None
+    session_status: str = SessionStatus.DRAFT
+    embedding: Optional[bytes] = None
+    # OPINION-specific fields
+    action: Optional[str] = None
+    reasoning: Optional[str] = None
+    confidence: Optional[float] = None
+    alternatives_considered: Optional[str] = None
+    constraints_applied: Optional[str] = None
+    agent_role: Optional[str] = None
 
 
 @dataclass
@@ -225,9 +257,9 @@ class MemoryEdge:
         bidirectional: Whether relationship is bidirectional
         pattern: Extension, transformation, or implication (from PREMem)
         context: Why the relationship exists
-        created_at: Creation timestamp
+        created_at_utc: Creation timestamp (UTC)
         traversal_count: Number of times traversed
-        last_traversed: Last traversal timestamp
+        last_traversed_utc: Last traversal timestamp (UTC)
     """
 
     relation_type: str
@@ -238,6 +270,6 @@ class MemoryEdge:
     bidirectional: bool = False
     pattern: Optional[str] = None
     context: Optional[str] = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at_utc: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     traversal_count: int = 0
-    last_traversed: Optional[datetime] = None
+    last_traversed_utc: Optional[datetime] = None

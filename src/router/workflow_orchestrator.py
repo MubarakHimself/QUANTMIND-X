@@ -843,6 +843,79 @@ class WorkflowOrchestrator:
             logger.warning(f"Failed to request approval: {e}")
             return None
 
+    async def _request_alpha_forge_approval(
+        self,
+        workflow: Workflow,
+        from_stage: str,
+        to_stage: str,
+        gate_type: str = "alpha_forge_backtest",
+        reason: Optional[str] = None,
+        strategy_id: Optional[str] = None,
+        metrics: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Request Alpha Forge approval gate with metrics snapshot.
+
+        This creates an approval gate for the Alpha Forge workflow with
+        backtest metrics included for the human approver to review.
+
+        Args:
+            workflow: Workflow requesting approval
+            from_stage: Current stage
+            to_stage: Next stage
+            gate_type: Type of Alpha Forge gate (alpha_forge_backtest or alpha_forge_deployment)
+            reason: Reason for the transition
+            strategy_id: Strategy ID being approved
+            metrics: Backtest metrics snapshot
+
+        Returns:
+            Gate ID if created successfully
+        """
+        try:
+            import aiohttp
+            import json
+
+            # Prepare request payload with Alpha Forge specific fields
+            payload = {
+                "workflow_id": workflow.workflow_id,
+                "workflow_type": "alpha_forge",
+                "from_stage": from_stage,
+                "to_stage": to_stage,
+                "gate_type": gate_type,
+                "requester": "workflow_orchestrator",
+                "reason": reason or f"Alpha Forge approval: {from_stage} to {to_stage}",
+                "strategy_id": strategy_id or workflow.workflow_id,
+                "metrics_snapshot": metrics or {},
+                "extra_data": {
+                    "workflow_id": workflow.workflow_id,
+                    "input_file": workflow.input_file,
+                    "source": "alpha_forge"
+                }
+            }
+
+            # Make API request
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "http://localhost:8000/api/approval-gates",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 201:
+                        data = await response.json()
+                        gate_id = data.get("gate_id")
+                        logger.info(f"Created Alpha Forge approval gate {gate_id} for workflow {workflow.workflow_id}")
+                        return gate_id
+                    else:
+                        logger.warning(f"Failed to create Alpha Forge approval gate: {response.status}")
+                        return None
+
+        except ImportError:
+            logger.warning("aiohttp not available, skipping Alpha Forge approval gate creation")
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to request Alpha Forge approval: {e}")
+            return None
+
     async def _wait_for_approval(
         self,
         workflow: Workflow,
@@ -958,11 +1031,65 @@ class WorkflowOrchestrator:
             return False
 
         return await self._wait_for_approval(workflow, gate_id, timeout)
-    
+
+    async def handle_revision_request(
+        self,
+        workflow_id: str,
+        gate_id: str
+    ) -> bool:
+        """
+        Handle a revision request for a workflow.
+
+        When the user requests revision, this method:
+        1. Retrieves the revision feedback from the approval gate
+        2. Stores it in workflow metadata
+        3. Returns True to indicate re-execution should be triggered
+
+        Args:
+            workflow_id: ID of the workflow
+            gate_id: ID of the approval gate that was rejected with revision request
+
+        Returns:
+            True if revision was handled successfully
+        """
+        try:
+            import aiohttp
+
+            # Get the gate to retrieve revision feedback
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"http://localhost:8000/api/approval-gates/{gate_id}",
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        gate_data = await response.json()
+                        revision_feedback = gate_data.get("revision_feedback")
+
+                        # Store feedback in workflow metadata
+                        workflow = self._workflows.get(workflow_id)
+                        if workflow:
+                            workflow.metadata["revision_feedback"] = revision_feedback
+                            workflow.metadata["revision_gate_id"] = gate_id
+                            workflow.metadata["needs_revision"] = True
+                            self._save_workflow(workflow)
+
+                            logger.info(f"Revision request handled for workflow {workflow_id}, feedback: {revision_feedback[:100] if revision_feedback else 'none'}...")
+                            return True
+                    else:
+                        logger.warning(f"Failed to get gate {gate_id} for revision handling")
+                        return False
+
+        except ImportError:
+            logger.warning("aiohttp not available, cannot handle revision request")
+            return False
+        except Exception as e:
+            logger.warning(f"Failed to handle revision request: {e}")
+            return False
+
     # =========================================================================
     # Step Implementation Methods - Real Agent and MCP Calls
     # =========================================================================
-    
+
     async def _process_nprd(
         self,
         workflow: Workflow,

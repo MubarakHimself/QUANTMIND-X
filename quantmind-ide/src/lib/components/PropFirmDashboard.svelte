@@ -257,7 +257,7 @@ https://svelte.dev/e/component_invalid_directive -->
     </div>
     <div class="header-right">
       <button class="refresh-btn" on:click={fetchData} disabled={loading}>
-        <RefreshCw size={16} class:spinning={loading} />
+        <span class:spinning={loading}><RefreshCw size={16} /></span>
         Refresh
       </button>
     </div>

@@ -374,7 +374,7 @@
   }
 
   .cron-panel {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 12px;
     width: 800px;
     max-width: 100%;
@@ -383,7 +383,7 @@
     display: flex;
     flex-direction: column;
     box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
   }
 
   .panel-header {
@@ -391,8 +391,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px 20px;
-    border-bottom: 1px solid var(--border-subtle);
-    background: var(--bg-primary);
+    border-bottom: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-base);
     border-radius: 12px 12px 0 0;
   }
 
@@ -400,18 +400,18 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .header-left h2 {
     margin: 0;
     font-size: 16px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .subtitle {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .header-actions {
@@ -426,7 +426,7 @@
     padding: 10px 20px;
     background: rgba(239, 68, 68, 0.1);
     border-bottom: 1px solid rgba(239, 68, 68, 0.3);
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
     font-size: 12px;
   }
 
@@ -451,21 +451,21 @@
     align-items: center;
     justify-content: center;
     padding: 60px 20px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     gap: 16px;
   }
 
   .job-item {
     padding: 14px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     margin-bottom: 10px;
     transition: all 0.15s;
   }
 
   .job-item:hover {
-    border-color: var(--border-strong);
+    border-color: var(--color-border-medium);
   }
 
   .job-item.disabled {
@@ -490,19 +490,19 @@
     align-items: center;
     background: none;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     padding: 0;
     transition: color 0.15s;
   }
 
   .toggle-btn:hover {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .job-name span {
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .job-actions {
@@ -513,7 +513,7 @@
   .job-description {
     margin: 0 0 10px 26px;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .job-details {
@@ -531,16 +531,16 @@
 
   .job-schedule code,
   .job-command code {
-    background: var(--bg-input);
+    background: var(--color-bg-elevated);
     padding: 3px 8px;
     border-radius: 4px;
     font-size: 11px;
-    color: var(--accent-secondary);
+    color: var(--color-accent-amber);
   }
 
   .schedule-label {
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-transform: uppercase;
   }
 
@@ -548,7 +548,7 @@
     display: flex;
     gap: 16px;
     padding: 8px 12px;
-    background: var(--bg-input);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
     font-size: 11px;
   }
@@ -557,24 +557,24 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .status-item .running {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
     animation: pulse 1s infinite;
   }
 
   .status-item .success {
-    color: var(--accent-success);
+    color: var(--color-accent-green);
   }
 
   .status-item .failed {
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
 
   .status-item .idle {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   @keyframes pulse {
@@ -591,24 +591,24 @@
     background: transparent;
     border: none;
     border-radius: 6px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.15s;
   }
 
   .icon-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .icon-btn.primary {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .icon-btn.danger:hover {
     background: rgba(239, 68, 68, 0.2);
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
 
   .btn {
@@ -624,13 +624,13 @@
   }
 
   .btn.primary {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .btn.secondary {
-    background: var(--bg-tertiary);
-    color: var(--text-secondary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
   }
 
   .spinning {
@@ -654,7 +654,7 @@
   }
 
   .modal {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 12px;
     width: 480px;
     max-width: 90%;
@@ -665,13 +665,13 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px 20px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .modal-header h3 {
     margin: 0;
     font-size: 16px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .modal-body {
@@ -686,7 +686,7 @@
     display: block;
     margin-bottom: 6px;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .form-group input,
@@ -694,10 +694,10 @@
   .form-group textarea {
     width: 100%;
     padding: 8px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
   }
 
@@ -710,7 +710,7 @@
     display: block;
     margin-top: 4px;
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .mt-2 {
@@ -722,6 +722,6 @@
     justify-content: flex-end;
     gap: 8px;
     padding: 16px 20px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
 </style>

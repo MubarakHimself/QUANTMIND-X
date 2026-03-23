@@ -8,11 +8,14 @@ import { API_CONFIG } from './config/api';
 const API_BASE = `${API_CONFIG.API_URL}/api`;
 
 /**
- * Generic fetch wrapper with error handling
+ * Generic fetch wrapper with error handling and cookie-based auth.
+ * Includes credentials: 'include' to send httpOnly session cookies.
+ * Exported for use in components that cannot import from domain-specific API modules.
  */
-async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
+export async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const response = await fetch(`${API_BASE}${endpoint}`, {
         ...options,
+        credentials: 'include',  // Required for httpOnly cookie-based auth
         headers: {
             'Content-Type': 'application/json',
             ...options?.headers

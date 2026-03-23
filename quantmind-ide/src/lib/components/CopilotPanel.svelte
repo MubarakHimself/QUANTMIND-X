@@ -25,7 +25,7 @@
 
   const dispatch = createEventDispatcher();
 
-  const API_BASE = "http://localhost:8000/api";
+  const API_BASE = "/api";
 
   let activeAgent = $state("copilot");
   let message = $state("");
@@ -58,7 +58,17 @@
   let selectedDepartmentForDelegation: Department | null = $state(null);
   let isDelegating = $state(false);
   let delegationResult: { success: boolean; message: string } | null = $state(null);
-  let messages: Array<{ role: string; content: string; agent?: string }> = $state([
+  type MessageRole = 'user' | 'assistant' | 'thought';
+
+  interface Message {
+    role: MessageRole;
+    content: string;
+    agent?: string;
+    department?: string;
+    thought_type?: 'reasoning' | 'dispatch' | 'action';
+  }
+
+  let messages: Message[] = $state([
     {
       role: "assistant",
       content:
@@ -283,7 +293,7 @@
           { role: "assistant", content: clientResponse, agent: activeAgent },
         ];
       } else {
-        // Send to backend
+        // Send to backend with SSE streaming support
         const res = await fetch(`${API_BASE}/chat/send`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -292,10 +302,12 @@
             agent_id: activeAgent,
             history: messages
               .slice(0, -1)
+              .filter((m) => m.role !== "thought")
               .map((m) => ({ role: m.role, content: m.content })),
             model: aiSettings.model,
             api_keys: apiKeys,
             skill_id: selectedSkill || null,
+            stream: true,
           }),
         });
 
@@ -303,17 +315,91 @@
           throw new Error(`API Error: ${res.statusText}`);
         }
 
-        const data = await res.json();
+        const contentType = res.headers.get("content-type") || "";
 
-        // Add agent response
-        messages = [
-          ...messages,
-          {
-            role: "assistant",
-            content: data.reply,
-            agent: data.agent_id,
-          },
-        ];
+        if (contentType.includes("text/event-stream") || contentType.includes("text/plain")) {
+          // SSE streaming path
+          const reader = res.body?.getReader();
+          const decoder = new TextDecoder();
+          let fullContent = "";
+          let lineBuffer = "";
+          let assistantAdded = false;
+
+          if (reader) {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              lineBuffer += decoder.decode(value, { stream: true });
+              const lines = lineBuffer.split("\n");
+              lineBuffer = lines.pop() ?? "";
+
+              for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                try {
+                  const event = JSON.parse(line.slice(6));
+
+                  if (event.type === "thought") {
+                    messages = [...messages, {
+                      role: "thought",
+                      content: event.content,
+                      department: event.department,
+                      thought_type: "reasoning",
+                    }];
+                    await tick();
+                    scrollToBottom();
+                  } else if (event.type === "content" && event.delta) {
+                    fullContent += event.delta;
+                    if (!assistantAdded) {
+                      messages = [...messages, {
+                        role: "assistant",
+                        content: fullContent,
+                        agent: activeAgent,
+                      }];
+                      assistantAdded = true;
+                    } else {
+                      // Update last message in place
+                      const updated = [...messages];
+                      updated[updated.length - 1] = { ...updated[updated.length - 1], content: fullContent };
+                      messages = updated;
+                    }
+                    await tick();
+                    scrollToBottom();
+                  } else if (event.type === "done") {
+                    if (!assistantAdded && fullContent) {
+                      messages = [...messages, {
+                        role: "assistant",
+                        content: fullContent,
+                        agent: activeAgent,
+                      }];
+                    }
+                  }
+                } catch {
+                  // Ignore malformed SSE lines
+                }
+              }
+            }
+            // Flush any remaining content
+            if (!assistantAdded && fullContent) {
+              messages = [...messages, {
+                role: "assistant",
+                content: fullContent,
+                agent: activeAgent,
+              }];
+            }
+          }
+        } else {
+          // Fallback: non-streaming JSON response
+          const data = await res.json();
+          messages = [
+            ...messages,
+            {
+              role: "assistant",
+              content: data.reply,
+              agent: data.agent_id,
+            },
+          ];
+        }
       }
     } catch (e) {
       console.error("Chat error:", e);
@@ -644,20 +730,27 @@
 
   <div class="messages" bind:this={messagesContainer}>
     {#each messages as msg}
-      <div class="message {msg.role}">
-        <div class="message-content">
-          {#if msg.role === "assistant"}
-            <div class="agent-badge">
-              {agents.find((a) => a.id === msg.agent)?.name || "Assistant"}
+      {#if msg.role === "thought"}
+        <div class="thought-bubble">
+          <span class="thought-dept">{msg.department ?? 'system'}</span>
+          <span class="thought-content">{msg.content}</span>
+        </div>
+      {:else}
+        <div class="message {msg.role}">
+          <div class="message-content">
+            {#if msg.role === "assistant"}
+              <div class="agent-badge">
+                {agents.find((a) => a.id === msg.agent)?.name || "Assistant"}
+              </div>
+            {/if}
+            <div class="message-text">
+              {@html msg.content
+                .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+                .replace(/\n/g, "<br>")}
             </div>
-          {/if}
-          <div class="message-text">
-            {@html msg.content
-              .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-              .replace(/\n/g, "<br>")}
           </div>
         </div>
-      </div>
+      {/if}
     {/each}
 
     {#if loading}
@@ -837,8 +930,8 @@
     display: flex;
     flex-direction: column;
     width: 380px;
-    background: var(--bg-secondary);
-    border-left: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-left: 1px solid var(--color-border-subtle);
     font-family: "Inter", sans-serif;
   }
 
@@ -848,8 +941,8 @@
     justify-content: space-between;
     height: var(--header-height);
     padding: 0 12px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .agent-tabs {
@@ -867,7 +960,7 @@
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 11px;
     font-weight: 500;
     cursor: pointer;
@@ -877,12 +970,12 @@
   }
 
   .agent-tab:hover {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .agent-tab.active {
-    color: var(--accent-primary);
-    border-bottom-color: var(--accent-primary);
+    color: var(--color-accent-cyan);
+    border-bottom-color: var(--color-accent-cyan);
   }
 
   .header-actions {
@@ -900,20 +993,20 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
   }
 
   .icon-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   /* Settings Panel - Flat & clean */
   .settings-panel {
     padding: 0;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .settings-header {
@@ -921,14 +1014,14 @@
     align-items: center;
     justify-content: space-between;
     padding: 8px 12px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .settings-header h3 {
     font-size: 11px;
     text-transform: uppercase;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-weight: 600;
   }
 
@@ -936,7 +1029,7 @@
     display: flex;
     padding: 0 12px;
     gap: 16px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
     margin-bottom: 12px;
   }
 
@@ -944,15 +1037,15 @@
     background: none;
     border: none;
     padding: 8px 0;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 11px;
     cursor: pointer;
     border-bottom: 2px solid transparent;
   }
 
   .settings-tabs button.active {
-    color: var(--accent-primary);
-    border-bottom-color: var(--accent-primary);
+    color: var(--color-accent-cyan);
+    border-bottom-color: var(--color-accent-cyan);
   }
 
   .settings-content {
@@ -966,16 +1059,16 @@
   .setting-group label {
     display: block;
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     margin-bottom: 4px;
   }
 
   .setting-group select,
   .setting-group input[type="password"] {
     width: 100%;
-    background: var(--bg-input);
-    border: 1px solid var(--border-subtle);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
+    color: var(--color-text-primary);
     padding: 6px 8px;
     border-radius: 2px;
     font-size: 12px;
@@ -984,7 +1077,7 @@
 
   .setting-group select:focus,
   .setting-group input:focus {
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
     outline: none;
   }
 
@@ -1009,8 +1102,8 @@
     gap: 8px;
   }
   .mcp-item {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     padding: 8px;
     border-radius: 4px;
   }
@@ -1022,11 +1115,11 @@
   .mcp-name {
     font-weight: 600;
     font-size: 11px;
-    color: var(--accent-secondary);
+    color: var(--color-accent-amber);
   }
   .mcp-desc {
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin-bottom: 4px;
   }
   .mcp-status {
@@ -1040,25 +1133,25 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--text-muted);
+    background: var(--color-text-muted);
   }
   .mcp-status.connected .status-dot {
-    background: var(--accent-success);
+    background: var(--color-accent-green);
   }
   .mcp-status.connected {
-    color: var(--accent-success);
+    color: var(--color-accent-green);
   }
 
   .settings-footer {
     padding: 12px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
     display: flex;
     justify-content: flex-end;
   }
 
   .btn-save {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
     border: none;
     padding: 6px 12px;
     border-radius: 2px;
@@ -1074,8 +1167,8 @@
     display: flex;
     flex-direction: column;
     width: 380px;
-    background: var(--bg-secondary);
-    border-left: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-left: 1px solid var(--color-border-subtle);
     font-family: inherit;
   }
 
@@ -1085,8 +1178,8 @@
     justify-content: space-between;
     height: var(--header-height);
     padding: 0 12px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   /* Messaging Area */
@@ -1096,22 +1189,22 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
   }
 
   .message {
     width: 100%;
     padding: 16px 20px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
     transition: background 0.1s ease;
   }
 
   .message.user {
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
   }
 
   .message.assistant {
-    background: var(--bg-input);
+    background: var(--color-bg-elevated);
   }
 
   .message-header {
@@ -1119,14 +1212,14 @@
     align-items: center;
     gap: 8px;
     margin-bottom: 8px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
   }
 
   .message-content {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     line-height: 1.6;
     font-size: 13px;
   }
@@ -1134,27 +1227,27 @@
   /* Input Area - Cursor Aesthetic */
   .input-area {
     padding: 16px;
-    background: var(--bg-secondary);
-    border-top: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-top: 1px solid var(--color-border-subtle);
   }
 
   .input-wrapper {
     position: relative;
-    background: var(--bg-input);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
     transition: border-color 0.1s ease;
   }
 
   .input-wrapper:focus-within {
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
   }
 
   .input-wrapper textarea {
     width: 100%;
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     padding: 10px;
     outline: none;
     resize: none;
@@ -1171,16 +1264,16 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     padding: 2px 6px;
     border-radius: 2px;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
     pointer-events: none;
   }
 
   .model-name-tiny {
     font-size: 9px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     text-transform: uppercase;
   }
 
@@ -1204,9 +1297,9 @@
   }
 
   .skill-select {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
+    color: var(--color-text-primary);
     padding: 4px 8px;
     border-radius: 2px;
     font-size: 11px;
@@ -1215,7 +1308,7 @@
   }
 
   .skill-select:focus {
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
     outline: none;
   }
 
@@ -1227,26 +1320,26 @@
     background: transparent;
     border: 1px solid transparent;
     border-radius: 4px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 11px;
     cursor: pointer;
     transition: all 0.1s ease;
   }
 
   .action-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .action-btn.primary {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
     font-weight: 600;
   }
 
   .char-counter {
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   /* Command Palette */
@@ -1255,8 +1348,8 @@
     bottom: 100%;
     left: 0;
     right: 0;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
     padding: 4px;
     margin-bottom: 8px;
@@ -1273,7 +1366,7 @@
     background: transparent;
     border: none;
     border-radius: 2px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 12px;
     cursor: pointer;
     text-align: left;
@@ -1281,15 +1374,15 @@
 
   .command-item:hover,
   .command-item.selected {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .cmd-name {
     font-weight: 600;
   }
   .cmd-params {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 10px;
     font-family: monospace;
   }
@@ -1306,7 +1399,7 @@
     right: 0;
     bottom: 0;
     width: 100%;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     z-index: 200;
     display: flex;
     flex-direction: column;
@@ -1315,7 +1408,7 @@
   .settings-header {
     padding: 12px 16px;
     height: var(--header-height);
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1324,13 +1417,13 @@
   .settings-header h3 {
     margin: 0;
     font-size: 14px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .settings-tabs {
     display: flex;
-    border-bottom: 1px solid var(--border-subtle);
-    background: var(--bg-input);
+    border-bottom: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-elevated);
   }
 
   .settings-tabs button {
@@ -1338,16 +1431,16 @@
     padding: 8px;
     background: transparent;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 11px;
     cursor: pointer;
     border-bottom: 2px solid transparent;
   }
 
   .settings-tabs button.active {
-    color: var(--accent-primary);
-    border-bottom-color: var(--accent-primary);
-    background: var(--bg-secondary);
+    color: var(--color-accent-cyan);
+    border-bottom-color: var(--color-accent-cyan);
+    background: var(--color-bg-surface);
   }
 
   .settings-content {
@@ -1362,15 +1455,15 @@
   .setting-group label {
     display: block;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin-bottom: 4px;
   }
   .setting-group input,
   .setting-group select {
     width: 100%;
-    background: var(--bg-input);
-    border: 1px solid var(--border-subtle);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
+    color: var(--color-text-primary);
     padding: 8px;
     border-radius: 4px;
     font-size: 12px;
@@ -1386,11 +1479,11 @@
   }
 
   .mcp-item {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     padding: 12px;
     border-radius: 6px;
     margin-bottom: 12px;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
   }
 
   .mcp-header {
@@ -1401,11 +1494,11 @@
   .mcp-name {
     font-weight: 600;
     font-size: 12px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
   .mcp-desc {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin-bottom: 8px;
   }
 
@@ -1414,7 +1507,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
   .mcp-status.connected {
     color: #10b981;
@@ -1428,11 +1521,11 @@
 
   .settings-footer {
     padding: 16px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
   .btn-save {
     width: 100%;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     color: white;
     border: none;
     padding: 10px;
@@ -1454,7 +1547,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 9px;
@@ -1462,21 +1555,21 @@
   }
 
   .model-name-tiny {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-family: monospace;
   }
   .yolo-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--accent-warning);
+    background: var(--color-accent-amber);
   }
 
   .attachment-btn {
     display: flex;
     align-items: center;
     padding: 6px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   /* Delegation Panel */
@@ -1485,8 +1578,8 @@
     bottom: 100%;
     left: 0;
     right: 0;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px 4px 0 0;
     padding: 12px;
     box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
@@ -1499,14 +1592,14 @@
     justify-content: space-between;
     margin-bottom: 12px;
     padding-bottom: 8px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .delegation-title {
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     display: flex;
     align-items: center;
     gap: 6px;
@@ -1521,14 +1614,14 @@
     background: transparent;
     border: none;
     border-radius: 3px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.1s ease;
   }
 
   .icon-btn-small:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .delegation-content {
@@ -1539,7 +1632,7 @@
 
   .delegation-description {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin: 0;
     line-height: 1.4;
   }
@@ -1554,7 +1647,7 @@
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     letter-spacing: 0.5px;
   }
 
@@ -1568,10 +1661,10 @@
     flex: 1;
     min-width: 80px;
     padding: 6px 8px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 3px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 10px;
     font-weight: 500;
     cursor: pointer;
@@ -1580,15 +1673,15 @@
   }
 
   .dept-option:hover {
-    background: var(--bg-input);
-    border-color: var(--accent-primary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    border-color: var(--color-accent-cyan);
+    color: var(--color-text-primary);
   }
 
   .dept-option.selected {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .delegation-result {
@@ -1621,8 +1714,8 @@
     align-items: center;
     gap: 6px;
     padding: 8px 14px;
-    background: var(--accent-secondary);
-    color: var(--bg-primary);
+    background: var(--color-accent-amber);
+    color: var(--color-bg-base);
     border: none;
     border-radius: 3px;
     font-size: 11px;
@@ -1632,7 +1725,7 @@
   }
 
   .btn-delegate:hover:not(:disabled) {
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     transform: translateY(-1px);
   }
 
@@ -1642,8 +1735,36 @@
   }
 
   .action-btn.active {
-    background: var(--accent-secondary);
-    color: var(--bg-primary);
-    border-color: var(--accent-secondary);
+    background: var(--color-accent-amber);
+    color: var(--color-bg-base);
+    border-color: var(--color-accent-amber);
+  }
+
+  /* Inline agent thought bubbles */
+  .thought-bubble {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 12px;
+    margin: 2px 0;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    color: rgba(255, 255, 255, 0.4);
+    border-left: 2px solid rgba(0, 212, 255, 0.3);
+    background: rgba(0, 212, 255, 0.03);
+  }
+
+  .thought-dept {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(0, 212, 255, 0.6);
+    white-space: nowrap;
+    padding-top: 1px;
+  }
+
+  .thought-content {
+    color: rgba(255, 255, 255, 0.35);
+    font-style: italic;
   }
 </style>

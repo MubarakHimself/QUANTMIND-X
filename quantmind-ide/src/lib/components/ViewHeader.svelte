@@ -85,7 +85,7 @@
           title="Navigate to {crumb.name}"
         >
           {#if crumb.type === "view"}
-            {@const SvelteComponent = viewConfig[crumb.id]?.icon || Folder}
+            {@const SvelteComponent = viewConfig[crumb.id]?.icon ? viewConfig[crumb.id].icon : Folder}
             <SvelteComponent
               size={16}
             />
@@ -163,8 +163,8 @@
     gap: 4px;
     margin-bottom: 16px;
     padding: 8px 12px;
-    background: var(--bg-glass);
-    border: 1px solid var(--border-subtle);
+    background: var(--glass-content-bg);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     min-height: 40px;
     backdrop-filter: blur(var(--glass-blur));
@@ -176,20 +176,20 @@
     justify-content: center;
     width: 32px;
     height: 32px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     margin-right: 8px;
     transition: all 0.2s ease;
   }
 
   .back-btn:hover {
-    background: var(--bg-glass);
-    color: var(--text-primary);
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 1px var(--accent-primary);
+    background: var(--glass-content-bg);
+    color: var(--color-text-primary);
+    border-color: var(--color-accent-cyan);
+    box-shadow: 0 0 0 1px var(--color-accent-cyan);
   }
 
   .back-btn:active {
@@ -201,19 +201,19 @@
     align-items: center;
     gap: 6px;
     padding: 6px 10px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border: 1px solid transparent;
     border-radius: 4px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     cursor: pointer;
     font-size: 13px;
     transition: all 0.2s ease;
   }
 
   .breadcrumb-item:hover {
-    background: var(--bg-glass);
-    color: var(--accent-primary);
-    border-color: var(--border-subtle);
+    background: var(--glass-content-bg);
+    color: var(--color-accent-cyan);
+    border-color: var(--color-border-subtle);
   }
 
   .breadcrumb-item:active {
@@ -225,7 +225,7 @@
     align-items: center;
     gap: 6px;
     padding: 6px 10px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-weight: 500;
     font-size: 13px;
   }
@@ -246,16 +246,16 @@
     align-items: center;
     gap: 8px;
     padding: 6px 12px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .search-box input {
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
     outline: none;
     width: 180px;
@@ -263,22 +263,22 @@
 
   .view-toggle {
     display: flex;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
     overflow: hidden;
   }
 
   .view-toggle button {
     padding: 6px 10px;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
   }
 
   .view-toggle button.active {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .toolbar-btn {
@@ -286,21 +286,21 @@
     align-items: center;
     gap: 6px;
     padding: 6px 12px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 12px;
     cursor: pointer;
   }
 
   .toolbar-btn:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .toolbar-btn.primary {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 </style>

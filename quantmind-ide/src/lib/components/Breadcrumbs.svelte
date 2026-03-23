@@ -64,8 +64,8 @@
     display: flex;
     align-items: center;
     padding: 8px 12px;
-    background: var(--bg-tertiary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border-bottom: 1px solid var(--color-border-subtle);
     font-size: 12px;
   }
 
@@ -87,7 +87,7 @@
   .breadcrumb-link {
     background: transparent;
     border: none;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     cursor: pointer;
     padding: 2px 6px;
     border-radius: 4px;
@@ -96,8 +96,8 @@
   }
 
   .breadcrumb-link:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
   }
 
   .breadcrumb-link.home {
@@ -108,13 +108,13 @@
   }
 
   .breadcrumb-current {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-weight: 500;
     padding: 2px 6px;
   }
 
   .separator-icon {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     flex-shrink: 0;
     display: flex;
     align-items: center;

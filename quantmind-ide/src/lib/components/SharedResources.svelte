@@ -35,7 +35,7 @@ https://svelte.dev/e/expected_token -->
   let typeFilter = 'all';
   let deptFilter = 'all';
 
-  const API_BASE = 'http://localhost:8000/api';
+  const API_BASE = '/api';
 
   onMount(() => {
     loadResources();
@@ -174,7 +174,7 @@ https://svelte.dev/e/expected_token -->
                   </span>
                 </div>
               </div>
-              <ChevronDown size={16} class:expand-icon" class:expanded={expandedId === resource.id} />
+              <span class="expand-icon" class:expanded={expandedId === resource.id}><ChevronDown size={16} /></span>
             </div>
 
             {#if expandedId === resource.id}
@@ -219,7 +219,7 @@ https://svelte.dev/e/expected_token -->
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     overflow: hidden;
   }
 
@@ -228,8 +228,8 @@ https://svelte.dev/e/expected_token -->
     justify-content: space-between;
     align-items: center;
     padding: 20px 24px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .header-left {
@@ -239,19 +239,19 @@ https://svelte.dev/e/expected_token -->
   }
 
   .icon {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .header-left h2 {
     margin: 0;
     font-size: 18px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .header-left p {
     margin: 2px 0 0;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .header-actions {
@@ -264,26 +264,26 @@ https://svelte.dev/e/expected_token -->
     align-items: center;
     gap: 6px;
     padding: 8px 14px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 12px;
     cursor: pointer;
   }
 
   .btn.primary {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .filter-bar {
     display: flex;
     gap: 12px;
     padding: 16px 24px;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .search-group,
@@ -292,8 +292,8 @@ https://svelte.dev/e/expected_token -->
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
   }
 
@@ -301,14 +301,14 @@ https://svelte.dev/e/expected_token -->
   .filter-group select {
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 12px;
   }
 
   .stats-summary {
     margin-left: auto;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .resources-content {
@@ -324,8 +324,8 @@ https://svelte.dev/e/expected_token -->
   }
 
   .resource-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -339,7 +339,7 @@ https://svelte.dev/e/expected_token -->
   }
 
   .resource-header:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .resource-info {
@@ -352,7 +352,7 @@ https://svelte.dev/e/expected_token -->
     gap: 8px;
     font-size: 14px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     margin-bottom: 6px;
   }
 
@@ -373,7 +373,7 @@ https://svelte.dev/e/expected_token -->
   }
 
   .expand-icon {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     transition: transform 0.2s;
   }
 
@@ -388,7 +388,7 @@ https://svelte.dev/e/expected_token -->
   .resource-content {
     margin: 0 0 12px;
     font-size: 13px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     white-space: pre-wrap;
   }
 
@@ -400,17 +400,17 @@ https://svelte.dev/e/expected_token -->
 
   .tag {
     padding: 4px 10px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
     font-size: 11px;
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .resource-footer {
     display: flex;
     gap: 16px;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .timestamp,
@@ -426,7 +426,7 @@ https://svelte.dev/e/expected_token -->
     align-items: center;
     justify-content: center;
     padding: 60px 24px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     gap: 16px;
   }
 
@@ -444,7 +444,7 @@ https://svelte.dev/e/expected_token -->
     align-items: center;
     justify-content: center;
     padding: 60px 24px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-align: center;
     gap: 16px;
   }

@@ -1,0 +1,56 @@
+# Canvas Context Template for FlowForge Canvas
+# This template pre-loads workflow orchestration context
+
+canvas: flowforge
+canvas_display_name: "FlowForge"
+canvas_icon: "GitBranch"
+
+# Base descriptor - agent identity for this canvas
+base_descriptor: |
+  You are the FlowForge Copilot. This canvas handles workflow orchestration,
+  task pipelines, and Prefect-based background task management.
+
+  You have access to:
+  - Workflow templates
+  - Pipeline stages (Alpha Forge pipeline)
+  - Node graph visualization
+  - Background task monitoring
+
+  Design and manage efficient workflow pipelines.
+
+# Graph memory namespaces to load (committed only)
+memory_scope:
+  - "workflow.*"
+  - "pipeline.*"
+  - "alpha.*"
+
+# Workflow namespaces
+workflow_namespaces:
+  - "flowforge_workflows"
+  - "alpha_forge_workflows"
+
+# Department mailbox
+department_mailbox: "flowforge_mail"
+
+# Shared assets
+shared_assets:
+  - "workflow_templates"
+  - "pipeline_configs"
+
+# Skill index
+skill_index:
+  - id: "pipeline-design"
+    path: "shared_assets/skills/flowforge/pipeline/skill.md"
+    trigger: "when designing pipeline stages"
+
+# Required tools
+required_tools:
+  - "workflow_manager"
+  - "pipeline_orchestrator"
+  - "prefect_monitor"
+
+# Token budget
+max_identifiers: 50
+
+# Department head
+department_head: "flowforge_head"

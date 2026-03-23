@@ -6,9 +6,12 @@ regime, chaos, Kelly sizing, house money adjustments, and trade reasoning.
 """
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import io
+import csv
 
 router = APIRouter(prefix="/api/journal", tags=["journal"])
 
@@ -68,6 +71,18 @@ class TradeStatistics(BaseModel):
     largestLoss: float
 
 
+class TradeAnnotationRequest(BaseModel):
+    """Request model for trade annotation."""
+    note: str = Field(..., description="Annotation note for the trade")
+
+
+class TradeAnnotationResponse(BaseModel):
+    """Response model for trade annotation."""
+    trade_id: int
+    note: str
+    annotated_at: str
+
+
 def get_db_session():
     """Get or create database session for DB access."""
     try:
@@ -96,67 +111,85 @@ def query_trade_journal(
     try:
         from src.database.models import TradeJournal, TradingMode
         from sqlalchemy import desc
-        
+
         query = session.query(TradeJournal)
-        
+
         # Apply filters
         if symbol:
             query = query.filter(TradeJournal.symbol == symbol)
-        
+
         if status:
             if status == 'closed':
                 query = query.filter(TradeJournal.pnl.isnot(None))
             elif status == 'open':
                 query = query.filter(TradeJournal.pnl.is_(None))
-        
+
         if dateFrom:
             query = query.filter(TradeJournal.timestamp >= dateFrom)
-        
+
         if dateTo:
             query = query.filter(TradeJournal.timestamp <= dateTo)
-        
+
         if minProfit is not None:
             query = query.filter(TradeJournal.pnl >= minProfit)
-        
+
         if maxProfit is not None:
             query = query.filter(TradeJournal.pnl <= maxProfit)
-        
+
         if mode and mode != 'all':
             trading_mode = TradingMode.DEMO if mode == 'demo' else TradingMode.LIVE
             query = query.filter(TradeJournal.mode == trading_mode)
-        
+
         # Order by timestamp descending and limit
         query = query.order_by(desc(TradeJournal.timestamp)).limit(limit)
-        
+
         trades = query.all()
-        
+
         # Convert to list of dicts
         result = []
         for trade in trades:
             # Determine status based on pnl
             trade_status = 'closed' if trade.pnl is not None else 'open'
-            
+
             # Determine direction from trade.direction
             direction = trade.direction if trade.direction else 'BUY'
-            
+
             # Convert mode to string
             trade_mode = 'demo' if trade.mode == TradingMode.DEMO else 'live'
-            
+
+            # Format entry/exit times for Trading Journal (Story 9-5)
+            entry_time = trade.timestamp.isoformat() if trade.timestamp else ""
+            exit_time = ""
+            if trade_status == 'closed' and trade.timestamp and trade.duration_minutes:
+                exit_dt = trade.timestamp + timedelta(minutes=trade.duration_minutes)
+                exit_time = exit_dt.isoformat()
+
             result.append({
                 "id": str(trade.id),
-                "timestamp": trade.timestamp.isoformat() if trade.timestamp else datetime.now().isoformat(),
+                "entryTime": entry_time,
+                "exitTime": exit_time,
                 "symbol": trade.symbol,
-                "type": direction,
+                "direction": direction,
+                "pnl": trade.pnl if trade.pnl is not None else 0.0,
+                "session": trade_mode,
+                "holdDuration": trade.duration_minutes,
+                "eaName": trade.bot_id,
+                # Detail view fields
+                "entryPrice": trade.entry_price,
+                "exitPrice": trade.exit_price,
+                "spreadAtEntry": trade.spread_at_entry,
+                "slippage": 0.0,  # Not stored, default to 0
+                "strategyVersion": str(trade.strategy_folder_id) if trade.strategy_folder_id else "N/A",
+                # Annotation fields
+                "note": trade.note or "",
+                "annotatedAt": trade.annotated_at.isoformat() if trade.annotated_at else "",
+                # Additional context
                 "lots": trade.lot_size,
-                "openPrice": trade.entry_price,
-                "closePrice": trade.exit_price,
-                "profit": trade.pnl if trade.pnl is not None else 0.0,
-                "strategy": trade.bot_id,
                 "status": trade_status,
                 "reason": trade.exit_reason or "",
                 "context": {
                     "regime": {
-                        "quality": 0.5,  # Default values if not stored
+                        "quality": 0.5,
                         "trend": trade.regime or "unknown",
                         "chaos": trade.chaos_score or 0.0
                     },
@@ -173,15 +206,14 @@ def query_trade_journal(
                 },
                 "mode": trade_mode
             })
-        
-        session.close()
+
         return result
-        
+
     except Exception as e:
         print(f"Error querying trade journal: {e}")
-        if session:
-            session.close()
         return []
+    finally:
+        session.close()
 
 
 def calculate_stats(trades: List[Dict[str, Any]], mode_filter: Optional[str] = None) -> TradeStatistics:
@@ -198,10 +230,10 @@ def calculate_stats(trades: List[Dict[str, Any]], mode_filter: Optional[str] = N
             totalProfit=0.0, avgProfit=0.0, largestWin=0.0, largestLoss=0.0
         )
 
-    wins = [t for t in closed_trades if t.get("profit", 0) > 0]
-    losses = [t for t in closed_trades if t.get("profit", 0) < 0]
+    wins = [t for t in closed_trades if t.get("pnl", 0) > 0]
+    losses = [t for t in closed_trades if t.get("pnl", 0) < 0]
 
-    profits = [t.get("profit", 0) for t in closed_trades]
+    profits = [t.get("pnl", 0) for t in closed_trades]
 
     return TradeStatistics(
         total=len(closed_trades),
@@ -301,16 +333,16 @@ async def get_trade(trade_id: str) -> Dict[str, Any]:
     
     try:
         from src.database.models import TradeJournal, TradingMode
-        
+
         trade = session.query(TradeJournal).filter(TradeJournal.id == int(trade_id)).first()
-        
+
         if not trade:
             raise HTTPException(status_code=404, detail="Trade not found")
-        
+
         direction = trade.direction if trade.direction else 'BUY'
         trade_status = 'closed' if trade.pnl is not None else 'open'
         trade_mode = 'demo' if trade.mode == TradingMode.DEMO else 'live'
-        
+
         result = {
             "id": str(trade.id),
             "timestamp": trade.timestamp.isoformat() if trade.timestamp else datetime.now().isoformat(),
@@ -342,17 +374,16 @@ async def get_trade(trade_id: str) -> Dict[str, Any]:
             },
             "mode": trade_mode
         }
-        
-        session.close()
+
         return result
-        
+
     except HTTPException:
         raise
     except Exception as e:
         print(f"Error getting trade: {e}")
-        if session:
-            session.close()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        session.close()
 
 
 @router.get("/statistics")
@@ -443,7 +474,180 @@ async def export_journal(
 
     return {
         "trades": trades,
-        "statistics": stats.dict(),
+        "statistics": stats.model_dump(),
         "exported_at": datetime.utcnow().isoformat(),
         "format": "json"
     }
+
+
+# ============================================================================
+# Trading Journal Annotation Endpoints (Story 9-5)
+# ============================================================================
+
+@router.post("/trades/{trade_id}/annotation", response_model=TradeAnnotationResponse)
+async def create_or_update_annotation(
+    trade_id: str,
+    annotation: TradeAnnotationRequest
+) -> TradeAnnotationResponse:
+    """
+    Add or update annotation for a trade.
+
+    AC #3: Store annotation with { trade_id, note, annotated_at_utc }
+    """
+    session = get_db_session()
+    if session is None:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+
+    try:
+        from src.database.models import TradeJournal
+
+        trade = session.query(TradeJournal).filter(TradeJournal.id == int(trade_id)).first()
+
+        if not trade:
+            raise HTTPException(status_code=404, detail="Trade not found")
+
+        # Update or create annotation
+        trade.note = annotation.note
+        trade.annotated_at = datetime.now(timezone.utc)
+
+        session.commit()
+        session.close()
+
+        return TradeAnnotationResponse(
+            trade_id=int(trade_id),
+            note=annotation.note,
+            annotated_at=trade.annotated_at.isoformat()
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        if session:
+            session.rollback()
+            session.close()
+        print(f"Error creating annotation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/trades/{trade_id}/annotation", response_model=TradeAnnotationResponse)
+async def get_annotation(trade_id: str) -> TradeAnnotationResponse:
+    """Get annotation for a trade."""
+    session = get_db_session()
+    if session is None:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+
+    try:
+        from src.database.models import TradeJournal
+
+        trade = session.query(TradeJournal).filter(TradeJournal.id == int(trade_id)).first()
+
+        if not trade:
+            raise HTTPException(status_code=404, detail="Trade not found")
+
+        session.close()
+
+        return TradeAnnotationResponse(
+            trade_id=int(trade_id),
+            note=trade.note or "",
+            annotated_at=trade.annotated_at.isoformat() if trade.annotated_at else ""
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        if session:
+            session.close()
+        print(f"Error getting annotation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Trading Journal CSV Export (Story 9-5)
+# ============================================================================
+
+@router.get("/trades/export/csv")
+async def export_trades_csv(
+    symbol: Optional[str] = None,
+    direction: Optional[str] = None,
+    session: Optional[str] = None,
+    ea_name: Optional[str] = None,
+    dateFrom: Optional[str] = None,
+    dateTo: Optional[str] = None
+):
+    """
+    Export trades as CSV file.
+
+    AC #4: CSV export with all filtered trades including annotations
+    """
+    # Parse dates
+    parsed_dateFrom = None
+    parsed_dateTo = None
+
+    if dateFrom:
+        try:
+            parsed_dateFrom = datetime.fromisoformat(dateFrom)
+        except ValueError:
+            pass
+
+    if dateTo:
+        try:
+            parsed_dateTo = datetime.fromisoformat(dateTo)
+        except ValueError:
+            pass
+
+    # Query database with filters
+    trades = query_trade_journal(
+        symbol=symbol,
+        dateFrom=parsed_dateFrom,
+        dateTo=parsed_dateTo,
+        mode=session,
+        limit=10000
+    )
+
+    # Apply additional filters not in query_trade_journal
+    if direction:
+        trades = [t for t in trades if t.get("direction", "").upper() == direction.upper()]
+
+    if ea_name:
+        trades = [t for t in trades if ea_name.lower() in t.get("eaName", "").lower()]
+
+    # Generate CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header row
+    writer.writerow([
+        "ID", "Entry Time (UTC)", "Exit Time (UTC)", "Symbol", "Direction",
+        "P&L", "Session", "Hold Duration (min)", "EA Name",
+        "Entry Price", "Exit Price", "Spread at Entry", "Slippage", "Strategy Version",
+        "Note", "Annotated At (UTC)"
+    ])
+
+    # Data rows
+    for trade in trades:
+        writer.writerow([
+            trade.get("id", ""),
+            trade.get("entryTime", ""),
+            trade.get("exitTime", ""),
+            trade.get("symbol", ""),
+            trade.get("direction", ""),
+            trade.get("pnl", 0),
+            trade.get("session", ""),
+            trade.get("holdDuration", ""),
+            trade.get("eaName", ""),
+            trade.get("entryPrice", ""),
+            trade.get("exitPrice", ""),
+            trade.get("spreadAtEntry", ""),
+            trade.get("slippage", ""),
+            trade.get("strategyVersion", ""),
+            trade.get("note", ""),
+            trade.get("annotatedAt", "")
+        ])
+
+    output.seek(0)
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=trading-journal.csv"}
+    )

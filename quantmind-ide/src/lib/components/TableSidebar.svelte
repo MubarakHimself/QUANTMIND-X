@@ -131,8 +131,8 @@
 <style>
   .table-sidebar {
     width: 280px;
-    background: var(--bg-secondary);
-    border-right: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-right: 1px solid var(--color-border-subtle);
     display: flex;
     flex-direction: column;
   }
@@ -142,21 +142,21 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .sidebar-header h3 {
     margin: 0;
     font-size: 14px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .table-count {
     padding: 2px 8px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 10px;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .sidebar-search,
@@ -165,18 +165,18 @@
     align-items: center;
     gap: 8px;
     padding: 12px 16px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .sidebar-search input,
   .sidebar-filter select {
     flex: 1;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border: none;
     border-radius: 4px;
     padding: 6px 10px;
     font-size: 12px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     outline: none;
   }
 
@@ -192,21 +192,21 @@
     padding: 12px 16px;
     cursor: pointer;
     transition: background 0.15s;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .table-item:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .table-item.selected {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .table-item.selected .table-name,
   .table-item.selected .table-meta {
-    color: var(--bg-primary);
+    color: var(--color-bg-base);
   }
 
   .table-info {
@@ -220,7 +220,7 @@
     gap: 6px;
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     margin-bottom: 4px;
   }
 
@@ -228,19 +228,19 @@
     display: flex;
     gap: 8px;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .table-indicator {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--text-muted);
+    background: var(--color-text-muted);
     flex-shrink: 0;
   }
 
   .table-indicator.new-table {
-    background: var(--accent-success);
+    background: var(--color-accent-green);
   }
 
   .loading-state {
@@ -250,7 +250,7 @@
     justify-content: center;
     padding: 40px;
     gap: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 12px;
   }
 
@@ -261,7 +261,7 @@
     justify-content: center;
     padding: 40px;
     gap: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .empty-state p {

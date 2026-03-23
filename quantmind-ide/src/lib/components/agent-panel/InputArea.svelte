@@ -671,8 +671,8 @@
 <style>
   .input-area {
     padding: 12px;
-    border-top: 1px solid var(--border-subtle);
-    background: var(--bg-secondary);
+    border-top: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-surface);
   }
 
   .context-preview {
@@ -687,10 +687,10 @@
     align-items: center;
     gap: 4px;
     padding: 4px 8px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 4px;
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .context-chip button {
@@ -699,14 +699,14 @@
     justify-content: center;
     background: none;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     padding: 2px;
     border-radius: 2px;
   }
 
   .context-chip button:hover {
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
 
   /* Command feedback */
@@ -770,15 +770,15 @@
     display: flex;
     align-items: flex-end;
     gap: 8px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 12px;
     padding: 8px 12px;
     transition: border-color 0.15s;
   }
 
   .input-container:focus-within {
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
   }
 
   .input-btn {
@@ -789,7 +789,7 @@
     height: 32px;
     background: transparent;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     border-radius: 6px;
     transition: all 0.15s;
@@ -797,15 +797,15 @@
   }
 
   .input-btn:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
   }
 
   .input-container textarea {
     flex: 1;
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
     padding: 6px 0;
     resize: none;
@@ -817,7 +817,7 @@
   }
 
   .input-container textarea::placeholder {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .input-container textarea:disabled {
@@ -835,17 +835,17 @@
     align-items: center;
     gap: 4px;
     padding: 4px 8px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.15s;
   }
 
   .model-btn:hover {
-    color: var(--text-primary);
-    border-color: var(--accent-primary);
+    color: var(--color-text-primary);
+    border-color: var(--color-accent-cyan);
   }
 
   .model-name {
@@ -861,8 +861,8 @@
     bottom: 100%;
     right: 0;
     margin-bottom: 8px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     min-width: 200px;
     max-height: 300px;
@@ -873,7 +873,7 @@
 
   .provider-group {
     padding: 8px 0;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .provider-group:last-child {
@@ -884,7 +884,7 @@
     display: block;
     padding: 4px 12px;
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
@@ -895,7 +895,7 @@
     padding: 8px 12px;
     background: transparent;
     border: none;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 12px;
     text-align: left;
     cursor: pointer;
@@ -903,11 +903,11 @@
   }
 
   .model-option:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .model-option.selected {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
     background: rgba(107, 200, 230, 0.1);
   }
 
@@ -918,17 +918,17 @@
     justify-content: center;
     width: 36px;
     height: 36px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border: none;
     border-radius: 8px;
-    color: var(--bg-primary);
+    color: var(--color-bg-base);
     cursor: pointer;
     transition: all 0.15s;
     flex-shrink: 0;
   }
 
   .send-btn:hover:not(:disabled) {
-    background: var(--accent-secondary);
+    background: var(--color-accent-amber);
     transform: scale(1.05);
   }
 
@@ -943,14 +943,14 @@
     justify-content: flex-end;
     padding: 4px 12px 0;
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .char-counter .warning {
-    color: var(--accent-warning);
+    color: var(--color-accent-amber);
   }
 
   .char-counter .error {
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
 </style>

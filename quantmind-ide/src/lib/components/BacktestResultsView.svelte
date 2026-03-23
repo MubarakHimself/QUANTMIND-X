@@ -1276,7 +1276,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     overflow: hidden;
   }
 
@@ -1286,8 +1286,8 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     justify-content: space-between;
     align-items: center;
     padding: 20px 24px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
     flex-wrap: wrap;
     gap: 12px;
   }
@@ -1299,19 +1299,19 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   }
 
   .header-icon {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .header-left h2 {
     margin: 0;
     font-size: 18px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .header-left p {
     margin: 2px 0 0;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .header-actions {
@@ -1327,16 +1327,16 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     align-items: center;
     gap: 6px;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .mode-selector select,
   .version-selector select {
     padding: 4px 8px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 12px;
   }
 
@@ -1346,7 +1346,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     align-items: center;
     gap: 6px;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .strategy-selector label {
@@ -1357,10 +1357,10 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
 
   .strategy-selector select {
     padding: 4px 8px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 12px;
     min-width: 150px;
   }
@@ -1391,8 +1391,8 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     align-items: center;
     gap: 16px;
     padding: 12px 24px;
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .progress-header {
@@ -1413,7 +1413,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
 
   .progress-fill {
     height: 100%;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     transition: width 0.3s;
   }
 
@@ -1426,8 +1426,8 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   /* Forward Test Results */
   .forward-test-results {
     margin: 16px 24px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -1437,31 +1437,31 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     align-items: center;
     gap: 8px;
     padding: 12px 16px;
-    background: var(--bg-tertiary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border-bottom: 1px solid var(--color-border-subtle);
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .results-header .close-btn {
     margin-left: auto;
     background: transparent;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     padding: 4px;
   }
 
   .results-header .close-btn:hover {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .results-grid {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     gap: 1px;
-    background: var(--border-subtle);
+    background: var(--color-border-subtle);
   }
 
   .result-item {
@@ -1470,19 +1470,19 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     align-items: center;
     gap: 4px;
     padding: 16px;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
   }
 
   .result-item .label {
     font-size: 10px;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .result-item .value {
     font-size: 16px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .result-item .value.success {
@@ -1498,10 +1498,10 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     align-items: center;
     gap: 6px;
     padding: 8px 14px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 12px;
     cursor: pointer;
     transition: all 0.15s;
@@ -1512,15 +1512,15 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   }
 
   .btn.active {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .btn.primary {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .icon-btn {
@@ -1532,13 +1532,13 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
   }
 
   .icon-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   /* PBO Results */
@@ -1566,7 +1566,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     align-items: center;
     padding: 20px 24px;
     border-radius: 12px;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
   }
 
   .pbo-recommendation {
@@ -1583,7 +1583,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
 
   .pbo-recommendation p {
     font-size: 14px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     margin: 4px 0 0;
   }
 
@@ -1616,9 +1616,9 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     align-items: center;
     gap: 16px;
     padding: 20px;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 12px;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
   }
 
   .pbo-metric-card .metric-icon {
@@ -1628,8 +1628,8 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     width: 40px;
     height: 40px;
     border-radius: 10px;
-    background: var(--accent-primary);
-    color: var(--text-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-text-primary);
   }
 
   .pbo-metric-card .metric-content {
@@ -1641,7 +1641,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   .pbo-metric-card .metric-value {
     font-size: 20px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .pbo-metric-card .metric-value.positive {
@@ -1654,22 +1654,22 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
 
   .pbo-metric-card .metric-label {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-transform: uppercase;
   }
 
   .pbo-visualization {
     padding: 24px;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 12px;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
   }
 
   .pbo-visualization h4 {
     font-size: 16px;
     font-weight: 600;
     margin: 0 0 20px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .pbo-gauge {
@@ -1723,7 +1723,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
 
   .gauge-labels span {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .pbo-info {
@@ -1734,19 +1734,19 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     display: flex;
     gap: 12px;
     padding: 16px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 8px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .info-card svg {
     flex-shrink: 0;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .info-card strong {
     display: block;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     margin-bottom: 4px;
   }
 
@@ -1762,8 +1762,8 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 12px;
     padding: 16px 24px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .stat-card {
@@ -1771,7 +1771,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     align-items: center;
     gap: 12px;
     padding: 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 8px;
   }
 
@@ -1783,7 +1783,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     height: 36px;
     background: var(--bg-surface);
     border-radius: 8px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .stat-icon.danger {
@@ -1799,12 +1799,12 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   .stat-value {
     font-size: 16px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .stat-label {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   /* Test Tabs */
@@ -1812,8 +1812,8 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     display: flex;
     gap: 4px;
     padding: 12px 24px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .tab {
@@ -1824,20 +1824,20 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     background: transparent;
     border: none;
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 12px;
     cursor: pointer;
     transition: all 0.15s;
   }
 
   .tab:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .tab.active {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .tab .count {
@@ -1880,14 +1880,14 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     align-items: center;
     justify-content: center;
     padding: 60px 24px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .spinner {
     width: 40px;
     height: 40px;
-    border: 3px solid var(--bg-tertiary);
-    border-top-color: var(--accent-primary);
+    border: 3px solid var(--color-bg-elevated);
+    border-top-color: var(--color-accent-cyan);
     border-radius: 50%;
     animation: spin 1s linear infinite;
   }
@@ -1908,14 +1908,14 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     align-items: center;
     justify-content: center;
     padding: 60px 24px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-align: center;
   }
 
   .empty-state h3 {
     margin: 16px 0 8px;
     font-size: 16px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .empty-state p {
@@ -1925,7 +1925,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
 
   /* Mode Comparison */
   .mode-comparison {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 10px;
     padding: 20px;
     margin-bottom: 24px;
@@ -1934,7 +1934,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   .mode-comparison h3 {
     margin: 0 0 16px;
     font-size: 14px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .comparison-grid {
@@ -1944,15 +1944,15 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   }
 
   .comparison-card {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     padding: 16px;
     transition: all 0.15s;
   }
 
   .comparison-card.best {
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
     background: rgba(14, 165, 233, 0.1);
   }
 
@@ -1966,7 +1966,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   .comparison-header h4 {
     margin: 0;
     font-size: 13px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .status-badge {
@@ -1992,16 +1992,16 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   }
 
   .comparison-metrics .label {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .comparison-metrics .value {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-weight: 500;
   }
 
   .no-data {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 12px;
     text-align: center;
     padding: 20px;
@@ -2009,8 +2009,8 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
 
   /* Result Cards */
   .result-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
     padding: 20px;
     margin-bottom: 16px;
@@ -2035,7 +2035,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     gap: 8px;
     font-size: 14px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .mode-version {
@@ -2052,13 +2052,13 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   }
 
   .mode-badge {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .version-badge {
-    background: var(--bg-tertiary);
-    color: var(--text-secondary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
   }
 
   /* Metrics Grid */
@@ -2074,7 +2074,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     align-items: center;
     gap: 10px;
     padding: 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 8px;
   }
 
@@ -2086,7 +2086,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     height: 32px;
     background: var(--bg-surface);
     border-radius: 6px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .metric-icon.danger {
@@ -2102,12 +2102,12 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   .metric-value {
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .metric-label {
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   /* Charts Section */
@@ -2118,7 +2118,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   .charts-section h4 {
     margin: 0 0 12px;
     font-size: 13px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .charts-grid {
@@ -2128,8 +2128,8 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   }
 
   .chart-placeholder {
-    background: var(--bg-tertiary);
-    border: 1px dashed var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px dashed var(--color-border-subtle);
     border-radius: 8px;
     padding: 16px;
   }
@@ -2140,13 +2140,13 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     gap: 8px;
     margin-bottom: 8px;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .placeholder-content {
     text-align: center;
     padding: 20px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .placeholder-content p {
@@ -2164,7 +2164,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     flex-wrap: wrap;
     gap: 16px;
     padding: 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 8px;
     margin-bottom: 16px;
   }
@@ -2176,11 +2176,11 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   }
 
   .metadata-item .label {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .metadata-item .value {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-weight: 500;
   }
 
@@ -2194,12 +2194,12 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     align-items: center;
     gap: 8px;
     padding-top: 12px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
 
   .export-label {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .export-btn {
@@ -2207,10 +2207,10 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     align-items: center;
     gap: 4px;
     padding: 6px 10px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 11px;
     cursor: pointer;
     transition: all 0.15s;
@@ -2218,12 +2218,12 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
 
   .export-btn:hover {
     background: var(--bg-surface);
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   /* Trades Section */
   .trades-section {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 10px;
     padding: 20px;
   }
@@ -2238,7 +2238,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   .trades-header h3 {
     margin: 0;
     font-size: 14px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .trade-filters {
@@ -2248,10 +2248,10 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
 
   .trade-filters select {
     padding: 4px 8px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 11px;
   }
 
@@ -2262,7 +2262,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   }
 
   .trade-item {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 8px;
     overflow: hidden;
     transition: all 0.15s;
@@ -2292,22 +2292,22 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   }
 
   .trade-icon {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .trade-time {
     font-size: 12px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-family: 'JetBrains Mono', monospace;
   }
 
   .trade-symbol {
     padding: 4px 8px;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 4px;
     font-size: 11px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .trade-pnl {
@@ -2337,13 +2337,13 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     height: 24px;
     background: transparent;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
   }
 
   .trade-details {
     padding: 16px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -2361,15 +2361,15 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   }
 
   .detail-label {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .detail-value {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .detail-value.reason {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     padding: 8px;
     border-radius: 4px;
     font-size: 13px;
@@ -2381,10 +2381,10 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     justify-content: center;
     gap: 6px;
     padding: 8px 12px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border: none;
     border-radius: 6px;
-    color: var(--bg-primary);
+    color: var(--color-bg-base);
     font-size: 12px;
     cursor: pointer;
     align-self: flex-start;
@@ -2403,7 +2403,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   }
 
   .modal {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 12px;
     width: 600px;
     max-width: 90%;
@@ -2418,13 +2418,13 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     justify-content: space-between;
     align-items: center;
     padding: 16px 20px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .modal-header h3 {
     margin: 0;
     font-size: 16px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .modal-content {
@@ -2440,7 +2440,7 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
   .trade-detail-section h4 {
     margin: 0 0 12px;
     font-size: 13px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .detail-grid {
@@ -2453,26 +2453,26 @@ strategy.exit("Exit", "Short", stop=strategy.position_avg_price * 1.02, limit=st
     display: flex;
     justify-content: space-between;
     padding: 8px 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
     font-size: 12px;
   }
 
   .detail-item .label {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .detail-item .value {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-weight: 500;
   }
 
   .trade-reason {
     padding: 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 8px;
     font-size: 13px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     line-height: 1.5;
   }
 </style>

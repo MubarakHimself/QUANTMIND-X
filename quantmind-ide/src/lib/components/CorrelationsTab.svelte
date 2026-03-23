@@ -59,12 +59,12 @@
   .section-header h3 {
     margin: 0;
     font-size: 14px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .info {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .correlations-grid {
@@ -74,8 +74,8 @@
   }
 
   .corr-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
     padding: 16px;
     display: flex;
@@ -95,7 +95,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-weight: 500;
   }
 

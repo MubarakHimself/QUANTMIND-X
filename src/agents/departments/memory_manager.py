@@ -12,9 +12,139 @@ import os
 import re
 from datetime import date, datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from src.agents.departments.types import Department
+
+
+def _get_default_graph_store():
+    """Get default graph store, using patched class if available."""
+    try:
+        from src.memory.graph.store import GraphMemoryStore
+        return GraphMemoryStore()
+    except Exception:
+        return None
+
+
+class SessionWorkspace:
+    """
+    Session-scoped workspace for graph memory operations.
+
+    Provides isolated read/write access to graph memory nodes with:
+    - Session ID filtering for cross-session contamination prevention
+    - Draft-to-committed state transitions
+    - Session-scoped queries
+
+    Used by department agents to maintain isolated session state in graph memory.
+    """
+
+    def __init__(self, session_id: str, entity_id: str, graph_store=None):
+        """
+        Initialize a session workspace.
+
+        Args:
+            session_id: Unique session identifier
+            entity_id: Entity this session is working on (e.g., strategy_id)
+            graph_store: Optional GraphMemoryStore instance (uses default if not provided)
+        """
+        self.session_id = session_id
+        self.entity_id = entity_id
+        self._committed = False
+        self._graph_store = graph_store
+        self._draft_nodes = []
+
+    def _get_graph_store(self):
+        """Get the graph store, lazily creating if needed."""
+        if self._graph_store is None:
+            self._graph_store = _get_default_graph_store()
+        return self._graph_store
+
+    def write_node(
+        self,
+        node_type: str,
+        content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        status: str = "draft",
+    ) -> Dict[str, Any]:
+        """
+        Write a node to the session workspace.
+
+        Args:
+            node_type: Type of node (e.g., "opinion", "fact")
+            content: Node content
+            metadata: Additional metadata
+            status: Node status ("draft" or "committed")
+
+        Returns:
+            Created node dict with session_id captured
+        """
+        node_data = {
+            "session_id": self.session_id,
+            "entity_id": self.entity_id,
+            "node_type": node_type,
+            "content": content,
+            "metadata": metadata or {},
+            "status": status if not self._committed else "committed",
+        }
+
+        store = self._get_graph_store()
+        if store is not None:
+            result = store.create_node(node_data)
+            node_data["node_id"] = result.get("node_id") if result else None
+        else:
+            node_data["node_id"] = f"node_{self.session_id}_{node_type}"
+
+        self._draft_nodes.append(node_data)
+        return node_data
+
+    def query_nodes(
+        self,
+        node_type: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Query nodes with session filtering.
+
+        Args:
+            node_type: Optional filter by node type
+            session_id: Optional explicit session_id (defaults to self.session_id)
+
+        Returns:
+            List of matching nodes
+        """
+        filter_session_id = session_id or self.session_id
+
+        store = self._get_graph_store()
+        if store is not None:
+            return store.query_nodes(
+                node_type=node_type,
+                session_id=filter_session_id,
+                entity_id=self.entity_id,
+            )
+
+        # Fallback: return draft nodes matching filter
+        results = [
+            n for n in self._draft_nodes
+            if n.get("session_id") == filter_session_id
+            and (node_type is None or n.get("node_type") == node_type)
+        ]
+        return results
+
+    def commit(self) -> None:
+        """
+        Commit all draft nodes in this session.
+
+        After commit:
+        - All draft nodes are marked as committed
+        - Nodes become visible to other sessions
+        """
+        self._committed = True
+        for node in self._draft_nodes:
+            node["status"] = "committed"
+
+    def is_committed(self) -> bool:
+        """Return True if this session has been committed."""
+        return self._committed
 
 
 class DepartmentMemoryManager:

@@ -304,7 +304,7 @@
   }
 
   .hooks-panel {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 12px;
     width: 1100px;
     max-width: 100%;
@@ -313,7 +313,7 @@
     display: flex;
     flex-direction: column;
     box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
   }
 
   .panel-header {
@@ -321,8 +321,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px 20px;
-    border-bottom: 1px solid var(--border-subtle);
-    background: var(--bg-primary);
+    border-bottom: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-base);
     border-radius: 12px 12px 0 0;
   }
 
@@ -330,18 +330,18 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .header-left h2 {
     margin: 0;
     font-size: 16px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .subtitle {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .header-actions {
@@ -356,7 +356,7 @@
     padding: 10px 20px;
     background: rgba(239, 68, 68, 0.1);
     border-bottom: 1px solid rgba(239, 68, 68, 0.3);
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
     font-size: 12px;
   }
 
@@ -383,7 +383,7 @@
   }
 
   .hooks-section {
-    border-right: 1px solid var(--border-subtle);
+    border-right: 1px solid var(--color-border-subtle);
   }
 
   .section-header {
@@ -391,8 +391,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    background: var(--bg-tertiary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .section-header h3 {
@@ -400,7 +400,7 @@
     font-size: 12px;
     font-weight: 600;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .log-filters {
@@ -411,22 +411,22 @@
   .filter-btn {
     padding: 4px 10px;
     background: transparent;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 11px;
     cursor: pointer;
     transition: all 0.15s;
   }
 
   .filter-btn:hover {
-    background: var(--bg-input);
+    background: var(--color-bg-elevated);
   }
 
   .filter-btn.active {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .loading-state,
@@ -436,7 +436,7 @@
     align-items: center;
     justify-content: center;
     padding: 40px 20px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     gap: 12px;
   }
 
@@ -449,8 +449,8 @@
 
   .hook-item {
     padding: 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     margin-bottom: 8px;
     cursor: pointer;
@@ -458,11 +458,11 @@
   }
 
   .hook-item:hover {
-    border-color: var(--border-strong);
+    border-color: var(--color-border-medium);
   }
 
   .hook-item.selected {
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
     background: rgba(99, 102, 241, 0.1);
   }
 
@@ -484,29 +484,29 @@
     align-items: center;
     background: none;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     padding: 0;
     transition: color 0.15s;
   }
 
   .toggle-btn:hover {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .hook-name {
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .hook-category {
     padding: 2px 6px;
-    background: var(--bg-input);
+    background: var(--color-bg-elevated);
     border-radius: 4px;
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-transform: uppercase;
   }
 
@@ -518,17 +518,17 @@
   .hook-description {
     margin: 0 0 8px 24px;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .hook-stats {
     display: flex;
     gap: 12px;
     padding: 6px 12px;
-    background: var(--bg-input);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin-left: 24px;
   }
 
@@ -540,19 +540,19 @@
 
   .log-item {
     padding: 10px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
     margin-bottom: 6px;
     font-size: 12px;
   }
 
   .log-item.success {
-    border-left: 3px solid var(--accent-success);
+    border-left: 3px solid var(--color-accent-green);
   }
 
   .log-item.failed {
-    border-left: 3px solid var(--accent-danger);
+    border-left: 3px solid var(--color-accent-red);
   }
 
   .log-header {
@@ -569,30 +569,30 @@
   }
 
   .status-icon.success {
-    color: var(--accent-success);
+    color: var(--color-accent-green);
   }
 
   .status-icon.failed {
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
 
   .log-hook-name {
     font-family: 'JetBrains Mono', monospace;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .log-meta {
     display: flex;
     gap: 8px;
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .log-message {
     margin-top: 6px;
     padding-left: 20px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 11px;
   }
 
@@ -605,14 +605,14 @@
     background: transparent;
     border: none;
     border-radius: 6px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.15s;
   }
 
   .icon-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .icon-btn.small {
@@ -622,7 +622,7 @@
 
   .icon-btn.danger:hover {
     background: rgba(239, 68, 68, 0.2);
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
 
   .spinning {

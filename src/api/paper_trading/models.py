@@ -96,3 +96,19 @@ class DemoAccountResponse(BaseModel):
     nickname: str
     account_type: str = "demo"
     is_active: bool = True
+
+
+class ActiveAgentItem(BaseModel):
+    """Summary of a single active paper trading agent."""
+    ea_name: str
+    pair: str
+    days_running: int
+    win_rate: float
+    pnl_current: float
+    status: str
+    started_at: str
+
+
+class ActiveAgentsResponse(BaseModel):
+    """Response for GET /api/paper-trading/active."""
+    items: List[ActiveAgentItem]

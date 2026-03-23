@@ -90,8 +90,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 20px 24px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .header-left {
@@ -101,19 +101,19 @@
   }
 
   :global(.router-icon) {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .header-left h2 {
     margin: 0;
     font-size: 18px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .header-left p {
     margin: 2px 0 0;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .header-actions {
@@ -127,10 +127,10 @@
     align-items: center;
     gap: 8px;
     padding: 6px 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 20px;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .router-status.active {
@@ -156,10 +156,10 @@
     align-items: center;
     gap: 6px;
     padding: 8px 14px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 12px;
     cursor: pointer;
     transition: all 0.15s;
@@ -170,15 +170,15 @@
   }
 
   .btn.active {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .btn.primary {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .btn.hmm-train-btn {

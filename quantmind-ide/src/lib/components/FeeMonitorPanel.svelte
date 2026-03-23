@@ -212,8 +212,8 @@
 
 <style>
   .fee-monitor-panel {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
     padding: 16px;
     margin-top: 16px;
@@ -225,26 +225,26 @@
     justify-content: space-between;
     margin-bottom: 16px;
     padding-bottom: 12px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .header-left {
     display: flex;
     align-items: center;
     gap: 8px;
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .header-left h3 {
     margin: 0;
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .loading-indicator {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .error-state {
@@ -254,7 +254,7 @@
     justify-content: center;
     gap: 8px;
     padding: 24px;
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
 
   .panel-content {
@@ -285,7 +285,7 @@
 
   .gauge-label {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
@@ -317,7 +317,7 @@
 
   .gauge-bar {
     height: 8px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 4px;
     overflow: hidden;
   }
@@ -332,7 +332,7 @@
     display: flex;
     justify-content: space-between;
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .total-fees {
@@ -344,13 +344,13 @@
 
   .fees-label {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .fees-value {
     font-size: 20px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   /* Kill Switch Status */
@@ -404,7 +404,7 @@
     margin: 0 0 12px;
     font-size: 12px;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
@@ -419,8 +419,8 @@
     padding: 8px 10px;
     text-align: left;
     font-weight: 600;
-    color: var(--text-muted);
-    border-bottom: 1px solid var(--border-subtle);
+    color: var(--color-text-muted);
+    border-bottom: 1px solid var(--color-border-subtle);
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.3px;
@@ -428,8 +428,8 @@
 
   .breakdown-table td {
     padding: 10px;
-    border-bottom: 1px solid var(--border-subtle);
-    color: var(--text-primary);
+    border-bottom: 1px solid var(--color-border-subtle);
+    color: var(--color-text-primary);
   }
 
   .breakdown-table tr:last-child td {
@@ -437,7 +437,7 @@
   }
 
   .breakdown-table tr:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .breakdown-table tr.warning-row {
@@ -490,7 +490,7 @@
     justify-content: center;
     gap: 8px;
     padding: 24px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 12px;
   }
 

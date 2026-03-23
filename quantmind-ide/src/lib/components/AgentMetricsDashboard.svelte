@@ -106,37 +106,37 @@ https://svelte.dev/e/component_invalid_directive -->
 </div>
 
 <style>
-  .agent-metrics-dashboard { display: flex; flex-direction: column; gap: 20px; padding: 20px; background: var(--bg-primary); height: 100%; overflow-y: auto; }
-  .dashboard-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle); }
+  .agent-metrics-dashboard { display: flex; flex-direction: column; gap: 20px; padding: 20px; background: var(--color-bg-base); height: 100%; overflow-y: auto; }
+  .dashboard-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; border-bottom: 1px solid var(--color-border-subtle); }
   .header-left { display: flex; align-items: center; gap: 12px; }
-  .header-left h2 { font-size: 20px; font-weight: 600; color: var(--text-primary); margin: 0; }
+  .header-left h2 { font-size: 20px; font-weight: 600; color: var(--color-text-primary); margin: 0; }
   .header-right { display: flex; align-items: center; gap: 12px; }
-  .period-select { padding: 8px 12px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text-primary); font-size: 14px; cursor: pointer; }
-  .refresh-btn { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text-primary); cursor: pointer; transition: all 0.2s; }
-  .refresh-btn:hover:not(:disabled) { background: var(--bg-tertiary); border-color: var(--accent-primary); }
+  .period-select { padding: 8px 12px; background: var(--color-bg-surface); border: 1px solid var(--color-border-subtle); border-radius: 6px; color: var(--color-text-primary); font-size: 14px; cursor: pointer; }
+  .refresh-btn { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; background: var(--color-bg-surface); border: 1px solid var(--color-border-subtle); border-radius: 6px; color: var(--color-text-primary); cursor: pointer; transition: all 0.2s; }
+  .refresh-btn:hover:not(:disabled) { background: var(--color-bg-elevated); border-color: var(--color-accent-cyan); }
   .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .spinning { animation: spin 1s linear infinite; }
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-  .loading-state, .error-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 60px; color: var(--text-muted); }
-  .spinner { width: 40px; height: 40px; border: 3px solid var(--border-subtle); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 1s linear infinite; }
-  .error-state { color: var(--accent-danger); }
-  .error-state button { padding: 8px 16px; background: var(--accent-primary); color: white; border: none; border-radius: 6px; cursor: pointer; }
+  .loading-state, .error-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 60px; color: var(--color-text-muted); }
+  .spinner { width: 40px; height: 40px; border: 3px solid var(--color-border-subtle); border-top-color: var(--color-accent-cyan); border-radius: 50%; animation: spin 1s linear infinite; }
+  .error-state { color: var(--color-accent-red); }
+  .error-state button { padding: 8px 16px; background: var(--color-accent-cyan); color: white; border: none; border-radius: 6px; cursor: pointer; }
   .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
   .charts-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
-  .chart-container { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 16px; }
-  .chart-container h3 { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--text-muted); margin: 0 0 12px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+  .chart-container { background: var(--color-bg-surface); border: 1px solid var(--color-border-subtle); border-radius: 8px; padding: 16px; }
+  .chart-container h3 { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--color-text-muted); margin: 0 0 12px 0; text-transform: uppercase; letter-spacing: 0.5px; }
   .chart-wrapper { height: 220px; position: relative; }
   .tables-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 16px; }
-  .table-container { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 16px; overflow-x: auto; }
-  .table-container h3 { font-size: 14px; font-weight: 500; color: var(--text-muted); margin: 0 0 12px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+  .table-container { background: var(--color-bg-surface); border: 1px solid var(--color-border-subtle); border-radius: 8px; padding: 16px; overflow-x: auto; }
+  .table-container h3 { font-size: 14px; font-weight: 500; color: var(--color-text-muted); margin: 0 0 12px 0; text-transform: uppercase; letter-spacing: 0.5px; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; padding: 8px 12px; color: var(--text-muted); font-weight: 500; border-bottom: 1px solid var(--border-subtle); }
-  td { padding: 10px 12px; color: var(--text-primary); border-bottom: 1px solid var(--border-subtle); }
-  tr:hover { background: var(--bg-tertiary); }
-  .cost-cell { color: var(--accent-success); font-weight: 500; }
-  .success-cell { color: var(--accent-success); }
-  .danger-cell { color: var(--accent-danger); }
-  .success-rate-high { color: var(--accent-success); font-weight: 500; }
-  .success-rate-med { color: var(--accent-warning); font-weight: 500; }
-  .success-rate-low { color: var(--accent-danger); font-weight: 500; }
+  th { text-align: left; padding: 8px 12px; color: var(--color-text-muted); font-weight: 500; border-bottom: 1px solid var(--color-border-subtle); }
+  td { padding: 10px 12px; color: var(--color-text-primary); border-bottom: 1px solid var(--color-border-subtle); }
+  tr:hover { background: var(--color-bg-elevated); }
+  .cost-cell { color: var(--color-accent-green); font-weight: 500; }
+  .success-cell { color: var(--color-accent-green); }
+  .danger-cell { color: var(--color-accent-red); }
+  .success-rate-high { color: var(--color-accent-green); font-weight: 500; }
+  .success-rate-med { color: var(--color-accent-amber); font-weight: 500; }
+  .success-rate-low { color: var(--color-accent-red); font-weight: 500; }
 </style>

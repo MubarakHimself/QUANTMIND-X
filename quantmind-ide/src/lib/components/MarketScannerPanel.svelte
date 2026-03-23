@@ -209,7 +209,7 @@ https://svelte.dev/e/component_invalid_directive -->
         Last: {status.lastScan}
       </span>
       <button class="icon-btn" on:click={fetchScannerData} title="Refresh">
-        <RefreshCw size={16} class:spin={isLoading} />
+        <span class:spin={isLoading}><RefreshCw size={16} /></span>
       </button>
       <button class="icon-btn" on:click={toggleFullscreen} title={isFullscreen ? 'Minimize' : 'Maximize'}>
         {#if isFullscreen}

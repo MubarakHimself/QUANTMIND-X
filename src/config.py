@@ -59,6 +59,17 @@ class Settings(BaseSettings):
     # ZMQ Settings
     zmq_endpoint: str = "tcp://localhost:5555"
 
+    # Auth0 OAuth 2.1 Settings
+    auth0_domain: str = ""
+    auth0_client_id: str = ""
+    auth0_client_secret: str = ""  # Never commit this
+    auth0_audience: str = ""
+    auth0_callback_path: str = "/api/auth/callback"
+    auth0_logout_path: str = "/api/auth/logout"
+    oauth_pkce_code_verifier_length: int = 64
+    auth0_access_token_ttl: int = 900  # 15 minutes
+    auth0_refresh_token_ttl: int = 604800  # 7 days
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

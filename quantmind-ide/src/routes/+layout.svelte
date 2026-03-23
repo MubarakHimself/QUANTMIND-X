@@ -2,6 +2,7 @@
   import '../app.css';
   import { onMount } from 'svelte';
   import { theme, applyTheme, loadSavedTheme, setFont, loadSavedFont, setCustomWallpaper, loadSavedWallpaper, customWallpaper } from '$lib/stores/themeStore';
+  import { scanlines } from '$lib/stores/theme';
   interface Props {
     children?: import('svelte').Snippet;
   }
@@ -41,6 +42,9 @@
   class:is-pattern={isPattern}
   style="background: {wallpaperStyle};"
 ></div>
+
+<!-- Scan-line overlay -->
+<div class="scanlines" class:enabled={$scanlines}></div>
 
 {@render children?.()}
 

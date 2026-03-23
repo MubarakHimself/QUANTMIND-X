@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { onMount } from 'svelte';
   import {
-    Bot, Code, TrendingUp, Save, RefreshCw, Check, Download,
+    Bot, Save, RefreshCw, Check, Download,
     Upload as UploadIcon, Plus, Trash2, Terminal, Sliders, FileText,
-    Briefcase, Users, Layers
+    Briefcase, Users
   } from 'lucide-svelte';
 
 
@@ -24,6 +24,12 @@
     agentsMdContent?: string;
     agentsMdLoading?: boolean;
     agentsMdSaved?: boolean;
+    onselectAgent?: (agent: string) => void;
+    ontoggleEditor?: (value: boolean) => void;
+    onexportAgentsMd?: () => void;
+    onimportAgentsMd?: () => void;
+    onsaveAgentsMd?: () => void;
+    onupdateAgentConfig?: (agent: string, field: string, value: unknown) => void;
   }
 
   let {
@@ -32,10 +38,14 @@
     showRawEditor = $bindable(true),
     agentsMdContent = $bindable(''),
     agentsMdLoading = false,
-    agentsMdSaved = false
+    agentsMdSaved = false,
+    onselectAgent,
+    ontoggleEditor,
+    onexportAgentsMd,
+    onimportAgentsMd,
+    onsaveAgentsMd,
+    onupdateAgentConfig
   }: Props = $props();
-
-  const dispatch = createEventDispatcher();
 
   // All agents organized by category
   const ALL_AGENTS = [
@@ -126,28 +136,28 @@
 
   function setSelectedAgent(agent: string) {
     selectedAgent = agent;
-    dispatch('selectAgent', { agent });
+    onselectAgent?.(agent);
   }
 
   function setShowRawEditor(value: boolean) {
     showRawEditor = value;
-    dispatch('toggleEditor', { value });
+    ontoggleEditor?.(value);
   }
 
   function exportAgentsMd() {
-    dispatch('exportAgentsMd');
+    onexportAgentsMd?.();
   }
 
   function importAgentsMd() {
-    dispatch('importAgentsMd');
+    onimportAgentsMd?.();
   }
 
   function saveAgentsMd() {
-    dispatch('saveAgentsMd');
+    onsaveAgentsMd?.();
   }
 
-  function updateAgentConfig(field: string, value: any) {
-    dispatch('updateAgentConfig', { agent: selectedAgent, field, value });
+  function updateAgentConfig(field: string, value: unknown) {
+    onupdateAgentConfig?.(selectedAgent, field, value);
   }
 
   function addSkill() {

@@ -1,0 +1,68 @@
+{
+  "workflow_version": "1.2.0",
+  "timestamps": {
+    "started": "2026-03-11T12:00:00Z",
+    "last_updated": "2026-03-11T14:00:00Z"
+  },
+  "mode": "completed",
+  "scan_level": "exhaustive",
+  "project_root": "/home/mubarkahimself/Desktop/QUANTMINDX",
+  "project_knowledge": "/home/mubarkahimself/Desktop/QUANTMINDX/docs",
+  "completed_steps": [
+    "step_1_scan_level",
+    "step_2_project_classification",
+    "step_3_technology_stack",
+    "step_4_conditional_analysis",
+    "step_5_source_tree",
+    "step_6_development_info",
+    "step_7_integration_architecture",
+    "step_8_architecture_docs",
+    "step_9_supporting_docs",
+    "step_10_index_generation",
+    "step_11_validation",
+    "step_12_finalization"
+  ],
+  "current_step": "complete",
+  "repository_type": "monorepo",
+  "project_types": [
+    {"part_id": "backend", "project_type_id": "backend", "display_name": "Python/FastAPI Backend"},
+    {"part_id": "ide", "project_type_id": "desktop", "display_name": "SvelteKit/Tauri Desktop IDE"},
+    {"part_id": "feature-server", "project_type_id": "web", "display_name": "SvelteKit Feature Server"},
+    {"part_id": "mcp-mt5", "project_type_id": "backend", "display_name": "MCP MetaTrader5 Server"},
+    {"part_id": "mcp-servers", "project_type_id": "backend", "display_name": "MCP Servers (Backtest + KB)"},
+    {"part_id": "mt5-bridge", "project_type_id": "backend", "display_name": "MT5 Bridge API"},
+    {"part_id": "extensions", "project_type_id": "extension", "display_name": "MQL5 Library + Gemini Extension"}
+  ],
+  "findings": {
+    "critical_issues": [
+      "Floor Manager routing bug: Workshop UI sends to /api/chat/send instead of /api/floor-manager/chat",
+      "Three deprecated agent paradigms coexist (LangGraph base_agent, factory registry, workspace claude_config)",
+      "Workspace directories deleted from git but still referenced in claude_config.py"
+    ],
+    "architecture_notes": [
+      "Department System (floor_manager.py) is canonical agent system",
+      "HMM is in SHADOW mode - not yet affecting live trading",
+      "Two-VPS split: Contabo (training) + Cloudzy (trading)",
+      "Physics-Aware Kelly Engine with Ising + Lyapunov + Eigenvalue multipliers",
+      "50-bot global limit enforced by Commander"
+    ]
+  },
+  "outputs_generated": [
+    "docs/project-scan-report.json",
+    "docs/project-overview.md",
+    "docs/agentic-setup.md",
+    "docs/risk-management.md",
+    "docs/strategy-router.md",
+    "docs/data-models.md",
+    "docs/data-pipeline.md",
+    "docs/component-inventory.md",
+    "docs/development-guide.md",
+    "docs/hmm-system.md",
+    "docs/architecture.md",
+    "docs/api-contracts.md",
+    "docs/source-tree-analysis.md",
+    "docs/deployment-guide.md",
+    "docs/index.md"
+  ],
+  "resume_instructions": "Workflow complete. All 12 steps executed. 15 documentation files generated."
+}

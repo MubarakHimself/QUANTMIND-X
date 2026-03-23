@@ -316,14 +316,14 @@ https://svelte.dev/e/directive_invalid_value -->
     display: flex;
     flex-direction: column;
     width: 300px;
-    background: var(--bg-secondary);
-    border-left: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-left: 1px solid var(--color-border-subtle);
     font-size: 12px;
     overflow: hidden;
   }
 
   .debug-panel.active {
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
   }
 
   .debug-controls {
@@ -331,8 +331,8 @@ https://svelte.dev/e/directive_invalid_value -->
     flex-wrap: wrap;
     gap: 8px;
     padding: 8px 12px;
-    background: var(--bg-tertiary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .control-group {
@@ -347,16 +347,16 @@ https://svelte.dev/e/directive_invalid_value -->
     width: 28px;
     height: 28px;
     background: transparent;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     cursor: pointer;
     transition: all 0.2s ease;
   }
 
   .control-btn:hover:not(:disabled) {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
   }
 
   .control-btn:disabled {
@@ -365,13 +365,13 @@ https://svelte.dev/e/directive_invalid_value -->
   }
 
   .control-btn.primary {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
     color: #000;
   }
 
   .control-btn.primary:hover:not(:disabled) {
-    background: var(--accent-secondary);
+    background: var(--color-accent-amber);
   }
 
   .debug-status {
@@ -379,9 +379,9 @@ https://svelte.dev/e/directive_invalid_value -->
     align-items: center;
     gap: 6px;
     padding: 4px 8px;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     border-radius: 4px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 11px;
     flex: 1;
     min-width: 120px;
@@ -393,7 +393,7 @@ https://svelte.dev/e/directive_invalid_value -->
   }
 
   .section {
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .section-header {
@@ -401,27 +401,27 @@ https://svelte.dev/e/directive_invalid_value -->
     align-items: center;
     gap: 6px;
     padding: 8px 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     cursor: pointer;
     user-select: none;
   }
 
   .section-header:hover {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
   }
 
   .section-header span:first-of-type {
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .count {
     margin-left: auto;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     padding: 2px 6px;
     border-radius: 10px;
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .section-content {
@@ -440,23 +440,23 @@ https://svelte.dev/e/directive_invalid_value -->
   }
 
   .stack-frame:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .frame-index {
     width: 20px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 10px;
   }
 
   .frame-function {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
     font-weight: 500;
   }
 
   .frame-location {
     margin-left: auto;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 10px;
   }
 
@@ -468,15 +468,15 @@ https://svelte.dev/e/directive_invalid_value -->
   }
 
   .variable-row:hover, .watch-row:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .var-name {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .var-value, .watch-value {
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .var-value.string {
@@ -497,7 +497,7 @@ https://svelte.dev/e/directive_invalid_value -->
   }
 
   .watch-expr {
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-style: italic;
   }
 
@@ -506,7 +506,7 @@ https://svelte.dev/e/directive_invalid_value -->
     right: 8px;
     background: transparent;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     padding: 2px;
     opacity: 0;
@@ -527,16 +527,16 @@ https://svelte.dev/e/directive_invalid_value -->
   .add-watch input {
     flex: 1;
     padding: 4px 8px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 11px;
   }
 
   .add-watch input:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
   }
 
   .add-btn {
@@ -545,7 +545,7 @@ https://svelte.dev/e/directive_invalid_value -->
     justify-content: center;
     width: 24px;
     height: 24px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border: none;
     border-radius: 4px;
     color: #000;
@@ -562,7 +562,7 @@ https://svelte.dev/e/directive_invalid_value -->
   }
 
   .breakpoint-row:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .breakpoint-row.disabled {
@@ -570,15 +570,15 @@ https://svelte.dev/e/directive_invalid_value -->
   }
 
   .breakpoint-row input[type="checkbox"] {
-    accent-color: var(--accent-primary);
+    accent-color: var(--color-accent-cyan);
   }
 
   .bp-location {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .bp-condition {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-style: italic;
     font-size: 10px;
   }

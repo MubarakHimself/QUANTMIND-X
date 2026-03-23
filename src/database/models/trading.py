@@ -200,6 +200,10 @@ class TradeJournal(Base):
     # Link to strategy
     strategy_folder_id = Column(Integer, ForeignKey('strategy_folders.id'), nullable=True, index=True)
 
+    # Annotation/Notes (Story 9-5: Trading Journal)
+    note = Column(Text, nullable=True)
+    annotated_at = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     __table_args__ = (

@@ -80,7 +80,7 @@
     margin: 0 0 20px 0;
     font-size: 20px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .db-stats {
@@ -94,21 +94,21 @@
     display: flex;
     flex-direction: column;
     padding: 16px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
   }
 
   .db-stat .label {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin-bottom: 4px;
   }
 
   .db-stat .value {
     font-size: 24px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .db-tables {
@@ -119,8 +119,8 @@
 
   .table-card {
     padding: 16px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
   }
 
@@ -128,7 +128,7 @@
     margin: 0 0 12px 0;
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .table-card table {
@@ -141,17 +141,17 @@
     padding: 8px 12px;
     text-align: left;
     font-size: 12px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .table-card th {
     font-weight: 500;
-    color: var(--text-muted);
-    background: var(--bg-tertiary);
+    color: var(--color-text-muted);
+    background: var(--color-bg-elevated);
   }
 
   .table-card td {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .table-card td.positive {

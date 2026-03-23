@@ -3,13 +3,17 @@ Session Checkpoint Service
 
 Database-backed checkpoint management for agent sessions.
 Provides save, restore, list, and delete operations for session checkpoints.
+
+Optional integration with Graph Memory ReflectionExecutor for memory commitment.
 """
 
 import json
 import logging
 import asyncio
+import os
+from pathlib import Path
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 
 from sqlalchemy.orm import Session as DbSession
@@ -20,6 +24,11 @@ from src.database.models.agent_session import AgentSession
 from src.database.models import get_db_session
 
 logger = logging.getLogger(__name__)
+
+# Default configuration values
+DEFAULT_CHECKPOINT_INTERVAL_MINUTES = 5
+DEFAULT_STALE_DRAFT_THRESHOLD_HOURS = 24
+DEFAULT_CHECKPOINT_ON_MILESTONE = True
 
 
 class SessionCheckpointService:
@@ -38,15 +47,53 @@ class SessionCheckpointService:
         >>> checkpoint = await service.get_checkpoint(checkpoint_id)
     """
 
-    def __init__(self, db_session: Optional[DbSession] = None):
+    def __init__(
+        self,
+        db_session: Optional[DbSession] = None,
+        checkpoint_interval_minutes: Optional[int] = None,
+        stale_draft_threshold_hours: Optional[int] = None,
+        checkpoint_on_milestone: Optional[bool] = None,
+    ):
         """
         Initialize checkpoint service.
 
         Args:
             db_session: Optional SQLAlchemy session. If not provided,
                        creates a new one for each operation.
+            checkpoint_interval_minutes: Configurable checkpoint interval.
+                Defaults to SESSION_CHECKPOINT_INTERVAL_MINUTES env or 5 minutes.
+            stale_draft_threshold_hours: Threshold for stale draft cleanup.
+                Defaults to SESSION_STALE_DRAFT_THRESHOLD_HOURS env or 24 hours.
+            checkpoint_on_milestone: Whether to checkpoint on milestones.
+                Defaults to SESSION_CHECKPOINT_ON_MILESTONE env or True.
         """
         self._db_session = db_session
+
+        # Load configuration from environment or use defaults
+        self.checkpoint_interval_minutes = checkpoint_interval_minutes or int(
+            os.environ.get(
+                "SESSION_CHECKPOINT_INTERVAL_MINUTES",
+                DEFAULT_CHECKPOINT_INTERVAL_MINUTES,
+            )
+        )
+        self.stale_draft_threshold_hours = stale_draft_threshold_hours or int(
+            os.environ.get(
+                "SESSION_STALE_DRAFT_THRESHOLD_HOURS",
+                DEFAULT_STALE_DRAFT_THRESHOLD_HOURS,
+            )
+        )
+        self.checkpoint_on_milestone = checkpoint_on_milestone if checkpoint_on_milestone is not None else (
+            os.environ.get("SESSION_CHECKPOINT_ON_MILESTONE", "true").lower() == "true"
+        )
+
+        # Track last checkpoint times for interval-based checkpointing
+        self._last_checkpoint_time: Dict[str, datetime] = {}
+
+        logger.info(
+            f"SessionCheckpointService initialized: interval={self.checkpoint_interval_minutes}min, "
+            f"stale_threshold={self.stale_draft_threshold_hours}h, "
+            f"milestone={self.checkpoint_on_milestone}"
+        )
 
     def _get_session(self) -> DbSession:
         """Get database session."""
@@ -450,6 +497,206 @@ class SessionCheckpointService:
             db.rollback()
             logger.error(f"Failed to cleanup orphaned checkpoints: {e}")
             raise
+
+    async def trigger_reflection(
+        self,
+        session_id: str,
+        graph_db_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Trigger ReflectionExecutor to commit session memories.
+
+        This should be called after a session settles to promote draft
+        memories to committed status.
+
+        Args:
+            session_id: Session ID to reflect on.
+            graph_db_path: Path to graph memory SQLite database.
+
+        Returns:
+            Dictionary with reflection results.
+        """
+        if not graph_db_path:
+            # Default path
+            graph_db_path = str(Path("data/graph_memory.db"))
+
+        try:
+            from src.memory.graph.reflection_executor import create_reflection_executor
+
+            executor = create_reflection_executor(graph_db_path)
+            result = executor.execute(session_id=session_id)
+
+            logger.info(f"Reflection triggered for session {session_id}: {result}")
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to trigger reflection: {e}")
+            return {
+                "session_id": session_id,
+                "error": str(e),
+                "committed_count": 0,
+            }
+
+    # Milestone-based checkpoint triggers
+
+    def should_checkpoint_on_milestone(self) -> bool:
+        """Check if milestone-based checkpointing is enabled.
+
+        Returns:
+            True if checkpointing on milestones is enabled.
+        """
+        return self.checkpoint_on_milestone
+
+    async def checkpoint_on_agent_milestone(
+        self,
+        session_id: str,
+        milestone_type: str,
+        graph_db_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Trigger checkpoint on significant agent action (milestone).
+
+        Call this after significant agent actions like:
+        - task_completed: Agent completed a major task
+        - decision_made: Agent made an important decision
+        - insight_gained: Agent discovered important insight
+        - session_paused: Agent is pausing for user input
+
+        Args:
+            session_id: Session ID to checkpoint.
+            milestone_type: Type of milestone reached.
+            graph_db_path: Path to graph memory SQLite database.
+
+        Returns:
+            Dictionary with checkpoint and reflection results.
+        """
+        if not self.should_checkpoint_on_milestone():
+            logger.debug(f"Milestone checkpoint disabled for session {session_id}")
+            return {
+                "session_id": session_id,
+                "milestone_type": milestone_type,
+                "checkpoint_created": False,
+                "reason": "milestone_checkpoint_disabled",
+            }
+
+        logger.info(
+            f"Milestone checkpoint triggered for session {session_id}: {milestone_type}"
+        )
+
+        # Create checkpoint
+        checkpoint_id = await self.create_checkpoint(
+            session_id=session_id,
+            checkpoint_type="milestone",
+            current_step=f"Milestone: {milestone_type}",
+            metadata={"milestone_type": milestone_type},
+        )
+
+        # Trigger reflection to commit memories
+        reflection_result = await self.trigger_reflection(
+            session_id=session_id,
+            graph_db_path=graph_db_path,
+        )
+
+        return {
+            "session_id": session_id,
+            "milestone_type": milestone_type,
+            "checkpoint_created": True,
+            "checkpoint_id": checkpoint_id,
+            "reflection": reflection_result,
+        }
+
+    def should_auto_checkpoint(self, session_id: str) -> bool:
+        """Check if enough time has passed since last checkpoint.
+
+        Args:
+            session_id: Session ID to check.
+
+        Returns:
+            True if checkpoint should be triggered based on interval.
+        """
+        last_time = self._last_checkpoint_time.get(session_id)
+
+        if last_time is None:
+            # First checkpoint for this session
+            return True
+
+        elapsed = datetime.now(timezone.utc) - last_time
+        threshold = timedelta(minutes=self.checkpoint_interval_minutes)
+
+        return elapsed >= threshold
+
+    async def auto_checkpoint_if_due(
+        self,
+        session_id: str,
+        graph_db_path: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Perform automatic checkpoint if interval has elapsed.
+
+        Args:
+            session_id: Session ID to checkpoint.
+            graph_db_path: Path to graph memory SQLite database.
+
+        Returns:
+            Checkpoint results if checkpoint was created, None otherwise.
+        """
+        if not self.should_auto_checkpoint(session_id):
+            return None
+
+        logger.info(f"Auto checkpoint triggered for session {session_id}")
+
+        checkpoint_id = await self.create_checkpoint(
+            session_id=session_id,
+            checkpoint_type="auto",
+            current_step="Automatic checkpoint",
+        )
+
+        # Update last checkpoint time
+        self._last_checkpoint_time[session_id] = datetime.now(timezone.utc)
+
+        # Trigger reflection
+        reflection_result = await self.trigger_reflection(
+            session_id=session_id,
+            graph_db_path=graph_db_path,
+        )
+
+        return {
+            "session_id": session_id,
+            "checkpoint_created": True,
+            "checkpoint_id": checkpoint_id,
+            "reflection": reflection_result,
+        }
+
+    async def cleanup_stale_drafts(
+        self,
+        graph_db_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Archive or discard draft nodes older than threshold.
+
+        Args:
+            graph_db_path: Path to graph memory SQLite database.
+
+        Returns:
+            Dictionary with cleanup results.
+        """
+        if not graph_db_path:
+            graph_db_path = str(Path("data/graph_memory.db"))
+
+        try:
+            from src.memory.graph.reflection_executor import create_reflection_executor
+
+            executor = create_reflection_executor(graph_db_path)
+            result = executor.cleanup_stale_drafts(
+                threshold_hours=self.stale_draft_threshold_hours
+            )
+
+            logger.info(f"Stale draft cleanup result: {result}")
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup stale drafts: {e}")
+            return {
+                "error": str(e),
+                "archived_count": 0,
+                "deleted_count": 0,
+            }
 
 
 # Global instance for convenience

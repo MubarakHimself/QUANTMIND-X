@@ -63,8 +63,9 @@
       workflows = data.workflows || [];
       
       // Update selected workflow if it exists
-      if (selectedWorkflow) {
-        const updated = workflows.find(w => w.workflow_id === selectedWorkflow.workflow_id);
+      const currentWorkflow = selectedWorkflow;
+      if (currentWorkflow) {
+        const updated = workflows.find(w => w.workflow_id === currentWorkflow.workflow_id);
         if (updated) {
           selectedWorkflow = updated;
         }
@@ -248,17 +249,17 @@
             <h4>Workflow Details</h4>
             <div class="details-actions">
               {#if selectedWorkflow.status === 'running'}
-                <button 
+                <button
                   class="cancel-btn"
-                  onclick={() => cancelWorkflow(selectedWorkflow.workflow_id)}
+                  onclick={() => selectedWorkflow && cancelWorkflow(selectedWorkflow.workflow_id)}
                 >
                   Cancel
                 </button>
               {/if}
               {#if selectedWorkflow.status === 'failed'}
-                <button 
+                <button
                   class="retry-btn"
-                  onclick={() => retryWorkflow(selectedWorkflow.workflow_id)}
+                  onclick={() => selectedWorkflow && retryWorkflow(selectedWorkflow.workflow_id)}
                 >
                   Retry
                 </button>

@@ -11,6 +11,7 @@ Modules:
 - scaler: FeatureScaler for normalization
 - models: HMMFeatureExtractor class
 - utils: Utility functions
+- trainer: HMMTrainer for scheduled model retraining
 
 Reference: docs/architecture/components.md
 """
@@ -20,6 +21,7 @@ from .indicators import TechnicalIndicators
 from .scaler import FeatureScaler
 from .models import HMMFeatureExtractor
 from .utils import prepare_training_data, load_config_from_file
+from .trainer import HMMTrainer
 
 __all__ = [
     'FeatureConfig',
@@ -28,4 +30,5 @@ __all__ = [
     'HMMFeatureExtractor',
     'prepare_training_data',
     'load_config_from_file',
+    'HMMTrainer',
 ]

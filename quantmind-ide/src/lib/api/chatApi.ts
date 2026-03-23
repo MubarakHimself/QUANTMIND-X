@@ -38,6 +38,7 @@ export const chatApi = {
   async createSession(data: CreateSessionRequest): Promise<ChatSession> {
     const response = await fetch(`${API_BASE}/sessions`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
@@ -48,7 +49,9 @@ export const chatApi = {
   },
 
   async getSession(id: string): Promise<ChatSession> {
-    const response = await fetch(`${API_BASE}/sessions/${id}`);
+    const response = await fetch(`${API_BASE}/sessions/${id}`, {
+      credentials: 'include'
+    });
     if (!response.ok) {
       throw new Error(`Failed to get session: ${response.statusText}`);
     }
@@ -60,7 +63,9 @@ export const chatApi = {
     if (userId) params.set('user_id', userId);
     if (agentType) params.set('agent_type', agentType);
 
-    const response = await fetch(`${API_BASE}/sessions?${params}`);
+    const response = await fetch(`${API_BASE}/sessions?${params}`, {
+      credentials: 'include'
+    });
     if (!response.ok) {
       throw new Error(`Failed to list sessions: ${response.statusText}`);
     }
@@ -69,7 +74,8 @@ export const chatApi = {
 
   async deleteSession(id: string): Promise<void> {
     const response = await fetch(`${API_BASE}/sessions/${id}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      credentials: 'include'
     });
     if (!response.ok) {
       throw new Error(`Failed to delete session: ${response.statusText}`);
@@ -80,10 +86,17 @@ export const chatApi = {
     endpoint: 'workshop' | 'floor-manager' | 'department',
     message: string,
     sessionId?: string,
-    stream = false
+    stream = false,
+    dept?: string
   ): Promise<ChatMessageResponse> {
-    const response = await fetch(`${API_BASE}/${endpoint}/message`, {
+    // Department messages route to /api/chat/departments/{dept}/message
+    // All other endpoints route to /api/chat/{endpoint}/message
+    const path = endpoint === 'department'
+      ? `/departments/${dept}/message`
+      : `/${endpoint}/message`;
+    const response = await fetch(`${API_BASE}${path}`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, session_id: sessionId, stream })
     });

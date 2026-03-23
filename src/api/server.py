@@ -65,6 +65,11 @@ CLOUDZY_ROUTERS = {
 CONTABO_ROUTERS = {
     "settings_router",          # Configuration
     "provider_config_router",   # AI providers
+    "server_config_router",     # Server connections
+    "notification_config_router", # Notification settings (Story 10-5)
+    "audit_router",             # Audit system NL query (Story 10.1)
+    "server_health_router",     # Server health metrics (Story 10-5)
+    "server_router",            # Morning digest & node health (Story 3-7)
     "agent_management_router", # Agent management
     "agent_activity_router",   # Agent activity
     "agent_metrics_router",     # Agent metrics
@@ -81,6 +86,8 @@ CONTABO_ROUTERS = {
     "hmm_router",              # Risk sensors
     "hmm_inference_router",    # HMM inference
     "knowledge_router",        # Knowledge endpoints
+    "knowledge_unified_router", # Unified knowledge search API (Story 6-1)
+    "knowledge_ingest_router",  # Web scraping + personal knowledge (Story 6-2)
     "video_to_ea_router",     # Video to EA
     "video_ingest_ide_router",# Video ingest IDE
     "batch_router",            # Batch processing
@@ -97,12 +104,33 @@ BOTH_ROUTERS = {
     "metrics_router",          # Metrics (always needed)
 }
 
-# Set to track which routers to include
-INCLUDE_CLOUDZY = NODE_ROLE in ("cloudzy", "local")
-INCLUDE_CONTABO = NODE_ROLE in ("contabo", "local")
+# Dynamic router inclusion flags based on NODE_ROLE
+# These flags are computed on access using module-level __getattr__
+# to ensure they reflect the current NODE_ROLE environment variable at runtime,
+# not at module import time. This is essential for tests that patch os.environ.
 
-logger.info(f"Including Cloudzy routers: {INCLUDE_CLOUDZY}")
-logger.info(f"Including Contabo routers: {INCLUDE_CONTABO}")
+def _get_include_cloudzy() -> bool:
+    """Check if Cloudzy (trading) routers should be included based on NODE_ROLE."""
+    role = os.getenv("NODE_ROLE", "").lower()
+    # cloudzy node includes trading routers
+    return role == "cloudzy"
+
+def _get_include_contabo() -> bool:
+    """Check if Contabo (agent/compute) routers should be included based on NODE_ROLE."""
+    role = os.getenv("NODE_ROLE", "").lower()
+    # contabo node includes agent/compute routers
+    return role == "contabo"
+
+# Module-level __getattr__ to make INCLUDE_CLOUDZY and INCLUDE_CONTABO dynamic
+# These are accessed like regular module attributes but computed on each access
+def __getattr__(name):
+    if name == "INCLUDE_CLOUDZY":
+        return _get_include_cloudzy()
+    if name == "INCLUDE_CONTABO":
+        return _get_include_contabo()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+logger.info(f"NODE_ROLE: {NODE_ROLE}")
 
 # =============================================================================
 # End Router Configuration
@@ -130,16 +158,28 @@ if mt5_src_path not in sys.path:
 
 try:
     from src.api.ide_endpoints import create_ide_api_app
+    from src.api.auth_endpoints import router as auth_router
+    from src.auth.middleware import OAuthMiddleware
     from src.api.analytics_endpoints import router as analytics_router
     from src.api.chat_endpoints import router as chat_router
     from src.api.settings_endpoints import router as settings_router
+    from src.api.skills_endpoints import router as skills_router
     from src.api.trd_endpoints import router as trd_router
+    from src.api.trd_generation_endpoints import router as trd_generation_router
+    from src.api.alpha_forge_templates import router as alpha_forge_templates_router
+    from src.api.pipeline_status_endpoints import router as pipeline_status_router
+    from src.api.strategy_versions import router as strategy_versions_router
+    from src.api.variant_browser_endpoints import router as variant_browser_router
+    from src.api.ab_race_endpoints import router as ab_race_router
+    from src.api.provenance_endpoints import router as provenance_router
+    from src.api.loss_propagation import router as loss_propagation_router
     from src.api.router_endpoints import router as router_router
     from src.api.journal_endpoints import router as journal_router
     from src.api.session_endpoints import router as session_router
     from src.api.mcp_endpoints import router as mcp_router
     from src.api.agent_queue_endpoints import router as agent_queue_router
     from src.api.workflow_endpoints import router as workflow_router
+    from src.api.prefect_workflow_endpoints import router as prefect_workflow_router
     from src.api.approval_gate import router as approval_gate_router
     from src.api.kill_switch_endpoints import router as kill_switch_router
     from src.api.hmm_endpoints import router as hmm_router
@@ -164,13 +204,16 @@ try:
         unified_router as memory_unified_router,
     )
     from src.api.graph_memory_endpoints import router as graph_memory_router
+    from src.api.canvas_context_endpoints import router as canvas_context_router
     from src.api.agent_session_endpoints import router as agent_session_router
     from src.api.session_checkpoint_endpoints import router as checkpoint_router
     from src.api.trading_floor_endpoints import router as trading_floor_router
     from src.api.floor_manager_endpoints import router as floor_manager_router
+    from src.api.copilot_kill_switch_endpoints import router as copilot_kill_switch_router
     from src.api.workshop_copilot_endpoints import router as workshop_copilot_router
     from src.api.video_to_ea_endpoints import router as video_to_ea_router
     from src.api.ide_knowledge import router as knowledge_router
+    from src.api.knowledge_endpoints import router as knowledge_unified_router
     from src.api.batch_endpoints import router as batch_router
     from src.api.evaluation_endpoints import router as evaluation_router
     from src.api.ide_files import router as files_router
@@ -180,13 +223,32 @@ try:
     from src.api.ide_ea import router as ea_ide_router
     from src.api.ide_strategies import router as strategies_router
     from src.api.ide_timeframes import router as timeframes_router
+    from src.api.compile_endpoints import router as compile_router
     from src.api.ide_video_ingest import router as video_ingest_ide_router
     from src.api.ide_chat import router as chat_ide_router
     from src.api.ide_backtest import router as backtest_router
+    from src.api.backtest_endpoints import router as backtest_results_router
+    from src.api.portfolio_endpoints import router as portfolio_router
+    from src.api.portfolio_broker_endpoints import router as portfolio_broker_router
+    from src.api.risk_endpoints import router as risk_router
+    from src.api.task_sse_endpoints import router as task_sse_router
     from src.api.pdf_endpoints import router as pdf_router
     from src.api.trading.routes import router as trading_router
     from src.api.hmm_inference_server import router as hmm_inference_router
     from src.api.provider_config_endpoints import router as provider_config_router
+    from src.api.server_config_endpoints import router as server_config_router, server_router
+    from src.api.notification_config_endpoints import router as notification_config_router
+    from src.api.server_health_endpoints import router as server_health_router
+    from src.api.node_update_endpoints import router as node_update_router  # Node sequential update (Story 11-3)
+    from src.api.reasoning_log_endpoints import router as reasoning_router
+    from src.api.deployment_endpoints import router as deployment_router
+    from src.api.audit_endpoints import router as audit_router  # Audit system (Story 10.1)
+    from src.api.scheduled_tasks_endpoints import router as scheduled_tasks_router  # Weekend compute (Story 11.2)
+    from src.api.autonomous_scheduler import router as autonomous_scheduler_router, get_scheduler  # Autonomous overnight research
+    from src.api.zero_auth_endpoints import router as zero_auth_router  # Zero-Auth OAuth/ADC config
+    from src.api.tool_forge_endpoints import router as tool_forge_router  # Tool Forge — Dynamic Tool Creation
+    from src.api.agent_thought_stream_endpoints import router as agent_thought_router  # Agent thought SSE
+    from src.api.agent_tile_endpoints import router as agent_tile_router  # Agent tile system
 except ImportError as e:
     logger.error(f"Import Error: {e}")
     # Fallback/Debug info
@@ -221,6 +283,35 @@ if app is None:
     sys.exit(1)
 
 # WebSocket endpoints are already registered in create_ide_api_app()
+
+
+# ========== OAuth 2.1 Authentication Middleware ==========
+# Add OAuth middleware to protect /api/* endpoints
+# The middleware extracts and validates sessions from httpOnly cookies
+# Auth endpoints (/api/auth/*) are excluded from protection
+try:
+    app.add_middleware(
+        OAuthMiddleware,
+        exclude_paths=[
+            "/health",
+            "/metrics",
+            "/docs",
+            "/openapi.json",
+            "/redoc",
+            "/api/auth/login",
+            "/api/auth/callback",
+            "/api/auth/logout",
+            "/api/auth/migrate",
+            "/api/auth/migrate/status",
+        ]
+    )
+    logger.info("OAuth 2.1 authentication middleware added")
+except Exception as e:
+    logger.warning(f"Could not add OAuth middleware: {e}")
+
+# Include auth router
+app.include_router(auth_router)
+logger.info("Auth endpoints registered: /api/auth/*")
 
 
 # ========== Prometheus Metrics Middleware ==========
@@ -290,7 +381,7 @@ logger.info(f"Registering routers for NODE_ROLE={NODE_ROLE}...")
 # Routers that work on BOTH nodes (or always included in local mode)
 # ---------------------------------------------------------------------------
 # Always include health, version, metrics (BOTH routers)
-if INCLUDE_CLOUDZY or INCLUDE_CONTABO:
+if _get_include_cloudzy() or _get_include_contabo():
     app.include_router(health_router)    # Health checks
     app.include_router(version_router)    # Version info
     app.include_router(metrics_router)   # Metrics
@@ -299,16 +390,17 @@ if INCLUDE_CLOUDZY or INCLUDE_CONTABO:
 # IDE Core Routers (needed on both for development)
 # ---------------------------------------------------------------------------
 # Files, assets, strategies, timeframes - needed for IDE to function
-if INCLUDE_CONTABO:  # Contabo runs the IDE
+if _get_include_contabo():  # Contabo runs the IDE
     app.include_router(files_router)
     app.include_router(assets_router)
     app.include_router(strategies_router)
     app.include_router(timeframes_router)
+    app.include_router(compile_router)
 
 # ---------------------------------------------------------------------------
 # Cloudzy Routers (Live Trading)
 # ---------------------------------------------------------------------------
-if INCLUDE_CLOUDZY:
+if _get_include_cloudzy():
     app.include_router(kill_switch_router)       # Trading kill switch
     app.include_router(trading_router)           # Trade execution
     app.include_router(broker_router)            # Broker connection
@@ -321,10 +413,21 @@ if INCLUDE_CLOUDZY:
 # ---------------------------------------------------------------------------
 # Contabo Routers (Agent/Compute)
 # ---------------------------------------------------------------------------
-if INCLUDE_CONTABO:
+if _get_include_contabo():
     # Settings & Configuration
     app.include_router(settings_router)
+    app.include_router(skills_router)  # Skill Catalogue (Story 7.4)
     app.include_router(provider_config_router)
+    # zero_auth_router registered unconditionally below
+    app.include_router(server_config_router)
+    app.include_router(notification_config_router)  # Notification settings (Story 10-5)
+    app.include_router(scheduled_tasks_router)  # Weekend compute tasks (Story 11.2)
+    # autonomous_scheduler_router and tool_forge_router registered unconditionally below
+    app.include_router(audit_router)  # Audit system NL query (Story 10.1)
+    app.include_router(server_health_router)  # Server health metrics (Story 10-5)
+    app.include_router(node_update_router)  # Node sequential update with rollback (Story 11-3)
+    app.include_router(reasoning_router)  # Agent reasoning transparency (Story 10-2)
+    app.include_router(server_router)  # Morning digest & node health (Story 3-7)
     app.include_router(model_router)
 
     # Agent Management
@@ -341,11 +444,14 @@ if INCLUDE_CONTABO:
     app.include_router(memory_unified_router)
     app.include_router(graph_memory_router)
     app.include_router(checkpoint_router)
+    app.include_router(canvas_context_router)  # Canvas Context Templates
 
     # Floor Manager & Workflows
     app.include_router(floor_manager_router)
+    app.include_router(copilot_kill_switch_router)
     app.include_router(workshop_copilot_router)
     app.include_router(workflow_router)
+    app.include_router(prefect_workflow_router)
 
     # Risk & HMM
     app.include_router(hmm_router)
@@ -353,6 +459,11 @@ if INCLUDE_CONTABO:
 
     # Knowledge & Research
     app.include_router(knowledge_router)
+    app.include_router(knowledge_unified_router)  # Unified search API (Story 6-1)
+    from src.api.knowledge_ingest_endpoints import router as knowledge_ingest_router
+    app.include_router(knowledge_ingest_router)  # Web scraping + personal knowledge (Story 6-2)
+    from src.api.news_endpoints import router as news_router
+    app.include_router(news_router)  # Live news feed (Story 6-3)
 
     # Video & Processing
     app.include_router(video_to_ea_router)
@@ -370,6 +481,9 @@ if INCLUDE_CONTABO:
     # IDE-specific
     app.include_router(chat_ide_router)
     app.include_router(backtest_router)
+    app.include_router(portfolio_router)  # Portfolio report API (Story 7-8)
+    app.include_router(task_sse_router)  # Task SSE endpoints (Story 7-9)
+    # Note: backtest_results_router and risk_router are registered unconditionally below
 
     logger.info("Registered Contabo routers: agents, memory, workflows, settings, knowledge")
 
@@ -378,13 +492,25 @@ if INCLUDE_CONTABO:
 # ---------------------------------------------------------------------------
 # These are needed for general operation
 app.include_router(trd_router)        # Trading Requirements Doc
+app.include_router(trd_generation_router)  # TRD Generation (Alpha Forge)
+app.include_router(alpha_forge_templates_router)  # Template Library (Story 8-3)
+app.include_router(pipeline_status_router)  # Pipeline Status Board (Story 8-7)
+app.include_router(strategy_versions_router)  # Version Control (Story 8-4)
+app.include_router(variant_browser_router)  # Variant Browser (Story 8-8)
+app.include_router(ab_race_router)  # A/B Race Board (Story 8-9)
+app.include_router(provenance_router)  # Provenance Chain (Story 8-9)
+app.include_router(loss_propagation_router)  # Loss Propagation (Story 8-9)
 app.include_router(router_router)     # Router endpoints
 app.include_router(journal_router)    # Journal
 app.include_router(session_router)     # Sessions
 app.include_router(mcp_router)         # MCP endpoints
 app.include_router(approval_gate_router) # Approval gate
+app.include_router(deployment_router)  # EA deployment pipeline (FR79)
 app.include_router(github_router)      # GitHub sync
 app.include_router(demo_mode_router)   # Demo mode
+app.include_router(portfolio_broker_router)  # Portfolio broker registry (Story 9-1)
+app.include_router(backtest_results_router)  # Backtest results API (Story 4-4) — needed on both nodes
+app.include_router(risk_router)  # Risk API (Story 4-6) — needed on both nodes
 
 # IDE-specific (non-agent)
 app.include_router(mt5_router)         # MT5 IDE
@@ -394,6 +520,15 @@ if department_mail_router:
     app.include_router(department_mail_router)
 
 app.include_router(pdf_router)
+
+# ── Always-on routers (NODE_ROLE-agnostic) ────────────────────────────────
+# These endpoints are needed on every deployment type including local dev.
+app.include_router(agent_thought_router)      # Agent thought SSE stream
+app.include_router(agent_tile_router)         # Agent tile creation / display
+app.include_router(zero_auth_router)          # Zero-Auth: Qwen CLI + Gemini ADC
+app.include_router(autonomous_scheduler_router)  # Overnight research scheduler
+app.include_router(tool_forge_router)         # Dynamic tool creation / registry
+app.include_router(settings_router)          # Settings (connection, appearance, etc.)
 
 logger.info(f"Router registration complete for NODE_ROLE={NODE_ROLE}")
 
@@ -447,7 +582,20 @@ async def startup_event():
         logger.info(f"Prometheus metrics server started on port {metrics_port}")
     except Exception as e:
         logger.warning(f"Could not start metrics server: {e}")
-    
+
+    # Initialize OpenTelemetry tracing
+    try:
+        from src.monitoring import init_tracing
+
+        tracing_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+        if tracing_endpoint:
+            init_tracing(app)
+            logger.info(f"OpenTelemetry tracing initialized with endpoint: {tracing_endpoint}")
+        else:
+            logger.info("OpenTelemetry tracing not configured (OTEL_EXPORTER_OTLP_ENDPOINT not set)")
+    except Exception as e:
+        logger.warning(f"Could not initialize tracing: {e}")
+
     # Initialize StrategyRouter for live trading data
     try:
         from src.router.engine import StrategyRouter
@@ -520,6 +668,20 @@ async def startup_event():
     
     logger.info("Endpoints mounted: /api/ide, /api/chat, /api/analytics, /api/settings, /api/trd, /api/router, /api/journal, /api/sessions, /api/v1/backtest, /api/paper-trading, /api/mcp, /api/agents, /api/workflows, /api/kill-switch, /api/hmm, /api/metrics, /api/brokers, /api/eas, /api/virtual-accounts, /api/agent-tools, /api/batch, /health")
 
+    # Start NewsFeedPoller (Contabo only, requires FINNHUB_API_KEY)
+    if _get_include_contabo() and os.environ.get("FINNHUB_API_KEY"):
+        try:
+            from src.knowledge.news.poller import NewsFeedPoller
+            app.state.news_poller = NewsFeedPoller()
+            app.state.news_poller.start()
+            logger.info("NewsFeedPoller started (60s interval, Story 6-3)")
+        except Exception as e:
+            logger.warning(f"Could not start NewsFeedPoller: {e}")
+    elif _get_include_contabo() and not os.environ.get("FINNHUB_API_KEY"):
+        logger.warning(
+            "NewsFeedPoller NOT started: FINNHUB_API_KEY not set in environment"
+        )
+
     # Start metrics WebSocket broadcast task
     try:
         from src.api.metrics_endpoints import ws_manager as metrics_ws_manager
@@ -534,11 +696,20 @@ async def startup_event():
     # Initialize Agent Stream Handler for SSE
     try:
         from src.agents.streaming import init_stream_handler, get_stream_handler
-        stream_handler = asyncio.get_event_loop().run_until_complete(init_stream_handler())
+        stream_handler = await init_stream_handler()
         app.state.stream_handler = stream_handler
         logger.info("Agent stream handler initialized for SSE")
     except Exception as e:
         logger.warning(f"Could not initialize agent stream handler: {e}")
+
+    # Start autonomous research scheduler
+    try:
+        from src.api.autonomous_scheduler import get_scheduler as _get_autonomous_scheduler
+        _autonomous_scheduler = _get_autonomous_scheduler()
+        asyncio.create_task(_autonomous_scheduler.start())
+        logger.info("Autonomous research scheduler started")
+    except Exception as e:
+        logger.warning(f"Could not start autonomous scheduler: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -563,11 +734,19 @@ async def shutdown_event():
     except Exception as e:
         logger.error(f"Error stopping market scanner scheduler: {e}")
 
+    # Stop NewsFeedPoller
+    try:
+        if hasattr(app.state, 'news_poller'):
+            app.state.news_poller.stop()
+            logger.info("NewsFeedPoller stopped")
+    except Exception as e:
+        logger.error(f"Error stopping NewsFeedPoller: {e}")
+
     # Stop Agent Stream Handler
     try:
         if hasattr(app.state, 'stream_handler'):
             from src.agents.streaming import close_stream_handler
-            asyncio.get_event_loop().run_until_complete(close_stream_handler())
+            await close_stream_handler()
             logger.info("Agent stream handler stopped")
     except Exception as e:
         logger.error(f"Error stopping agent stream handler: {e}")

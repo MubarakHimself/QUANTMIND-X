@@ -208,7 +208,67 @@ def create_websocket_endpoints(app):
         except Exception as e:
             logger.error(f"WebSocket error: {e}")
             manager.disconnect(websocket)
-    
+
+    @app.websocket("/ws/trading")
+    async def trading_websocket_endpoint(websocket: WebSocket):  # type: ignore
+        """
+        WebSocket endpoint for trading data with automatic state replay.
+
+        On connect, sends the last known state (positions, P&L, bot statuses)
+        to the client immediately (per NFR-R3).
+
+        Message format:
+            Client -> Server: {"action": "subscribe", "topic": "trading"}
+            Server -> Client: {"type": "state_snapshot", "data": {...}}
+            Server -> Client: {"type": "position_update", "data": {...}}
+            Server -> Client: {"type": "pnl_update", "data": {...}}
+            Server -> Client: {"type": "bridge_status", "data": {...}}
+        """
+        await manager.connect(websocket)
+
+        # Send state snapshot immediately on connect (AC3: state replay)
+        state = get_cached_trading_state()
+        await websocket.send_json({
+            "type": "state_snapshot",
+            "data": state,
+            "timestamp": __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat(timespec='milliseconds') + 'Z'
+        })
+
+        try:
+            while True:
+                # Receive messages from client
+                data = await websocket.receive_text()
+                message = json.loads(data)
+
+                # Handle subscription requests
+                if message.get("action") == "subscribe":
+                    topic = message.get("topic")
+                    if topic:
+                        await manager.subscribe(websocket, topic)
+                        await websocket.send_json({
+                            "type": "subscription_confirmed",
+                            "topic": topic
+                        })
+
+                # Handle ping/pong for connection keep-alive
+                elif message.get("action") == "ping":
+                    await websocket.send_json({"type": "pong"})
+
+                # Handle state replay request (for explicit reconnection - AC4)
+                elif message.get("action") == "replay_state":
+                    state = get_cached_trading_state()
+                    await websocket.send_json({
+                        "type": "state_snapshot",
+                        "data": state,
+                        "timestamp": __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat(timespec='milliseconds') + 'Z'
+                    })
+
+        except WebSocketDisconnect:
+            manager.disconnect(websocket)
+        except Exception as e:
+            logger.error(f"Trading WebSocket error: {e}")
+            manager.disconnect(websocket)
+
     @app.websocket("/ws/chart/{symbol}/{timeframe}")
     async def chart_websocket_endpoint(websocket: WebSocket, symbol: str, timeframe: str):  # type: ignore
         """
@@ -799,6 +859,309 @@ async def broadcast_approval_gate(
     }, topic="approvals")
 
 
+# =============================================================================
+# Trading Data Streaming (Story 3-1)
+# =============================================================================
+
+# Global state cache for state replay
+_trading_state_cache: Dict[str, Any] = {
+    "positions": [],
+    "pnl": {
+        "daily_pnl": 0.0,
+        "open_positions": 0,
+        "open_pnl": 0.0,
+        "closed_pnl": 0.0,
+        "equity": 0.0,
+        "balance": 0.0
+    },
+    "bot_statuses": {},
+    "last_update": None
+}
+
+
+class TradingDataBroadcaster:
+    """Broadcasts trading events (position updates, P&L, bridge status)."""
+
+    def __init__(self):
+        self._positions: List[Dict] = []
+        self._pnl: Dict[str, Any] = {
+            "daily_pnl": 0.0,
+            "open_positions": 0,
+            "open_pnl": 0.0,
+            "closed_pnl": 0.0,
+            "equity": 0.0,
+            "balance": 0.0
+        }
+        self._bot_statuses: Dict[str, str] = {}
+
+    async def emit_position(
+        self,
+        ticket: int,
+        symbol: str,
+        volume: float,
+        open_price: float,
+        current_price: float,
+        profit: float,
+        action: str = "open",
+        comment: Optional[str] = None,
+        old_sl: Optional[float] = None,
+        new_sl: Optional[float] = None,
+        reason: Optional[str] = None
+    ):
+        """Emit a position update event."""
+        from datetime import datetime, timezone
+
+        data = {
+            "ticket": ticket,
+            "symbol": symbol,
+            "volume": volume,
+            "open_price": open_price,
+            "current_price": current_price,
+            "profit": profit,
+            "action": action,
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec='milliseconds') + 'Z'
+        }
+
+        if comment:
+            data["comment"] = comment
+        if old_sl is not None:
+            data["old_sl"] = old_sl
+        if new_sl is not None:
+            data["new_sl"] = new_sl
+        if reason:
+            data["reason"] = reason
+
+        await manager.broadcast({
+            "type": "position_update",
+            "data": data
+        }, topic="trading")
+
+        # Update cache
+        await self.cache_position(data)
+
+    async def emit_pnl(
+        self,
+        daily_pnl: float,
+        open_positions: int,
+        open_pnl: float = 0.0,
+        closed_pnl: float = 0.0,
+        equity: float = 0.0,
+        balance: float = 0.0,
+        positions: Optional[List[Dict]] = None
+    ):
+        """Emit a P&L update event."""
+        from datetime import datetime, timezone
+
+        data = {
+            "daily_pnl": daily_pnl,
+            "open_positions": open_positions,
+            "open_pnl": open_pnl,
+            "closed_pnl": closed_pnl,
+            "equity": equity,
+            "balance": balance,
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec='milliseconds') + 'Z'
+        }
+
+        if positions:
+            data["positions"] = positions
+
+        await manager.broadcast({
+            "type": "pnl_update",
+            "data": data
+        }, topic="trading")
+
+        # Update cache
+        await self.cache_pnl(data)
+
+    async def cache_position(self, position: Dict[str, Any]):
+        """Cache position for state replay."""
+        from datetime import datetime, timezone
+        ticket = position.get("ticket")
+        if ticket is not None:
+            # Update existing or add new
+            existing = next((p for p in _trading_state_cache["positions"] if p.get("ticket") == ticket), None)
+            if existing:
+                existing.update(position)
+            else:
+                _trading_state_cache["positions"].append(position)
+
+        _trading_state_cache["last_update"] = datetime.now(timezone.utc).isoformat()
+
+    async def cache_pnl(self, pnl: Dict[str, Any]):
+        """Cache P&L for state replay."""
+        from datetime import datetime, timezone
+        _trading_state_cache["pnl"].update(pnl)
+        _trading_state_cache["last_update"] = datetime.now(timezone.utc).isoformat()
+
+    def cache_bot_status(self, bot_id: str, status: str):
+        """Cache bot status for state replay."""
+        from datetime import datetime, timezone
+        _trading_state_cache["bot_statuses"][bot_id] = status
+        _trading_state_cache["last_update"] = datetime.now(timezone.utc).isoformat()
+
+
+# Singleton broadcaster instance
+_trading_broadcaster = TradingDataBroadcaster()
+
+
+async def broadcast_position_update(position_data: Dict[str, Any]):
+    """
+    Broadcast a position update event.
+
+    Args:
+        position_data: Position data dict containing ticket, symbol, volume, etc.
+    """
+    from datetime import datetime, timezone
+
+    data = position_data.copy()
+    data["timestamp"] = datetime.now(timezone.utc).isoformat(timespec='milliseconds') + 'Z'
+
+    await manager.broadcast({
+        "type": "position_update",
+        "data": data
+    }, topic="trading")
+
+    # Update cache
+    await _trading_broadcaster.cache_position(data)
+
+
+async def broadcast_pnl_update(pnl_data: Dict[str, Any]):
+    """
+    Broadcast a P&L update event.
+
+    Args:
+        pnl_data: P&L data dict containing daily_pnl, open_positions, etc.
+    """
+    from datetime import datetime, timezone
+
+    data = pnl_data.copy()
+    data["timestamp"] = datetime.now(timezone.utc).isoformat(timespec='milliseconds') + 'Z'
+
+    await manager.broadcast({
+        "type": "pnl_update",
+        "data": data
+    }, topic="trading")
+
+    # Update cache
+    await _trading_broadcaster.cache_pnl(data)
+
+
+async def broadcast_bridge_status(
+    connected: bool,
+    latency_ms: Optional[float] = None,
+    message: str = ""
+):
+    """
+    Broadcast bridge status event.
+
+    Args:
+        connected: Whether the MT5 bridge is connected
+        latency_ms: Latency in milliseconds (None if disconnected)
+        message: Status message
+    """
+    from datetime import datetime, timezone
+
+    data = {
+        "connected": connected,
+        "latency_ms": latency_ms,
+        "message": message,
+        "timestamp": datetime.now(timezone.utc).isoformat(timespec='milliseconds') + 'Z'
+    }
+
+    await manager.broadcast({
+        "type": "bridge_status",
+        "data": data
+    }, topic="trading")
+
+
+def reset_trading_state_cache():
+    """Reset the trading state cache - useful for testing."""
+    global _trading_state_cache
+    _trading_state_cache = {
+        "positions": [],
+        "pnl": {
+            "daily_pnl": 0.0,
+            "open_positions": 0,
+            "open_pnl": 0.0,
+            "closed_pnl": 0.0,
+            "equity": 0.0,
+            "balance": 0.0
+        },
+        "bot_statuses": {},
+        "last_update": None
+    }
+
+
+def get_cached_trading_state() -> Dict[str, Any]:
+    """
+    Get the cached trading state for state replay.
+
+    Returns:
+        Dict containing positions, pnl, bot_statuses, and last_update
+    """
+    return _trading_state_cache.copy()
+
+
+def get_trading_broadcaster() -> TradingDataBroadcaster:
+    """Get the singleton TradingDataBroadcaster instance."""
+    return _trading_broadcaster
+
+
+async def broadcast_bot_status_change(bot_id: str, status: str, metadata: Optional[Dict[str, Any]] = None):
+    """
+    Broadcast bot status change event.
+
+    Args:
+        bot_id: Bot identifier
+        status: New status (running, stopped, error, etc.)
+        metadata: Optional additional metadata
+    """
+    from datetime import datetime, timezone
+
+    data = {
+        "bot_id": bot_id,
+        "status": status,
+        "timestamp": datetime.now(timezone.utc).isoformat(timespec='milliseconds') + 'Z'
+    }
+
+    if metadata:
+        data["metadata"] = metadata
+
+    await manager.broadcast({
+        "type": "bot_status_change",
+        "data": data
+    }, topic="trading")
+
+    # Update cache
+    _trading_broadcaster.cache_bot_status(bot_id, status)
+
+
+async def broadcast_regime_change(regime: str, confidence: float, metadata: Optional[Dict[str, Any]] = None):
+    """
+    Broadcast regime change event.
+
+    Args:
+        regime: New regime (TREND, RANGE, BREAKOUT, CHAOS)
+        confidence: Confidence score (0-1)
+        metadata: Optional additional metadata
+    """
+    from datetime import datetime, timezone
+
+    data = {
+        "regime": regime,
+        "confidence": confidence,
+        "timestamp": datetime.now(timezone.utc).isoformat(timespec='milliseconds') + 'Z'
+    }
+
+    if metadata:
+        data["metadata"] = metadata
+
+    await manager.broadcast({
+        "type": "regime_change",
+        "data": data
+    }, topic="trading")
+
+
 __all__ = [
     'create_websocket_endpoints',
     'broadcast_backtest_progress',
@@ -819,5 +1182,14 @@ __all__ = [
     'broadcast_lifecycle_event',
     'broadcast_market_opportunity',
     'broadcast_approval_gate',
-    'manager'
+    'manager',
+    # Story 3-1 additions
+    'broadcast_position_update',
+    'broadcast_pnl_update',
+    'broadcast_bridge_status',
+    'TradingDataBroadcaster',
+    'get_cached_trading_state',
+    'get_trading_broadcaster',
+    'broadcast_bot_status_change',
+    'broadcast_regime_change',
 ]

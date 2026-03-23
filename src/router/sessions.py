@@ -721,3 +721,313 @@ def get_next_session_time() -> Optional[str]:
         session_name = info.next_session.value
         return f"Next: {session_name}"
     return None
+
+
+# =============================================================================
+# Islamic Compliance Functions
+# =============================================================================
+
+# Islamic force-close time in UTC (21:45 UTC per architecture)
+ISLAMIC_CUTOFF_HOUR = 21
+ISLAMIC_CUTOFF_MINUTE = 45
+# Window for countdown (60 minutes before force-close)
+COUNTDOWN_WINDOW_MINUTES = 60
+
+
+def get_islamic_cutoff_time_utc(utc_date: Optional[datetime] = None) -> datetime:
+    """
+    Get the Islamic force-close time for a given UTC date.
+
+    Args:
+        utc_date: Optional date in UTC. Defaults to now.
+
+    Returns:
+        datetime representing 21:45 UTC on the given date
+    """
+    if utc_date is None:
+        utc_date = datetime.now(timezone.utc)
+
+    return utc_date.replace(
+        hour=ISLAMIC_CUTOFF_HOUR,
+        minute=ISLAMIC_CUTOFF_MINUTE,
+        second=0,
+        microsecond=0
+    )
+
+
+def is_past_islamic_cutoff(utc_time: Optional[datetime] = None) -> bool:
+    """
+    Check if current UTC time is past the Islamic force-close time.
+
+    Force-close happens at 21:45 UTC daily for Islamic-compliant accounts.
+    Returns True if current time is at or after 21:45 UTC.
+
+    Args:
+        utc_time: Optional UTC time to check. Defaults to now.
+
+    Returns:
+        True if past the Islamic cutoff time
+    """
+    if utc_time is None:
+        utc_time = datetime.now(timezone.utc)
+
+    # Ensure UTC
+    if utc_time.tzinfo is None:
+        utc_time = utc_time.replace(tzinfo=timezone.utc)
+    elif utc_time.tzinfo != timezone.utc:
+        utc_time = utc_time.astimezone(timezone.utc)
+
+    cutoff = get_islamic_cutoff_time_utc(utc_time)
+    return utc_time >= cutoff
+
+
+def is_islamic_mode_enabled(bot_id: str) -> bool:
+    """
+    Check if Islamic/swap-free mode is enabled for a bot.
+
+    In a real implementation, this would query the bot's configuration.
+    For now, returns False as a default (non-Islamic mode).
+
+    Args:
+        bot_id: The bot identifier
+
+    Returns:
+        True if Islamic mode is enabled for the bot
+    """
+    # TODO: Query bot registry for Islamic compliance setting
+    # For now, return False as default
+    return False
+
+
+def get_swap_free_status(bot_id: str) -> bool:
+    """
+    Get swap-free status for a bot.
+
+    Args:
+        bot_id: The bot identifier
+
+    Returns:
+        True if the bot uses swap-free (Islamic) accounts
+    """
+    # TODO: Query bot registry for swap-free status
+    return is_islamic_mode_enabled(bot_id)
+
+
+def get_force_close_countdown_seconds(utc_time: Optional[datetime] = None) -> Optional[int]:
+    """
+    Get seconds until force-close if within the countdown window.
+
+    Returns the number of seconds until 21:45 UTC if the current time
+    is within 60 minutes of the cutoff. Otherwise returns None.
+
+    Args:
+        utc_time: Optional UTC time to check. Defaults to now.
+
+    Returns:
+        Seconds until force-close, or None if not within window
+    """
+    if utc_time is None:
+        utc_time = datetime.now(timezone.utc)
+
+    # Ensure UTC
+    if utc_time.tzinfo is None:
+        utc_time = utc_time.replace(tzinfo=timezone.utc)
+    elif utc_time.tzinfo != timezone.utc:
+        utc_time = utc_time.astimezone(timezone.utc)
+
+    cutoff = get_islamic_cutoff_time_utc(utc_time)
+
+    # Check if within countdown window (60 minutes before cutoff)
+    window_start = cutoff - timedelta(minutes=COUNTDOWN_WINDOW_MINUTES)
+
+    if window_start <= utc_time <= cutoff:
+        delta = cutoff - utc_time
+        return int(delta.total_seconds())
+
+    return None
+
+
+def is_within_countdown_window(utc_time: Optional[datetime] = None) -> bool:
+    """
+    Check if current time is within the force-close countdown window.
+
+    The window is 60 minutes before 21:45 UTC (20:45 - 21:45 UTC).
+
+    Args:
+        utc_time: Optional UTC time to check. Defaults to now.
+
+    Returns:
+        True if within the countdown window
+    """
+    if utc_time is None:
+        utc_time = datetime.now(timezone.utc)
+
+    # Ensure UTC
+    if utc_time.tzinfo is None:
+        utc_time = utc_time.replace(tzinfo=timezone.utc)
+    elif utc_time.tzinfo != timezone.utc:
+        utc_time = utc_time.astimezone(timezone.utc)
+
+    cutoff = get_islamic_cutoff_time_utc(utc_time)
+    window_start = cutoff - timedelta(minutes=COUNTDOWN_WINDOW_MINUTES)
+
+    return window_start <= utc_time <= cutoff
+
+
+# =============================================================================
+# Loss Cap Breach Event Handling (Story 3-3)
+# =============================================================================
+
+import uuid
+from typing import List, Dict, Any
+
+
+class LossCapAuditLog:
+    """
+    Immutable audit log for loss cap breach events.
+
+    Uses in-memory storage with append-only semantics (similar to KillSwitchAuditLog).
+    """
+
+    def __init__(self):
+        self._logs: List[Dict[str, Any]] = []
+
+    def append(self, entry: Dict[str, Any]) -> str:
+        """
+        Append an immutable audit log entry for loss cap breach.
+
+        Args:
+            entry: Dictionary containing breach details (bot_id, loss_pct, cap, etc.)
+
+        Returns:
+            Unique audit log ID
+        """
+        entry_id = str(uuid.uuid4())
+
+        # Add immutable timestamp
+        log_entry = {
+            "id": entry_id,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            **entry
+        }
+
+        # Append-only - no modifications allowed
+        self._logs.append(log_entry)
+        logger.info(f"Loss cap breach logged: {entry_id} for bot {entry.get('bot_id')}")
+        return entry_id
+
+    def get_all(self) -> List[Dict[str, Any]]:
+        """Get all audit log entries (read-only)."""
+        return self._logs.copy()
+
+    def get_by_id(self, entry_id: str) -> Optional[Dict[str, Any]]:
+        """Get a specific audit log entry by ID."""
+        for entry in self._logs:
+            if entry.get("id") == entry_id:
+                return entry.copy()
+        return None
+
+    def get_by_bot(self, bot_id: str) -> List[Dict[str, Any]]:
+        """Get all breach events for a specific bot."""
+        return [entry.copy() for entry in self._logs if entry.get("bot_id") == bot_id]
+
+
+# Global loss cap audit log instance
+_loss_cap_audit_log = LossCapAuditLog()
+
+
+def _get_loss_cap_audit_log() -> LossCapAuditLog:
+    """Get the global loss cap audit log instance."""
+    return _loss_cap_audit_log
+
+
+async def check_and_notify_loss_cap_breach(
+    bot_id: str,
+    current_loss_pct: float,
+    daily_loss_cap: float,
+    account_equity: float = 0.0,
+    account_balance: float = 0.0
+) -> Optional[Dict[str, Any]]:
+    """
+    Check if daily loss cap is breached and notify if so.
+
+    This function should be called when daily P&L is updated. If the loss
+    cap is breached, it logs the event and broadcasts a WebSocket notification.
+
+    Args:
+        bot_id: The bot identifier
+        current_loss_pct: Current daily loss as percentage (negative for loss)
+        daily_loss_cap: Configured daily loss cap percentage (e.g., 5.0 for 5%)
+        account_equity: Current account equity
+        account_balance: Account balance
+
+    Returns:
+        Dict with breach details if breached, None otherwise
+    """
+    # Check if loss exceeds cap (cap is positive value, loss is negative)
+    # current_loss_pct is negative when losing, so compare abs() to cap
+    if abs(current_loss_pct) >= daily_loss_cap:
+        # Loss cap breached
+        breach_entry = {
+            "event_type": "loss_cap_breached",
+            "bot_id": bot_id,
+            "loss_pct": current_loss_pct,
+            "daily_loss_cap": daily_loss_cap,
+            "excess_pct": abs(current_loss_pct) - daily_loss_cap,
+            "account_equity": account_equity,
+            "account_balance": account_balance,
+            "breach_time_utc": datetime.now(timezone.utc).isoformat()
+        }
+
+        # Log to audit
+        audit_log = _get_loss_cap_audit_log()
+        audit_log_id = audit_log.append(breach_entry)
+        breach_entry["audit_log_id"] = audit_log_id
+
+        # Broadcast WebSocket notification
+        try:
+            from src.api.websocket_endpoints import manager
+            await manager.broadcast(
+                message={
+                    "type": "loss_cap_breached",
+                    "bot_id": bot_id,
+                    "loss_pct": current_loss_pct,
+                    "daily_loss_cap": daily_loss_cap,
+                    "excess_pct": abs(current_loss_pct) - daily_loss_cap,
+                    "audit_log_id": audit_log_id,
+                    "timestamp_utc": datetime.now(timezone.utc).isoformat()
+                },
+                topic="trading_events"
+            )
+            logger.info(f"Loss cap breach notification sent for bot {bot_id}")
+        except Exception as e:
+            logger.error(f"Error sending WebSocket notification for loss cap breach: {e}")
+
+        return breach_entry
+
+    return None
+
+
+def get_loss_cap_audit_logs() -> List[Dict[str, Any]]:
+    """
+    Get all loss cap breach audit log entries.
+
+    Returns:
+        List of all audit log entries
+    """
+    audit_log = _get_loss_cap_audit_log()
+    return audit_log.get_all()
+
+
+def get_loss_cap_breach_by_bot(bot_id: str) -> List[Dict[str, Any]]:
+    """
+    Get all loss cap breach events for a specific bot.
+
+    Args:
+        bot_id: The bot identifier
+
+    Returns:
+        List of breach events for the bot
+    """
+    audit_log = _get_loss_cap_audit_log()
+    return audit_log.get_by_bot(bot_id)

@@ -171,8 +171,8 @@
     align-items: center;
     gap: 12px;
     padding: 4px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
     font-size: 11px;
   }
@@ -187,16 +187,16 @@
   }
 
   .auth-item.connected {
-    color: var(--accent-success);
+    color: var(--color-accent-green);
     background: rgba(16, 185, 129, 0.1);
   }
 
   .auth-item:not(.connected) {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .auth-item.invalid {
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
 
   .status-text {

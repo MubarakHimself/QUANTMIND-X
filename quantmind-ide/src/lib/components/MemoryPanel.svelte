@@ -26,7 +26,11 @@
   import { memoryStore, type MemoryEntry, type MemoryFilters } from '$lib/stores/memoryStore';
   import * as memoryApi from '$lib/api/memory';
 
-  let { onClose = () => {} } = $props();
+  interface Props {
+    onClose?: () => void;
+  }
+
+  let { onClose = () => {} }: Props = $props();
 
   let searchInput = $state('');
   let searchTimeout: ReturnType<typeof setTimeout>;
@@ -71,7 +75,7 @@
     memoryStore.setLoading(true);
     memoryStore.setError(null);
     try {
-      const result = await memoryApi.listMemories('default', 100);
+      const result = await memoryApi.listMemoriesForStore('default', 100);
       memoryStore.setMemories(result.memories);
     } catch (e) {
       memoryStore.setError(e instanceof Error ? e.message : 'Failed to load memories');
@@ -82,7 +86,7 @@
 
   async function loadStats() {
     try {
-      const stats = await memoryApi.getMemoryStats();
+      const stats = await memoryApi.getMemoryStatsForStore();
       memoryStore.setStats(stats);
     } catch (e) {
       console.error('Failed to load stats:', e);
@@ -99,8 +103,22 @@
 
       memoryStore.setLoading(true);
       try {
-        const result = await memoryApi.searchMemories(query, filters.namespace === 'all' ? undefined : filters.namespace);
-        memoryStore.setMemories(result.memories);
+        const result = await memoryApi.searchMemories({
+          query,
+          source: filters.namespace === 'all' ? undefined : filters.namespace,
+          limit: 100
+        });
+        // Convert API results to store-compatible format
+        memoryStore.setMemories(result.results.map(entry => ({
+          id: entry.id ?? '',
+          content: entry.content,
+          namespace: (entry.metadata?.namespace as string) ?? entry.source ?? 'default',
+          key: (entry.metadata?.key as string) ?? entry.id ?? '',
+          timestamp: entry.created_at ?? new Date().toISOString(),
+          decay: entry.metadata?.decay as number | undefined,
+          agent: entry.agent_id ?? undefined,
+          tags: entry.metadata?.tags as string[] | undefined
+        })));
       } catch (e) {
         memoryStore.setError(e instanceof Error ? e.message : 'Search failed');
       } finally {
@@ -114,18 +132,29 @@
 
     memoryStore.setLoading(true);
     try {
-      const memory = await memoryApi.addMemory(
-        newMemory.key,
-        newMemory.content,
-        newMemory.namespace,
-        {
-          tags: newMemory.tags,
-          agent: newMemory.agent || undefined
-        }
-      );
+      const memory = await memoryApi.addMemory({
+        content: newMemory.content,
+        source: newMemory.namespace,
+        agent_id: newMemory.agent || null,
+        metadata: {
+          key: newMemory.key,
+          tags: newMemory.tags
+        },
+        relevance_score: null
+      });
 
-      // Add to store
-      memoryStore.setMemories([...filteredMemories, memory]);
+      // Add to store (convert to store format)
+      const storeMemory = {
+        id: memory.id ?? '',
+        content: memory.content,
+        namespace: (memory.metadata?.namespace as string) ?? memory.source ?? 'default',
+        key: (memory.metadata?.key as string) ?? memory.id ?? '',
+        timestamp: memory.created_at ?? new Date().toISOString(),
+        decay: memory.metadata?.decay as number | undefined,
+        agent: memory.agent_id ?? undefined,
+        tags: memory.metadata?.tags as string[] | undefined
+      };
+      memoryStore.setMemories([...filteredMemories, storeMemory]);
       showAddModal = false;
       newMemory = { key: '', content: '', namespace: 'default', tags: [], agent: '' };
       loadStats();
@@ -140,7 +169,7 @@
     if (!confirm(`Delete memory "${key}"?`)) return;
 
     try {
-      await memoryApi.deleteMemory(key, namespace);
+      await memoryApi.deleteMemory(key);
       memoryStore.setMemories(filteredMemories.filter(m => m.id !== id));
       loadStats();
     } catch (e) {
@@ -151,7 +180,7 @@
   async function handleSync() {
     memoryStore.setLoading(true);
     try {
-      await memoryApi.syncMemory();
+      await memoryApi.syncMemories();
       await loadStats();
       await loadMemories();
     } catch (e) {
@@ -166,10 +195,10 @@
   }
 
   function getDecayColor(decay?: number): string {
-    if (!decay) return 'var(--text-muted)';
-    if (decay >= 0.8) return 'var(--accent-success)';
-    if (decay >= 0.5) return 'var(--accent-warning)';
-    return 'var(--text-muted)';
+    if (!decay) return 'var(--color-text-muted)';
+    if (decay >= 0.8) return 'var(--color-accent-green)';
+    if (decay >= 0.5) return 'var(--color-accent-amber)';
+    return 'var(--color-text-muted)';
   }
 
   function formatDate(timestamp: string): string {
@@ -424,7 +453,7 @@
   }
 
   .memory-panel {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 12px;
     width: 900px;
     max-width: 100%;
@@ -433,7 +462,7 @@
     display: flex;
     flex-direction: column;
     box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
   }
 
   .panel-header {
@@ -441,8 +470,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px 20px;
-    border-bottom: 1px solid var(--border-subtle);
-    background: var(--bg-primary);
+    border-bottom: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-base);
     border-radius: 12px 12px 0 0;
   }
 
@@ -450,18 +479,18 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .header-left h2 {
     margin: 0;
     font-size: 16px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .subtitle {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .header-actions {
@@ -473,8 +502,8 @@
     display: flex;
     gap: 16px;
     padding: 10px 20px;
-    background: var(--bg-tertiary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border-bottom: 1px solid var(--color-border-subtle);
     flex-wrap: wrap;
   }
 
@@ -483,19 +512,19 @@
     align-items: center;
     gap: 6px;
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .stat-item svg {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .search-section {
     display: flex;
     gap: 8px;
     padding: 12px 20px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .search-bar {
@@ -508,29 +537,29 @@
   .search-icon {
     position: absolute;
     left: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     pointer-events: none;
   }
 
   .search-bar input {
     width: 100%;
     padding: 8px 10px 8px 34px;
-    background: var(--bg-input);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
   }
 
   .search-bar input:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
   }
 
   .filters-panel {
     padding: 12px 20px;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border-bottom: 1px solid var(--color-border-subtle);
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 16px;
@@ -545,7 +574,7 @@
   .filter-row label {
     font-size: 10px;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-weight: 600;
   }
 
@@ -561,7 +590,7 @@
     padding: 10px 20px;
     background: rgba(239, 68, 68, 0.1);
     border-bottom: 1px solid rgba(239, 68, 68, 0.3);
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
     font-size: 12px;
   }
 
@@ -586,21 +615,21 @@
     align-items: center;
     justify-content: center;
     padding: 60px 20px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     gap: 16px;
   }
 
   .memory-item {
     padding: 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     margin-bottom: 8px;
     transition: border-color 0.15s;
   }
 
   .memory-item:hover {
-    border-color: var(--border-strong);
+    border-color: var(--color-border-medium);
   }
 
   .memory-header {
@@ -614,12 +643,12 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .memory-key code {
     font-size: 12px;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     padding: 2px 6px;
     border-radius: 4px;
   }
@@ -634,7 +663,7 @@
     position: relative;
     width: 40px;
     height: 4px;
-    background: var(--bg-input);
+    background: var(--color-bg-elevated);
     border-radius: 2px;
     overflow: hidden;
   }
@@ -646,7 +675,7 @@
   }
 
   .memory-content {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
     line-height: 1.5;
     margin-bottom: 8px;
@@ -685,13 +714,13 @@
 
   .tag {
     padding: 2px 6px;
-    background: var(--bg-input);
-    color: var(--text-muted);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-muted);
     border-radius: 4px;
   }
 
   .timestamp {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin-left: auto;
   }
 
@@ -704,19 +733,19 @@
     background: transparent;
     border: none;
     border-radius: 6px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.15s;
   }
 
   .icon-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .icon-btn.primary {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .icon-btn.primary:hover {
@@ -724,8 +753,8 @@
   }
 
   .icon-btn.active {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .icon-btn.small {
@@ -735,7 +764,7 @@
 
   .icon-btn.danger:hover {
     background: rgba(239, 68, 68, 0.2);
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
 
   .btn {
@@ -751,13 +780,13 @@
   }
 
   .btn.primary {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .btn.secondary {
-    background: var(--bg-tertiary);
-    color: var(--text-secondary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
   }
 
   .spinning {
@@ -781,7 +810,7 @@
   }
 
   .modal {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 12px;
     width: 480px;
     max-width: 90%;
@@ -792,13 +821,13 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px 20px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .modal-header h3 {
     margin: 0;
     font-size: 16px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .modal-body {
@@ -813,7 +842,7 @@
     display: block;
     margin-bottom: 6px;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .form-group input,
@@ -821,10 +850,10 @@
   .form-group textarea {
     width: 100%;
     padding: 8px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
   }
 
@@ -844,6 +873,6 @@
     justify-content: flex-end;
     gap: 8px;
     padding: 16px 20px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
 </style>

@@ -2,11 +2,15 @@
 
 # Web Scraping
 firecrawl-py>=0.0.16
+finnhub-python>=2.4.0  # Finnhub news feed provider (Story 6.3)
 requests>=2.31.0
 beautifulsoup4>=4.12.0
 
 # HTTP Client for PageIndex
 httpx>=0.24.0
+
+# SSH for server connectivity testing
+paramiko>=3.0.0
 
 # LLM Integration (v2 Agent Stack)
 # LangChain/LangGraph dependencies removed - now using Claude CLI directly
@@ -44,8 +48,12 @@ mcp>=1.0.0
 # NotebookLM MCP for knowledge management
 notebooklm-mcp-cli>=0.1.0
 
+# Workflow Orchestration - Prefect for Alpha Forge pipeline
+prefect>=2.20.0
+
 # Utilities
 python-dotenv>=1.0.0
+cryptography>=3.4.0
 tqdm>=4.66.0
 apscheduler>=3.10.0
 
@@ -61,7 +69,21 @@ pyzmq>=25.1.2          # ZMQ socket support for HFT infrastructure
 aiohttp>=3.9.1         # Async HTTP for WebSocket (Crypto module)
 ccxt>=4.2.0            # Optional: Unified exchange API
 
+# Memory & Embeddings
+sentence-transformers>=2.2.0  # all-MiniLM-L6-v2 for vector embeddings
+chromadb>=0.4.0        # Vector database for embedding storage
+
 # Monitoring & Observability
 prometheus-client==0.19.0
 python-snappy>=0.6.0        # Snappy compression for Grafana Cloud remote_write
 prometheus-remote-write>=0.1.0  # Protobuf WriteRequest encoding for remote_write
+
+# OpenTelemetry for Distributed Tracing
+opentelemetry-api>=1.21.0
+opentelemetry-sdk>=1.21.0
+opentelemetry-instrumentation-fastapi>=0.42b0
+opentelemetry-instrumentation-sqlalchemy>=0.42b0
+opentelemetry-instrumentation-psycopg2>=0.42b0
+opentelemetry-exporter-otlp>=1.21.0
+opentelemetry-exporter-otlp-proto-grpc>=1.21.0
+opentelemetry-sdk-extension-aws>=1.4.0  # AWS X-Ray support (optional)

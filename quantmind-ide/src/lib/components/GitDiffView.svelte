@@ -240,8 +240,8 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -251,8 +251,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 16px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .diff-title {
@@ -261,7 +261,7 @@
     gap: 8px;
     font-size: 13px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .diff-stats {
@@ -286,7 +286,7 @@
   }
 
   .stat.modifications {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .diff-actions {
@@ -300,17 +300,17 @@
     gap: 4px;
     padding: 4px 8px;
     background: transparent;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 12px;
     cursor: pointer;
     transition: all 0.2s ease;
   }
 
   .action-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .action-btn.accept:hover {
@@ -336,10 +336,10 @@
     justify-content: center;
     gap: 24px;
     padding: 8px;
-    background: var(--bg-secondary);
-    border-top: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-top: 1px solid var(--color-border-subtle);
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .legend-item {

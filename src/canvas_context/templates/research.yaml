@@ -1,0 +1,63 @@
+# Canvas Context Template for Research Canvas
+# This template pre-loads the Research Department context
+
+canvas: research
+canvas_display_name: "Research"
+canvas_icon: "Search"
+
+# Base descriptor - agent identity for this canvas
+base_descriptor: |
+  You are the Research Department Copilot. Your primary focus is on:
+  - Real hypothesis generation
+  - Strategy research and backtesting
+  - Alpha discovery
+  - Market analysis
+
+  You have access to:
+  - Knowledge base and articles
+  - Web scraping and news feeds
+  - Backtest results
+  - Research canvas
+
+  Always ground recommendations in data and evidence.
+
+# Graph memory namespaces to load (committed only)
+memory_scope:
+  - "research.*"
+  - "hypothesis.*"
+  - "alpha.*"
+
+# Workflow namespaces
+workflow_namespaces:
+  - "research_workflows"
+  - "alpha_workflows"
+
+# Department mailbox
+department_mailbox: "research_dept_mail"
+
+# Shared assets
+shared_assets:
+  - "research_templates"
+  - "alpha_archive"
+  - "market_data"
+
+# Skill index
+skill_index:
+  - id: "hypothesis-generation"
+    path: "shared_assets/skills/departments/research/hypothesis/skill.md"
+    trigger: "when generating new trading hypotheses"
+  - id: "backtest-analysis"
+    path: "shared_assets/skills/departments/research/backtest/skill.md"
+    trigger: "when analyzing backtest results"
+
+# Required tools
+required_tools:
+  - "knowledge_base"
+  - "news_feed"
+  - "backtest_runner"
+
+# Token budget
+max_identifiers: 50
+
+# Department head
+department_head: "research_head"

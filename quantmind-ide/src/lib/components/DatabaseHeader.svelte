@@ -35,8 +35,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 20px 24px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .header-left {
@@ -48,13 +48,13 @@
   .header-left h2 {
     margin: 0;
     font-size: 18px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .header-left p {
     margin: 2px 0 0;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .header-actions {
@@ -67,10 +67,10 @@
     align-items: center;
     gap: 6px;
     padding: 8px 14px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 12px;
     cursor: pointer;
     transition: all 0.15s;

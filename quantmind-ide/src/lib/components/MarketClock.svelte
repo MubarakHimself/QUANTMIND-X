@@ -162,8 +162,8 @@
     flex-direction: column;
     gap: 12px;
     padding: 12px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
   }
 
@@ -173,7 +173,7 @@
     gap: 6px;
     font-size: 12px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .countdown {
@@ -181,19 +181,19 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 10px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
     font-size: 11px;
   }
 
   .countdown-label {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .countdown-time {
     font-family: 'JetBrains Mono', monospace;
     font-weight: 600;
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .markets-grid {
@@ -207,7 +207,7 @@
     align-items: center;
     gap: 10px;
     padding: 8px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
     border-left: 3px solid transparent;
   }
@@ -228,7 +228,7 @@
     justify-content: center;
     width: 28px;
     height: 28px;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 6px;
   }
 
@@ -242,12 +242,12 @@
   .market-name {
     font-size: 12px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .market-time {
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .market-status {
@@ -258,7 +258,7 @@
     border-radius: 10px;
     font-size: 10px;
     font-weight: 500;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     background: rgba(107, 114, 128, 0.2);
   }
 
@@ -290,7 +290,7 @@
     flex-direction: column;
     gap: 6px;
     padding-top: 8px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
 
   .legend-item {
@@ -298,7 +298,7 @@
     align-items: center;
     gap: 8px;
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .legend-dot {

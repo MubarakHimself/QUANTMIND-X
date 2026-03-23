@@ -59,8 +59,8 @@
     display: flex;
     align-items: center;
     padding: 8px 16px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
     min-height: 36px;
   }
 
@@ -78,7 +78,7 @@
     padding: 4px 8px;
     background: transparent;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     border-radius: 4px;
     transition: all 0.15s ease;
@@ -86,26 +86,21 @@
 
   .breadcrumb-item:hover {
     background: var(--bg-hover);
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .breadcrumb-item.home {
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .breadcrumb-item.current {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-weight: 500;
     cursor: default;
   }
 
   .breadcrumb-item.current:hover {
     background: transparent;
-  }
-
-  .separator {
-    color: var(--text-disabled);
-    flex-shrink: 0;
   }
 
   :global(.separator) {

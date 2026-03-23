@@ -72,10 +72,10 @@
 
   .rank-tab {
     padding: 8px 16px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 12px;
     cursor: pointer;
     transition: all 0.15s;
@@ -86,14 +86,14 @@
   }
 
   .rank-tab.active {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .rankings-table {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
     overflow: hidden;
   }
@@ -103,10 +103,10 @@
     grid-template-columns: 60px 1fr 100px 80px 80px;
     gap: 12px;
     padding: 12px 16px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     font-size: 11px;
     font-weight: 500;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-transform: uppercase;
   }
 
@@ -115,9 +115,9 @@
     grid-template-columns: 60px 1fr 100px 80px 80px;
     gap: 12px;
     padding: 12px 16px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
     font-size: 13px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     align-items: center;
   }
 
@@ -127,7 +127,7 @@
 
   .rank {
     font-weight: 600;
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .name {
@@ -144,10 +144,10 @@
   }
 
   .trades {
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .winrate {
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 </style>

@@ -146,15 +146,15 @@
   .section-header h3 {
     margin: 0;
     font-size: 14px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .count {
     padding: 2px 8px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 10px;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .auction-list {
@@ -164,8 +164,8 @@
   }
 
   .auction-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
     padding: 16px;
   }
@@ -182,7 +182,7 @@
     align-items: center;
     gap: 6px;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .auction-status {
@@ -205,7 +205,7 @@
   .participants-label {
     display: block;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin-bottom: 6px;
   }
 
@@ -220,15 +220,15 @@
     align-items: center;
     gap: 4px;
     padding: 6px 10px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .participant-badge.winner {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .auction-result {
@@ -236,12 +236,12 @@
     justify-content: space-between;
     align-items: center;
     padding-top: 12px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
 
   .result-label {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .winner-display {
@@ -253,7 +253,7 @@
   .winner-name {
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .winner-score {
@@ -267,7 +267,7 @@
     align-items: center;
     justify-content: center;
     padding: 40px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-align: center;
   }
 
@@ -287,8 +287,8 @@
   }
 
   .bot-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
     padding: 16px;
     position: relative;
@@ -312,14 +312,14 @@
 
   .bot-name {
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 14px;
   }
 
   .bot-symbol {
     font-size: 11px;
-    color: var(--text-muted);
-    background: var(--bg-tertiary);
+    color: var(--color-text-muted);
+    background: var(--color-bg-elevated);
     padding: 2px 8px;
     border-radius: 4px;
   }
@@ -336,7 +336,7 @@
   .signal-label {
     display: block;
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin-top: 2px;
   }
 
@@ -349,17 +349,17 @@
 
   .condition-tag {
     padding: 2px 6px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 4px;
     font-size: 10px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .bot-footer {
     display: flex;
     justify-content: space-between;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .bot-idle {
@@ -368,7 +368,7 @@
   }
 
   .idle-text {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 12px;
     text-transform: capitalize;
   }

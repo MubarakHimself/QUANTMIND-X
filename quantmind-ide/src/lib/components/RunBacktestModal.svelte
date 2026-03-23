@@ -143,8 +143,8 @@
   }
 
   .modal {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-strong);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-medium);
     border-radius: 8px;
     width: 480px;
     max-width: 90%;
@@ -157,13 +157,13 @@
     align-items: center;
     padding: 0 16px;
     height: 48px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .modal-header h2 {
     margin: 0;
     font-size: 16px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -172,7 +172,7 @@
   .modal-header button {
     background: none;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
   }
 
@@ -188,16 +188,16 @@
     display: block;
     margin-bottom: 6px;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .form-group select {
     width: 100%;
     padding: 10px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
   }
 
@@ -216,7 +216,7 @@
   .form-group.checkbox label {
     margin: 0;
     font-size: 13px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     cursor: pointer;
   }
 
@@ -225,7 +225,7 @@
     justify-content: flex-end;
     gap: 8px;
     padding: 16px 20px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
 
   .btn {
@@ -239,15 +239,15 @@
   }
 
   .btn.secondary {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    color: var(--text-secondary);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
+    color: var(--color-text-secondary);
   }
 
   .btn.primary {
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border: none;
-    color: var(--bg-primary);
+    color: var(--color-bg-base);
   }
 
   .btn:disabled {
@@ -258,7 +258,7 @@
   .progress-section {
     margin-top: 16px;
     padding: 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 8px;
   }
 
@@ -266,7 +266,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 13px;
   }
 

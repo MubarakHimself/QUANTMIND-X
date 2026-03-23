@@ -121,8 +121,8 @@
 
 <style>
   .mtf-regime-panel {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
     padding: 16px;
     margin-top: 16px;
@@ -134,21 +134,21 @@
     justify-content: space-between;
     margin-bottom: 16px;
     padding-bottom: 12px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .header-left {
     display: flex;
     align-items: center;
     gap: 8px;
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .header-left h3 {
     margin: 0;
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .dominant-regime-card {
@@ -181,14 +181,14 @@
 
   .consensus-label {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-transform: uppercase;
   }
 
   .consensus-value {
     font-size: 24px;
     font-weight: 700;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .timeframe-grid {
@@ -204,13 +204,13 @@
     padding: 12px;
     border: 2px solid;
     border-radius: 8px;
-    background-color: var(--bg-tertiary);
+    background-color: var(--color-bg-elevated);
   }
 
   .timeframe-label {
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     margin-bottom: 8px;
   }
 
@@ -232,7 +232,7 @@
   .quality-bar-container {
     width: 100%;
     height: 6px;
-    background-color: var(--bg-secondary);
+    background-color: var(--color-bg-surface);
     border-radius: 3px;
     overflow: hidden;
     margin-bottom: 6px;
@@ -246,7 +246,7 @@
 
   .quality-text {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .no-data {
@@ -255,7 +255,7 @@
     align-items: center;
     justify-content: center;
     padding: 40px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     gap: 12px;
   }
 

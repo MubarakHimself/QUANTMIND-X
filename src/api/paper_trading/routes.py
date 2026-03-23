@@ -25,6 +25,8 @@ from .models import (
     TradeRecordRequest,
     AddDemoAccountRequest,
     DemoAccountResponse,
+    ActiveAgentItem,
+    ActiveAgentsResponse,
 )
 
 
@@ -37,6 +39,70 @@ from . import promotion
 deploy.setup_deploy_routes(router)
 agents.setup_agent_routes(router)
 promotion.setup_promotion_routes(router)
+
+
+# -----------------------------------------------------------------------------
+# Active Agents Summary Endpoint
+# -----------------------------------------------------------------------------
+
+from datetime import datetime, timedelta, timezone
+
+_ACTIVE_STATUSES = {"running", "active", "starting", "validating"}
+
+
+@router.get("/active", response_model=ActiveAgentsResponse)
+async def list_active_agents(
+    deployer=Depends(agents.get_deployer),
+) -> ActiveAgentsResponse:
+    """
+    Return a summary of all currently active paper trading agents.
+
+    Used by the Trading Canvas paper trading tile (Story 12-4).
+    """
+    try:
+        all_agents = deployer.list_agents()
+    except Exception as e:
+        logger.error(f"Failed to list paper trading agents: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve agents: {str(e)}")
+
+    items: list[ActiveAgentItem] = []
+    for agent in all_agents:
+        status = getattr(agent, "status", "unknown")
+        if status.lower() not in _ACTIVE_STATUSES:
+            continue
+
+        uptime_seconds: int = getattr(agent, "uptime_seconds", 0) or 0
+        days_running = uptime_seconds // 86400
+
+        started_at_dt = datetime.now(tz=timezone.utc) - timedelta(seconds=uptime_seconds)
+        started_at = started_at_dt.isoformat()
+
+        # Best-effort performance fetch — never block the response
+        win_rate = 0.0
+        pnl_current = 0.0
+        try:
+            validator = agents.get_validator()
+            if validator is not None:
+                result = validator.check_validation_status(getattr(agent, "agent_id", ""))
+                metrics = result.get("metrics", {})
+                win_rate = float(metrics.get("win_rate", 0.0))
+                pnl_current = float(metrics.get("total_pnl", 0.0))
+        except Exception:
+            pass  # degrade gracefully — zeros are valid defaults
+
+        items.append(
+            ActiveAgentItem(
+                ea_name=getattr(agent, "strategy_name", None) or getattr(agent, "agent_id", "unknown"),
+                pair=getattr(agent, "symbol", ""),
+                days_running=days_running,
+                win_rate=win_rate,
+                pnl_current=pnl_current,
+                status=status,
+                started_at=started_at,
+            )
+        )
+
+    return ActiveAgentsResponse(items=items)
 
 
 # -----------------------------------------------------------------------------

@@ -5,7 +5,7 @@
  * Connects to the backend endpoints defined in src/api/graph_memory_endpoints.py
  */
 
-const API_BASE = 'http://localhost:8000/api/graph-memory';
+const API_BASE = '/api/graph-memory';
 
 /**
  * Generic fetch wrapper with error handling

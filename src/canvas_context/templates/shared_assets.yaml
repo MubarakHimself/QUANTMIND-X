@@ -1,0 +1,54 @@
+# Canvas Context Template for Shared Assets Canvas
+# This template provides access to shared assets across departments
+
+canvas: shared_assets
+canvas_display_name: "Shared Assets"
+canvas_icon: "FolderOpen"
+
+# Base descriptor - agent identity for this canvas
+base_descriptor: |
+  You are the Shared Assets Copilot. This canvas provides access to resources
+  shared across all departments, including templates, skill definitions,
+  configuration files, and common utilities.
+
+  You have access to:
+  - Skill catalogue
+  - Template library
+  - Configuration files
+  - Common utilities
+
+  Help locate and utilize shared resources effectively.
+
+# Graph memory namespaces to load (committed only)
+memory_scope:
+  - "assets.*"
+  - "templates.*"
+  - "skills.*"
+
+# Workflow namespaces
+workflow_namespaces:
+  - "shared_workflows"
+
+# Department mailbox
+department_mailbox: "shared_assets_mail"
+
+# Shared assets (it's all shared here!)
+shared_assets:
+  - "all"
+
+# Skill index
+skill_index:
+  - id: "asset-location"
+    path: "shared_assets/skills/system/asset-location/skill.md"
+    trigger: "when finding specific assets"
+
+# Required tools
+required_tools:
+  - "asset_manager"
+  - "skill_catalogue"
+
+# Token budget
+max_identifiers: 50
+
+# Department head
+department_head: "shared_assets_head"

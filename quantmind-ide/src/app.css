@@ -1,76 +1,155 @@
-/* QuantMind IDE - Midnight Finance Theme */
+/* QuantMind IDE - Frosted Terminal Theme */
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&family=Syne:wght@700;800&display=swap');
 
 :root {
-  /* OKLCH Color System - Midnight Finance */
-  /* Backgrounds */
-  --bg-primary: oklch(15% 0.02 260);    /* Deep Navy/Slate 900 */
-  --bg-secondary: oklch(18% 0.02 260);  /* Lighter Navy/Slate 800 */
-  --bg-tertiary: oklch(22% 0.03 260);   /* Slate 700 */
-  --bg-input: oklch(12% 0.02 260);      /* Darker input background */
-  --bg-glass: rgba(0, 0, 0, 0.3);       /* Glass effect background */
+  /* ─────────────────────────────────────────────────────────────
+   * Frosted Terminal Color System — Canonical Token Values
+   * All OKLCH-derived tokens removed; hex/rgba values are
+   * the single authoritative source of truth.
+   * ───────────────────────────────────────────────────────────── */
 
   /* Wallpaper - Applied by theme system */
   --wallpaper: none;
   --wallpaper-type: none;
-
-  /* Frosted Terminal Colors - Story 1-4 */
-  --color-bg-primary: #080d14;
-  --color-accent-cyan: #00d4ff;
-  --color-accent-amber: #f0a500;
-  --color-danger: #ff3b3b;
-
-  /* Glass Tiers - Frosted Terminal Aesthetic */
-  --glass-tier-1: rgba(8, 13, 20, 0.08);
-  --glass-tier-2: rgba(8, 13, 20, 0.35);
-  --glass-blur: blur(24px) saturate(160%);
-
-  /* Accents */
-  --accent-primary: oklch(65% 0.18 250);     /* Tech Blue */
-  --accent-secondary: oklch(60% 0.15 280);   /* Deep Purple */
-  --accent-finance: oklch(75% 0.15 85);      /* Gold/Amber */
-  --accent-success: oklch(70% 0.18 145);     /* Green */
-  --accent-warning: oklch(80% 0.15 85);      /* Amber */
-  --accent-danger: oklch(65% 0.20 25);       /* Red */
-
-  /* Text Colors */
-  --text-primary: oklch(92% 0.01 260);
-  --text-secondary: oklch(70% 0.02 260);
-  --text-muted: oklch(50% 0.03 260);
-  --text-accent: oklch(65% 0.18 250);
-
-  /* Borders & Dividers */
-  --border-subtle: oklch(25% 0.03 260);
-  --border-medium: oklch(30% 0.04 260);
-  --border-strong: oklch(35% 0.04 260);
-  --border-accent: oklch(65% 0.18 250);
-
-  /* Syntax Colors - Default */
-  --syntax-keyword: oklch(75% 0.15 280);
-  --syntax-string: oklch(75% 0.15 145);
-  --syntax-number: oklch(80% 0.15 85);
-  --syntax-comment: oklch(50% 0.03 260);
-  --syntax-function: oklch(65% 0.18 250);
-  --syntax-variable: oklch(92% 0.01 260);
-  --syntax-operator: oklch(70% 0.02 260);
-  --syntax-background: oklch(15% 0.02 260);
-
-  /* Dimensions */
-  --sidebar-width: 56px;
-  --sidebar-expanded-width: 200px;
-  --panel-width: 300px;
-  --header-height: 48px;
-  --status-height: 24px;
-
-  /* Typography - Default */
-  --font-family: 'Inter', system-ui, sans-serif;
-  --font-display: 'Syne', sans-serif;
-  --font-nav: 'Space Grotesk', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-
-  /* Wallpaper visibility */
   --wallpaper-visible: 1;
+
+  /* ── Background Tokens ── */
+  --color-bg-base:        #080d14;
+  --color-bg-surface:     rgba(8, 13, 20, 0.6);
+  --color-bg-elevated:    rgba(16, 24, 36, 0.8);
+  --color-bg-input:       rgba(16, 24, 36, 0.8);
+
+  /* ── Accent Tokens ── */
+  --color-accent-cyan:    #00d4ff;
+  --color-accent-amber:   #f0a500;
+  --color-accent-green:   #00c896;
+  --color-accent-red:     #ff3b3b;
+
+  /* ── Text Tokens ── */
+  --color-text-primary:   #e8edf5;
+  --color-text-secondary: rgba(232, 237, 245, 0.6);
+  --color-text-muted:     #5a6a80;
+
+  /* ── Border Tokens ── */
+  --color-border-subtle:  rgba(255, 255, 255, 0.06);
+  --color-border-medium:  rgba(255, 255, 255, 0.12);
+
+  /* ── Glass Tier Tokens (Hyprland-style two-tier glass) ── */
+  --glass-shell-bg:       rgba(8, 13, 20, 0.08);    /* Tier 1 — shell surfaces */
+  --glass-content-bg:     rgba(8, 13, 20, 0.35);    /* Tier 2 — content tiles */
+  --glass-blur:           blur(12px) saturate(160%);
+
+  /* ── Aliases — map legacy token names to canonical values ── */
+  --glass-tier-1:         rgba(8, 13, 20, 0.08);
+  --glass-tier-2:         rgba(8, 13, 20, 0.35);
+  --bg-primary:           #080d14;
+  --bg-secondary:         rgba(8, 13, 20, 0.6);
+  --border-subtle:        rgba(255, 255, 255, 0.06);
+  --text-primary:         #e8edf5;
+
+  /* ── Dept Accent System ── */
+  --dept-accent: var(--color-accent-cyan);
+
+  /* ── Spacing Scale (UX Spec §Spacing) ── */
+  --space-1:   4px;
+  --space-2:   8px;
+  --space-3:   12px;
+  --space-4:   16px;
+  --space-5:   20px;
+  --space-6:   24px;
+  --space-8:   32px;
+  --space-10:  40px;
+  --space-12:  48px;
+
+  /* ── Type Scale (UX Spec §Typography) ── */
+  --text-xs:    11px;   /* ambient, ticker (Fragment Mono) */
+  --text-sm:    12px;   /* data, secondary labels */
+  --text-base:  14px;   /* body, labels */
+  --text-md:    16px;   /* prominent body */
+  --text-lg:    20px;   /* section headers */
+  --text-xl:    28px;   /* canvas titles (Syne) */
+  --text-2xl:   36px;   /* hero numbers — P&L, balance */
+
+  /* ── Typography Stack ── */
+  --font-family:  'Inter', system-ui, sans-serif;        /* page default — retained */
+  --font-data:    'JetBrains Mono', monospace;           /* data, ticker, code */
+  --font-heading: 'Syne', sans-serif;                    /* canvas titles */
+  --font-body:    'Space Grotesk', 'IBM Plex Sans', sans-serif; /* body, labels */
+  --font-ambient: 'Fragment Mono', 'Geist Mono', monospace;    /* ambient, ticker xs */
+  /* Legacy aliases — kept for backward compat; prefer canonical above */
+  --font-display: 'Syne', sans-serif;
+  --font-nav:     'Space Grotesk', sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
+
+  /* ── Dimensions ── */
+  --sidebar-width:          56px;
+  --sidebar-expanded-width: 200px;
+  --panel-width:            300px;
+  --header-height:          48px;
+  --status-height:          24px;
+  --agent-panel-width:      320px;
+
+  /* ── Balanced Terminal Default Density (DIR-5) ── */
+  --glass-opacity:       0.78;
+  --glass-blur-radius:   18px;
+  --tile-min-width:      280px;
+  --tile-gap:            18px;
+  --sb-density:          dense;   /* 8-item StatusBand */
 }
+
+/* ── Dept Accent Overrides ── */
+[data-dept="research"]    { --dept-accent: var(--color-accent-amber); }
+[data-dept="risk"]        { --dept-accent: var(--color-accent-red); }
+[data-dept="development"] { --dept-accent: var(--color-accent-cyan); }
+[data-dept="trading"]     { --dept-accent: var(--color-accent-green); }
+[data-dept="portfolio"]   { --dept-accent: var(--color-accent-cyan); }
+[data-dept="workshop"]    { --dept-accent: var(--color-accent-cyan); }
+[data-dept="flowforge"]   { --dept-accent: var(--color-accent-cyan); }
+[data-dept="shared"]      { --dept-accent: var(--color-text-muted); }
+
+/* ─────────────────────────────────────────────────────────────
+ * Theme Preset Blocks
+ * ───────────────────────────────────────────────────────────── */
+
+/* Theme: Balanced Terminal (explicit — DIR-5) */
+[data-theme="balanced-terminal"] {
+  --glass-opacity:       0.78;
+  --glass-blur-radius:   18px;
+  --tile-min-width:      280px;
+  --tile-gap:            18px;
+  --sb-density:          dense;
+}
+
+/* Theme: Ghost Panel (near-transparent glass — DIR-3) */
+[data-theme="ghost-panel"] {
+  --glass-opacity:       0.10;
+  --glass-blur-radius:   6px;
+  --tile-min-width:      220px;
+  --tile-gap:            10px;
+  --sb-density:          dense;
+}
+
+/* Theme: Open Air (minimal glass) */
+[data-theme="open-air"] {
+  --glass-opacity:       0.05;
+  --glass-blur-radius:   24px;
+  --tile-min-width:      260px;
+  --tile-gap:            14px;
+  --sb-density:          dense;
+}
+
+/* Theme: Breathing Space (4-item minimal StatusBand — DIR-2) */
+[data-theme="breathing-space"] {
+  --glass-opacity:       0.78;
+  --glass-blur-radius:   18px;
+  --tile-min-width:      280px;
+  --tile-gap:            18px;
+  --sb-density:          comfortable;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Global Reset & Base
+ * ───────────────────────────────────────────────────────────── */
 
 * {
   margin: 0;
@@ -81,15 +160,17 @@
 html, body {
   height: 100%;
   font-family: var(--font-family, 'Inter', system-ui, -apple-system, sans-serif);
-  background: transparent;
-  color: var(--text-primary);
+  background: var(--color-bg-base, #080d14);
+  color: var(--color-text-primary);
   font-size: 13px;
   line-height: 1.5;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Scrollbar Styling - Minimal */
+/* ─────────────────────────────────────────────────────────────
+ * Scrollbar Styling — Minimal
+ * ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -100,16 +181,18 @@ html, body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--bg-tertiary);
-  border: 2px solid var(--bg-primary);
+  background: var(--color-bg-elevated);
+  border: 2px solid var(--color-bg-base);
   border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--border-strong);
+  background: var(--color-border-medium);
 }
 
-/* Utility Classes */
+/* ─────────────────────────────────────────────────────────────
+ * Utility Classes
+ * ───────────────────────────────────────────────────────────── */
 .flex { display: flex; }
 .flex-col { flex-direction: column; }
 .flex-1 { flex: 1; }
@@ -131,6 +214,36 @@ html, body {
 
 /* Code / Monospace */
 code, pre, .font-mono {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: var(--font-data);
 }
 
+/* ─────────────────────────────────────────────────────────────
+ * Scan-line Overlay — CRT Style
+ * ───────────────────────────────────────────────────────────── */
+.scanlines {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  opacity: var(--scanline-opacity, 0);
+  transition: opacity 0.3s ease;
+}
+
+/* Enable scanlines via class */
+.scanlines.enabled {
+  opacity: 1;
+}
+
+/* Reduced motion preference disables scanlines */
+@media (prefers-reduced-motion: reduce) {
+  .scanlines {
+    display: none;
+  }
+}

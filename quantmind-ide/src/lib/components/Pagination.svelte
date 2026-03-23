@@ -127,8 +127,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 8px 16px;
-    background: var(--bg-secondary);
-    border-top: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-top: 1px solid var(--color-border-subtle);
     font-size: 12px;
   }
   
@@ -136,11 +136,11 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
   
   .showing, .total {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
   
   .pagination-controls {
@@ -156,16 +156,16 @@
     width: 28px;
     height: 28px;
     background: transparent;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     cursor: pointer;
     transition: all 0.15s ease;
   }
   
   .page-btn:hover:not(:disabled) {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
     border-color: var(--border-color);
   }
   
@@ -183,11 +183,11 @@
     align-items: center;
     gap: 4px;
     padding: 0 8px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
   
   .current-page {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-weight: 600;
   }
   
@@ -198,10 +198,10 @@
   
   .page-size-selector select {
     padding: 4px 8px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 12px;
     cursor: pointer;
   }

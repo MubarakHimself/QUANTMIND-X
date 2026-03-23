@@ -31,12 +31,12 @@
   let selectedBatch = $derived(batches.find(b => b.batch_id === selectedBatchId));
   let statusColor = $derived((status: string) => {
     switch (status) {
-      case 'completed': return 'var(--accent-success)';
-      case 'processing': return 'var(--accent-primary)';
-      case 'pending': return 'var(--accent-warning)';
-      case 'failed': return 'var(--accent-danger)';
-      case 'cancelled': return 'var(--text-muted)';
-      default: return 'var(--text-muted)';
+      case 'completed': return 'var(--color-accent-green)';
+      case 'processing': return 'var(--color-accent-cyan)';
+      case 'pending': return 'var(--color-accent-amber)';
+      case 'failed': return 'var(--color-accent-red)';
+      case 'cancelled': return 'var(--color-text-muted)';
+      default: return 'var(--color-text-muted)';
     }
   });
 
@@ -435,7 +435,7 @@
 
 <style>
   .batch-panel {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 8px;
     border: 1px solid var(--border-color);
     overflow: hidden;
@@ -446,7 +446,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 12px 16px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     cursor: pointer;
     user-select: none;
   }
@@ -476,12 +476,12 @@
   }
 
   .status-badge.running {
-    background: var(--accent-success);
+    background: var(--color-accent-green);
     color: white;
   }
 
   .status-badge.stopped {
-    background: var(--text-muted);
+    background: var(--color-text-muted);
     color: white;
   }
 
@@ -511,8 +511,8 @@
     padding: 6px 12px;
     border: 1px solid var(--border-color);
     border-radius: 4px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
+    background: var(--color-bg-base);
+    color: var(--color-text-primary);
     font-size: 12px;
     cursor: pointer;
     transition: all 0.2s;
@@ -528,13 +528,13 @@
   }
 
   .control-btn.primary {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
     color: white;
   }
 
   .control-btn.primary:hover:not(:disabled) {
-    background: var(--accent-primary-dark, var(--accent-primary));
+    background: var(--accent-primary-dark, var(--color-accent-cyan));
   }
 
   .icon-btn {
@@ -546,14 +546,14 @@
     border: none;
     border-radius: 4px;
     background: transparent;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     cursor: pointer;
     transition: all 0.2s;
   }
 
   .icon-btn:hover {
     background: var(--bg-hover);
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .icon-btn.small {
@@ -562,7 +562,7 @@
   }
 
   .icon-btn.danger:hover {
-    background: var(--accent-danger);
+    background: var(--color-accent-red);
     color: white;
   }
 
@@ -571,7 +571,7 @@
     align-items: center;
     gap: 8px;
     padding: 8px 16px;
-    background: var(--accent-danger);
+    background: var(--color-accent-red);
     color: white;
     font-size: 12px;
   }
@@ -579,7 +579,7 @@
   .submit-form {
     padding: 16px;
     border-bottom: 1px solid var(--border-color);
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .form-row {
@@ -591,7 +591,7 @@
     font-size: 12px;
     font-weight: 500;
     margin-bottom: 4px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .form-row textarea,
@@ -600,8 +600,8 @@
     padding: 8px;
     border: 1px solid var(--border-color);
     border-radius: 4px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
+    background: var(--color-bg-base);
+    color: var(--color-text-primary);
     font-size: 12px;
     font-family: monospace;
   }
@@ -609,7 +609,7 @@
   .form-row textarea:focus,
   .form-row select:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
   }
 
   .form-actions {
@@ -635,13 +635,13 @@
   .stat-label {
     font-size: 10px;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .stat-value {
     font-size: 16px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .batches-list {
@@ -656,12 +656,12 @@
     padding: 12px 16px;
     font-size: 12px;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     border-bottom: 1px solid var(--border-color);
   }
 
   .batch-count {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     padding: 2px 8px;
     border-radius: 10px;
     font-size: 10px;
@@ -673,7 +673,7 @@
     align-items: center;
     justify-content: center;
     padding: 32px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     gap: 8px;
   }
 
@@ -699,7 +699,7 @@
   }
 
   .batch-item.selected {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .batch-main {
@@ -712,7 +712,7 @@
   .batch-id {
     font-family: monospace;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .batch-status {
@@ -726,7 +726,7 @@
 
   .batch-time {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin-left: auto;
   }
 
@@ -739,30 +739,30 @@
   .progress-bar {
     flex: 1;
     height: 4px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 2px;
     overflow: hidden;
   }
 
   .progress-fill {
     height: 100%;
-    background: var(--accent-success);
+    background: var(--color-accent-green);
     transition: width 0.3s;
   }
 
   .progress-fill.failed {
-    background: var(--accent-danger);
+    background: var(--color-accent-red);
   }
 
   .progress-text {
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     min-width: 40px;
   }
 
   .batch-details {
     padding: 16px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-top: 1px solid var(--border-color);
   }
 
@@ -800,20 +800,20 @@
   }
 
   .detail-stat .label {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .detail-stat .value {
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .detail-stat.success .value {
-    color: var(--accent-success);
+    color: var(--color-accent-green);
   }
 
   .detail-stat.danger .value {
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
 
   .errors-section,
@@ -826,7 +826,7 @@
     margin: 0 0 8px;
     font-size: 12px;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .errors-list {
@@ -841,18 +841,18 @@
     display: flex;
     gap: 8px;
     padding: 6px 8px;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     border-radius: 4px;
     font-size: 11px;
   }
 
   .error-id {
     font-family: monospace;
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
 
   .error-msg {
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .results-list {
@@ -865,7 +865,7 @@
 
   .result-item {
     padding: 8px;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     border-radius: 4px;
     font-size: 11px;
   }
@@ -879,7 +879,7 @@
   .more-results {
     text-align: center;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     padding: 8px;
   }
 

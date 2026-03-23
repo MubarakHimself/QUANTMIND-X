@@ -21,6 +21,8 @@
     History,
     Trash2,
     MessageCircle,
+    Power,
+    Play,
   } from "lucide-svelte";
   import AgentModelSelector from "$lib/components/AgentModelSelector.svelte";
   import { chatApi, type ChatSession } from "$lib/api/chatApi";
@@ -32,6 +34,13 @@
     type DepartmentInfo,
     type DelegatedTask,
   } from "$lib/stores/departmentChatStore";
+  import { activeCanvasStore } from "$lib/stores/canvasStore";
+  import { canvasContextService } from "$lib/services/canvasContextService";
+  import { copilotKillSwitchService } from "$lib/services/copilotKillSwitchService";
+  import { intentService, type CommandResponse, type PendingConfirmation } from "$lib/services/intentService";
+  import { canvasContextStore } from "$lib/stores/canvas";
+  import { serverHealthAlertEvent, getLastPersistedAlert, clearServerHealthAlert } from "$lib/stores/serverHealthAlerts";
+  import { listAllAssets, type SharedAsset } from "$lib/api/sharedAssetsApi";
 
   interface Props {
     isCopilot?: boolean;
@@ -44,11 +53,18 @@
   // API base URL
   const API_BASE = "http://localhost:8000/api";
 
+  // Configurable conversation history limit (Story 5.5 - AC #4)
+  const CONVERSATION_HISTORY_LIMIT = 10;
+
   // Chat history sidebar state
   let showChatHistory = $state(false);
   let sessions: ChatSession[] = $state([]);
   let currentSessionId: string | null = $state(null);
   let chatHistoryLoading = $state(false);
+
+  // Story 5.7: NL System Commands - pending confirmation state
+  let pendingConfirmation: PendingConfirmation | null = $state(null);
+  let confirmationLoading = $state(false);
 
   // Chat history grouped by time
   interface GroupedSessions {
@@ -82,6 +98,276 @@
   let mailType: "status" | "question" | "result" | "error" | "dispatch" = $state("dispatch");
   let sendingMail = $state(false);
 
+  // FIXED: Store last message for retry functionality (Story 5.4)
+  let lastFailedMessage = $state<string | null>(null);
+
+  // Streaming state for Story 5.5
+  let streamingContent = $state("");
+  let isStreaming = $state(false);
+  let cursorVisible = $state(true);
+  let autoScroll = $state(true);
+  let currentToolCall = $state<{ tool: string; status: "started" | "completed" } | null>(null);
+
+  // Copilot Kill Switch state (Story 5.6)
+  let killSwitchActive = $state(false);
+  let killSwitchLoading = $state(false);
+
+  // ── Slash Commands ────────────────────────────────────────────────────────
+  interface SlashCommand {
+    command: string;
+    description: string;
+  }
+
+  const SLASH_COMMANDS: SlashCommand[] = [
+    { command: '/research', description: 'Start a research task' },
+    { command: '/backtest', description: 'Run a backtest' },
+    { command: '/scan',     description: 'Market scan' },
+    { command: '/deploy',   description: 'Deploy an EA' },
+    { command: '/report',   description: 'Generate a report' },
+    { command: '/memory',   description: 'Query memory' },
+  ];
+
+  let showSlashMenu = $state(false);
+  let slashQuery = $state('');
+  let slashMenuIndex = $state(0);
+  let slashMenuEl: HTMLDivElement = $state();
+
+  let filteredSlashCommands = $derived(
+    slashQuery
+      ? SLASH_COMMANDS.filter(c => c.command.startsWith('/' + slashQuery))
+      : SLASH_COMMANDS
+  );
+
+  // ── @ File Attachment ─────────────────────────────────────────────────────
+  let showAssetMenu = $state(false);
+  let assetQuery = $state('');
+  let assetMenuIndex = $state(0);
+  let allAssets = $state<SharedAsset[]>([]);
+  let assetMenuLoading = $state(false);
+  let attachedAssets = $state<SharedAsset[]>([]);
+
+  let filteredAssets = $derived(
+    assetQuery
+      ? allAssets.filter(a =>
+          a.name.toLowerCase().includes(assetQuery.toLowerCase()) ||
+          a.type.toLowerCase().includes(assetQuery.toLowerCase())
+        )
+      : allAssets
+  );
+
+  async function loadAllAssetsFlat() {
+    if (allAssets.length > 0) return;
+    assetMenuLoading = true;
+    try {
+      const grouped = await listAllAssets();
+      const flat: SharedAsset[] = [];
+      for (const type of Object.keys(grouped) as Array<keyof typeof grouped>) {
+        flat.push(...grouped[type]);
+      }
+      allAssets = flat;
+    } catch (e) {
+      console.error('Failed to load assets for @ menu:', e);
+    } finally {
+      assetMenuLoading = false;
+    }
+  }
+
+  function selectSlashCommand(cmd: SlashCommand) {
+    // Replace the slash prefix the user typed with the full command + space
+    const beforeSlash = message.slice(0, getSlashStart());
+    message = beforeSlash + cmd.command + ' ';
+    showSlashMenu = false;
+    slashQuery = '';
+    slashMenuIndex = 0;
+    tick().then(() => {
+      if (textareaElement) {
+        textareaElement.focus();
+        autoResize();
+      }
+    });
+  }
+
+  function selectAsset(asset: SharedAsset) {
+    // Remove the @query from the input
+    const atStart = getAtStart();
+    const before = message.slice(0, atStart);
+    const after = message.slice(atStart + 1 + assetQuery.length); // +1 for '@'
+    message = before + after;
+    // Attach
+    if (!attachedAssets.find(a => a.id === asset.id)) {
+      attachedAssets = [...attachedAssets, asset];
+    }
+    showAssetMenu = false;
+    assetQuery = '';
+    assetMenuIndex = 0;
+    tick().then(() => {
+      if (textareaElement) {
+        textareaElement.focus();
+        autoResize();
+      }
+    });
+  }
+
+  function removeAttachment(assetId: string) {
+    attachedAssets = attachedAssets.filter(a => a.id !== assetId);
+  }
+
+  /** Returns the string index where the active `/` token starts. */
+  function getSlashStart(): number {
+    const val = message;
+    const cursorPos = textareaElement?.selectionStart ?? val.length;
+    const sub = val.slice(0, cursorPos);
+    const lastSpace = sub.lastIndexOf(' ');
+    return lastSpace === -1 ? 0 : lastSpace + 1;
+  }
+
+  /** Returns the string index where the active `@` token starts. */
+  function getAtStart(): number {
+    const val = message;
+    const cursorPos = textareaElement?.selectionStart ?? val.length;
+    const sub = val.slice(0, cursorPos);
+    const lastAt = sub.lastIndexOf('@');
+    return lastAt;
+  }
+
+  function handleInputChange() {
+    autoResize();
+    const val = message;
+    const cursorPos = textareaElement?.selectionStart ?? val.length;
+    const sub = val.slice(0, cursorPos);
+
+    // Detect slash command trigger: `/` at start or after space
+    const slashMatch = sub.match(/(^|\s)(\/(\w*))$/);
+    if (slashMatch) {
+      slashQuery = slashMatch[3]; // text after /
+      showSlashMenu = filteredSlashCommands.length > 0;
+      slashMenuIndex = 0;
+      showAssetMenu = false;
+    } else {
+      showSlashMenu = false;
+      slashQuery = '';
+    }
+
+    // Detect @ asset trigger
+    const atMatch = sub.match(/(^|\s)@(\w*)$/);
+    if (atMatch) {
+      assetQuery = atMatch[2];
+      showAssetMenu = true;
+      assetMenuIndex = 0;
+      showSlashMenu = false;
+      loadAllAssetsFlat();
+    } else {
+      showAssetMenu = false;
+      assetQuery = '';
+    }
+  }
+
+  function handleDropdownKeydown(e: KeyboardEvent) {
+    if (showSlashMenu) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        slashMenuIndex = (slashMenuIndex + 1) % filteredSlashCommands.length;
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        slashMenuIndex = (slashMenuIndex - 1 + filteredSlashCommands.length) % filteredSlashCommands.length;
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (filteredSlashCommands[slashMenuIndex]) {
+          selectSlashCommand(filteredSlashCommands[slashMenuIndex]);
+        }
+      } else if (e.key === 'Escape') {
+        showSlashMenu = false;
+      }
+      return;
+    }
+    if (showAssetMenu) {
+      const total = filteredAssets.length;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        assetMenuIndex = total ? (assetMenuIndex + 1) % total : 0;
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        assetMenuIndex = total ? (assetMenuIndex - 1 + total) % total : 0;
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (filteredAssets[assetMenuIndex]) {
+          selectAsset(filteredAssets[assetMenuIndex]);
+        }
+      } else if (e.key === 'Escape') {
+        showAssetMenu = false;
+      }
+      return;
+    }
+  }
+
+  // Dismiss dropdowns on outside click
+  function handleDocumentClick(e: MouseEvent) {
+    const target = e.target as Node;
+    if (slashMenuEl && !slashMenuEl.contains(target) && target !== textareaElement) {
+      showSlashMenu = false;
+    }
+  }
+
+  $effect(() => {
+    if (showSlashMenu || showAssetMenu) {
+      document.addEventListener('click', handleDocumentClick, true);
+    } else {
+      document.removeEventListener('click', handleDocumentClick, true);
+    }
+    return () => document.removeEventListener('click', handleDocumentClick, true);
+  });
+
+  // Initialize kill switch status on mount
+  onMount(async () => {
+    await checkKillSwitchStatus();
+
+    // Subscribe to server health threshold alerts (Story 10-5 AC3)
+    // Injects a system message into the chat when a metric crosses its threshold.
+    // Also restores any missed alert that fired while this panel was unmounted.
+    let lastAlertId: string | null = null;
+
+    function injectAlertMessage(alert: { id: string; message: string; timestamp: Date }) {
+      lastAlertId = alert.id;
+      messages = [
+        ...messages,
+        {
+          id: `health-alert-${alert.id}`,
+          role: 'system' as const,
+          content: `[SERVER ALERT] ${alert.message}`,
+          timestamp: alert.timestamp,
+        }
+      ];
+      tick().then(scrollToBottom);
+      clearServerHealthAlert(); // clear persisted so we don't re-show on next mount
+    }
+
+    // Restore missed alert from sessionStorage (fired while panel was unmounted)
+    const missedAlert = getLastPersistedAlert();
+    if (missedAlert) {
+      injectAlertMessage(missedAlert);
+    }
+
+    const unsubHealthAlert = serverHealthAlertEvent.subscribe((alert) => {
+      if (alert && alert.id !== lastAlertId) {
+        injectAlertMessage(alert);
+      }
+    });
+
+    return () => {
+      unsubHealthAlert();
+    };
+  });
+
+  // Cursor blink effect (600ms)
+  $effect(() => {
+    if (isStreaming) {
+      const interval = setInterval(() => {
+        cursorVisible = !cursorVisible;
+      }, 600);
+      return () => clearInterval(interval);
+    }
+  });
+
   // Messages with Floor Manager
   interface FloorManagerMessage {
     id: string;
@@ -93,6 +379,13 @@
       taskId: string;
       status: DelegatedTask["status"];
     };
+    error?: string;
+    retry?: boolean;
+    isStreaming?: boolean;  // Track if message is still streaming
+    toolCall?: {
+      tool: string;
+      status: "started" | "completed";
+    };
   }
 
   // Dynamic greeting based on agent type
@@ -102,9 +395,14 @@
   let greeting = $derived(isCopilot ? copilotGreeting : floorManagerGreeting);
   let agentName = $derived(isCopilot ? "QuantMind Copilot" : "Floor Manager");
   let placeholderText = $derived(isCopilot ? "Ask QuantMind Copilot..." : "Ask the Floor Manager...");
-  let apiEndpoint = $derived(isCopilot
-    ? `${API_BASE}/chat/workshop/message`
-    : `${API_BASE}/chat/floor-manager/message`);
+  // Route to correct endpoint based on mode (Story 5.4)
+  // Floor Manager mode → POST /api/floor-manager/chat
+  // Workshop Copilot mode → POST /api/workshop/copilot/chat
+  let apiEndpoint = $derived(
+    isCopilot
+      ? `${API_BASE}/workshop/copilot/chat`
+      : `${API_BASE}/floor-manager/chat`
+  );
   let messages = $derived([
     {
       id: "fm_welcome",
@@ -252,18 +550,42 @@
     }
   }
 
-  // Send message to Floor Manager
+  // Scroll handler to pause auto-scroll when user scrolls up (Story 5.5)
+  function handleScroll() {
+    if (!messagesContainer) return;
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainer;
+    // If user scrolls up, pause auto-scroll
+    autoScroll = (scrollHeight - scrollTop - clientHeight) < 50;
+  }
+
+  // Scroll to bottom function
+  function scrollToBottom() {
+    if (messagesContainer && autoScroll) {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+  }
+
+  // Send message to Floor Manager with streaming support (Story 5.5)
   async function sendMessage() {
     if (!message.trim() || isLoading) return;
 
-    const userContent = message.trim();
+    // Build user content, appending any attached assets
+    let userContent = message.trim();
+    if (attachedAssets.length > 0) {
+      const attachmentLines = attachedAssets
+        .map(a => `[Attached: ${a.name} (${a.type})]`)
+        .join('\n');
+      userContent = userContent + '\n\n' + attachmentLines;
+      attachedAssets = [];
+    }
     message = "";
 
     // Add user message
+    const userMessageId = generateId();
     messages = [
       ...messages,
       {
-        id: generateId(),
+        id: userMessageId,
         role: "user",
         content: userContent,
         timestamp: new Date(),
@@ -273,12 +595,51 @@
     await tick();
     scrollToBottom();
 
+    // Prepare streaming message placeholder
+    const assistantMessageId = generateId();
+    let streamingMessage: FloorManagerMessage = {
+      id: assistantMessageId,
+      role: "floor_manager",
+      content: "",
+      timestamp: new Date(),
+      isStreaming: true,
+    };
+
+    // Add empty streaming message
+    messages = [...messages, streamingMessage];
+
+    // Enable streaming state
+    isStreaming = true;
+    streamingContent = "";
+
     try {
+      // Get current canvas context
+      let currentCanvas = 'workshop';
+      activeCanvasStore.subscribe(value => {
+        currentCanvas = value;
+      })();
+
+      // Include conversation history (Story 5.4)
+      const conversationHistory = messages
+        .filter(m => m.role === "user" || m.role === "floor_manager")
+        .slice(-CONVERSATION_HISTORY_LIMIT) // Last N messages for context
+        .map(m => ({
+          role: m.role === "floor_manager" ? "assistant" : m.role,
+          content: m.content,
+        }));
+
+      // Use SSE streaming (Story 5.5)
       const response = await fetch(apiEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userContent,
+          context: {
+            canvas_context: currentCanvas,
+            session_id: currentSessionId || crypto.randomUUID(),
+          },
+          history: conversationHistory,
+          stream: true,  // Enable streaming (Story 5.5)
         }),
       });
 
@@ -286,39 +647,139 @@
         throw new Error(`HTTP ${response.status}`);
       }
 
-      const data = await response.json();
+      // Handle streaming response
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = "";
+      let delegation: FloorManagerMessage["delegation"] | undefined;
+      let lineBuffer = "";  // Buffer for partial SSE lines
 
-      // Add Floor Manager response
-      messages = [
-        ...messages,
-        {
-          id: data.message_id || generateId(),
-          role: "floor_manager",
-          content: data.reply || "I've processed your request.",
-          timestamp: new Date(),
-          delegation: data.delegation
-            ? {
-                departmentId: data.delegation.department,
-                taskId: data.delegation.task_id,
-                status: data.delegation.status || "pending",
+      // NFR-P3: Track first token time
+      const streamStartTime = performance.now();
+      let firstTokenTime: number | null = null;
+
+      if (reader) {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              // Process any remaining buffer
+              if (lineBuffer.startsWith("data: ")) {
+                try {
+                  const data = JSON.parse(lineBuffer.slice(6));
+                  // Handle remaining events...
+                } catch {
+                  // Ignore parse errors on final buffer
+                }
               }
-            : undefined,
-        },
-      ];
+              break;
+            }
+
+            const chunk = decoder.decode(value, { stream: true });
+            lineBuffer += chunk;
+            const lines = lineBuffer.split("\n");
+            // Keep incomplete last line in buffer
+            lineBuffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                try {
+                  const data = JSON.parse(line.slice(6));
+
+                  // Handle tool call events
+                  if (data.type === "tool") {
+                    currentToolCall = { tool: data.tool, status: data.status };
+                    streamingMessage.toolCall = currentToolCall;
+                    messages = [...messages];  // Trigger reactivity
+                    continue;
+                  }
+
+                  // Handle content deltas
+                  if (data.type === "content" && data.delta) {
+                    // NFR-P3: Track first token time
+                    if (firstTokenTime === null) {
+                      firstTokenTime = performance.now() - streamStartTime;
+                      console.debug(`[NFR-P3] First token: ${firstTokenTime.toFixed(0)}ms`);
+                    }
+                    fullContent += data.delta;
+                    streamingMessage.content = fullContent;
+                    messages = [...messages];  // Trigger reactivity
+                    await tick();
+                    scrollToBottom();
+                    continue;
+                  }
+
+                  // Handle delegation events
+                  if (data.type === "delegation") {
+                    delegation = {
+                      departmentId: data.department as DepartmentId,
+                      taskId: data.task_id,
+                      status: data.status,
+                    };
+                    streamingMessage.delegation = delegation;
+                    messages = [...messages];
+                    continue;
+                  }
+
+                  // Handle error events
+                  if (data.type === "error") {
+                    throw new Error(data.error);
+                  }
+
+                  // Handle done event
+                  if (data.type === "done") {
+                    isStreaming = false;
+                    streamingMessage.isStreaming = false;
+                    currentToolCall = null;
+                    messages = [...messages];
+                  }
+                } catch (e) {
+                  // Skip parse errors for incomplete chunks
+                }
+              }
+            }
+          }
+        } finally {
+          reader.releaseLock();
+        }
+      }
+
+      // Mark streaming complete
+      isStreaming = false;
+      streamingMessage.isStreaming = false;
+      streamingMessage.content = fullContent || "I've processed your request.";
+      streamingMessage.delegation = delegation;
+      messages = [...messages];
 
       await tick();
       scrollToBottom();
     } catch (error) {
-      messages = [
-        ...messages,
-        {
-          id: generateId(),
-          role: "system",
-          content: `Error: ${error instanceof Error ? error.message : "Failed to send message"}`,
-          timestamp: new Date(),
-        },
-      ];
+      // Handle errors
+      lastFailedMessage = userContent;
+      messages = messages.map(m =>
+        m.id === assistantMessageId
+          ? {
+              ...m,
+              role: "system" as const,
+              content: `Error: ${error instanceof Error ? error.message : "Failed to send message"}`,
+              isStreaming: false,
+              error: error instanceof Error ? error.message : "Failed to send message",
+              retry: true,
+            }
+          : m
+      );
+      isStreaming = false;
     }
+  }
+
+  // FIXED: Retry last failed message (Story 5.4)
+  async function retryLastMessage() {
+    if (!lastFailedMessage || isLoading) return;
+
+    const retryMsg = lastFailedMessage;
+    lastFailedMessage = null;
+    message = retryMsg;
+    await sendMessage();
   }
 
   // Delegate to specific department
@@ -385,17 +846,14 @@
 
   // Handle keyboard
   function handleKeydown(e: KeyboardEvent) {
+    // Route arrow/enter/escape to dropdown handlers first
+    if (showSlashMenu || showAssetMenu) {
+      handleDropdownKeydown(e);
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
-    }
-  }
-
-  // Scroll to bottom
-  async function scrollToBottom() {
-    await tick();
-    if (messagesContainer) {
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
   }
 
@@ -554,6 +1012,164 @@
       ];
     }
   }
+
+  // Copilot Kill Switch functions (Story 5.6)
+  async function activateCopilotKillSwitch() {
+    if (killSwitchLoading || killSwitchActive) return;
+
+    killSwitchLoading = true;
+    try {
+      const result = await copilotKillSwitchService.activate('user');
+      if (result.success) {
+        killSwitchActive = true;
+        // Add system message indicating suspension
+        messages = [
+          ...messages,
+          {
+            id: generateId(),
+            role: 'system',
+            content: '[SUSPENDED] Agent activity suspended - All AI tasks have been halted. Live trading is unaffected.',
+            timestamp: new Date(),
+            isKillSwitch: true,
+          },
+        ];
+        await tick();
+        scrollToBottom();
+      }
+    } catch (error) {
+      console.error('Failed to activate kill switch:', error);
+    } finally {
+      killSwitchLoading = false;
+    }
+  }
+
+  async function resumeCopilot() {
+    if (killSwitchLoading || !killSwitchActive) return;
+
+    killSwitchLoading = true;
+    try {
+      const result = await copilotKillSwitchService.resume();
+      if (result.success) {
+        killSwitchActive = false;
+        // Add system message indicating resume
+        messages = [
+          ...messages,
+          {
+            id: generateId(),
+            role: 'system',
+            content: '[RESUMED] Agent activity resumed - AI tasks are now enabled.',
+            timestamp: new Date(),
+          },
+        ];
+        await tick();
+        scrollToBottom();
+      }
+    } catch (error) {
+      console.error('Failed to resume copilot:', error);
+    } finally {
+      killSwitchLoading = false;
+    }
+  }
+
+  // Check kill switch status on mount
+  async function checkKillSwitchStatus() {
+    try {
+      const status = await copilotKillSwitchService.getStatus();
+      killSwitchActive = status.active;
+    } catch (error) {
+      console.error('Failed to check kill switch status:', error);
+    }
+  }
+
+  // Story 5.7: Handle command confirmation
+  async function confirmAction() {
+    if (!pendingConfirmation || confirmationLoading) return;
+
+    confirmationLoading = true;
+    try {
+      const response = await intentService.sendCommand(pendingConfirmation.message, true);
+      await handleIntentResponse(response);
+    } catch (error) {
+      console.error('Failed to confirm action:', error);
+    } finally {
+      confirmationLoading = false;
+      pendingConfirmation = null;
+    }
+  }
+
+  function cancelConfirmation() {
+    pendingConfirmation = null;
+    // Add system message indicating cancellation
+    messages = [
+      ...messages,
+      {
+        id: generateId(),
+        role: 'system',
+        content: 'Action cancelled.',
+        timestamp: new Date(),
+      },
+    ];
+    tick().then(scrollToBottom);
+  }
+
+  // Story 5.7: Handle intent response (confirmation/clarification/success)
+  async function handleIntentResponse(response: CommandResponse) {
+    if (intentService.isConfirmationNeeded(response)) {
+      // Show confirmation dialog
+      pendingConfirmation = intentService.parseConfirmation(response);
+    } else if (intentService.isClarificationNeeded(response)) {
+      // Show clarification suggestions
+      const suggestions = intentService.parseSuggestions(response);
+      messages = [
+        ...messages,
+        {
+          id: generateId(),
+          role: 'system',
+          content: response.message,
+          suggestions: suggestions,
+          timestamp: new Date(),
+        },
+      ];
+      await tick();
+      scrollToBottom();
+    } else if (intentService.isSuccess(response)) {
+      // Add success message
+      messages = [
+        ...messages,
+        {
+          id: generateId(),
+          role: 'floor_manager',
+          content: response.message,
+          timestamp: new Date(),
+        },
+      ];
+      await tick();
+      scrollToBottom();
+    } else if (intentService.isError(response)) {
+      // Add error message
+      messages = [
+        ...messages,
+        {
+          id: generateId(),
+          role: 'system',
+          content: `Error: ${response.message}`,
+          isError: true,
+          timestamp: new Date(),
+        },
+      ];
+      await tick();
+      scrollToBottom();
+    }
+  }
+
+  // Story 5.7: Initialize canvas context on mount
+  function initializeCanvasContext() {
+    const currentCanvas = $activeCanvasStore || 'workshop';
+    canvasContextStore.setContext({
+      canvas: currentCanvas,
+      session_id: currentSessionId || generateId()
+    });
+  }
 </script>
 
 <div class="floor-manager-panel">
@@ -570,6 +1186,26 @@
     </div>
 
     <div class="header-actions">
+      <!-- Copilot Kill Switch (Story 5.6) -->
+      {#if !killSwitchActive}
+        <button
+          class="icon-btn kill-switch-btn"
+          title="Stop Agent Activity"
+          onclick={activateCopilotKillSwitch}
+          disabled={killSwitchLoading}
+        >
+          <Power size={14} />
+        </button>
+      {:else}
+        <button
+          class="icon-btn resume-btn"
+          title="Resume Agent Activity"
+          onclick={resumeCopilot}
+          disabled={killSwitchLoading}
+        >
+          <Play size={14} />
+        </button>
+      {/if}
       <button class="icon-btn mail-btn" title="Send Mail to Department" onclick={() => showMailCompose = !showMailCompose}>
         <MailPlus size={14} />
       </button>
@@ -697,7 +1333,7 @@
   {/if}
 
   <!-- Messages -->
-  <div class="messages" bind:this={messagesContainer}>
+  <div class="messages" bind:this={messagesContainer} onscroll={handleScroll}>
     {#each messages as msg}
       <div class="message {msg.role}">
         <div class="message-avatar">
@@ -709,13 +1345,31 @@
             <AlertCircle size={14} />
           {/if}
         </div>
-        <div class="message-body">
+        <div class="message-body" class:kill-switch-message={msg.isKillSwitch}>
           {#if msg.role === "floor_manager"}
             <div class="message-label">{agentName}</div>
           {:else if msg.role === "system"}
             <div class="message-label system">System</div>
           {/if}
-          <div class="message-text">{msg.content}</div>
+          <div class="message-text">
+            {msg.content}
+            <!-- Typing cursor (Story 5.5) -->
+            {#if msg.isStreaming}
+              <span class="typing-cursor" class:visible={cursorVisible}>|</span>
+            {/if}
+          </div>
+          <!-- Tool call UI (Story 5.5) -->
+          {#if msg.toolCall}
+            <div class="tool-call" class:completed={msg.toolCall.status === "completed"}>
+              {#if msg.toolCall.status === "started"}
+                <span class="pulse-dot"></span>
+                <span>Using: {msg.toolCall.tool}…</span>
+              {:else}
+                <CheckCircle2 size={12} />
+                <span>Using: {msg.toolCall.tool}</span>
+              {/if}
+            </div>
+          {/if}
           {#if msg.delegation}
             {@const SvelteComponent_1 = getStatusIcon(msg.delegation.status)}
             <div class="delegation-info">
@@ -728,6 +1382,13 @@
                 {msg.delegation.status}
               </span>
             </div>
+          {/if}
+          <!-- FIXED: Retry button for error messages (Story 5.4) -->
+          {#if msg.retry}
+            <button class="retry-button" onclick={retryLastMessage}>
+              <Loader size={12} />
+              Retry
+            </button>
           {/if}
           <div class="message-time">{formatTime(msg.timestamp)}</div>
         </div>
@@ -758,15 +1419,101 @@
           currentModel="opus"
         />
       </div>
+      <!-- Story 5.7: Confirmation Dialog -->
+      {#if pendingConfirmation}
+        <div class="confirmation-dialog" transition:slide={{ y: -10 }}>
+          <div class="confirmation-content">
+            <AlertCircle size={16} class="warning-icon" />
+            <span class="confirmation-message">{pendingConfirmation.message}</span>
+          </div>
+          <div class="confirmation-actions">
+            <button
+              class="cancel-btn"
+              onclick={cancelConfirmation}
+              disabled={confirmationLoading}
+            >
+              Cancel
+            </button>
+            <button
+              class="confirm-btn"
+              onclick={confirmAction}
+              disabled={confirmationLoading}
+            >
+              {#if confirmationLoading}
+                <Loader size={14} class="spinning" />
+              {:else}
+                Confirm
+              {/if}
+            </button>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Slash Commands Dropdown -->
+      {#if showSlashMenu && filteredSlashCommands.length > 0}
+        <div class="slash-menu" bind:this={slashMenuEl}>
+          {#each filteredSlashCommands as cmd, i}
+            <button
+              class="slash-item"
+              class:active={i === slashMenuIndex}
+              onclick={() => selectSlashCommand(cmd)}
+            >
+              <span class="slash-cmd">{cmd.command}</span>
+              <span class="slash-desc">{cmd.description}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
+
+      <!-- @ Asset Dropdown -->
+      {#if showAssetMenu}
+        <div class="asset-menu">
+          {#if assetMenuLoading}
+            <div class="asset-menu-loading">
+              <Loader size={12} class="spinning" />
+              <span>Loading assets…</span>
+            </div>
+          {:else if filteredAssets.length === 0}
+            <div class="asset-menu-empty">No assets found</div>
+          {:else}
+            {#each filteredAssets as asset, i}
+              <button
+                class="asset-item"
+                class:active={i === assetMenuIndex}
+                onclick={() => selectAsset(asset)}
+              >
+                <span class="asset-name">{asset.name}</span>
+                <span class="asset-type-badge">{asset.type}</span>
+              </button>
+            {/each}
+          {/if}
+        </div>
+      {/if}
+
       <textarea
         bind:this={textareaElement}
         bind:value={message}
         onkeydown={handleKeydown}
-        oninput={autoResize}
+        oninput={handleInputChange}
         placeholder={placeholderText}
         rows="1"
         disabled={isLoading}
       ></textarea>
+
+      <!-- Attachment Chips -->
+      {#if attachedAssets.length > 0}
+        <div class="attachment-chips">
+          {#each attachedAssets as asset}
+            <span class="attachment-chip">
+              <span class="chip-name">{asset.name}</span>
+              <span class="chip-type">{asset.type}</span>
+              <button class="chip-remove" onclick={() => removeAttachment(asset.id)} title="Remove attachment">
+                <X size={10} />
+              </button>
+            </span>
+          {/each}
+        </div>
+      {/if}
     </div>
     <div class="input-footer">
       <div class="char-count">{message.length} / 4000</div>
@@ -959,6 +1706,25 @@
     color: var(--text-primary, #e2e8f0);
   }
 
+  /* Copilot Kill Switch Button (Story 5.6) */
+  .kill-switch-btn {
+    color: #ef4444 !important;
+  }
+
+  .kill-switch-btn:hover {
+    background: rgba(239, 68, 68, 0.2) !important;
+    color: #ef4444 !important;
+  }
+
+  .resume-btn {
+    color: #10b981 !important;
+  }
+
+  .resume-btn:hover {
+    background: rgba(16, 185, 129, 0.2) !important;
+    color: #10b981 !important;
+  }
+
   /* Active Tasks Banner */
   .active-tasks-banner {
     padding: 0.5rem 0.75rem;
@@ -1080,6 +1846,14 @@
     color: #ef4444;
   }
 
+  /* Story 5.6: Kill switch message styling - amber background */
+  .kill-switch-message .message-text {
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 0.75rem;
+    color: #fbbf24;
+  }
+
   .message-text {
     padding: 0.5rem 0.75rem;
     border-radius: 0.75rem;
@@ -1089,15 +1863,19 @@
     word-break: break-word;
   }
 
+  /* Story 5.5: User messages - amber tint, right-aligned */
   .message.user .message-text {
-    background: var(--accent-primary, #3b82f6);
-    color: white;
+    background: rgba(245, 158, 11, 0.15);  /* Amber tint */
+    color: var(--text-primary, #f1f5f9);
     border-bottom-right-radius: 0.25rem;
+    border: 1px solid rgba(245, 158, 11, 0.3);
   }
 
+  /* Story 5.5: AI responses - cyan #00d4ff accent, left-aligned */
   .message.floor_manager .message-text {
     background: var(--bg-tertiary, #1e293b);
     border-bottom-left-radius: 0.25rem;
+    border-left: 3px solid #00d4ff;  /* Cyan accent */
   }
 
   .message.system .message-text {
@@ -1130,10 +1908,89 @@
     font-weight: 500;
   }
 
+  /* Story 5.5: IBM Plex Mono 12px timestamps */
   .message-time {
-    font-size: 0.625rem;
+    font-family: 'IBM Plex Mono', 'Courier New', monospace;
+    font-size: 0.75rem;  /* 12px */
     color: var(--text-muted, #64748b);
     margin-top: 0.25rem;
+  }
+
+  /* Story 5.5: Typing cursor with 600ms blink */
+  .typing-cursor {
+    display: inline-block;
+    color: #00d4ff;
+    font-weight: bold;
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+
+  .typing-cursor.visible {
+    opacity: 1;
+  }
+
+  /* Story 5.5: Tool call UI */
+  .tool-call {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-top: 0.375rem;
+    padding: 0.25rem 0.5rem;
+    background: rgba(99, 102, 241, 0.15);
+    border-radius: 0.375rem;
+    font-size: 0.6875rem;
+    color: #a5b4fc;
+  }
+
+  .tool-call.completed {
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ade80;
+  }
+
+  /* Pulsing dot animation */
+  .pulse-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #a5b4fc;
+    animation: pulse 1s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.5;
+      transform: scale(1.2);
+    }
+  }
+
+  /* FIXED: Retry button styles (Story 5.4) */
+  .retry-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-top: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    background: var(--accent-primary, #f59e0b);
+    color: #000;
+    border: none;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .retry-button:hover {
+    background: var(--accent-primary-hover, #d97706);
+  }
+
+  .retry-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .typing-indicator {
@@ -1239,6 +2096,10 @@
     padding: 0.625rem 0.75rem;
     background: var(--bg-secondary, #111827);
     border-top: 1px solid var(--border-color, #1e293b);
+  }
+
+  .input-wrapper {
+    position: relative;
   }
 
   .input-wrapper textarea {
@@ -1529,7 +2390,7 @@
 
   .dept-option.selected {
     border-color: var(--dept-color, #3b82f6);
-    background: color-mix(in srgb, var(--dept-color) 20%, var(--bg-tertiary));
+    background: color-mix(in srgb, var(--dept-color) 20%, var(--color-bg-elevated));
     color: var(--text-primary, #e2e8f0);
   }
 
@@ -1563,7 +2424,7 @@
 
   .priority-option.selected {
     border-color: var(--priority-color, #3b82f6);
-    background: color-mix(in srgb, var(--priority-color) 20%, var(--bg-tertiary));
+    background: color-mix(in srgb, var(--priority-color) 20%, var(--color-bg-elevated));
     color: var(--priority-color);
   }
 
@@ -1640,5 +2501,245 @@
 
   .mail-btn {
     position: relative;
+  }
+
+  /* Story 5.7: Confirmation Dialog */
+  .confirmation-dialog {
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .confirmation-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .confirmation-content .warning-icon {
+    color: #f59e0b;
+    flex-shrink: 0;
+  }
+
+  .confirmation-message {
+    color: #fbbf24;
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .confirmation-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .confirm-btn {
+    background: #f59e0b;
+    color: #000;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.2s;
+  }
+
+  .confirm-btn:hover:not(:disabled) {
+    background: #d97706;
+  }
+
+  .confirm-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .confirmation-dialog .cancel-btn {
+    background: transparent;
+    color: #94a3b8;
+    border: 1px solid #475569;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .confirmation-dialog .cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #e2e8f0;
+  }
+
+  /* ── Slash Commands Dropdown ──────────────────────────────────────────── */
+  .slash-menu {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: rgba(8, 13, 20, 0.95);
+    border: 1px solid #00d4ff;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    z-index: 200;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  .slash-item {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.1s;
+  }
+
+  .slash-item:hover,
+  .slash-item.active {
+    background: rgba(0, 212, 255, 0.08);
+  }
+
+  .slash-cmd {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8125rem;
+    color: #00d4ff;
+    font-weight: 500;
+    flex-shrink: 0;
+    min-width: 90px;
+  }
+
+  .slash-desc {
+    font-size: 0.75rem;
+    color: #64748b;
+  }
+
+  /* ── @ Asset Dropdown ────────────────────────────────────────────────── */
+  .asset-menu {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: rgba(8, 13, 20, 0.95);
+    border: 1px solid #00d4ff;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    z-index: 200;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  .asset-menu-loading,
+  .asset-menu-empty {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.75rem;
+    color: #64748b;
+  }
+
+  .asset-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.1s;
+  }
+
+  .asset-item:hover,
+  .asset-item.active {
+    background: rgba(0, 212, 255, 0.08);
+  }
+
+  .asset-name {
+    font-size: 0.8125rem;
+    color: #e2e8f0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .asset-type-badge {
+    font-size: 0.625rem;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    background: rgba(0, 212, 255, 0.12);
+    border: 1px solid rgba(0, 212, 255, 0.25);
+    color: #00d4ff;
+    flex-shrink: 0;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  /* ── Attachment Chips ────────────────────────────────────────────────── */
+  .attachment-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin-top: 0.375rem;
+  }
+
+  .attachment-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.5rem;
+    background: rgba(0, 212, 255, 0.12);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 0.375rem;
+    font-size: 0.6875rem;
+    color: #e2e8f0;
+  }
+
+  .chip-name {
+    font-weight: 500;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chip-type {
+    font-size: 0.625rem;
+    color: #00d4ff;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .chip-remove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    padding: 0;
+    margin-left: 0.125rem;
+    transition: color 0.15s;
+  }
+
+  .chip-remove:hover {
+    color: #ef4444;
   }
 </style>

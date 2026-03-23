@@ -262,9 +262,9 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 14px;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 8px;
   }
 

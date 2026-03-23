@@ -229,7 +229,7 @@ Examples:
     display: flex;
     gap: 1rem;
     font-size: 0.7rem;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .btn {
@@ -268,7 +268,7 @@ Examples:
   .query-history h4 {
     margin: 0 0 0.5rem 0;
     font-size: 0.8rem;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .history-list {
@@ -321,7 +321,7 @@ Examples:
 
   .results-stats {
     font-size: 0.75rem;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .error-message {
@@ -386,7 +386,7 @@ Examples:
     justify-content: center;
     padding: 2rem;
     gap: 0.5rem;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 0.85rem;
   }
 

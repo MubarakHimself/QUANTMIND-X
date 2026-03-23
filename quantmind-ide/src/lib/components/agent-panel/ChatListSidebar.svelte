@@ -232,7 +232,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
   }
 
   .sidebar-header {
@@ -240,7 +240,7 @@
     align-items: center;
     gap: 8px;
     padding: 8px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .search-container {
@@ -249,27 +249,27 @@
     align-items: center;
     gap: 8px;
     padding: 6px 10px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
     transition: border-color 0.15s;
   }
 
   .search-container:focus-within {
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
   }
 
   .search-container input {
     flex: 1;
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 12px;
     outline: none;
   }
 
   .search-container input::placeholder {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .new-chat-btn {
@@ -278,16 +278,16 @@
     justify-content: center;
     width: 32px;
     height: 32px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border: none;
     border-radius: 6px;
-    color: var(--bg-primary);
+    color: var(--color-bg-base);
     cursor: pointer;
     transition: all 0.15s;
   }
 
   .new-chat-btn:hover {
-    background: var(--accent-secondary);
+    background: var(--color-accent-amber);
     transform: scale(1.05);
   }
 
@@ -313,12 +313,12 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .section-divider.unpinned {
     margin-top: 12px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
     padding-top: 12px;
   }
 
@@ -340,13 +340,13 @@
   .empty-title {
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     margin-bottom: 4px;
   }
 
   .empty-description {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin-bottom: 16px;
   }
 
@@ -355,10 +355,10 @@
     align-items: center;
     gap: 6px;
     padding: 8px 16px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border: none;
     border-radius: 6px;
-    color: var(--bg-primary);
+    color: var(--color-bg-base);
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
@@ -366,13 +366,13 @@
   }
 
   .start-chat-btn:hover {
-    background: var(--accent-secondary);
+    background: var(--color-accent-amber);
   }
 
   .context-menu {
     position: fixed;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     padding: 4px;
     min-width: 140px;
@@ -389,18 +389,18 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 12px;
     cursor: pointer;
     transition: background 0.15s;
   }
 
   .menu-item:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .menu-item.danger {
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
 
   .menu-item.danger:hover {

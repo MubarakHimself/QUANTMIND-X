@@ -1,8 +1,4 @@
-# generated: 2026-03-17
-# project: QUANTMINDX
-# project_key: NOKEY
-# tracking_system: file-system
-# story_location: /home/mubarkahimself/Desktop/QUANTMINDX/_bmad-output/implementation-artifacts
+# QUANTMINDX Sprint Status
 
 # STATUS DEFINITIONS:
 # ==================
@@ -33,7 +29,10 @@
 # - SM typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
-generated: 2026-03-17
+# generated: 2026-03-17
+# updated: 2026-03-22 — Epic 8 all marked done after test verification
+# reason: All 79 epic8 tests passed (22 P0 + 57 P1/P2/P3), implementations confirmed
+generated: 2026-03-22
 project: QUANTMINDX
 project_key: NOKEY
 tracking_system: file-system
@@ -43,7 +42,7 @@ development_status:
   # ─────────────────────────────────────────────────────────────
   # Epic 1: Platform Foundation & Global Shell
   # ─────────────────────────────────────────────────────────────
-  epic-1: in-progress
+  epic-1: done
   1-0-platform-codebase-exploration-audit: done
   1-1-security-hardening-legacy-import-cleanup: done
   1-2-svelte-5-migration: done
@@ -83,7 +82,7 @@ development_status:
   # ─────────────────────────────────────────────────────────────
   # Epic 4: Risk Management & Compliance
   # ─────────────────────────────────────────────────────────────
-  epic-4: in-progress
+  epic-4: done
   4-0-risk-pipeline-state-audit: done
   4-1-calendargovernor-news-blackout-calendar-aware-trading-rules: done
   4-2-risk-parameters-prop-firm-registry-apis: done
@@ -112,13 +111,13 @@ development_status:
   # ─────────────────────────────────────────────────────────────
   # Epic 6: Knowledge & Research Engine
   # ─────────────────────────────────────────────────────────────
-  epic-6: in-progress
+  epic-6: done
   6-0-knowledge-infrastructure-audit: done
   6-1-pageindex-integration-knowledge-api: done
   6-2-web-scraping-article-ingestion-personal-knowledge-api: done
   6-3-live-news-feed-geopolitical-sub-agent-backend: done
   6-4-research-canvas-knowledge-query-interface: done
-  6-5-youtube-video-ingest-ui-pipeline-tracking: in-progress
+  6-5-youtube-video-ingest-ui-pipeline-tracking: done
   6-6-live-news-feed-tile-news-canvas-integration: done
   6-7-shared-assets-canvas: done
   epic-6-retrospective: optional
@@ -126,16 +125,16 @@ development_status:
   # ─────────────────────────────────────────────────────────────
   # Epic 7: Department Agent Platform
   # ─────────────────────────────────────────────────────────────
-  epic-7: in-progress
+  epic-7: done
   7-0-department-system-audit: done
   7-1-research-department-real-hypothesis-generation: done
   7-2-development-department-real-mql5-ea-code-generation: done
   7-3-mql5-compilation-integration: done
   7-4-skill-catalogue-registry-authoring-skill-forge: done
   7-5-session-workspace-isolation-concurrent-sessions: done
-  7-6-department-mail-redis-streams-migration: review
-  7-7-concurrent-task-routing-5-simultaneous-tasks: review
-  7-8-risk-trading-portfolio-department-real-implementations: review
+  7-6-department-mail-redis-streams-migration: done
+  7-7-concurrent-task-routing-5-simultaneous-tasks: done
+  7-8-risk-trading-portfolio-department-real-implementations: done
   7-9-department-kanban-sub-page-ui: done
   epic-7-retrospective: optional
 
@@ -143,52 +142,64 @@ development_status:
   # Epic 8: Alpha Forge — Strategy Factory
   # ─────────────────────────────────────────────────────────────
   epic-8: done
-  8-0-alpha-forge-pipeline-audit: review
-  8-1-alpha-forge-orchestrator-wiring-departments-through-pipeline-stages: review
-  8-2-trd-generation-stage: review
-  8-3-fast-track-event-workflow-template-library-matching: review
-  8-4-strategy-version-control-rollback-api: review
-  8-5-human-approval-gates-backend: review
-  8-6-ea-deployment-pipeline-mt5-registration: review
-  8-7-alpha-forge-canvas-pipeline-status-board: review
-  8-8-development-canvas-ea-variant-browser-monaco-editor: review
+  8-0-alpha-forge-pipeline-audit: done
+  8-1-alpha-forge-orchestrator-wiring-departments-through-pipeline-stages: done
+  8-2-trd-generation-stage: done
+  8-3-fast-track-event-workflow-template-library-matching: done
+  8-4-strategy-version-control-rollback-api: done
+  8-5-human-approval-gates-backend: done
+  8-6-ea-deployment-pipeline-mt5-registration: done
+  8-7-alpha-forge-canvas-pipeline-status-board: done
+  8-8-development-canvas-ea-variant-browser-monaco-editor: done
   8-9-ab-race-board-cross-strategy-loss-propagation-provenance-chain: done
   epic-8-retrospective: optional
 
   # ─────────────────────────────────────────────────────────────
   # Epic 9: Portfolio & Multi-Broker Management
   # ─────────────────────────────────────────────────────────────
-  epic-9: in-progress
-  9-0-portfolio-broker-infrastructure-audit: review
-  9-1-broker-account-registry-routing-matrix-api: review
-  9-2-portfolio-metrics-attribution-api: review
-  9-3-portfolio-canvas-multi-account-dashboard-routing-ui: review
-  9-4-portfolio-canvas-attribution-correlation-matrix-performance: review
-  9-5-trading-journal-component: review
+  epic-9: done
+  9-0-portfolio-broker-infrastructure-audit: done
+  9-1-broker-account-registry-routing-matrix-api: done
+  9-2-portfolio-metrics-attribution-api: done
+  9-3-portfolio-canvas-multi-account-dashboard-routing-ui: done
+  9-4-portfolio-canvas-attribution-correlation-matrix-performance: done
+  9-5-trading-journal-component: done
   epic-9-retrospective: optional
 
   # ─────────────────────────────────────────────────────────────
   # Epic 10: Audit, Monitoring & Notifications
   # ─────────────────────────────────────────────────────────────
-  epic-10: in-progress
-  10-0-audit-infrastructure-audit: review
-  10-1-5-layer-audit-system-nl-query-api: review
+  epic-10: done
+  10-0-audit-infrastructure-audit: done
+  10-1-5-layer-audit-system-nl-query-api: done
   10-2-agent-reasoning-transparency-log-api: done
-  10-3-notification-configuration-api-cold-storage-sync: review
-  10-4-nl-audit-query-ui-reasoning-explorer: review
-  10-5-notification-configuration-panel-server-health: ready-for-dev
+  10-3-notification-configuration-api-cold-storage-sync: done
+  10-4-nl-audit-query-ui-reasoning-explorer: done
+  10-5-notification-configuration-panel-server-health: done
   epic-10-retrospective: optional
 
   # ─────────────────────────────────────────────────────────────
   # Epic 11: System Management & Resilience
   # ─────────────────────────────────────────────────────────────
   epic-11: done
-  11-0-infrastructure-system-state-audit: review
+  11-0-infrastructure-system-state-audit: done
   11-1-nightly-rsync-cron-cloudzy-contabo-data-sync: done
-  11-2-weekend-compute-protocol-scheduled-background-tasks: ready-for-dev
-  11-3-node-sequential-update-automatic-rollback: ready-for-dev
-  11-4-itt-rebuild-portability-full-backup-restore: ready-for-dev
-  11-5-flowforge-canvas-prefect-kanban-node-graph: ready-for-dev
-  11-6-server-migration-multi-platform-build: ready-for-dev
-  11-7-theme-presets-wallpaper-system: ready-for-dev
+  11-2-weekend-compute-protocol-scheduled-background-tasks: done
+  11-3-node-sequential-update-automatic-rollback: done
+  11-4-itt-rebuild-portability-full-backup-restore: done
+  11-5-flowforge-canvas-prefect-kanban-node-graph: done
+  11-6-server-migration-multi-platform-build: done
+  11-7-theme-presets-wallpaper-system: done
   epic-11-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────
+  # Epic 12: UI Refactor — Shell Agent Panel, Design Tokens, Tile Grid
+  # ─────────────────────────────────────────────────────────────
+  epic-12: in-progress
+  12-1-global-shell-agent-panel-right-rail-remove-bottompanel: done
+  12-2-design-token-consistency-pass: done
+  12-3-tile-grid-pattern-shared-components-all-9-canvases: done
+  12-4-trading-canvas-paper-trading-backtesting-content: done
+  12-5-portfolio-canvas-cross-canvas-navigation-fixes: done
+  12-6-department-kanban-sub-page-all-canvases: done
+  epic-12-retrospective: optional

@@ -690,7 +690,7 @@ def run_server(
     import uvicorn
     
     uvicorn.run(
-        "src.nprd.api:app",
+        "src.video_ingest.api:app",
         host=host,
         port=port,
         reload=reload,

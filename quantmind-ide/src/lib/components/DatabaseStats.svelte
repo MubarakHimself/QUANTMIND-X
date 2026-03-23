@@ -53,8 +53,8 @@
     display: flex;
     gap: 24px;
     padding: 12px 24px;
-    background: var(--bg-tertiary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border-bottom: 1px solid var(--color-border-subtle);
     flex-wrap: wrap;
   }
 
@@ -63,15 +63,15 @@
     align-items: center;
     gap: 6px;
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .stat-item .label {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .stat-item .value {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-weight: 500;
   }
 

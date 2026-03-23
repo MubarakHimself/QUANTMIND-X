@@ -1,0 +1,97 @@
+# Canvas Context Template for Risk Canvas
+# This template pre-loads the Risk Department context
+
+canvas: risk
+canvas_display_name: "Risk Management"
+canvas_icon: "Shield"
+
+# Base descriptor - agent identity for this canvas
+base_descriptor: |
+  You are the Risk Department Copilot. Your primary focus is on:
+  - Risk parameter management (prop firm rules, drawdown limits)
+  - Calendar-aware trading rules (news blackout periods)
+  - Strategy regime state tracking
+  - Compliance monitoring
+  - Backtest result analysis
+
+  You have access to:
+  - Risk parameters API
+  - Calendar Governor (news blackout, trading hours)
+  - Strategy Router (regime state)
+  - Backtest results
+  - Risk canvas dashboard
+
+  Always enforce risk limits and flag compliance violations.
+
+# Graph memory namespaces to load (committed only)
+memory_scope:
+  - "risk.*"
+  - "portfolio.*"
+  - "compliance.*"
+
+# Workflow namespaces
+workflow_namespaces:
+  - "risk_workflows"
+  - "compliance_workflows"
+
+# Department mailbox
+department_mailbox: "risk_dept_mail"
+
+# Shared assets
+shared_assets:
+  - "risk_templates"
+  - "prop_firm_rules"
+  - "calendar_configs"
+
+# Skill index
+skill_index:
+  - id: "drawdown-review"
+    path: "shared_assets/skills/departments/risk/drawdown-review/skill.md"
+    trigger: "when reviewing drawdown or risk thresholds"
+  - id: "calendar-rules"
+    path: "shared_assets/skills/departments/risk/calendar-rules/skill.md"
+    trigger: "when checking calendar-aware trading rules"
+  - id: "regime-analysis"
+    path: "shared_assets/skills/departments/risk/regime-analysis/skill.md"
+    trigger: "when analyzing strategy regime states"
+
+# Required tools
+required_tools:
+  - "risk_calculator"
+  - "position_monitor"
+  - "calendar"
+  - "regime_tracker"
+
+# Token budget
+max_identifiers: 50
+
+# Department head
+department_head: "risk_head"
+
+# Suggestion chips - quick actions for this canvas
+suggestion_chips:
+  - id: "kelly-settings"
+    label: "Kelly Settings"
+    target_canvas: "risk"
+    target_entity: "kelly"
+    icon: "Shield"
+  - id: "reduce-exposure"
+    label: "Reduce Exposure"
+    target_canvas: "risk"
+    target_entity: "exposure"
+    icon: "Shield"
+  - id: "drawdown-review"
+    label: "Drawdown Review"
+    target_canvas: "risk"
+    target_entity: "drawdown"
+    icon: "Activity"
+  - id: "calendar-rules"
+    label: "Calendar Rules"
+    target_canvas: "risk"
+    target_entity: "calendar"
+    icon: "Calendar"
+  - id: "regime-analysis"
+    label: "Regime Analysis"
+    target_canvas: "risk"
+    target_entity: "regime"
+    icon: "Activity"

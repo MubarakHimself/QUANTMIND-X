@@ -21,11 +21,16 @@ from .models import (
     EmergencyStopResponse,
     TradingStatusResponse,
     BotStatusResponse,
+    BotParamsResponse,
     BrokerConnectRequest,
     BrokerConnectResponse,
     BrokerCreateRequest,
     BrokerResponse,
     BrokersListResponse,
+    ClosePositionRequest,
+    ClosePositionResponse,
+    CloseAllRequest,
+    CloseAllResponse,
 )
 from .backtest import BacktestAPIHandler
 from .data import DataManagementAPIHandler
@@ -111,6 +116,41 @@ async def get_bot_status():
     return trading_handler.get_bot_status()
 
 
+@router.get("/trading/bots/{bot_id}/params", response_model=BotParamsResponse)
+async def get_bot_params(bot_id: str):
+    """Get trading parameters for a specific bot.
+
+    Returns session mask, Islamic compliance status, daily loss cap,
+    and force-close countdown when within the 60-minute window.
+    """
+    return trading_handler.get_bot_params(bot_id)
+
+
+# -----------------------------------------------------------------------------
+# Loss Cap Breach Endpoints (Story 3-3)
+# -----------------------------------------------------------------------------
+
+@router.get("/trading/loss-cap/breaches")
+async def get_loss_cap_breaches():
+    """Get all loss cap breach audit log entries."""
+    from src.router.sessions import get_loss_cap_audit_logs
+    return {
+        "breaches": get_loss_cap_audit_logs(),
+        "total_count": len(get_loss_cap_audit_logs())
+    }
+
+
+@router.get("/trading/loss-cap/breaches/{bot_id}")
+async def get_bot_loss_cap_breaches(bot_id: str):
+    """Get loss cap breach events for a specific bot."""
+    from src.router.sessions import get_loss_cap_breach_by_bot
+    return {
+        "bot_id": bot_id,
+        "breaches": get_loss_cap_breach_by_bot(bot_id),
+        "total_count": len(get_loss_cap_breach_by_bot(bot_id))
+    }
+
+
 # -----------------------------------------------------------------------------
 # Broker Connection Endpoints
 # -----------------------------------------------------------------------------
@@ -141,3 +181,37 @@ async def list_brokers():
 async def create_broker(request: BrokerCreateRequest):
     """Create a new broker profile."""
     return broker_handler.create_broker(request)
+
+
+# -----------------------------------------------------------------------------
+# Position Close Endpoints (Story 3-6)
+# -----------------------------------------------------------------------------
+
+@router.post("/trading/close", response_model=ClosePositionResponse)
+async def close_position(request: ClosePositionRequest):
+    """Close a single position by ticket.
+
+    Args:
+        request: Position ticket and bot ID
+
+    Returns:
+        Close result with filled price, slippage, and final P&L
+    """
+    # Extract user from request state if available (set by auth middleware)
+    user_context = getattr(request.state, 'user', 'system') if hasattr(request, 'state') else 'system'
+    return trading_handler.close_position(request, user_context=user_context)
+
+
+@router.post("/trading/close-all", response_model=CloseAllResponse)
+async def close_all_positions(request: CloseAllRequest):
+    """Close all positions for a bot or all bots.
+
+    Args:
+        request: Optional bot ID to filter positions
+
+    Returns:
+        Results per position (filled/partial/rejected)
+    """
+    # Extract user from request state if available (set by auth middleware)
+    user_context = getattr(request.state, 'user', 'system') if hasattr(request, 'state') else 'system'
+    return trading_handler.close_all_positions(request, user_context=user_context)

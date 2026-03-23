@@ -1,0 +1,172 @@
+name: OWASP ZAP DAST
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  ZAP_TARGET_URL: ${{ vars.ZAP_TARGET_URL || 'http://localhost:8000' }}
+
+jobs:
+  zap-baseline-scan:
+    name: ZAP Baseline Scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Start backend server
+        run: |
+          # Start server in background
+          uvicorn src.api.server:app --host 0.0.0.0 --port 8000 &
+          sleep 10
+          curl -f http://localhost:8000/health || echo "Server health check failed"
+
+      - name: Wait for server to be ready
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "Server is ready"
+              exit 0
+            fi
+            echo "Waiting for server... ($i/30)"
+            sleep 2
+          done
+          echo "Server did not start in time"
+          exit 1
+
+      - name: Run ZAP Baseline Scan
+        uses: owasp/zap-baseline@v2
+        with:
+          target: ${{ env.ZAP_TARGET_URL }}
+          rules_file_name: .zap/config.xml
+          cmd_options: >
+            -j
+            -T 60
+            -m 1
+            -r
+
+      - name: Upload ZAP report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-baseline-report
+          path: |
+            zap-baseline-report.html
+            zap-baseline-report.json
+          retention-days: 30
+
+  zap-api-scan:
+    name: ZAP API Scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Start backend server
+        run: |
+          uvicorn src.api.server:app --host 0.0.0.0 --port 8000 &
+          sleep 10
+
+      - name: Wait for server to be ready
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "Server is ready"
+              exit 0
+            fi
+            echo "Waiting for server... ($i/30)"
+            sleep 2
+          done
+          exit 1
+
+      - name: Run ZAP API Scan (JSON)
+        if: false # Set to true when API endpoints are finalized
+        run: |
+          # ZAP API scan for /api/* endpoints
+          docker run -v $(pwd):/zap/wrk:rw \
+            owasp/zap2docker-stable zap-api-scan.py \
+            -t http://localhost:8000/openapi.json \
+            -f json \
+            -r zap-api-report.json || true
+
+      - name: ZAP Full Scan
+        uses: owasp/zap-full-scan@v2
+        with:
+          target: ${{ env.ZAP_TARGET_URL }}/api/
+          level: medium
+          timeout: 300
+
+      - name: Upload ZAP report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-full-scan-report
+          path: |
+            zap-full-scan-report.html
+            zap-full-scan-report.json
+          retention-days: 30
+
+  zap-report:
+    name: ZAP Report Summary
+    runs-on: ubuntu-latest
+    needs: [zap-baseline-scan, zap-api-scan]
+    if: always()
+    steps:
+      - name: Download reports
+        uses: actions/download-artifact@v4
+        with:
+          path: reports
+
+      - name: Parse ZAP results
+        run: |
+          echo "## ZAP DAST Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Review detailed reports in the artifacts." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Acceptance Criteria:** 0 Critical/High vulnerabilities" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "If vulnerabilities found:" >> $GITHUB_STEP_SUMMARY
+          echo "1. File issue with vulnerability details" >> $GITHUB_STEP_SUMMARY
+          echo "2. Create risk waiver if accepted" >> $GITHUB_STEP_SUMMARY
+          echo "3. Link to report in artifact" >> $GITHUB_STEP_SUMMARY
+
+      - name: Create GitHub Issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Security Alert: ZAP DAST Found Vulnerabilities',
+              body: 'ZAP DAST scan found vulnerabilities. Please review the scan report and create risk waivers for accepted findings.',
+              labels: ['security', 'vulnerability']
+            })

@@ -3,11 +3,12 @@
   import { createEventDispatcher } from 'svelte';
   import { AlertTriangle, CheckCircle, Power, Activity, Bot, TrendingUp, Wifi, WifiOff, Workflow } from 'lucide-svelte';
   import { pendingCount, approvalStore } from '$lib/stores/approvalStore';
+  import { pendingApprovalCount, alphaForgeStore } from '$lib/stores/alpha-forge';
   import ApprovalPanel from './ApprovalPanel.svelte';
 
   const dispatch = createEventDispatcher();
 
-  const API_BASE = 'http://localhost:8000/api';
+  const API_BASE = '/api';
 
   let connected = $state(false);
   let regime = $state('Unknown');
@@ -24,8 +25,14 @@
     const interval = setInterval(fetchStatus, 5000);
     // Start approval polling
     approvalStore.startPolling(10000);
+    // Start pipeline approval polling (Story 8-7)
+    alphaForgeStore.fetchPendingApprovals();
+    const pipelineInterval = setInterval(() => {
+      alphaForgeStore.fetchPendingApprovals();
+    }, 10000);
     return () => {
       clearInterval(interval);
+      clearInterval(pipelineInterval);
       approvalStore.stopPolling();
     };
   });
@@ -112,14 +119,14 @@
     <div class="approval-wrapper">
       <button
         class="status-item approval-btn"
-        class:has-approvals={$pendingCount > 0}
+        class:has-approvals={$pendingCount > 0 || $pendingApprovalCount > 0}
         onclick={() => showApprovalPanel = !showApprovalPanel}
         title="Workflow Approvals"
       >
         <Workflow size={12} />
         <span>Approvals</span>
-        {#if $pendingCount > 0}
-          <span class="approval-badge">{$pendingCount}</span>
+        {#if $pendingCount > 0 || $pendingApprovalCount > 0}
+          <span class="approval-badge">{$pendingCount + $pendingApprovalCount}</span>
         {/if}
       </button>
       {#if showApprovalPanel}
@@ -160,8 +167,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 0 12px;
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
     font-size: 11px;
     height: var(--status-height);
   }

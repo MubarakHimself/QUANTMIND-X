@@ -201,10 +201,10 @@
 
 <style>
   .monte-carlo-chart {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 12px;
     padding: 20px;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
   }
   
   .chart-header {
@@ -220,13 +220,13 @@
     gap: 8px;
     margin: 0;
     font-size: 14px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
   
   .simulations {
     font-size: 11px;
-    color: var(--text-muted);
-    background: var(--bg-tertiary);
+    color: var(--color-text-muted);
+    background: var(--color-bg-elevated);
     padding: 4px 8px;
     border-radius: 4px;
   }
@@ -255,30 +255,30 @@
   }
   
   .axis {
-    stroke: var(--border-subtle);
+    stroke: var(--color-border-subtle);
     stroke-width: 1;
   }
   
   .axis-label {
     font-size: 10px;
-    fill: var(--text-muted);
+    fill: var(--color-text-muted);
   }
   
   .zero-line {
-    stroke: var(--text-muted);
+    stroke: var(--color-text-muted);
     stroke-width: 1;
     stroke-dasharray: 4 4;
   }
   
   .confidence-line {
-    stroke: var(--accent-primary);
+    stroke: var(--color-accent-cyan);
     stroke-width: 2;
     stroke-dasharray: 6 3;
   }
   
   .confidence-label {
     font-size: 10px;
-    fill: var(--accent-primary);
+    fill: var(--color-accent-cyan);
     font-weight: 600;
   }
   
@@ -300,13 +300,13 @@
     align-items: center;
     gap: 4px;
     padding: 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 8px;
   }
   
   .stat .label {
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
   
   .stat .value {
@@ -328,8 +328,8 @@
   }
   
   .stat.highlight {
-    color: var(--accent-primary);
-    border: 1px solid var(--accent-primary);
+    color: var(--color-accent-cyan);
+    border: 1px solid var(--color-accent-cyan);
     background: rgba(99, 102, 241, 0.1);
   }
   

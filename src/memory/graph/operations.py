@@ -15,6 +15,7 @@ from src.memory.graph.types import (
     MemoryNode,
     MemoryNodeType,
     RelationType,
+    SessionStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -95,6 +96,7 @@ class MemoryOperations:
         tags: Optional[list[str]] = None,
         related_to: Optional[list[str]] = None,
         category: Optional[MemoryCategory] = None,
+        entity_id: Optional[str] = None,
     ) -> MemoryNode:
         """Store a new memory (RETAIN operation).
 
@@ -108,6 +110,7 @@ class MemoryOperations:
             tags: List of tags for categorization.
             related_to: List of node IDs this memory relates to.
             category: Optional explicit category (auto-categorized if not provided).
+            entity_id: Entity identifier for entity-based grouping (e.g., strategy_id).
 
         Returns:
             The created MemoryNode.
@@ -135,6 +138,7 @@ class MemoryOperations:
             tags=tags or [],
             created_by=agent_id,
             relevance_score=importance,
+            entity_id=entity_id,
         )
 
         # Store the node
@@ -239,7 +243,7 @@ class MemoryOperations:
         now = datetime.now(timezone.utc)
         for node in nodes:
             node.access_count += 1
-            node.last_accessed = now
+            node.last_accessed_utc = now
             self.store.update_node(node)
 
         # Sort by relevance score and importance
@@ -538,3 +542,179 @@ class MemoryOperations:
             details: Operation details.
         """
         logger.info(f"Memory operation: {operation} - {details}")
+
+    def create_opinion_node(
+        self,
+        action: str,
+        reasoning: str,
+        confidence: float,
+        agent_role: str,
+        alternatives_considered: Optional[str] = None,
+        constraints_applied: Optional[str] = None,
+        department: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        importance: float = 0.7,
+        tags: Optional[list[str]] = None,
+    ) -> MemoryNode:
+        """Create an OPINION node with required fields.
+
+        Args:
+            action: What the agent did.
+            reasoning: Why they did it.
+            confidence: Confidence score (0.0-1.0).
+            agent_role: Which agent/role took the action.
+            alternatives_considered: Options evaluated.
+            constraints_applied: Constraints that influenced the decision.
+            department: Department associated with this opinion.
+            agent_id: Agent that created this opinion.
+            session_id: Session where this opinion was created.
+            importance: Importance score (0-1).
+            tags: List of tags.
+
+        Returns:
+            The created OPINION node.
+        """
+        node = MemoryNode(
+            node_type=MemoryNodeType.OPINION,
+            category=MemoryCategory.SUBJECTIVE,
+            title=f"Opinion: {action[:50]}...",
+            content=f"Action: {action}\nReasoning: {reasoning}",
+            action=action,
+            reasoning=reasoning,
+            confidence=confidence,
+            alternatives_considered=alternatives_considered,
+            constraints_applied=constraints_applied,
+            agent_role=agent_role,
+            department=department,
+            agent_id=agent_id,
+            session_id=session_id,
+            importance=importance,
+            tags=tags or [],
+            created_by=agent_id,
+            relevance_score=importance,
+            session_status=SessionStatus.DRAFT,
+        )
+
+        return self.store.create_node(node)
+
+    def create_supported_by_edge(
+        self,
+        opinion_node_id: str,
+        evidence_node_ids: list[str],
+        strength: float = 0.9,
+    ) -> list[MemoryEdge]:
+        """Create SUPPORTED_BY edges from an OPINION to evidence nodes.
+
+        Mandatory: Every OPINION must have at least one SUPPORTED_BY edge.
+
+        Args:
+            opinion_node_id: The OPINION node ID.
+            evidence_node_ids: List of evidence node IDs (OBSERVATION, WORLD, or DECISION).
+            strength: Relationship strength (0-1).
+
+        Returns:
+            List of created MemoryEdge objects.
+        """
+        edges = []
+        for evidence_id in evidence_node_ids:
+            edge = MemoryEdge(
+                relation_type=RelationType.SUPPORTED_BY,
+                source_id=opinion_node_id,
+                target_id=evidence_id,
+                strength=strength,
+                context=f"Evidence supporting opinion",
+            )
+            created_edge = self.store.create_edge(edge)
+            edges.append(created_edge)
+            logger.debug(f"Created SUPPORTED_BY edge from {opinion_node_id} to {evidence_id}")
+
+        return edges
+
+    def commit_session_nodes(self, session_id: str) -> int:
+        """Promote all draft nodes for a session to committed status.
+
+        Args:
+            session_id: Session ID to commit.
+
+        Returns:
+            Number of nodes promoted to committed.
+        """
+        # Get all draft nodes for this session
+        draft_nodes = self.store.query_nodes(
+            session_id=session_id,
+            session_status=SessionStatus.DRAFT,
+            limit=1000,
+        )
+
+        count = 0
+        for node in draft_nodes:
+            node.session_status = SessionStatus.COMMITTED
+            self.store.update_node(node)
+            count += 1
+
+        logger.info(f"Committed {count} nodes for session {session_id}")
+        return count
+
+    def get_committed_nodes(
+        self,
+        query: Optional[str] = None,
+        department: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        node_type: Optional[MemoryNodeType] = None,
+        min_importance: float = 0.0,
+        limit: int = 10,
+    ) -> list[MemoryNode]:
+        """Get only committed nodes (visible to downstream agents).
+
+        This is the primary method for retrieving memories that can be
+        used by other sessions.
+
+        Args:
+            query: Text search query.
+            department: Filter by department.
+            agent_id: Filter by agent ID.
+            node_type: Filter by node type.
+            min_importance: Minimum importance score.
+            limit: Maximum number of results.
+
+        Returns:
+            List of committed MemoryNode objects.
+        """
+        return self.store.query_nodes(
+            query=query,
+            department=department,
+            agent_id=agent_id,
+            node_type=node_type,
+            min_importance=min_importance,
+            session_status=SessionStatus.COMMITTED,
+            limit=limit,
+        )
+
+    def get_draft_nodes(
+        self,
+        session_id: str,
+        department: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        limit: int = 100,
+    ) -> list[MemoryNode]:
+        """Get draft nodes for a specific session.
+
+        Draft nodes are invisible to other sessions.
+
+        Args:
+            session_id: Session ID to get draft nodes for.
+            department: Filter by department.
+            agent_id: Filter by agent ID.
+            limit: Maximum number of results.
+
+        Returns:
+            List of draft MemoryNode objects.
+        """
+        return self.store.query_nodes(
+            session_id=session_id,
+            session_status=SessionStatus.DRAFT,
+            department=department,
+            agent_id=agent_id,
+            limit=limit,
+        )

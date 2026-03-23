@@ -4,12 +4,18 @@ Provider Configuration API Endpoints
 Manages provider configurations (API keys, base URLs, enabled status)
 for LLM providers like Anthropic, OpenAI, DeepSeek, etc.
 
+Features:
+- Encrypted API key storage at rest
+- Tier assignment for model routing
+- Provider availability testing
+
 Phase 5: Provider Configuration in Settings UI
 """
 
 import logging
 import uuid
-from typing import List, Optional
+import time
+from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -28,21 +34,56 @@ router = APIRouter(prefix="/api/providers", tags=["providers"])
 
 class ProviderConfigRequest(BaseModel):
     """Request model for creating/updating a provider configuration."""
-    name: str = Field(..., description="Provider name (e.g., 'anthropic', 'openai', 'deepseek')")
-    api_key: Optional[str] = Field(None, description="API key for the provider")
+    provider_type: Optional[str] = Field(None, description="Provider type (e.g., 'anthropic', 'openai', 'deepseek')")
+    display_name: Optional[str] = Field(None, description="Human-readable display name")
+    api_key: Optional[str] = Field(None, description="API key for the provider (will be encrypted)")
     base_url: Optional[str] = Field(None, description="Custom base URL for API endpoint")
-    enabled: bool = Field(True, description="Whether the provider is enabled")
+    model_list: Optional[List[Dict[str, str]]] = Field(None, description="List of available models")
+    tier_assignment: Optional[Dict[str, str]] = Field(None, description="Tier to model mapping")
+    is_active: bool = Field(True, description="Whether the provider is active")
+
+    # Legacy field aliases
+    name: Optional[str] = None
+    enabled: Optional[bool] = None
+
+    def __init__(self, **data):
+        # Handle legacy field names
+        if 'name' in data and data['name']:
+            if 'provider_type' not in data or not data['provider_type']:
+                data['provider_type'] = data['name']
+        if 'enabled' in data and data['enabled'] is not None:
+            if 'is_active' not in data:
+                data['is_active'] = data['enabled']
+        super().__init__(**data)
+
+
+class ProviderTestRequest(BaseModel):
+    """Request model for testing a provider configuration."""
+    provider_type: str = Field(..., description="Provider type to test")
+    api_key: Optional[str] = Field(None, description="API key to test (optional if already configured)")
+    base_url: Optional[str] = Field(None, description="Base URL to test")
 
 
 class ProviderConfigResponse(BaseModel):
     """Response model for provider configuration (API key masked)."""
     id: str
-    name: str
-    api_key: Optional[str] = None
+    provider_type: str
+    display_name: Optional[str] = None
     base_url: Optional[str] = None
-    enabled: bool
-    created_at: str
-    updated_at: str
+    is_active: bool
+    tier_assignment: Optional[Dict[str, str]] = None
+    model_count: int = 0
+    created_at_utc: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    # Legacy aliases
+    @property
+    def name(self) -> str:
+        return self.provider_type
+
+    @property
+    def enabled(self) -> bool:
+        return self.is_active
 
     class Config:
         from_attributes = True
@@ -51,10 +92,21 @@ class ProviderConfigResponse(BaseModel):
 class ProviderConfigDetail(BaseModel):
     """Detailed provider config for dropdowns (includes whether it's configured)."""
     id: str
-    name: str
+    provider_type: str
     display_name: str
     has_api_key: bool
-    enabled: bool
+    is_active: bool
+    available: bool
+    tier_assignment: Optional[Dict[str, str]] = None
+    model_count: int = 0
+
+
+class ProviderTestResult(BaseModel):
+    """Result of provider test."""
+    success: bool
+    latency_ms: Optional[int] = None
+    model_count: Optional[int] = None
+    error: Optional[str] = None
 
 
 # Provider display names mapping
@@ -132,12 +184,28 @@ PROVIDER_MODELS = {
     ],
 }
 
+# Provider base URLs
+PROVIDER_BASE_URLS = {
+    "anthropic": "https://api.anthropic.com/v1",
+    "openai": "https://api.openai.com/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "deepseek": "https://api.deepseek.com/v1",
+    "glm": "https://open.bigmodel.cn/api/paas/v4",
+    "minimax": "https://api.minimax.chat/v1",
+    "google": "https://generativelanguage.googleapis.com/v1",
+    "azure": "",  # Custom per deployment
+    "cohere": "https://api.cohere.ai/v1",
+    "mistral": "https://api.mistral.ai/v1",
+}
+
 
 def mask_api_key(api_key: Optional[str]) -> Optional[str]:
-    """Mask API key for display - returns None if no key, otherwise masks it."""
+    """Mask API key for display - shows last 4 chars, masks the rest with bullets."""
     if not api_key or api_key.strip() == "":
         return None
-    return "***"
+    if len(api_key) <= 4:
+        return "•" * len(api_key)
+    return ("•" * (len(api_key) - 4)) + api_key[-4:]
 
 
 # =============================================================================
@@ -159,11 +227,13 @@ async def list_providers():
             for p in providers:
                 result.append({
                     "id": p.id,
-                    "name": p.name,
-                    "api_key": mask_api_key(p.api_key),
+                    "provider_type": p.provider_type,
+                    "display_name": p.display_name,
                     "base_url": p.base_url,
-                    "enabled": p.enabled,
-                    "created_at": p.created_at.isoformat() if p.created_at else None,
+                    "is_active": p.is_active,
+                    "tier_assignment": p.tier_assignment_dict,
+                    "model_count": len(p.model_list_json),
+                    "created_at_utc": p.created_at_utc.isoformat() if p.created_at_utc else None,
                     "updated_at": p.updated_at.isoformat() if p.updated_at else None,
                 })
 
@@ -179,59 +249,140 @@ async def save_provider(config: ProviderConfigRequest):
     """
     Save or update provider configuration.
 
-    If a provider with the same name exists, it will be updated.
+    If a provider with the same type exists, it will be updated.
     Otherwise, a new provider will be created.
+    API keys are encrypted at rest.
     """
+    # provider_type is required for POST (create new)
+    if not config.provider_type:
+        raise HTTPException(status_code=400, detail="provider_type is required")
     try:
         with get_db_session() as db:
-            # Check if provider with this name exists
-            existing = db.query(ProviderConfig).filter(ProviderConfig.name == config.name).first()
+            # Check if provider with this type exists
+            existing = db.query(ProviderConfig).filter(
+                ProviderConfig.provider_type == config.provider_type
+            ).first()
 
             if existing:
                 # Update existing provider
-                existing.api_key = config.api_key
-                existing.base_url = config.base_url
-                existing.enabled = config.enabled
+                if config.api_key:
+                    existing.set_api_key(config.api_key)
+                if config.base_url is not None:
+                    existing.base_url = config.base_url
+                if config.display_name is not None:
+                    existing.display_name = config.display_name
+                if config.tier_assignment is not None:
+                    existing.tier_assignment_dict = config.tier_assignment
+                if config.model_list is not None:
+                    existing.model_list_json = config.model_list
+                if config.is_active is not None:
+                    existing.is_active = config.is_active
                 db.commit()
 
                 return {
                     "success": True,
-                    "message": f"Provider '{config.name}' updated",
+                    "message": f"Provider '{config.provider_type}' updated",
                     "provider": {
                         "id": existing.id,
-                        "name": existing.name,
-                        "api_key": mask_api_key(existing.api_key),
-                        "base_url": existing.base_url,
-                        "enabled": existing.enabled,
+                        "provider_type": existing.provider_type,
+                        "display_name": existing.display_name,
+                        "is_active": existing.is_active,
                     }
                 }
             else:
                 # Create new provider
+                display_name = config.display_name or PROVIDER_DISPLAY_NAMES.get(
+                    config.provider_type, config.provider_type
+                )
+
                 new_provider = ProviderConfig(
                     id=str(uuid.uuid4()),
-                    name=config.name,
-                    api_key=config.api_key,
-                    base_url=config.base_url,
-                    enabled=config.enabled,
+                    provider_type=config.provider_type,
+                    display_name=display_name,
+                    base_url=config.base_url or PROVIDER_BASE_URLS.get(config.provider_type, ""),
+                    is_active=config.is_active if config.is_active is not None else True,
                 )
+
+                # Encrypt and set API key
+                if config.api_key:
+                    new_provider.set_api_key(config.api_key)
+
+                # Set tier assignment
+                if config.tier_assignment:
+                    new_provider.tier_assignment_dict = config.tier_assignment
+
+                # Set model list
+                if config.model_list:
+                    new_provider.model_list_json = config.model_list
+                else:
+                    # Default to known models
+                    new_provider.model_list_json = PROVIDER_MODELS.get(config.provider_type, [])
+
                 db.add(new_provider)
                 db.commit()
                 db.refresh(new_provider)
 
                 return {
                     "success": True,
-                    "message": f"Provider '{config.name}' created",
+                    "message": f"Provider '{config.provider_type}' created",
                     "provider": {
                         "id": new_provider.id,
-                        "name": new_provider.name,
-                        "api_key": mask_api_key(new_provider.api_key),
-                        "base_url": new_provider.base_url,
-                        "enabled": new_provider.enabled,
+                        "provider_type": new_provider.provider_type,
+                        "display_name": new_provider.display_name,
+                        "is_active": new_provider.is_active,
                     }
                 }
     except Exception as e:
         logger.error(f"Error saving provider: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to save provider: {str(e)}")
+
+
+@router.put("/{provider_id}", response_model=dict)
+async def update_provider(provider_id: str, config: ProviderConfigRequest):
+    """
+    Update provider configuration by ID.
+
+    Only provided fields are updated. If api_key is absent, existing key is preserved.
+    """
+    try:
+        with get_db_session() as db:
+            provider = db.query(ProviderConfig).filter(ProviderConfig.id == provider_id).first()
+
+            if not provider:
+                raise HTTPException(status_code=404, detail=f"Provider with ID '{provider_id}' not found")
+
+            # Update only provided fields
+            if config.api_key:
+                provider.set_api_key(config.api_key)
+            if config.base_url is not None:
+                provider.base_url = config.base_url
+            if config.display_name is not None:
+                provider.display_name = config.display_name
+            if config.tier_assignment is not None:
+                provider.tier_assignment_dict = config.tier_assignment
+            if config.model_list is not None:
+                provider.model_list_json = config.model_list
+            if config.is_active is not None:
+                provider.is_active = config.is_active
+
+            db.commit()
+            db.refresh(provider)
+
+            return {
+                "success": True,
+                "message": f"Provider '{provider.provider_type}' updated",
+                "provider": {
+                    "id": provider.id,
+                    "provider_type": provider.provider_type,
+                    "display_name": provider.display_name,
+                    "is_active": provider.is_active,
+                }
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating provider: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update provider: {str(e)}")
 
 
 @router.delete("/{provider_id}", response_model=dict)
@@ -246,19 +397,127 @@ async def delete_provider(provider_id: str):
             if not provider:
                 raise HTTPException(status_code=404, detail=f"Provider with ID '{provider_id}' not found")
 
-            provider_name = provider.name
+            # Check if provider is in use (has active tier assignment)
+            if provider.is_active:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Provider '{provider.provider_type}' is in use. Set is_active=false first."
+                )
+
+            provider_type = provider.provider_type
             db.delete(provider)
             db.commit()
 
             return {
                 "success": True,
-                "message": f"Provider '{provider_name}' deleted"
+                "message": f"Provider '{provider_type}' deleted"
             }
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error deleting provider: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete provider: {str(e)}")
+
+
+@router.post("/test", response_model=dict)
+async def test_provider(test_req: ProviderTestRequest):
+    """
+    Test a provider configuration by making a minimal API call.
+
+    Returns success status, latency, and model count.
+    """
+    result = await _test_provider_internal(test_req)
+    return result
+
+
+async def _test_provider_internal(test_req: ProviderTestRequest) -> Dict[str, Any]:
+    """Internal function to test provider configuration."""
+    import httpx
+
+    api_key = test_req.api_key
+    base_url = test_req.base_url or PROVIDER_BASE_URLS.get(test_req.provider_type, "")
+
+    if not api_key:
+        return {"success": False, "error": "API key required for testing"}
+
+    if not base_url:
+        return {"success": False, "error": "Base URL not configured"}
+
+    start_time = time.time()
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Make a minimal API call based on provider type
+            headers = {}
+
+            if test_req.provider_type == "anthropic":
+                headers["x-api-key"] = api_key
+                headers["anthropic-version"] = "2023-06-01"
+                response = await client.get(
+                    f"{base_url}/models",
+                    headers=headers,
+                )
+            elif test_req.provider_type == "openai":
+                headers["Authorization"] = f"Bearer {api_key}"
+                response = await client.get(
+                    f"{base_url}/models",
+                    headers=headers,
+                )
+            elif test_req.provider_type == "openrouter":
+                headers["Authorization"] = f"Bearer {api_key}"
+                headers["HTTP-Referer"] = "https://quantmind.app"
+                headers["X-Title"] = "QuantMind"
+                response = await client.get(
+                    f"{base_url}/models",
+                    headers=headers,
+                )
+            elif test_req.provider_type == "deepseek":
+                headers["Authorization"] = f"Bearer {api_key}"
+                response = await client.get(
+                    f"{base_url}/models",
+                    headers=headers,
+                )
+            else:
+                # Generic test - just try to call the base URL
+                headers["Authorization"] = f"Bearer {api_key}"
+                response = await client.get(base_url, headers=headers, follow_redirects=True)
+
+            latency_ms = int((time.time() - start_time) * 1000)
+
+            if response.status_code == 200:
+                # Try to count models
+                model_count = 0
+                try:
+                    data = response.json()
+                    if "data" in data:
+                        model_count = len(data["data"])
+                    elif "models" in data:
+                        model_count = len(data["models"])
+                except Exception:
+                    pass
+
+                return {
+                    "success": True,
+                    "latency_ms": latency_ms,
+                    "model_count": model_count,
+                }
+            else:
+                return {
+                    "success": False,
+                    "latency_ms": latency_ms,
+                    "error": f"HTTP {response.status_code}: {response.text[:100]}",
+                }
+
+    except httpx.TimeoutException:
+        return {
+            "success": False,
+            "error": "Connection timeout",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)[:100],
+        }
 
 
 @router.get("/available", response_model=dict)
@@ -273,8 +532,8 @@ async def get_available_providers():
         with get_db_session() as db:
             configured_providers = db.query(ProviderConfig).all()
 
-            # Create a lookup dict by name
-            configured_by_name = {p.name: p for p in configured_providers}
+            # Create a lookup dict by type
+            configured_by_type = {p.provider_type: p for p in configured_providers}
 
             # Build list of all known providers with their status and models
             result = []
@@ -282,28 +541,33 @@ async def get_available_providers():
                 # Get models for this provider
                 models = PROVIDER_MODELS.get(provider_id, [])
 
-                if provider_id in configured_by_name:
-                    p = configured_by_name[provider_id]
-                    has_key = bool(p.api_key and p.api_key.strip())
+                if provider_id in configured_by_type:
+                    p = configured_by_type[provider_id]
+                    decrypted_key = p.get_api_key()
+                    has_key = bool(decrypted_key and decrypted_key.strip())
                     result.append({
                         "id": p.id,
-                        "name": p.name,
-                        "display_name": display_name,
+                        "provider_type": p.provider_type,
+                        "display_name": p.display_name or display_name,
                         "has_api_key": has_key,
-                        "enabled": p.enabled,
-                        "available": has_key and p.enabled,
-                        "models": models if has_key and p.enabled else [],
+                        "is_active": p.is_active,
+                        "available": has_key and p.is_active,
+                        "models": models if has_key and p.is_active else [],
+                        "tier_assignment": p.tier_assignment_dict,
+                        "model_count": len(p.model_list_json) if has_key and p.is_active else 0,
                     })
                 else:
                     # Provider exists in our known list but not configured
                     result.append({
                         "id": provider_id,
-                        "name": provider_id,
+                        "provider_type": provider_id,
                         "display_name": display_name,
                         "has_api_key": False,
-                        "enabled": False,
+                        "is_active": False,
                         "available": False,
                         "models": [],
+                        "tier_assignment": {},
+                        "model_count": 0,
                     })
 
             return {"providers": result}
@@ -314,12 +578,14 @@ async def get_available_providers():
             "providers": [
                 {
                     "id": pid,
-                    "name": pid,
+                    "provider_type": pid,
                     "display_name": name,
                     "has_api_key": False,
-                    "enabled": False,
+                    "is_active": False,
                     "available": False,
                     "models": [],
+                    "tier_assignment": {},
+                    "model_count": 0,
                 }
                 for pid, name in PROVIDER_DISPLAY_NAMES.items()
             ]
@@ -338,13 +604,17 @@ async def get_provider(provider_id: str):
             if not provider:
                 raise HTTPException(status_code=404, detail=f"Provider with ID '{provider_id}' not found")
 
+            # Don't expose API key in response
             return {
                 "id": provider.id,
-                "name": provider.name,
-                "api_key": mask_api_key(provider.api_key),
+                "provider_type": provider.provider_type,
+                "display_name": provider.display_name,
                 "base_url": provider.base_url,
-                "enabled": provider.enabled,
-                "created_at": provider.created_at.isoformat() if provider.created_at else None,
+                "is_active": provider.is_active,
+                "tier_assignment": provider.tier_assignment_dict,
+                "model_list": provider.model_list_json,
+                "model_count": len(provider.model_list_json),
+                "created_at_utc": provider.created_at_utc.isoformat() if provider.created_at_utc else None,
                 "updated_at": provider.updated_at.isoformat() if provider.updated_at else None,
             }
     except HTTPException:
@@ -352,3 +622,29 @@ async def get_provider(provider_id: str):
     except Exception as e:
         logger.error(f"Error getting provider: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get provider: {str(e)}")
+
+
+@router.post("/refresh", response_model=dict)
+async def refresh_providers():
+    """
+    Force refresh of provider configuration cache.
+
+    This endpoint allows hot-swapping providers without restart.
+    It clears the cached provider configuration and reloads from database.
+    """
+    try:
+        from src.agents.providers import refresh_router, get_router
+
+        router = get_router()
+        last_refresh = router.last_refresh_timestamp
+
+        refresh_router()
+
+        return {
+            "success": True,
+            "message": "Provider configuration refreshed",
+            "last_refresh": last_refresh,
+        }
+    except Exception as e:
+        logger.error(f"Error refreshing providers: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to refresh providers: {str(e)}")

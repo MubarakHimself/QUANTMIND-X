@@ -1,6 +1,6 @@
 import { writable, derived } from 'svelte/store';
 
-export type ThemeName = 'trading-terminal' | 'monokai' | 'ambient' | 'cyberpunk' | 'matrix' | 'dark-pro' | 'bloomberg' | 'crypto-quant' | 'gold-futures' | 'forex-pro' | 'midnight-quant' | 'ocean-blue' | 'deep-space' | 'nordic-frost';
+export type ThemeName = 'frosted-terminal' | 'trading-terminal' | 'monokai' | 'ambient' | 'cyberpunk' | 'matrix' | 'dark-pro' | 'bloomberg' | 'crypto-quant' | 'gold-futures' | 'forex-pro' | 'midnight-quant' | 'ocean-blue' | 'deep-space' | 'nordic-frost';
 
 export interface Theme {
   name: ThemeName;
@@ -57,6 +57,55 @@ export interface Theme {
 }
 
 export const themes: Record<ThemeName, Theme> = {
+  'frosted-terminal': {
+    name: 'frosted-terminal',
+    displayName: 'Frosted Terminal',
+    description: 'Hyprland-style glass with deep navy base and cyan accents',
+    colors: {
+      bg: {
+        primary: '#080d14',
+        secondary: 'rgba(8, 13, 20, 0.6)',
+        tertiary: 'rgba(16, 24, 36, 0.8)',
+        glass: 'rgba(8, 13, 20, 0.35)'
+      },
+      text: {
+        primary: '#e8edf5',
+        secondary: 'rgba(232, 237, 245, 0.6)',
+        muted: '#5a6a80',
+        accent: '#00d4ff'
+      },
+      border: {
+        subtle: 'rgba(255, 255, 255, 0.06)',
+        medium: 'rgba(255, 255, 255, 0.12)',
+        accent: '#00d4ff'
+      },
+      accent: {
+        primary: '#00d4ff',
+        secondary: 'rgba(0, 212, 255, 0.3)',
+        success: '#00c896',
+        warning: '#f0a500',
+        danger: '#ff3b3b'
+      },
+      syntax: {
+        keyword: '#00d4ff',
+        string: '#00c896',
+        number: '#f0a500',
+        comment: '#5a6a80',
+        function: '#e8edf5',
+        variable: '#e8edf5',
+        operator: '#f0a500',
+        background: '#080d14'
+      }
+    },
+    effects: {
+      glass: true,
+      glow: false,
+      scanlines: false,
+      animated: false,
+      gradients: false
+    }
+  },
+
   'trading-terminal': {
     name: 'trading-terminal',
     displayName: 'Trading Terminal',
@@ -795,7 +844,7 @@ export function loadSavedFont(): string {
 }
 
 // Theme store
-export const currentTheme = writable<ThemeName>('trading-terminal');
+export const currentTheme = writable<ThemeName>('frosted-terminal');
 export const customWallpaper = writable<string>('');
 export const wallpaperEnabled = writable<boolean>(true);
 
@@ -864,6 +913,22 @@ function applyThemeVariables(themeObj: Theme) {
   root.style.setProperty('--syntax-operator', themeObj.colors.syntax.operator);
   root.style.setProperty('--syntax-background', themeObj.colors.syntax.background);
 
+  // Bridge: keep canonical tokens in sync with theme values
+  root.style.setProperty('--color-bg-base', themeObj.colors.bg.primary);
+  root.style.setProperty('--color-bg-surface', themeObj.colors.bg.secondary);
+  root.style.setProperty('--color-bg-elevated', themeObj.colors.bg.tertiary);
+  root.style.setProperty('--color-text-primary', themeObj.colors.text.primary);
+  root.style.setProperty('--color-text-secondary', themeObj.colors.text.secondary);
+  root.style.setProperty('--color-text-muted', themeObj.colors.text.muted);
+  root.style.setProperty('--color-border-subtle', themeObj.colors.border.subtle);
+  root.style.setProperty('--color-border-medium', themeObj.colors.border.medium);
+  root.style.setProperty('--color-accent-cyan', themeObj.colors.accent.primary);
+  root.style.setProperty('--color-accent-green', themeObj.colors.accent.success);
+  root.style.setProperty('--color-accent-amber', themeObj.colors.accent.warning);
+  root.style.setProperty('--color-accent-red', themeObj.colors.accent.danger);
+  root.style.setProperty('--glass-tier-1', themeObj.colors.bg.glass.replace('0.35', '0.08'));
+  root.style.setProperty('--glass-tier-2', themeObj.colors.bg.glass);
+
   // Apply effects as data attributes
   root.dataset.glass = String(themeObj.effects.glass);
   root.dataset.glow = String(themeObj.effects.glow);
@@ -912,7 +977,7 @@ customWallpaper.subscribe(wallpaper => {
 
 export function loadSavedTheme(): ThemeName {
   const saved = localStorage.getItem('quantmind-theme');
-  return (saved as ThemeName) || 'trading-terminal';
+  return (saved as ThemeName) || 'frosted-terminal';
 }
 
 export function setCustomWallpaper(wallpaper: string) {

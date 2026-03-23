@@ -29,6 +29,19 @@ from src.agents.skills.builtin_skills import (
     detect_support_resistance,
     validate_risk_parameters,
     analyze_code_complexity,
+    # Story 7.4 core skills
+    financial_data_fetch,
+    pattern_scanner,
+    statistical_edge,
+    hypothesis_document_writer,
+    mql5_generator,
+    backtest_launcher,
+    news_classifier,
+    risk_evaluator,
+    report_writer,
+    strategy_optimizer,
+    institutional_data_fetch,
+    calendar_gate_check,
 )
 
 
@@ -525,6 +538,251 @@ class TestGlobalSkillManager:
         set_skill_manager(new_manager)
 
         assert get_skill_manager() is new_manager
+
+
+# ============================================================================
+# Story 7.4: Skill Catalogue - 12 Core Skills Tests
+# ============================================================================
+
+class TestCoreSkillsRegistration:
+    """Test registering the 12 core skills from Story 7.4."""
+
+    def test_register_all_12_core_skills(self):
+        """Test that all 12 core skills are registered."""
+        manager = SkillManager()
+        register_builtin_skills(manager)
+
+        # The 12 core skills
+        core_skills = [
+            "financial_data_fetch",
+            "pattern_scanner",
+            "statistical_edge",
+            "hypothesis_document_writer",
+            "mql5_generator",
+            "backtest_launcher",
+            "news_classifier",
+            "risk_evaluator",
+            "report_writer",
+            "strategy_optimizer",
+            "institutional_data_fetch",
+            "calendar_gate_check",
+        ]
+
+        for skill_name in core_skills:
+            info = manager.get_skill_info(skill_name)
+            assert info["name"] == skill_name, f"Skill {skill_name} not registered"
+
+    def test_core_skills_have_version(self):
+        """Test that all core skills have version metadata."""
+        manager = SkillManager()
+        register_builtin_skills(manager)
+
+        info = manager.get_skill_info("financial_data_fetch")
+        assert "version" in info
+        assert info["version"] == "1.0.0"
+
+    def test_core_skills_have_slash_command(self):
+        """Test that all core skills have slash_command."""
+        manager = SkillManager()
+        register_builtin_skills(manager)
+
+        info = manager.get_skill_info("financial_data_fetch")
+        assert "slash_command" in info
+        assert info["slash_command"] == "/financial-data-fetch"
+
+    def test_core_skills_have_usage_count(self):
+        """Test that usage_count is tracked."""
+        manager = SkillManager()
+        register_builtin_skills(manager)
+
+        # Execute the skill
+        manager.execute("calendar_gate_check", {"current_time": "2026-03-19 12:00"})
+
+        info = manager.get_skill_info("calendar_gate_check")
+        assert "usage_count" in info
+        assert info["usage_count"] == 1
+
+
+class TestStory74CoreSkills:
+    """Test the 12 core skill functions from Story 7.4."""
+
+    def test_financial_data_fetch(self):
+        """Test financial_data_fetch skill."""
+        result = financial_data_fetch(
+            symbol="EURUSD",
+            data_type="ohlcv",
+            timeframe="1D",
+            start_date="2026-01-01",
+            end_date="2026-03-19"
+        )
+
+        assert result["symbol"] == "EURUSD"
+        assert result["data_type"] == "ohlcv"
+        assert result["timeframe"] == "1D"
+
+    def test_pattern_scanner(self):
+        """Test pattern_scanner skill."""
+        prices = [1.1000 + i * 0.001 for i in range(50)]
+        result = pattern_scanner(prices, pattern_type="all")
+
+        assert "patterns" in result
+        assert "count" in result
+
+    def test_statistical_edge(self):
+        """Test statistical_edge skill."""
+        returns = [0.01, -0.02, 0.015, -0.005, 0.02, -0.01, 0.025]
+        result = statistical_edge(returns)
+
+        assert "sharpe_ratio" in result
+        assert "win_rate" in result
+        assert "profit_factor" in result
+
+    def test_hypothesis_document_writer(self):
+        """Test hypothesis_document_writer skill."""
+        research_data = {
+            "hypothesis": "Price will increase",
+            "market_conditions": "Bullish trend",
+            "entry_criteria": ["RSI < 30", "Price > 20 MA"],
+            "exit_criteria": ["RSI > 70", "Price < 20 MA"],
+            "timeframes": ["1H", "4H"],
+            "risk_params": {"max_risk_percent": 2.0}
+        }
+        result = hypothesis_document_writer(research_data)
+
+        assert result["title"] is not None
+        assert "created_at" in result
+
+    def test_mql5_generator(self):
+        """Test mql5_generator skill."""
+        strategy_spec = {
+            "name": "My Strategy",
+            "entry_rules": ["RSI < 30"],
+            "exit_rules": ["RSI > 70"],
+            "indicators": ["RSI", "MA"]
+        }
+        result = mql5_generator(strategy_spec)
+
+        assert result["filename"] is not None
+        assert "MQL5" in result["language"]
+        assert "//+------------------------------------------------------------------+" in result["code"]
+
+    def test_backtest_launcher(self):
+        """Test backtest_launcher skill."""
+        result = backtest_launcher(
+            symbol="EURUSD",
+            strategy_params={"lot_size": 0.1},
+            start_date="2026-01-01",
+            end_date="2026-03-19",
+            timeframe="1H"
+        )
+
+        assert "backtest_id" in result
+        assert result["status"] == "queued"
+        assert result["symbol"] == "EURUSD"
+
+    def test_news_classifier(self):
+        """Test news_classifier skill."""
+        headlines = [
+            "Fed raises interest rates",
+            "Company reports record earnings",
+            "Market remains stable"
+        ]
+        result = news_classifier(headlines)
+
+        assert result["count"] == 3
+        assert "summary" in result
+
+    def test_risk_evaluator(self):
+        """Test risk_evaluator skill."""
+        position = {
+            "entry": 1.1000,
+            "stop_loss": 1.0950,
+            "take_profit": 1.1100,
+            "symbol": "EURUSD",
+            "position_size": 0.1
+        }
+        result = risk_evaluator(position, account_balance=10000)
+
+        assert "risk_percent" in result
+        assert "recommendation" in result
+        assert result["recommendation"] in ["approve", "review", "reject"]
+
+    def test_report_writer(self):
+        """Test report_writer skill."""
+        data = {
+            "period": "2026-Q1",
+            "total_return": 0.15,
+            "sharpe_ratio": 1.5,
+            "max_drawdown": 0.05,
+            "win_rate": 0.6
+        }
+        result = report_writer("performance", data)
+
+        assert result["report_type"] == "performance"
+        assert result["period"] == "2026-Q1"
+
+    def test_strategy_optimizer(self):
+        """Test strategy_optimizer skill."""
+        strategy_params = {
+            "lot_size": 0.1,
+            "stop_loss": 50,
+            "take_profit": 100,
+            "ma_period": 20
+        }
+        result = strategy_optimizer(strategy_params, optimization_target="sharpe")
+
+        assert "optimized_params" in result
+        assert "expected_improvement" in result
+
+    def test_institutional_data_fetch(self):
+        """Test institutional_data_fetch skill."""
+        result = institutional_data_fetch(
+            data_source="bloomberg",
+            query_params={"symbol": "AAPL"}
+        )
+
+        assert result["data_source"] == "bloomberg"
+        assert result["requires_license"] is True
+
+    def test_calendar_gate_check(self):
+        """Test calendar_gate_check skill."""
+        result = calendar_gate_check("2026-03-19 12:00")
+
+        assert "gate_open" in result
+        assert "reason" in result
+
+
+class TestSkillVersioning:
+    """Test skill versioning functionality."""
+
+    def test_register_with_version(self):
+        """Test registering skill with version."""
+        manager = SkillManager()
+
+        manager.register(
+            "versioned_skill",
+            lambda: "test",
+            description="Test skill",
+            version="2.0.0",
+            slash_command="/versioned-skill"
+        )
+
+        info = manager.get_skill_info("versioned_skill")
+        assert info["version"] == "2.0.0"
+        assert info["slash_command"] == "/versioned-skill"
+
+    def test_auto_generate_slash_command(self):
+        """Test auto-generation of slash_command."""
+        manager = SkillManager()
+
+        manager.register(
+            "my_test_skill",
+            lambda: "test",
+            description="Test"
+        )
+
+        info = manager.get_skill_info("my_test_skill")
+        assert info["slash_command"] == "/my-test-skill"
 
 
 if __name__ == "__main__":

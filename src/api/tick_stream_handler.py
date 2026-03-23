@@ -23,6 +23,12 @@ except ImportError:
 
 from src.data.brokers.mt5_socket_adapter import MT5SocketAdapter
 from src.api.websocket_endpoints import manager
+from src.api.websocket_endpoints import (
+    broadcast_position_update,
+    broadcast_pnl_update,
+    broadcast_bridge_status,
+    get_trading_broadcaster
+)
 from src.database.db_manager import DBManager
 from src.database.models import TickCache, SymbolSubscription
 from src.monitoring.prometheus_exporter import (
@@ -733,6 +739,113 @@ class TickStreamHandler:
             # Record drop
             tick_stream_drops.labels(symbol=symbol, reason="fetch_error").inc()
 
+    # =============================================================================
+    # Position & P&L Broadcasting Integration (Story 3-1)
+    # =============================================================================
+
+    async def broadcast_position_change(
+        self,
+        ticket: int,
+        symbol: str,
+        volume: float,
+        open_price: float,
+        current_price: float,
+        profit: float,
+        action: str = "open",
+        **kwargs
+    ):
+        """
+        Broadcast a position update event.
+
+        This method integrates the trading data broadcast with the tick stream.
+        Call this when positions are opened, modified, or closed.
+
+        Args:
+            ticket: MT5 position ticket
+            symbol: Trading symbol
+            volume: Position volume in lots
+            open_price: Open price
+            current_price: Current market price
+            profit: Current profit
+            action: One of 'open', 'modify', 'close'
+            **kwargs: Additional position data
+        """
+        position_data = {
+            "ticket": ticket,
+            "symbol": symbol,
+            "volume": volume,
+            "open_price": open_price,
+            "current_price": current_price,
+            "profit": profit,
+            "action": action,
+            **kwargs
+        }
+
+        # Broadcast the position update
+        await broadcast_position_update(position_data)
+
+        # Also update the local cache for state replay
+        broadcaster = get_trading_broadcaster()
+        await broadcaster.cache_position(position_data)
+
+    async def broadcast_pnl_change(
+        self,
+        daily_pnl: float,
+        open_positions: int,
+        open_pnl: float = 0.0,
+        closed_pnl: float = 0.0,
+        equity: float = 0.0,
+        balance: float = 0.0,
+        **kwargs
+    ):
+        """
+        Broadcast a P&L update event.
+
+        Call this when P&L calculations are updated.
+
+        Args:
+            daily_pnl: Total daily P&L
+            open_positions: Number of open positions
+            open_pnl: P&L from open positions
+            closed_pnl: P&L from closed positions
+            equity: Current equity
+            balance: Account balance
+            **kwargs: Additional P&L data
+        """
+        pnl_data = {
+            "daily_pnl": daily_pnl,
+            "open_positions": open_positions,
+            "open_pnl": open_pnl,
+            "closed_pnl": closed_pnl,
+            "equity": equity,
+            "balance": balance,
+            **kwargs
+        }
+
+        # Broadcast the P&L update
+        await broadcast_pnl_update(pnl_data)
+
+        # Also update the local cache
+        broadcaster = get_trading_broadcaster()
+        await broadcaster.cache_pnl(pnl_data)
+
+    async def report_bridge_status(self, connected: bool, latency_ms: float = None):
+        """
+        Report MT5 bridge connection status.
+
+        Call this to broadcast bridge status changes.
+
+        Args:
+            connected: Whether the MT5 bridge is connected
+            latency_ms: Current latency in milliseconds
+        """
+        message = "Connected to MT5" if connected else "ZMQ connection lost"
+        await broadcast_bridge_status(
+            connected=connected,
+            latency_ms=latency_ms,
+            message=message
+        )
+
     def get_stats(self) -> Dict:
         """Get streaming statistics."""
         avg_latency = sum(self._tick_latencies) / len(self._tick_latencies) if self._tick_latencies else 0
@@ -903,3 +1016,79 @@ def get_tick_handler(
         _tick_handler_instance.set_resource_monitor(resource_monitor)
 
     return _tick_handler_instance
+
+
+# -----------------------------------------------------------------------------
+# Position Query Functions (Story 3-6)
+# -----------------------------------------------------------------------------
+
+
+def get_position_by_ticket(ticket: int) -> Optional[Dict]:
+    """
+    Get position details by MT5 ticket number.
+
+    This function queries the current position from the MT5 adapter.
+
+    Args:
+        ticket: MT5 position ticket number
+
+    Returns:
+        Position dict with keys: ticket, bot_id, symbol, direction, lot, price, profit
+        Returns None if position not found
+    """
+    try:
+        from src.data.brokers.mt5_socket_adapter import MT5SocketAdapter
+        adapter = MT5SocketAdapter.get_instance()
+        if adapter:
+            position = adapter.get_position(ticket)
+            if position:
+                return {
+                    "ticket": position.get("ticket", ticket),
+                    "bot_id": position.get("bot_id", ""),
+                    "symbol": position.get("symbol", ""),
+                    "direction": position.get("type", "buy"),
+                    "lot": position.get("volume", 0.0),
+                    "price": position.get("price", 0.0),
+                    "profit": position.get("profit", 0.0)
+                }
+    except Exception as e:
+        logger.warning(f"Failed to get position {ticket}: {e}")
+
+    # Return None if position not found or adapter unavailable
+    return None
+
+
+def get_open_positions(bot_id: Optional[str] = None) -> list:
+    """
+    Get all open positions, optionally filtered by bot_id.
+
+    This function queries open positions from the MT5 adapter.
+
+    Args:
+        bot_id: Optional bot ID to filter positions
+
+    Returns:
+        List of position dicts with keys: ticket, bot_id, symbol, direction, lot, price, profit
+    """
+    try:
+        from src.data.brokers.mt5_socket_adapter import MT5SocketAdapter
+        adapter = MT5SocketAdapter.get_instance()
+        if adapter:
+            positions = adapter.get_open_positions(bot_id=bot_id)
+            return [
+                {
+                    "ticket": pos.get("ticket", 0),
+                    "bot_id": pos.get("bot_id", ""),
+                    "symbol": pos.get("symbol", ""),
+                    "direction": pos.get("type", "buy"),
+                    "lot": pos.get("volume", 0.0),
+                    "price": pos.get("price", 0.0),
+                    "profit": pos.get("profit", 0.0)
+                }
+                for pos in positions
+            ]
+    except Exception as e:
+        logger.warning(f"Failed to get open positions: {e}")
+
+    # Return empty list if positions not found or adapter unavailable
+    return []

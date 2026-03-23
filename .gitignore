@@ -6,6 +6,46 @@
 .quantmind/
 hummingbot-repo/
 video_in/
+.claude/
+
+# ============================================================
+# RUNTIME DATA (exclude from GitHub)
+# ============================================================
+# NOTE: data/scraped_articles/ is intentionally tracked and will be
+# uploaded to Contabo server directly — do NOT add it here.
+# Only exclude newly generated / transient data dirs:
+data/chromadb*/
+data/chromadb_test/
+data/backtests/
+data/inputs/
+data/outputs/
+data/videos/
+data/downloads/
+data/cache/
+
+# SQLite databases (runtime state — not source code)
+*.db
+*.sqlite
+*.sqlite3
+
+# Shared assets (user-uploaded / agent-generated content)
+shared_assets/
+
+# Video ingest working directories
+video_in/
+video_out/
+video_cache/
+
+# Agent runtime state
+agent_state/
+agent_cache/
+flows/
+
+# PageIndex data
+pageindex_data/
+
+# ZAP security scan outputs
+.zap/
 
 # ============================================================
 # SYSTEM & OS

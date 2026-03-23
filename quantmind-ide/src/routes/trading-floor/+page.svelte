@@ -165,7 +165,7 @@
 
   // Subscribe to store
   let floorStats = $derived($tradingFloorStore?.floorStats || { totalTasks: 0, activeTasks: 0 });
-  let wsConnected = $derived($tradingFloorWS?.connected || false);
+  let wsConnected = $derived(tradingFloorWS.connected || false);
 </script>
 
 <div class="trading-floor-demo">

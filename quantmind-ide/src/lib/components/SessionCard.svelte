@@ -1,7 +1,3 @@
-<!-- @migration-task Error while migrating Svelte code: This type of directive is not valid on components
-https://svelte.dev/e/component_invalid_directive -->
-<!-- @migration-task Error while migrating Svelte code: This type of directive is not valid on components
-https://svelte.dev/e/component_invalid_directive -->
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import { fade, slide } from 'svelte/transition';
@@ -10,7 +6,7 @@ https://svelte.dev/e/component_invalid_directive -->
   const dispatch = createEventDispatcher();
 
   // Session interface
-  export interface Session {
+  interface Session {
     id: string;
     name: string;
     status: 'running' | 'completed' | 'failed' | 'cancelled';
@@ -25,28 +21,33 @@ https://svelte.dev/e/component_invalid_directive -->
     }>;
   }
 
-  export let session!: Session;
-  export let expanded = false;
+  interface Props {
+    session: Session;
+    expanded?: boolean;
+  }
+
+  let { session, expanded = false }: Props = $props();
 
   // Computed values
-  $: progress = session.strategies_total > 0
+  let progress = $derived(session.strategies_total > 0
     ? Math.round((session.strategies_completed / session.strategies_total) * 100)
-    : 0;
+    : 0);
 
-  $: isRunning = session.status === 'running';
-  $: isCompleted = session.status === 'completed';
-  $: isFailed = session.status === 'failed';
-  $: isCancelled = session.status === 'cancelled';
+  let isRunning = $derived(session.status === 'running');
+  let isCompleted = $derived(session.status === 'completed');
+  let isFailed = $derived(session.status === 'failed');
+  let isCancelled = $derived(session.status === 'cancelled');
 
-  $: statusColor = isRunning ? 'var(--accent-primary)' :
-    isCompleted ? 'var(--accent-success)' :
-    isFailed ? 'var(--accent-danger)' :
-    'var(--text-muted)';
+  let statusColor = $derived(isRunning ? 'var(--color-accent-cyan)' :
+    isCompleted ? 'var(--color-accent-green)' :
+    isFailed ? 'var(--color-accent-red)' :
+    'var(--color-text-muted)');
 
-  $: statusBg = isRunning ? 'oklch(65% 0.18 250 / 0.15)' :
+  // Status background color
+  let statusBg = $derived(isRunning ? 'oklch(65% 0.18 250 / 0.15)' :
     isCompleted ? 'oklch(70% 0.18 145 / 0.15)' :
     isFailed ? 'oklch(65% 0.20 25 / 0.15)' :
-    'oklch(50% 0.03 260 / 0.15)';
+    'oklch(50% 0.03 260 / 0.15)');
 
   // Format timestamps
   function formatTime(isoString: string): string {
@@ -110,7 +111,7 @@ https://svelte.dev/e/component_invalid_directive -->
     <div class="header-right">
       <span class="status-badge" style="background-color: {statusBg}; color: {statusColor}">
         {#if isRunning}
-          <svelte:component this={Loader2} size={12} class:spin />
+          <span class="spin"><svelte:component this={Loader2} size={12} /></span>
         {:else}
           <svelte:component this={getStatusIcon()} size={12} />
         {/if}
@@ -178,8 +179,8 @@ https://svelte.dev/e/component_invalid_directive -->
 
 <style>
   .session-card {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     padding: 12px;
     cursor: pointer;
@@ -188,29 +189,29 @@ https://svelte.dev/e/component_invalid_directive -->
   }
 
   .session-card:hover {
-    border-color: var(--border-strong);
+    border-color: var(--color-border-medium);
     box-shadow: 0 2px 8px oklch(0% 0 0 / 0.2);
   }
 
   .session-card:focus-visible {
-    outline: 2px solid var(--accent-primary);
+    outline: 2px solid var(--color-accent-cyan);
     outline-offset: 2px;
   }
 
   .session-card.running {
-    border-left: 3px solid var(--accent-primary);
+    border-left: 3px solid var(--color-accent-cyan);
   }
 
   .session-card.completed {
-    border-left: 3px solid var(--accent-success);
+    border-left: 3px solid var(--color-accent-green);
   }
 
   .session-card.failed {
-    border-left: 3px solid var(--accent-danger);
+    border-left: 3px solid var(--color-accent-red);
   }
 
   .session-card.cancelled {
-    border-left: 3px solid var(--text-muted);
+    border-left: 3px solid var(--color-text-muted);
   }
 
   .card-header {
@@ -231,7 +232,7 @@ https://svelte.dev/e/component_invalid_directive -->
   .session-name {
     font-weight: 600;
     font-size: 0.875rem;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -240,7 +241,7 @@ https://svelte.dev/e/component_invalid_directive -->
   .session-id {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.75rem;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .header-right {
@@ -285,7 +286,7 @@ https://svelte.dev/e/component_invalid_directive -->
   }
 
   .strategy-count {
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-weight: 500;
   }
 
@@ -293,12 +294,12 @@ https://svelte.dev/e/component_invalid_directive -->
     display: flex;
     align-items: center;
     gap: 4px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .progress-bar {
     height: 4px;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 2px;
     overflow: hidden;
   }
@@ -310,16 +311,16 @@ https://svelte.dev/e/component_invalid_directive -->
   }
 
   .progress-fill.running {
-    background: linear-gradient(90deg, var(--accent-primary), oklch(75% 0.18 250));
+    background: linear-gradient(90deg, var(--color-accent-cyan), oklch(75% 0.18 250));
     animation: pulse-glow 2s ease-in-out infinite;
   }
 
   .progress-fill.completed {
-    background: var(--accent-success);
+    background: var(--color-accent-green);
   }
 
   .progress-fill.failed {
-    background: var(--accent-danger);
+    background: var(--color-accent-red);
   }
 
   @keyframes pulse-glow {
@@ -334,7 +335,7 @@ https://svelte.dev/e/component_invalid_directive -->
   .card-details {
     margin-top: 12px;
     padding-top: 12px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
 
   .details-meta {
@@ -352,12 +353,12 @@ https://svelte.dev/e/component_invalid_directive -->
 
   .meta-label {
     font-size: 0.75rem;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .meta-value {
     font-size: 0.875rem;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .strategies-list {
@@ -369,7 +370,7 @@ https://svelte.dev/e/component_invalid_directive -->
   .strategies-header {
     font-size: 0.75rem;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     margin-bottom: 4px;
   }
 
@@ -384,26 +385,26 @@ https://svelte.dev/e/component_invalid_directive -->
     justify-content: space-between;
     align-items: center;
     padding: 6px 8px;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 4px;
     font-size: 0.875rem;
     transition: background-color 0.15s ease;
   }
 
   .strategy-item:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .strategy-item.completed {
-    border-left: 2px solid var(--accent-success);
+    border-left: 2px solid var(--color-accent-green);
   }
 
   .strategy-item.failed {
-    border-left: 2px solid var(--accent-danger);
+    border-left: 2px solid var(--color-accent-red);
   }
 
   .strategy-name {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -411,7 +412,7 @@ https://svelte.dev/e/component_invalid_directive -->
 
   .strategy-status {
     font-size: 0.75rem;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-transform: capitalize;
   }
 </style>

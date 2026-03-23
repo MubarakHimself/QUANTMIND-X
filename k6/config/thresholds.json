@@ -1,0 +1,70 @@
+{
+  "targets": {
+    "latency": {
+      "p50": {
+        "target_ms": 100,
+        "critical_ms": 500
+      },
+      "p95": {
+        "target_ms": 250,
+        "critical_ms": 500
+      },
+      "p99": {
+        "target_ms": 500,
+        "critical_ms": 1000
+      }
+    },
+    "error_rate": {
+      "target_pct": 1,
+      "critical_pct": 5
+    },
+    "circuit_breaker": {
+      "error_threshold_pct": 5,
+      "latency_threshold_ms": 2000,
+      "activation_window_seconds": 10
+    }
+  },
+  "endpoints": {
+    "trading": {
+      "backtest_run": { "max_ms": 30000 },
+      "trading_status": { "max_ms": 500 },
+      "bot_status": { "max_ms": 500 },
+      "close_position": { "max_ms": 2000 },
+      "emergency_stop": { "max_ms": 1000 }
+    },
+    "kill_switch": {
+      "status": { "max_ms": 200 },
+      "trigger": { "max_ms": 1000 },
+      "health": { "max_ms": 100 }
+    },
+    "health": {
+      "full": { "max_ms": 500 },
+      "api": { "max_ms": 100 },
+      "mt5": { "max_ms": 500 }
+    },
+    "risk": {
+      "regime": { "max_ms": 500 },
+      "params": { "max_ms": 200 },
+      "compliance": { "max_ms": 500 },
+      "physics": { "max_ms": 1000 }
+    },
+    "websocket": {
+      "connect": { "max_ms": 1000 },
+      "message_roundtrip": { "max_ms": 500 }
+    },
+    "floor_manager": {
+      "chat": { "max_ms": 5000 },
+      "status": { "max_ms": 500 }
+    },
+    "agents": {
+      "stream": { "max_ms": 1000 },
+      "health": { "max_ms": 500 }
+    }
+  },
+  "bot_capacity": {
+    "target_concurrent_bots": 50,
+    "sustained_duration_seconds": 90,
+    "ramp_up_seconds": 30,
+    "ramp_down_seconds": 30
+  }
+}

@@ -319,9 +319,17 @@ class EnhancedGovernor(Governor):
         # Comment 2: Set mandate.mode to preserve mode tag in risk notes
 
         # Add risk_mode info to kelly_adjustments
-        risk_mode_adjustments = kelly_result.adjustments_applied.copy() if kelly_result.adjustments_applied else {}
-        risk_mode_adjustments['risk_mode'] = self.risk_mode
-        risk_mode_adjustments['risk_mode_applied'] = True
+        # Note: adjustments_applied is a List[str], not a Dict - convert for RiskMandate
+        if isinstance(kelly_result.adjustments_applied, list):
+            risk_mode_adjustments = {
+                'adjustments': kelly_result.adjustments_applied.copy() if kelly_result.adjustments_applied else [],
+                'risk_mode': self.risk_mode,
+                'risk_mode_applied': True
+            }
+        else:
+            risk_mode_adjustments = kelly_result.adjustments_applied.copy() if kelly_result.adjustments_applied else {}
+            risk_mode_adjustments['risk_mode'] = self.risk_mode
+            risk_mode_adjustments['risk_mode_applied'] = True
 
         mandate = RiskMandate(
             allocation_scalar=physics_scalar,

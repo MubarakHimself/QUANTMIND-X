@@ -55,15 +55,15 @@
     switch (status) {
       case 'connected':
       case 'completed':
-        return 'var(--accent-success)';
+        return 'var(--color-accent-green)';
       case 'error':
       case 'failed':
-        return 'var(--accent-danger)';
+        return 'var(--color-accent-red)';
       case 'pending':
       case 'running':
-        return 'var(--accent-warning)';
+        return 'var(--color-accent-amber)';
       default:
-        return 'var(--text-muted)';
+        return 'var(--color-text-muted)';
     }
   }
   
@@ -186,43 +186,43 @@
     align-items: center;
     gap: 4px;
     padding: 4px 8px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     position: relative;
     cursor: default;
     transition: all 0.15s;
   }
   
   .context-tag:hover {
-    background: var(--bg-secondary);
-    border-color: var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-color: var(--color-border-subtle);
   }
   
   /* Type-specific colors */
   .context-tag.file {
-    border-left: 2px solid var(--accent-primary);
+    border-left: 2px solid var(--color-accent-cyan);
   }
   
   .context-tag.strategy {
-    border-left: 2px solid var(--accent-secondary);
+    border-left: 2px solid var(--color-accent-amber);
   }
   
   .context-tag.broker {
-    border-left: 2px solid var(--accent-success);
+    border-left: 2px solid var(--color-accent-green);
   }
   
   .context-tag.backtest {
-    border-left: 2px solid var(--accent-warning);
+    border-left: 2px solid var(--color-accent-amber);
   }
   
   .tag-icon {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
   
   .tag-name {
@@ -245,7 +245,7 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     padding: 0;
     margin-left: 2px;
@@ -254,7 +254,7 @@
   
   .remove-btn:hover {
     background: rgba(239, 68, 68, 0.2);
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
   
   /* Tooltip */
@@ -263,8 +263,8 @@
     bottom: calc(100% + 8px);
     left: 50%;
     transform: translateX(-50%);
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     padding: 10px 12px;
     min-width: 180px;
@@ -280,7 +280,7 @@
     left: 50%;
     transform: translateX(-50%);
     border: 6px solid transparent;
-    border-top-color: var(--border-subtle);
+    border-top-color: var(--color-border-subtle);
   }
   
   .tooltip-header {
@@ -289,13 +289,13 @@
     gap: 8px;
     margin-bottom: 8px;
     padding-bottom: 8px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
   
   .tooltip-name {
     font-size: 12px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     word-break: break-all;
   }
   
@@ -314,11 +314,11 @@
   
   .tooltip-label {
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
   
   .tooltip-value {
     font-size: 11px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 </style>

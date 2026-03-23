@@ -206,16 +206,65 @@ class KillSwitch:
     def reset(self) -> None:
         """
         Reset kill switch to allow trading again.
-        
+
         Should only be called after manual review.
         """
         if not self._active:
             return
-        
+
         self._active = False
         self._clear_stop_file()
         logger.info("Kill switch reset - trading enabled")
-    
+
+    def panic(self, reason: str = "MANUAL") -> None:
+        """
+        Synchronous panic trigger - activates the kill switch.
+
+        This is a convenience method that wraps trigger() for synchronous contexts.
+        For full async control, use trigger() directly.
+
+        Args:
+            reason: Reason string that maps to KillReason.MANUAL
+        """
+        # Set active synchronously for immediate protection
+        self._active = True
+
+        # Fire and forget the async cleanup - we don't await it
+        # because the key guarantee is that _active is set immediately
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(self._async_panic_cleanup(reason))
+            else:
+                asyncio.get_event_loop().run_until_complete(
+                    self._async_panic_cleanup(reason)
+                )
+        except RuntimeError:
+            # No event loop available - just set active flag
+            pass
+
+    async def _async_panic_cleanup(self, reason: str) -> None:
+        """Async cleanup tasks after panic - called after _active is set."""
+        # Create event record
+        event = KillEvent(
+            timestamp=datetime.now(),
+            reason=KillReason.MANUAL,
+            triggered_by="panic",
+            message=reason,
+            accounts_affected=self._connected_eas.copy()
+        )
+        self._kill_history.append(event)
+
+        # Send CLOSE_ALL to all EAs
+        await self._send_close_all()
+
+        # Call callback
+        if self.on_kill:
+            try:
+                self.on_kill(event)
+            except Exception as e:
+                logger.error(f"Kill callback error: {e}")
+
     async def start_monitoring(self) -> None:
         """Start background monitoring for STOP file."""
         if self._monitoring:

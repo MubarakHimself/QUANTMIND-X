@@ -1,0 +1,87 @@
+# QuantMindX OpenTelemetry Collector Configuration
+# Receives OTLP traces and exports to Grafana Tempo
+# Also exposes Prometheus metrics for collector health
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # Prometheus receiver for collector's own metrics
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'otel-collector'
+          static_configs:
+            - targets: ['localhost:8888']
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
+  # Memory limit for the batch processor
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  # Filter out noise spans (heartbeats, health checks)
+  filter:
+    spans:
+      exclude:
+        match_type: strict
+        attributes:
+          - key: http.target
+            value: /health
+        - key: http.target
+            value: /metrics
+
+exporters:
+  # Export traces to Grafana Tempo
+  otlp/tempo:
+    endpoint: ${GRAFANA_TEMPO_ENDPOINT:https://tempo-prod-xxx.grafana.net:443}
+    tls:
+      insecure: false
+    auth:
+      authenticator: basicauth/tempo
+
+  # Export metrics to Prometheus (for collector health)
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    namespace: otel
+    const_labels:
+      service: otel-collector
+      environment: ${NODE_ENVIRONMENT:production}
+
+  # Debug exporter (remove in production)
+  # logging:
+  #   verbosity: detailed
+
+extensions:
+  basicauth/tempo:
+    client_auth:
+      username: ${GRAFANA_TEMPO_USER:}
+      password: ${GRAFANA_TEMPO_API_KEY:}
+
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+  pprof:
+    endpoint: localhost:1777
+
+service:
+  extensions: [health_check, pprof, basicauth/tempo]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/tempo]
+
+    metrics:
+      receivers: [prometheus]
+      processors: [batch]
+      exporters: [prometheus]

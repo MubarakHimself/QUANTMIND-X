@@ -11,9 +11,14 @@ Base class for all department heads. Provides:
 
 Model Tier: Sonnet (balanced reasoning)
 """
+import json
 import logging
+import os
+import uuid
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any
+
+import anthropic
 
 from src.agents.departments.types import (
     Department,
@@ -22,6 +27,8 @@ from src.agents.departments.types import (
 )
 from src.agents.departments.department_mail import (
     DepartmentMailService,
+    RedisDepartmentMailService,
+    get_redis_mail_service,
     MessageType,
     Priority,
 )
@@ -54,13 +61,15 @@ class DepartmentHead:
         self,
         config: DepartmentHeadConfig,
         mail_db_path: str = ".quantmind/department_mail.db",
+        use_redis_mail: bool = True,
     ):
         """
         Initialize the Department Head.
 
         Args:
             config: Department configuration
-            mail_db_path: Path to mail database
+            mail_db_path: Path to mail database (used if use_redis_mail=False)
+            use_redis_mail: If True, use Redis Streams for mail (recommended)
         """
         self.config = config
         self.department = config.department
@@ -83,7 +92,13 @@ class DepartmentHead:
         self.tool_registry = ToolRegistry()
         self._tools = self.tool_registry.get_tools_for_department(self.department)
 
-        self.mail_service = DepartmentMailService(db_path=mail_db_path)
+        # Initialize mail service (Redis Streams recommended)
+        if use_redis_mail:
+            self.mail_service = get_redis_mail_service(
+                consumer_name=f"{self.department.value}-{uuid.uuid4().hex[:8]}"
+            )
+        else:
+            self.mail_service = DepartmentMailService(db_path=mail_db_path)
         self._init_spawner()
 
         logger.info(f"DepartmentHead initialized: {self.department.value} with {len(self._tools)} tools")
@@ -327,6 +342,184 @@ class DepartmentHead:
                 "status": "spawn_failed",
                 "error": str(e),
             }
+
+    # ------------------------------------------------------------------
+    # LLM invocation infrastructure
+    # ------------------------------------------------------------------
+
+    def _build_system_prompt(
+        self,
+        canvas_context: Optional[dict] = None,
+        memory_nodes: Optional[list] = None,
+    ) -> str:
+        """
+        Construct the full system prompt for Claude.
+
+        Combines the department system prompt with relevant memory nodes
+        and canvas context.
+
+        Args:
+            canvas_context: Optional canvas context dict to include.
+            memory_nodes: Optional list of memory node dicts to include.
+
+        Returns:
+            Assembled system prompt string.
+        """
+        parts = [self.system_prompt]
+
+        if memory_nodes:
+            memory_section = "## Relevant Memory\n"
+            memory_section += "\n".join(
+                node.get("content", "") for node in memory_nodes if node.get("content")
+            )
+            parts.append(memory_section)
+
+        if canvas_context:
+            parts.append(
+                "## Current Canvas Context\n"
+                + json.dumps(canvas_context, indent=2)
+            )
+
+        parts.append(
+            "## Context Guard\n"
+            "Do NOT include raw file contents or code blobs in your reasoning. "
+            "Reference files by path only."
+        )
+
+        return "\n\n".join(parts)
+
+    async def _read_relevant_memory(self, query: str, limit: int = 5) -> list:
+        """
+        Read relevant OPINION and FACT nodes from graph memory.
+
+        Args:
+            query: Search query string.
+            limit: Maximum number of nodes to return.
+
+        Returns:
+            List of dicts with keys: content, type, created_at.
+        """
+        try:
+            from src.memory.graph.facade import get_graph_memory
+
+            memory = get_graph_memory()
+            nodes = await memory.search_nodes(
+                query=query,
+                node_types=["OPINION", "FACT"],
+                limit=limit,
+            )
+            return [
+                {
+                    "content": n.content,
+                    "type": n.node_type,
+                    "created_at": n.created_at,
+                }
+                for n in nodes
+            ]
+        except Exception:
+            return []
+
+    async def _invoke_claude(
+        self,
+        task: str,
+        canvas_context: Optional[dict] = None,
+        tools: Optional[list] = None,
+    ) -> dict:
+        """
+        Make an Anthropic SDK call with the assembled system prompt.
+
+        Args:
+            task: The user-facing task string sent as the human turn.
+            canvas_context: Optional canvas context to embed in the prompt.
+            tools: Optional list of Anthropic tool definitions to pass.
+
+        Returns:
+            Dict with keys: content, tool_calls, model, usage, stop_reason.
+            On error includes an "error" key.
+        """
+        memory_nodes = await self._read_relevant_memory(task)
+        system = self._build_system_prompt(
+            canvas_context=canvas_context,
+            memory_nodes=memory_nodes,
+        )
+
+        model = os.getenv("ANTHROPIC_MODEL_SONNET", "claude-sonnet-4-6")
+        if self.model_tier == "opus":
+            model = os.getenv("ANTHROPIC_MODEL_OPUS", "claude-opus-4-6")
+
+        client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+        kwargs: dict = {
+            "model": model,
+            "max_tokens": 4096,
+            "system": system,
+            "messages": [{"role": "user", "content": task}],
+        }
+        if tools:
+            kwargs["tools"] = tools
+
+        try:
+            response = await client.messages.create(**kwargs)
+
+            text_content = ""
+            tool_calls = []
+            for block in response.content:
+                if block.type == "text":
+                    text_content += block.text
+                elif block.type == "tool_use":
+                    tool_calls.append(
+                        {"name": block.name, "input": block.input, "id": block.id}
+                    )
+
+            return {
+                "content": text_content,
+                "tool_calls": tool_calls,
+                "model": response.model,
+                "usage": {
+                    "input_tokens": response.usage.input_tokens,
+                    "output_tokens": response.usage.output_tokens,
+                },
+                "stop_reason": response.stop_reason,
+            }
+        except anthropic.AuthenticationError:
+            logger.error(
+                "Anthropic authentication failed — check ANTHROPIC_API_KEY"
+            )
+            return {"content": "", "tool_calls": [], "error": "auth_failed"}
+        except Exception as e:
+            logger.error(f"Claude invocation failed: {e}")
+            return {"content": "", "tool_calls": [], "error": str(e)}
+
+    async def _write_opinion_node(
+        self,
+        content: str,
+        confidence: float = 0.7,
+        tags: Optional[list] = None,
+    ) -> None:
+        """
+        Write an OPINION node to graph memory after task completion.
+
+        Args:
+            content: The opinion content to store.
+            confidence: Confidence score (0.0–1.0).
+            tags: Optional list of string tags.
+        """
+        try:
+            from src.memory.graph.facade import get_graph_memory
+
+            memory = get_graph_memory()
+            await memory.add_node(
+                node_type="OPINION",
+                content=content,
+                metadata={
+                    "department": self.department.value,
+                    "confidence": confidence,
+                    "tags": tags or [],
+                    "source": "department_head",
+                },
+            )
+        except Exception as e:
+            logger.warning(f"Failed to write opinion node: {e}")
 
     def close(self):
         """Clean up resources."""

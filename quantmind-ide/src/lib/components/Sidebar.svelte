@@ -23,7 +23,7 @@
   const dispatch = createEventDispatcher();
 
   // API base URL
-  const API_BASE = "http://localhost:8000/api";
+  const API_BASE = "/api";
 
   // Tree data state
   let treeData: Record<string, any[]> = $state({
@@ -382,8 +382,8 @@
     grid-row: 1;
     display: flex;
     flex-direction: column;
-    background: var(--bg-secondary);
-    border-right: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-right: 1px solid var(--color-border-subtle);
     overflow: hidden;
     width: var(--panel-width);
   }
@@ -393,9 +393,9 @@
     flex-direction: column;
     height: var(--header-height);
     padding: 0 12px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
     justify-content: center;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
   }
 
   .header-top {
@@ -410,7 +410,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .refresh-btn {
@@ -422,13 +422,13 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
   }
 
   .refresh-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   :global(.spinning) {
@@ -447,9 +447,9 @@
   .error-msg {
     padding: 8px 12px;
     font-size: 11px;
-    color: var(--accent-danger);
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border-subtle);
+    color: var(--color-accent-red);
+    background: var(--color-bg-base);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .empty-state {
@@ -463,24 +463,24 @@
 
   .empty-text {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-align: center;
   }
 
   .retry-btn {
     padding: 6px 12px;
     font-size: 11px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     cursor: pointer;
     transition: background 0.15s ease;
   }
 
   .retry-btn:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
   }
 
   .tree-view {
@@ -495,20 +495,20 @@
     gap: 6px;
     padding: 4px 12px;
     cursor: pointer;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     transition: background 0.05s ease;
     user-select: none;
     font-size: 13px;
   }
 
   .tree-item:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .tree-item:focus {
     outline: none;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .tree-item.file {
@@ -534,15 +534,15 @@
 
   /* Icon adjustments */
   :global(.tree-item .lucide) {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     flex-shrink: 0;
   }
 
   .tree-item:hover :global(.lucide) {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .tree-item.folder :global(.lucide) {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 </style>

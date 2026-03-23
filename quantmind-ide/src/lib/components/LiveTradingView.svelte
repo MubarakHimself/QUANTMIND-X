@@ -407,7 +407,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     overflow: hidden;
   }
 
@@ -415,8 +415,8 @@
     display: flex;
     gap: 4px;
     padding: 8px;
-    border-bottom: 1px solid var(--border-subtle);
-    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-surface);
   }
 
   .sub-tab {
@@ -427,20 +427,20 @@
     background: transparent;
     border: none;
     border-radius: 8px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.15s ease;
     font-size: 13px;
   }
 
   .sub-tab:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .sub-tab.active {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .sub-content {
@@ -462,8 +462,8 @@
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
     flex-wrap: wrap;
   }
@@ -472,28 +472,28 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 13px;
   }
 
   .account-select {
     padding: 8px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
     cursor: pointer;
     min-width: 200px;
   }
 
   .account-select:hover {
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
   }
 
   .account-select:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
   }
 
   .active-account-info {
@@ -512,7 +512,7 @@
     font-size: 11px;
     font-weight: 500;
     background: rgba(107, 114, 128, 0.2);
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .account-status.connected {
@@ -522,7 +522,7 @@
 
   .account-equity {
     font-size: 13px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .stats-row {
@@ -536,13 +536,13 @@
     align-items: center;
     gap: 12px;
     padding: 16px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
   }
 
   .stat-card :global(svg) {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .stat-info {
@@ -553,7 +553,7 @@
   .stat-value {
     font-size: 18px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .stat-value.positive {
@@ -562,7 +562,7 @@
 
   .stat-label {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .sections-row {
@@ -575,18 +575,18 @@
     align-items: center;
     gap: 8px;
     padding: 12px 16px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     cursor: pointer;
     flex: 1;
     font-size: 13px;
   }
 
   .section-card:hover {
-    border-color: var(--accent-primary);
-    color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
+    color: var(--color-accent-cyan);
   }
 
   .section-card.danger {
@@ -601,7 +601,7 @@
   .broker-section h3 {
     font-size: 14px;
     margin: 0;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .broker-header {
@@ -619,15 +619,15 @@
 
   .book-filter label {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .book-filter select {
     padding: 6px 10px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 12px;
     cursor: pointer;
   }
@@ -664,7 +664,7 @@
   }
 
   .account-card:hover:not(.active) {
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
     cursor: pointer;
   }
 
@@ -676,8 +676,8 @@
 
   .account-card {
     padding: 16px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
   }
 
@@ -685,7 +685,7 @@
     display: block;
     font-size: 14px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     margin-bottom: 8px;
   }
 
@@ -693,7 +693,7 @@
     display: flex;
     justify-content: space-between;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin-bottom: 12px;
   }
 
@@ -703,10 +703,10 @@
     justify-content: center;
     gap: 4px;
     padding: 6px 10px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border: none;
     border-radius: 4px;
-    color: var(--bg-primary);
+    color: var(--color-bg-base);
     font-size: 11px;
     cursor: pointer;
   }
@@ -714,7 +714,7 @@
   /* Bots View Styles */
   .bots-view h2 {
     margin: 0 0 20px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .bot-cards {
@@ -728,8 +728,8 @@
     align-items: center;
     gap: 12px;
     padding: 16px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
   }
 
@@ -746,13 +746,13 @@
   .bot-main h4 {
     margin: 0;
     font-size: 13px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .bot-main p {
     margin: 4px 0 0;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .state-badge {
@@ -766,8 +766,8 @@
   /* Terminal Section */
   .terminal-section {
     margin-top: 20px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     overflow: hidden;
     transition: all 0.3s ease;
@@ -782,10 +782,10 @@
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     cursor: pointer;
     user-select: none;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .terminal-header:hover {
@@ -798,18 +798,18 @@
     gap: 8px;
     font-size: 13px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .terminal-icon {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
     font-family: 'Monaco', 'Courier New', monospace;
   }
 
   .terminal-toggle {
     background: transparent;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     padding: 4px;
     border-radius: 4px;
@@ -817,8 +817,8 @@
   }
 
   .terminal-toggle:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .terminal-content {
@@ -831,7 +831,7 @@
     font-family: 'Monaco', 'Courier New', monospace;
     font-size: 12px;
     line-height: 1.4;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     margin-bottom: 12px;
   }
 
@@ -841,16 +841,16 @@
   }
 
   .terminal-line.info {
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .terminal-line.trade {
-    color: var(--accent-success);
+    color: var(--color-accent-green);
     font-weight: 600;
   }
 
   .terminal-line.error {
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
 
   .terminal-input {
@@ -858,13 +858,13 @@
     align-items: center;
     gap: 8px;
     padding: 8px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
   }
 
   .prompt {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
     font-family: 'Monaco', 'Courier New', monospace;
     font-weight: 600;
   }
@@ -874,13 +874,13 @@
     background: transparent;
     border: none;
     outline: none;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-family: 'Monaco', 'Courier New', monospace;
     font-size: 12px;
   }
 
   .terminal-input-field::placeholder {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .chart-view {

@@ -64,7 +64,7 @@
   function getProgressColor(progress: number, status: string): string {
     if (status === 'failed' || status === 'quarantined') return '#ef4444';
     if (progress === 100) return '#10b981';
-    return 'var(--accent-primary)';
+    return 'var(--color-accent-cyan)';
   }
 
   function formatProgress(progress: number): string {
@@ -220,8 +220,8 @@
   }
 
   .modal {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-strong);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-medium);
     border-radius: 8px;
     width: 480px;
     max-width: 90%;
@@ -234,19 +234,19 @@
     align-items: center;
     padding: 0 16px;
     height: 48px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .modal-header h2 {
     margin: 0;
     font-size: 16px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .modal-header button {
     background: none;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
   }
 
@@ -264,27 +264,27 @@
     gap: 6px;
     margin-bottom: 6px;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .form-group input {
     width: 100%;
     padding: 10px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
     transition: border-color 0.15s;
   }
 
   .form-group input:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
   }
 
   .form-group input.error {
-    border-color: var(--accent-danger);
+    border-color: var(--color-accent-red);
   }
 
   .error-banner {
@@ -297,20 +297,20 @@
     border-radius: 6px;
     margin-bottom: 16px;
     font-size: 12px;
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
 
   .dismiss-btn {
     margin-left: auto;
     background: none;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     font-size: 14px;
   }
 
   .dismiss-btn:hover {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .queue-header {
@@ -322,8 +322,8 @@
 
   .queue-count {
     font-size: 11px;
-    color: var(--text-muted);
-    background: var(--bg-tertiary);
+    color: var(--color-text-muted);
+    background: var(--color-bg-elevated);
     padding: 2px 8px;
     border-radius: 10px;
   }
@@ -333,7 +333,7 @@
     justify-content: flex-end;
     gap: 8px;
     padding: 16px 20px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
 
   .btn {
@@ -344,32 +344,32 @@
   }
 
   .btn.secondary {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    color: var(--text-secondary);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
+    color: var(--color-text-secondary);
   }
 
   .btn.primary {
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border: none;
-    color: var(--bg-primary);
+    color: var(--color-bg-base);
   }
 
   .queue-section {
     margin-top: 16px;
     padding-top: 16px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
 
   .queue-section h4 {
     margin: 0 0 12px;
     font-size: 13px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .queue-item {
     padding: 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
     margin-bottom: 8px;
   }
@@ -384,7 +384,7 @@
   .job-name {
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .queue-item .status {
@@ -404,7 +404,7 @@
   .progress-bar {
     flex: 1;
     height: 6px;
-    background: var(--border-subtle);
+    background: var(--color-border-subtle);
     border-radius: 3px;
     overflow: hidden;
   }
@@ -418,7 +418,7 @@
   .progress-text {
     font-size: 11px;
     font-family: monospace;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     min-width: 40px;
     text-align: right;
   }
@@ -432,7 +432,7 @@
     background: rgba(239, 68, 68, 0.1);
     border-radius: 4px;
     font-size: 11px;
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
 
   .btn {

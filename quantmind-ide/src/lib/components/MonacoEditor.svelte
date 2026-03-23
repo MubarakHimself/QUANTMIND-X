@@ -439,8 +439,8 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     overflow: hidden;
     position: relative;
@@ -461,8 +461,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 16px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
     z-index: 2;
   }
 
@@ -471,17 +471,17 @@
     align-items: center;
     gap: 8px;
     font-size: 13px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .filename {
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .language-badge {
     padding: 2px 8px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     color: white;
     border-radius: 4px;
     font-size: 11px;
@@ -500,16 +500,16 @@
     width: 28px;
     height: 28px;
     background: transparent;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     cursor: pointer;
     transition: all 0.2s ease;
   }
 
   .action-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
     transform: translateY(-1px);
   }
 
@@ -524,10 +524,10 @@
     justify-content: space-between;
     align-items: center;
     padding: 4px 16px;
-    background: var(--bg-secondary);
-    border-top: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-top: 1px solid var(--color-border-subtle);
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     z-index: 2;
   }
 
@@ -537,7 +537,7 @@
   }
 
   .breakpoint-count {
-    color: var(--accent-warning);
+    color: var(--color-accent-amber);
   }
 
   /* Git decoration styles */

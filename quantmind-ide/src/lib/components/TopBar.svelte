@@ -5,163 +5,138 @@
     ShieldAlert,
     Settings,
     Bell,
-    Wrench,
-    X,
-    AlertTriangle
+    MessageSquare,
   } from "lucide-svelte";
-  import { navigationStore } from "../stores/navigationStore";
+  import { activeCanvasStore, CANVASES } from "../stores/canvasStore";
+  import KillSwitchModal from "./kill-switch/KillSwitchModal.svelte";
+  import EmergencyCloseModal from "./kill-switch/EmergencyCloseModal.svelte";
+  import {
+    killSwitchState,
+    killSwitchCountdown,
+    killSwitchFired,
+    killSwitchAriaLabel,
+    armKillSwitch,
+    fetchKillSwitchStatus
+  } from "../stores/kill-switch";
+  import { unreadCount } from "../stores/notifications";
+  import NotificationTray from "./shell/NotificationTray.svelte";
 
   const dispatch = createEventDispatcher();
 
-  let killSwitchArmed = $state(false);
-  let showConfirmModal = $state(false);
-  let activeCanvasName = $state("Live Trading");
+  let activeCanvasName = $derived(
+    CANVASES.find(c => c.id === $activeCanvasStore)?.name ?? 'Live Trading'
+  );
 
-  // Subscribe to navigation store to get current canvas name
+  let showNotifTray = $state(false);
+
   onMount(() => {
-    const unsubscribe = navigationStore.subscribe((state) => {
-      // Map view IDs to readable canvas names
-      const canvasNames: Record<string, string> = {
-        'workshop': 'Workshop',
-        'knowledge': 'Knowledge Hub',
-        'assets': 'Shared Assets',
-        'ea': 'EA Management',
-        'backtest': 'Backtests',
-        'paper-trading': 'Paper Trading',
-        'live': 'Live Trading',
-        'router': 'Strategy Router',
-        'hmm': 'HMM Dashboard'
-      };
-      activeCanvasName = canvasNames[state.currentView] || 'Live Trading';
-    });
-    return unsubscribe;
+    fetchKillSwitchStatus();
   });
 
   function handleKillSwitch() {
-    if (!killSwitchArmed) {
-      // First click arms it
-      killSwitchArmed = true;
-      // Auto-disarm after 5 seconds
-      setTimeout(() => {
-        if (killSwitchArmed) {
-          killSwitchArmed = false;
-        }
-      }, 5000);
-    } else {
-      // Second click shows confirmation modal
-      showConfirmModal = true;
+    if ($killSwitchFired) return;
+    if ($killSwitchState === 'ready') {
+      armKillSwitch();
     }
-  }
-
-  async function confirmKill() {
-    try {
-      await fetch('http://localhost:8000/api/trading/kill', { method: 'POST' });
-      dispatch('killTriggered');
-    } catch (e) {
-      console.error('Kill switch failed:', e);
-    }
-    killSwitchArmed = false;
-    showConfirmModal = false;
-  }
-
-  function cancelKill() {
-    killSwitchArmed = false;
-    showConfirmModal = false;
   }
 
   function openSettings() {
     dispatch('openSettings');
   }
-
-  function openWorkshop() {
-    navigationStore.navigateToView('workshop', 'Workshop');
-  }
 </script>
 
 <header class="top-bar">
-  <!-- Left Section: Wordmark + Canvas Name -->
+  <!-- Left: Brand + Canvas Name -->
   <div class="left-section">
-    <div class="wordmark">
-      <span class="wordmark-text">QUANTMINDX</span>
-    </div>
+    <span class="brand">QMX·ITT</span>
     <div class="divider"></div>
-    <div class="canvas-name">
-      <span class="canvas-label">{activeCanvasName}</span>
-    </div>
+    <span class="canvas-label">{activeCanvasName}</span>
   </div>
 
-  <!-- Right Section: Action Buttons -->
-  <div class="right-section">
+  <!-- Action buttons -->
+  <div class="action-group">
     <!-- Kill Switch -->
     <button
-      class="action-btn kill-switch"
-      class:armed={killSwitchArmed}
+      class="tb-btn kill-switch"
+      class:armed={$killSwitchState === 'armed'}
+      class:fired={$killSwitchFired}
       onclick={handleKillSwitch}
-      title={killSwitchArmed ? 'Click again to confirm' : 'Emergency Kill Switch'}
+      disabled={$killSwitchFired}
+      title={$killSwitchAriaLabel}
+      aria-label={$killSwitchAriaLabel}
     >
-      <ShieldAlert size={16} strokeWidth={2.5} />
-      {#if killSwitchArmed}
-        <span class="btn-label armed">ARMED</span>
+      <ShieldAlert size={11} strokeWidth={2.5} />
+      {#if $killSwitchFired}
+        <span>FIRED</span>
+      {:else if $killSwitchState === 'armed'}
+        {#if $killSwitchCountdown > 0}
+          <span>{$killSwitchCountdown}s</span>
+        {:else}
+          <span>ARMED</span>
+        {/if}
       {:else}
-        <span class="btn-label">Kill</span>
+        <span>KILL</span>
       {/if}
     </button>
 
-    <!-- Workshop Button -->
-    <button
-      class="action-btn"
-      onclick={openWorkshop}
-      title="Workshop"
-    >
-      <Wrench size={18} strokeWidth={1.5} />
+    <!-- Copilot → Workshop canvas -->
+    <button class="tb-btn copilot" title="Open Copilot (Workshop)" onclick={() => activeCanvasStore.setActiveCanvas('workshop')}>
+      <MessageSquare size={11} strokeWidth={2} />
+      <span>CPLT</span>
     </button>
 
     <!-- Notifications -->
     <button
-      class="action-btn"
+      class="tb-btn notif"
+      class:has-unread={$unreadCount > 0}
       title="Notifications"
+      onclick={() => showNotifTray = !showNotifTray}
     >
-      <Bell size={18} strokeWidth={1.5} />
+      <div class="bell-wrap">
+        <Bell size={11} strokeWidth={2} />
+        {#if $unreadCount > 0}
+          <span class="notif-dot" aria-hidden="true"></span>
+        {/if}
+      </div>
+      <span>N</span>
     </button>
+  </div>
 
-    <!-- Settings -->
+  <div class="spacer"></div>
+
+  <!-- Right: Node health + Settings -->
+  <div class="right-section">
+    <div class="node-health">
+      <span class="nh-node"><span class="nh-dot nh-green"></span>CZ</span>
+      <span class="nh-node"><span class="nh-dot nh-green"></span>CN</span>
+      <span class="nh-node"><span class="nh-dot nh-amber"></span>LO</span>
+    </div>
     <button
-      class="action-btn"
+      class="tb-btn settings-btn"
       onclick={openSettings}
       title="Settings"
+      aria-label="Open settings"
     >
-      <Settings size={18} strokeWidth={1.5} />
+      <Settings size={13} strokeWidth={1.5} />
     </button>
   </div>
 </header>
 
-<!-- Kill Switch Confirmation Modal -->
-{#if showConfirmModal}
-  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-  <div class="modal-overlay" onclick={cancelKill} role="dialog" aria-modal="true" aria-labelledby="kill-modal-title">
-    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div class="modal-content" onclick={(e) => e.stopPropagation()}>
-      <div class="modal-icon">
-        <AlertTriangle size={32} />
-      </div>
-      <h3 id="kill-modal-title">Confirm Emergency Kill</h3>
-      <p>This will immediately close all active positions and stop all trading bots.</p>
-      <div class="modal-actions">
-        <button class="btn-cancel" onclick={cancelKill}>Cancel</button>
-        <button class="btn-confirm" onclick={confirmKill}>KILL ALL</button>
-      </div>
-    </div>
-  </div>
-{/if}
+<!-- Kill Switch Modals -->
+<KillSwitchModal />
+<EmergencyCloseModal />
+
+<!-- Notification Tray (fixed position, outside layout flow) -->
+<NotificationTray open={showNotifTray} onClose={() => showNotifTray = false} />
 
 <style>
   .top-bar {
     grid-area: topbar;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 7px;
     height: var(--header-height);
-    padding: 0 16px;
+    padding: 0 14px;
     background: var(--glass-tier-1);
     backdrop-filter: var(--glass-blur);
     -webkit-app-region: drag;
@@ -169,47 +144,51 @@
     z-index: 100;
   }
 
+  /* ── Left ── */
   .left-section {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     -webkit-app-region: no-drag;
+    flex-shrink: 0;
   }
 
-  .wordmark {
-    display: flex;
-    align-items: center;
-  }
-
-  .wordmark-text {
+  .brand {
     font-family: var(--font-display);
     font-weight: 800;
-    font-size: 15px;
+    font-size: 11px;
     letter-spacing: 0.08em;
-    background: linear-gradient(135deg, var(--color-accent-cyan) 0%, #00ffcc 50%, var(--color-accent-cyan) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--color-accent-cyan);
+    opacity: 0.9;
   }
 
   .divider {
     width: 1px;
-    height: 20px;
-    background: rgba(255, 255, 255, 0.12);
-  }
-
-  .canvas-name {
-    display: flex;
-    align-items: center;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.1);
   }
 
   .canvas-label {
     font-family: var(--font-nav);
     font-weight: 500;
-    font-size: 13px;
-    color: var(--text-secondary);
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    letter-spacing: 0.01em;
   }
 
+  /* ── Action group ── */
+  .action-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    -webkit-app-region: no-drag;
+  }
+
+  .spacer {
+    flex: 1;
+  }
+
+  /* ── Right ── */
   .right-section {
     display: flex;
     align-items: center;
@@ -217,145 +196,151 @@
     -webkit-app-region: no-drag;
   }
 
-  .action-btn {
+  /* ── Shared button base ── */
+  .tb-btn {
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 3px;
+    border: 1px solid;
+    font-size: 10px;
+    font-family: var(--font-mono);
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 6px;
-    height: 32px;
-    padding: 0 10px;
+    gap: 4px;
     background: transparent;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    color: var(--text-muted);
     cursor: pointer;
-    transition: all 0.15s ease;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+    transition: all 0.12s ease;
   }
 
-  .action-btn:hover {
-    background: var(--glass-tier-2);
-    color: var(--text-primary);
-  }
-
-  .btn-label {
-    font-family: var(--font-nav);
-    font-size: 11px;
-    font-weight: 500;
-  }
-
-  /* Kill Switch Styles */
+  /* Kill switch — amber (ready) */
   .kill-switch {
-    background: rgba(255, 59, 59, 0.08);
-    border-color: rgba(255, 59, 59, 0.25);
-    color: var(--color-danger);
+    border-color: rgba(212, 146, 14, 0.35);
+    color: var(--color-accent-amber, #f0a500);
+    background: rgba(212, 146, 14, 0.05);
   }
 
-  .kill-switch:hover {
-    background: rgba(255, 59, 59, 0.15);
-    border-color: rgba(255, 59, 59, 0.4);
+  .kill-switch:hover:not(:disabled) {
+    background: rgba(212, 146, 14, 0.1);
+    border-color: rgba(212, 146, 14, 0.55);
   }
 
+  /* Kill switch — armed (red pulse) */
   .kill-switch.armed {
-    background: var(--color-danger);
-    border-color: var(--color-danger);
+    background: var(--color-accent-red, #ff3b3b);
+    border-color: var(--color-accent-red, #ff3b3b);
     color: white;
     animation: pulse 2s ease-in-out infinite alternate;
   }
 
-  .kill-switch.armed .btn-label.armed {
-    font-weight: 700;
-    letter-spacing: 0.05em;
+  /* Kill switch — fired */
+  .kill-switch.fired {
+    background: rgba(107, 114, 128, 0.1);
+    border-color: rgba(107, 114, 128, 0.3);
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    animation: none;
+    opacity: 0.6;
+  }
+
+  /* Copilot */
+  .copilot {
+    border-color: rgba(0, 170, 204, 0.25);
+    color: var(--color-accent-cyan);
+    background: rgba(0, 170, 204, 0.04);
+  }
+
+  .copilot:hover {
+    background: rgba(0, 170, 204, 0.1);
+    border-color: rgba(0, 170, 204, 0.45);
+  }
+
+  /* Notifications */
+  .notif {
+    border-color: rgba(255, 255, 255, 0.1);
+    color: var(--color-text-secondary);
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .notif:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .notif.has-unread {
+    border-color: rgba(0, 212, 255, 0.25);
+    color: #00d4ff;
+  }
+
+  /* Bell icon wrapper for positioning the unread dot */
+  .bell-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .notif-dot {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #ff3b3b;
+    border: 1px solid rgba(8, 13, 20, 0.9);
+    flex-shrink: 0;
+  }
+
+  /* Settings */
+  .settings-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-color: rgba(255, 255, 255, 0.08);
+    color: var(--color-text-muted);
+    background: transparent;
+    justify-content: center;
+    border-radius: 3px;
+  }
+
+  .settings-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--color-text-primary);
+  }
+
+  /* ── Node health ── */
+  .node-health {
+    display: flex;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--color-text-muted);
+    align-items: center;
+  }
+
+  .nh-node {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .nh-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .nh-green {
+    background: var(--color-accent-green, #00a878);
+  }
+
+  .nh-amber {
+    background: var(--color-accent-amber, #f0a500);
   }
 
   @keyframes pulse {
-    from { opacity: 1; box-shadow: 0 0 8px var(--color-danger); }
-    to { opacity: 0.7; box-shadow: 0 0 20px var(--color-danger); }
-  }
-
-  /* Modal Styles */
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-  }
-
-  .modal-content {
-    background: var(--bg-secondary);
-    border: 1px solid var(--color-danger);
-    border-radius: 12px;
-    padding: 24px;
-    max-width: 400px;
-    text-align: center;
-    box-shadow: 0 0 40px rgba(255, 59, 59, 0.2);
-  }
-
-  .modal-icon {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 16px;
-    color: var(--color-danger);
-  }
-
-  .modal-content h3 {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 18px;
-    color: var(--text-primary);
-    margin-bottom: 8px;
-  }
-
-  .modal-content p {
-    font-size: 13px;
-    color: var(--text-secondary);
-    margin-bottom: 20px;
-    line-height: 1.5;
-  }
-
-  .modal-actions {
-    display: flex;
-    gap: 12px;
-    justify-content: center;
-  }
-
-  .btn-cancel {
-    padding: 10px 20px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 6px;
-    color: var(--text-secondary);
-    font-family: var(--font-nav);
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .btn-cancel:hover {
-    background: var(--bg-surface);
-    color: var(--text-primary);
-  }
-
-  .btn-confirm {
-    padding: 10px 20px;
-    background: var(--color-danger);
-    border: none;
-    border-radius: 6px;
-    color: white;
-    font-family: var(--font-nav);
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .btn-confirm:hover {
-    background: #ff5555;
-    box-shadow: 0 0 16px rgba(255, 59, 59, 0.4);
+    from { opacity: 1; box-shadow: 0 0 6px var(--color-accent-red); }
+    to   { opacity: 0.7; box-shadow: 0 0 16px var(--color-accent-red); }
   }
 </style>

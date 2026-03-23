@@ -605,7 +605,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     overflow: hidden;
   }
 
@@ -615,8 +615,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 20px 24px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .header-left {
@@ -626,19 +626,19 @@
   }
 
   .journal-icon {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .header-left h2 {
     margin: 0;
     font-size: 18px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .header-left p {
     margin: 2px 0 0;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .header-actions {
@@ -651,10 +651,10 @@
     align-items: center;
     gap: 6px;
     padding: 8px 14px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 12px;
     cursor: pointer;
   }
@@ -672,13 +672,13 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
   }
 
   .icon-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   /* Stats Row */
@@ -687,8 +687,8 @@
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 12px;
     padding: 16px 24px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .stat-card {
@@ -696,7 +696,7 @@
     align-items: center;
     gap: 12px;
     padding: 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 8px;
   }
 
@@ -708,7 +708,7 @@
     height: 36px;
     background: var(--bg-surface);
     border-radius: 8px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .stat-icon.success {
@@ -734,7 +734,7 @@
   .stat-value {
     font-size: 16px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .stat-value.positive {
@@ -747,7 +747,7 @@
 
   .stat-label {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   /* Filters */
@@ -755,8 +755,8 @@
     display: flex;
     gap: 12px;
     padding: 16px 24px;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border-bottom: 1px solid var(--color-border-subtle);
     flex-wrap: wrap;
   }
 
@@ -765,8 +765,8 @@
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
     font-size: 12px;
   }
@@ -775,7 +775,7 @@
   .filter-group select {
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 12px;
     outline: none;
   }
@@ -789,7 +789,7 @@
   }
 
   .filter-group.date-range span {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   /* Table */
@@ -803,10 +803,10 @@
     grid-template-columns: 140px 80px 60px 1fr 100px 60px 60px 60px;
     gap: 8px;
     padding: 12px 24px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     font-size: 11px;
     font-weight: 500;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     position: sticky;
     top: 0;
     z-index: 10;
@@ -823,7 +823,7 @@
   }
 
   .header-cell.sortable:hover {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .header-cell :global(svg) {
@@ -839,24 +839,24 @@
     grid-template-columns: 140px 80px 60px 1fr 100px 60px 60px 60px;
     gap: 8px;
     padding: 12px 24px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
     font-size: 12px;
     transition: background 0.15s;
   }
 
   .table-row:hover {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
   }
 
   .table-row.expanded {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-bottom: none;
   }
 
   .cell {
     display: flex;
     align-items: center;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .cell.time .time-main {
@@ -865,7 +865,7 @@
 
   .symbol-badge {
     padding: 4px 8px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 4px;
     font-weight: 500;
   }
@@ -888,7 +888,7 @@
   }
 
   .strategy-name {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .profit-value {
@@ -908,14 +908,14 @@
 
   .kelly-value {
     font-family: 'JetBrains Mono', monospace;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   /* Expanded Row */
   .expanded-row {
     grid-column: 1 / -1;
     background: var(--bg-surface);
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .expanded-content {
@@ -926,7 +926,7 @@
   }
 
   .context-section {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 8px;
     padding: 12px;
   }
@@ -937,7 +937,7 @@
     gap: 6px;
     margin: 0 0 12px;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .context-grid {
@@ -953,11 +953,11 @@
   }
 
   .context-item .label {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .context-item .value {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .regime-details {
@@ -974,14 +974,14 @@
   }
 
   .metric-label {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     min-width: 50px;
   }
 
   .metric-bar {
     flex: 1;
     height: 6px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 3px;
     overflow: hidden;
   }
@@ -995,7 +995,7 @@
     min-width: 40px;
     text-align: right;
     font-family: 'JetBrains Mono', monospace;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .metric-badge {
@@ -1033,12 +1033,12 @@
   }
 
   .kelly-item .label {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .kelly-item .value {
     font-family: 'JetBrains Mono', monospace;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .house-money-details {
@@ -1048,7 +1048,7 @@
   }
 
   .hm-item .label {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .hm-item .value.success {
@@ -1062,7 +1062,7 @@
     align-items: center;
     justify-content: center;
     padding: 60px 24px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-align: center;
   }
 
@@ -1083,7 +1083,7 @@
   }
 
   .modal {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 12px;
     width: 600px;
     max-width: 90%;
@@ -1098,19 +1098,19 @@
     justify-content: space-between;
     align-items: flex-start;
     padding: 16px 20px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .modal-header h3 {
     margin: 0;
     font-size: 16px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .trade-id {
     margin: 4px 0 0;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-family: 'JetBrains Mono', monospace;
   }
 
@@ -1127,7 +1127,7 @@
   .detail-section h4 {
     margin: 0 0 12px;
     font-size: 13px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .summary-grid {
@@ -1140,26 +1140,26 @@
     display: flex;
     justify-content: space-between;
     padding: 8px 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
     font-size: 12px;
   }
 
   .summary-item .label {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .summary-item .value {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-weight: 500;
   }
 
   .reason-box {
     padding: 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 8px;
     font-size: 13px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .reason-box p {
@@ -1168,14 +1168,14 @@
 
   .reason-box .sentiment {
     margin-top: 8px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .detail-actions {
     display: flex;
     gap: 8px;
     padding-top: 16px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
 
   .detail-actions .btn {

@@ -14,6 +14,7 @@ Endpoints:
 
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 import logging
 import json
@@ -38,6 +39,7 @@ class ChatRequest(BaseModel):
     """Request to chat with the floor manager."""
     message: str = Field(..., description="User message")
     context: Optional[Dict[str, Any]] = Field(default=None, description="Optional context")
+    history: Optional[List[Dict[str, str]]] = Field(default=None, description="Conversation history for context")
     stream: bool = Field(default=False, description="Whether to stream the response")
 
 
@@ -46,6 +48,19 @@ class ChatResponse(BaseModel):
     status: str
     content: Optional[str] = None
     delegation: Optional[Dict[str, Any]] = None
+
+
+class CommandRequest(BaseModel):
+    """Request to handle a natural language command with context."""
+    message: str = Field(..., description="User command message")
+    canvas_context: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Canvas context with canvas type, session_id, entity"
+    )
+    confirmed: bool = Field(
+        default=False,
+        description="Whether user has confirmed the action"
+    )
     usage: Optional[Dict[str, int]] = None
     model: Optional[str] = None
     error: Optional[str] = None
@@ -138,7 +153,7 @@ async def get_status():
     return manager.get_status()
 
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat")
 async def chat(request: ChatRequest):
     """
     Chat with the Floor Manager (main copilot).
@@ -149,14 +164,40 @@ async def chat(request: ChatRequest):
     - Route tasks to appropriate departments
     - Provide status updates
 
-    For streaming responses, use the WebSocket endpoint at /ws.
+    For streaming responses, set stream: true in the request body.
     """
     manager = get_manager()
 
+    # If streaming requested, use SSE
+    if request.stream:
+        async def event_generator():
+            try:
+                async for event in manager.chat_stream(
+                    message=request.message,
+                    context=request.context,
+                    history=request.history,
+                ):
+                    yield f"data: {json.dumps(event)}\n\n"
+            except Exception as e:
+                logger.error(f"Streaming chat failed: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    # Non-streaming response
     try:
         result = await manager.chat(
             message=request.message,
             context=request.context,
+            history=request.history,
             stream=request.stream,
         )
         return result
@@ -166,6 +207,40 @@ async def chat(request: ChatRequest):
             status="error",
             error=str(e),
         )
+
+
+@router.post("/command")
+async def handle_command(request: CommandRequest):
+    """
+    Handle a natural language command with canvas context awareness.
+
+    This endpoint:
+    - Classifies the user message into an intent
+    - Requires confirmation for destructive commands (pause, close, stop)
+    - Asks for clarification when confidence is low
+    - Executes the command via appropriate APIs
+
+    Args:
+        request: CommandRequest with message, canvas_context, and confirmed flag
+
+    Returns:
+        Dict with response type (confirmation_needed, clarification_needed, success, error)
+    """
+    manager = get_manager()
+
+    try:
+        result = await manager.handle_command(
+            message=request.message,
+            canvas_context=request.canvas_context or {},
+            confirmed=request.confirmed,
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Command handling failed: {e}")
+        return {
+            "type": "error",
+            "message": str(e),
+        }
 
 
 @router.get("/departments")
@@ -284,6 +359,137 @@ async def delegate_task(request: DelegateRequest):
         raise
     except Exception as e:
         logger.error(f"Delegation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== Concurrent Task Routing (Story 7.7) ==========
+
+class ConcurrentTaskRequest(BaseModel):
+    """Request to dispatch multiple tasks concurrently."""
+    tasks: List[Dict[str, Any]] = Field(
+        ...,
+        description="List of tasks with keys: task_type, department, payload, priority"
+    )
+    session_id: Optional[str] = Field(default=None, description="Session ID for isolation")
+
+
+@router.post("/concurrent")
+async def dispatch_concurrent_tasks(request: ConcurrentTaskRequest):
+    """
+    Dispatch multiple tasks concurrently to different departments (AC-1).
+
+    Routes tasks to appropriate departments in parallel via Redis Streams.
+    Returns task IDs and initial status for tracking.
+    """
+    try:
+        manager = get_manager()
+
+        result = manager.dispatch_concurrent(
+            tasks=request.tasks,
+            session_id=request.session_id,
+        )
+
+        return {
+            "status": "dispatched",
+            "tasks": result,
+            "session_id": request.session_id or result[0].get("session_id") if result else None,
+        }
+    except Exception as e:
+        logger.error(f"Concurrent dispatch failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tasks/status/{session_id}")
+async def get_task_status(session_id: str):
+    """
+    Get status of all tasks for a session (AC-1).
+
+    Returns department-level status for Agent Panel display:
+    "Research: running | Development: queued | Risk: running..."
+    """
+    try:
+        manager = get_manager()
+
+        status = manager.get_concurrent_task_status_display(session_id)
+
+        return {
+            "session_id": session_id,
+            "departments": status,
+        }
+    except Exception as e:
+        logger.error(f"Get task status failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/concurrent/execute")
+async def execute_concurrent_tasks(
+    session_id: str,
+    max_concurrent: int = 5,
+):
+    """
+    Execute all pending tasks for a session concurrently (AC-2).
+
+    Returns aggregated results with parallelism metrics.
+    """
+    try:
+        manager = get_manager()
+
+        result = await manager.execute_concurrent(
+            session_id=session_id,
+            max_concurrent=max_concurrent,
+        )
+
+        return result
+    except Exception as e:
+        logger.error(f"Concurrent execution failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== Story 7.5: Session Workspace Isolation ==========
+
+
+class SessionCommitRequest(BaseModel):
+    """Request to commit a session's draft nodes (Story 7.5)."""
+    session_id: str = Field(..., description="Session ID to commit")
+    department: Optional[str] = Field(default=None, description="Optional department filter")
+    entity_id: Optional[str] = Field(default=None, description="Entity/strategy ID for conflict detection")
+
+
+class SessionCommitResponse(BaseModel):
+    """Response from session commit endpoint."""
+    status: str  # 'success' or 'pending_review' or 'error'
+    session_id: str
+    node_count: Optional[int] = None
+    committed_at_utc: Optional[str] = None
+    department: Optional[str] = None
+    entity_id: Optional[str] = None
+    conflict_count: Optional[int] = None
+    conflicts: Optional[List[Dict[str, Any]]] = None
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+
+@router.post("/session/commit", response_model=SessionCommitResponse)
+async def commit_session(request: SessionCommitRequest):
+    """
+    Commit all draft nodes for a session (AC #2).
+
+    Commits draft nodes making them visible to all subsequent sessions.
+    If entity_id provided and conflicts detected (AC #3), returns 'pending_review'
+    instead of immediately committing.
+    """
+    try:
+        manager = get_manager()
+
+        result = manager.commit_session(
+            session_id=request.session_id,
+            department=request.department,
+            entity_id=request.entity_id,
+        )
+
+        return SessionCommitResponse(**result)
+    except Exception as e:
+        logger.error(f"Session commit failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

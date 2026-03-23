@@ -82,6 +82,30 @@ from .chat import ChatSession, ChatMessage
 # Provider config models
 from .provider_config import ProviderConfig
 
+# Server config models
+from .server_config import ServerConfig, ServerType
+
+# Risk params models
+from .risk_params import RiskParams, RiskParamsAudit
+
+# News feed models (Story 6.3)
+from .news_items import NewsItem
+
+# Broker account models (Story 9.1)
+from .broker_account import (
+    BrokerAccount,
+    RoutingRule,
+    BrokerAccountType,
+    RegimeType,
+    StrategyTypeEnum,
+)
+
+# Notification config models (Story 10.3, 10.5)
+from .notification_config import NotificationConfig, LogRetentionPolicy
+
+# Audit log models (Story 10.1)
+from .audit_log import AuditLogEntry, AuditQueryResult, AuditLayer, TradeEventType, StrategyLifecycleEventType, RiskParamEventType, AgentActionEventType, SystemHealthEventType
+
 # Session factory (import from engine package)
 from sqlalchemy.orm import sessionmaker
 from src.database import engine
@@ -154,4 +178,33 @@ __all__ = [
 
     # Provider config
     'ProviderConfig',
+    'ServerConfig',
+
+    # Risk params
+    'RiskParams',
+    'RiskParamsAudit',
+
+    # News feed (Story 6.3)
+    'NewsItem',
+
+    # Broker account models (Story 9.1)
+    'BrokerAccount',
+    'RoutingRule',
+    'BrokerAccountType',
+    'RegimeType',
+    'StrategyTypeEnum',
+
+    # Notification config models (Story 10.3, 10.5)
+    'NotificationConfig',
+    'LogRetentionPolicy',
+
+    # Audit log models (Story 10.1)
+    'AuditLogEntry',
+    'AuditQueryResult',
+    'AuditLayer',
+    'TradeEventType',
+    'StrategyLifecycleEventType',
+    'RiskParamEventType',
+    'AgentActionEventType',
+    'SystemHealthEventType',
 ]

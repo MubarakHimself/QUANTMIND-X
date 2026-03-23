@@ -320,8 +320,8 @@
   }
   
   .picker-container {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 12px;
     width: 90%;
     max-width: 400px;
@@ -336,14 +336,14 @@
     align-items: center;
     justify-content: space-between;
     padding: 16px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
   
   .header-title {
     display: flex;
     align-items: center;
     gap: 8px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
   
   .header-title h3 {
@@ -358,7 +358,7 @@
     justify-content: center;
     background: none;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     padding: 4px;
     border-radius: 4px;
@@ -366,8 +366,8 @@
   }
   
   .close-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
   
   .picker-search {
@@ -375,28 +375,28 @@
     align-items: center;
     gap: 8px;
     padding: 12px 16px;
-    border-bottom: 1px solid var(--border-subtle);
-    color: var(--text-muted);
+    border-bottom: 1px solid var(--color-border-subtle);
+    color: var(--color-text-muted);
   }
   
   .picker-search input {
     flex: 1;
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
     outline: none;
   }
   
   .picker-search input::placeholder {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
   
   .add-btn {
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border: none;
     border-radius: 4px;
-    color: var(--bg-primary);
+    color: var(--color-bg-base);
     font-size: 12px;
     padding: 4px 12px;
     cursor: pointer;
@@ -404,7 +404,7 @@
   }
   
   .add-btn:hover {
-    background: var(--accent-secondary);
+    background: var(--color-accent-amber);
   }
   
   .picker-content {
@@ -422,15 +422,15 @@
     justify-content: center;
     gap: 8px;
     padding: 32px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 13px;
   }
   
   .error-state button {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     padding: 4px 12px;
     cursor: pointer;
     font-size: 12px;
@@ -450,12 +450,12 @@
     border-radius: 8px;
     cursor: pointer;
     transition: background 0.15s;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
   
   .item-list li:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
   
   .item-info {
@@ -471,7 +471,7 @@
   
   .item-meta {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
   
   .spin {

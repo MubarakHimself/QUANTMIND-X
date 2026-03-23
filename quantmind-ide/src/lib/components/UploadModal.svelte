@@ -376,8 +376,8 @@
   }
 
   .modal {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-strong);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-medium);
     border-radius: 8px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   }
@@ -392,13 +392,13 @@
     align-items: center;
     padding: 0 16px;
     height: 48px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .modal-header h2 {
     margin: 0;
     font-size: 16px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -407,7 +407,7 @@
   .modal-header button {
     background: none;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
   }
 
@@ -420,7 +420,7 @@
     justify-content: flex-end;
     gap: 8px;
     padding: 16px 20px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
 
   .form-group {
@@ -431,23 +431,23 @@
     display: block;
     margin-bottom: 6px;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .form-group input,
   .form-group select {
     width: 100%;
     padding: 10px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
   }
 
   .optional {
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-weight: normal;
   }
 
@@ -457,7 +457,7 @@
     gap: 12px;
     margin-top: 16px;
     padding: 16px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 8px;
   }
 
@@ -468,10 +468,10 @@
   .note-content {
     width: 100%;
     padding: 10px 12px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
     font-family: "JetBrains Mono", monospace;
     resize: vertical;
@@ -480,7 +480,7 @@
   }
 
   .note-content:focus {
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
   }
 
   .upload-type-selector {
@@ -494,20 +494,20 @@
     display: flex;
     align-items: center;
     padding: 12px;
-    background: var(--bg-tertiary);
-    border: 2px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 2px solid var(--color-border-subtle);
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s ease;
   }
 
   .type-option:hover {
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
     background: rgba(99, 102, 241, 0.05);
   }
 
   .type-option.selected {
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
     background: rgba(99, 102, 241, 0.1);
   }
 
@@ -523,7 +523,7 @@
   }
 
   .type-content :global(svg) {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
     flex-shrink: 0;
   }
 
@@ -535,12 +535,12 @@
   .type-name {
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .type-desc {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .upload-dropzone {
@@ -551,10 +551,10 @@
     gap: 10px;
     padding: 40px 20px;
     margin-top: 12px;
-    border: 2px dashed var(--border-subtle);
+    border: 2px dashed var(--color-border-subtle);
     border-radius: 12px;
-    background: var(--bg-primary);
-    color: var(--text-muted);
+    background: var(--color-bg-base);
+    color: var(--color-text-muted);
     text-align: center;
     transition: all 0.2s ease;
     cursor: pointer;
@@ -562,9 +562,9 @@
 
   .upload-dropzone:hover,
   .upload-dropzone.drag-over {
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
     background: rgba(99, 102, 241, 0.05);
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .upload-dropzone p {
@@ -574,20 +574,20 @@
 
   .upload-dropzone span {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .upload-dropzone .hint {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin-top: 8px;
   }
 
   .file-input-label {
     display: inline-block;
     padding: 8px 16px;
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
     border-radius: 6px;
     font-size: 13px;
     font-weight: 500;
@@ -621,28 +621,28 @@
   }
 
   .btn.secondary {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    color: var(--text-secondary);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
+    color: var(--color-text-secondary);
   }
 
   .btn.primary {
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border: none;
-    color: var(--bg-primary);
+    color: var(--color-bg-base);
   }
 
   .upload-progress-list {
     margin-top: 16px;
     padding: 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 8px;
   }
 
   .upload-progress-list h4 {
     margin: 0 0 8px;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .upload-item {
@@ -651,7 +651,7 @@
     gap: 8px;
     padding: 8px 0;
     font-size: 12px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .upload-item:last-child {
@@ -660,7 +660,7 @@
 
   .upload-item .filename {
     flex: 1;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .upload-item .status-badge {
@@ -672,7 +672,7 @@
 
   .upload-item .status-badge.uploading {
     background: rgba(99, 102, 241, 0.2);
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .upload-item .status-badge.done {
@@ -696,13 +696,13 @@
   .progress-bar {
     flex: 1;
     height: 4px;
-    background: var(--border-subtle);
+    background: var(--color-border-subtle);
     border-radius: 2px;
     overflow: hidden;
   }
 
   .progress-bar div {
     height: 100%;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
   }
 </style>

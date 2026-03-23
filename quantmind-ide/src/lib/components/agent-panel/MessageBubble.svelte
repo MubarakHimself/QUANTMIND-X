@@ -236,7 +236,7 @@
   }
 
   .message-bubble:hover {
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
   }
 
   .message-bubble.user {
@@ -250,9 +250,9 @@
     justify-content: center;
     width: 28px;
     height: 28px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border-radius: 6px;
-    color: var(--bg-primary);
+    color: var(--color-bg-base);
     flex-shrink: 0;
   }
 
@@ -280,36 +280,36 @@
   .sender-name {
     font-size: 11px;
     font-weight: 600;
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .message-bubble.user .sender-name {
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .timestamp {
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   /* Body */
   .message-body {
     font-size: 13px;
     line-height: 1.6;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     word-wrap: break-word;
   }
 
   .message-bubble.user .message-body {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
     padding: 10px 14px;
     border-radius: 12px;
     border-top-right-radius: 4px;
   }
 
   .message-bubble.assistant .message-body {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     padding: 10px 14px;
     border-radius: 12px;
     border-top-left-radius: 4px;
@@ -317,7 +317,7 @@
 
   /* Code blocks */
   .message-body :global(pre) {
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     border-radius: 8px;
     padding: 12px;
     overflow-x: auto;
@@ -330,7 +330,7 @@
   }
 
   .message-body :global(code:not(pre code)) {
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 11px;
@@ -347,11 +347,11 @@
 
   .metadata {
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .metadata.model {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     padding: 2px 6px;
     border-radius: 4px;
   }
@@ -361,7 +361,7 @@
     align-items: center;
     gap: 4px;
     background: rgba(107, 200, 230, 0.15);
-    color: var(--accent-secondary);
+    color: var(--color-accent-amber);
     padding: 2px 8px;
     border-radius: 4px;
     font-size: 10px;
@@ -372,7 +372,7 @@
   }
 
   .skill-time {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin-left: 2px;
   }
 
@@ -384,7 +384,7 @@
     position: absolute;
     top: 8px;
     right: 16px;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 6px;
     padding: 2px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
@@ -404,13 +404,13 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.15s;
   }
 
   .action-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 </style>

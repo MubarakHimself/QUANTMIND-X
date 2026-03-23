@@ -1,0 +1,81 @@
+# Canvas Context Template for Workshop Canvas
+# This template is the default/home canvas for Copilot
+
+canvas: workshop
+canvas_display_name: "Workshop"
+canvas_icon: "Hammer"
+
+# Base descriptor - agent identity for this canvas
+base_descriptor: |
+  You are the Copilot in Workshop mode. This is the default canvas for general
+  conversation and task execution. You have access to all department capabilities
+  and can route tasks to the appropriate department.
+
+  You have access to:
+  - All department heads and sub-agents
+  - Full knowledge base
+  - Skill catalogue
+  - Workshop canvas (your home base)
+
+  Route requests to the appropriate department based on the task type.
+
+# Graph memory namespaces to load (committed only)
+memory_scope:
+  - "*"
+
+# Workflow namespaces
+workflow_namespaces:
+  - "all_workflows"
+
+# Department mailbox
+department_mailbox: "workshop_mail"
+
+# Shared assets
+shared_assets:
+  - "skill_catalogue"
+  - "workshop_templates"
+  - "shared_tools"
+
+# Skill index
+skill_index:
+  - id: "task-routing"
+    path: "shared_assets/skills/system/task-routing/skill.md"
+    trigger: "when determining which department should handle a task"
+  - id: "skill-forge"
+    path: "shared_assets/skills/system/skill-forge/skill.md"
+    trigger: "when creating or modifying skills"
+
+# Required tools
+required_tools:
+  - "floor_manager"
+  - "skill_catalogue"
+  - "knowledge_base"
+
+# Token budget
+max_identifiers: 100
+
+# Department head
+department_head: "floor_manager"
+
+# Suggestion chips - quick actions for this canvas
+suggestion_chips:
+  - id: "goto-risk"
+    label: "Risk Dashboard"
+    target_canvas: "risk"
+    icon: "Shield"
+  - id: "goto-live-trading"
+    label: "Live Trading"
+    target_canvas: "live-trading"
+    icon: "Activity"
+  - id: "goto-portfolio"
+    label: "Portfolio"
+    target_canvas: "portfolio"
+    icon: "Briefcase"
+  - id: "goto-research"
+    label: "Research"
+    target_canvas: "research"
+    icon: "Search"
+  - id: "goto-development"
+    label: "Development"
+    target_canvas: "development"
+    icon: "Code"

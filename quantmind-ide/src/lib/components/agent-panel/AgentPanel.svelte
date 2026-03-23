@@ -305,8 +305,8 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-secondary);
-    border-left: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-left: 1px solid var(--color-border-subtle);
     position: relative;
     min-width: 280px;
     max-width: 600px;
@@ -322,8 +322,8 @@
     width: 200px;
     min-width: 150px;
     max-width: 300px;
-    border-right: 1px solid var(--border-subtle);
-    background: var(--bg-primary);
+    border-right: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-base);
     overflow: hidden;
   }
   
@@ -347,7 +347,7 @@
   }
   
   .resize-handle:hover {
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
   }
   
   .settings-overlay {
@@ -371,11 +371,11 @@
     transform: translateY(-50%);
     width: 24px;
     height: 48px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-right: none;
     border-radius: 8px 0 0 8px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -384,13 +384,13 @@
   }
   
   .toggle-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
   
   .toggle-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   /* Streaming indicator */
@@ -399,15 +399,15 @@
     align-items: center;
     gap: 8px;
     padding: 8px 16px;
-    background: var(--bg-tertiary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .streaming-pulse {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     animation: pulse 1.5s ease-in-out infinite;
   }
 
@@ -424,7 +424,7 @@
 
   .streaming-text {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   /* Responsive adjustments */

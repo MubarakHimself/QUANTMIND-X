@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/state';
-  
+
   // Get agent_id from URL
-  let agentId = $derived($page.params.id);
+  let agentId = $derived(page.params.id);
   
   // Types
   interface MetricsData {

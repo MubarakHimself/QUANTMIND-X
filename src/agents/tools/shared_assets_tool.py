@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import shutil
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -39,6 +40,7 @@ class SharedAssetsTool:
     ]
 
     MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB max file size
+    MAX_STORAGE_BYTES = 10 * 1024 * 1024 * 1024  # 10GB default storage quota
 
     def __init__(self, storage_path: Optional[str] = None):
         """
@@ -49,6 +51,7 @@ class SharedAssetsTool:
         """
         self.storage_path = Path(storage_path or self._get_default_storage_path())
         self.metadata_file = self.storage_path / "metadata.json"
+        self._lock = threading.RLock()
         self._ensure_storage_exists()
 
     def _get_default_storage_path(self) -> str:
@@ -161,10 +164,17 @@ class SharedAssetsTool:
             "updated_at": now,
         }
 
-        # Save metadata
-        metadata = self._load_metadata()
-        metadata[asset_id] = asset_metadata
-        self._save_metadata(metadata)
+        # Check storage quota
+        with self._lock:
+            metadata = self._load_metadata()
+            current_size = sum(a.get("file_size", 0) for a in metadata.values())
+            if current_size + file_size > self.MAX_STORAGE_BYTES:
+                return {
+                    "success": False,
+                    "error": f"Storage quota exceeded. Current: {current_size} bytes, Limit: {self.MAX_STORAGE_BYTES} bytes",
+                }
+            metadata[asset_id] = asset_metadata
+            self._save_metadata(metadata)
 
         logger.info(f"Uploaded asset: {name} ({asset_id})")
         return {"success": True, "asset": asset_metadata}
@@ -210,17 +220,25 @@ class SharedAssetsTool:
         category: Optional[str] = None,
         tags: Optional[List[str]] = None,
         search: Optional[str] = None,
+        page: int = 1,
+        limit: int = 50,
+        sort: str = "created_at",
+        order: str = "desc",
     ) -> Dict[str, Any]:
         """
         List shared assets with optional filtering.
 
         Args:
             category: Filter by category
-            tags: Filter by tags (any match)
-            search: Search in name and description
+            tags: Filter by tags (all must match - AND logic)
+            search: Search in name, description, and tags
+            page: Page number for pagination (1-indexed)
+            limit: Number of assets per page
+            sort: Sort field (name, created_at, updated_at)
+            order: Sort order (asc, desc)
 
         Returns:
-            List of matching assets
+            List of matching assets with pagination info
         """
         metadata = self._load_metadata()
         assets = list(metadata.values())
@@ -229,13 +247,13 @@ class SharedAssetsTool:
         if category:
             assets = [a for a in assets if a.get("category") == category]
 
-        # Filter by tags
+        # Filter by tags (AND logic - all tags must match)
         if tags:
             assets = [
-                a for a in assets if any(tag in a.get("tags", []) for tag in tags)
+                a for a in assets if all(tag in a.get("tags", []) for tag in tags)
             ]
 
-        # Search in name and description
+        # Search in name, description, and tags
         if search:
             search_lower = search.lower()
             assets = [
@@ -243,14 +261,23 @@ class SharedAssetsTool:
                 for a in assets
                 if search_lower in a.get("name", "").lower()
                 or search_lower in a.get("description", "").lower()
+                or any(search_lower in tag.lower() for tag in a.get("tags", []))
             ]
 
-        # Sort by most recent first
-        assets.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+        # Sort assets
+        sort_key = sort if sort in ("name", "created_at", "updated_at") else "created_at"
+        reverse = order == "desc"
+        assets.sort(key=lambda x: x.get(sort_key, ""), reverse=reverse)
+
+        # Pagination
+        total = len(assets)
+        start = (page - 1) * limit
+        end = start + limit
+        paginated_assets = assets[start:end]
 
         # Return summary (exclude file_path for security)
         summary = []
-        for a in assets:
+        for a in paginated_assets:
             summary.append(
                 {
                     "id": a["id"],
@@ -268,6 +295,10 @@ class SharedAssetsTool:
         return {
             "success": True,
             "count": len(summary),
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "has_more": end < total,
             "assets": summary,
         }
 
@@ -278,25 +309,27 @@ class SharedAssetsTool:
             return {"success": False, "error": f"Asset not found: {asset_id}"}
 
         asset = metadata[asset_id].copy()
-        # Include file_path for download
+        # Add download URL for convenience
+        asset["download_url"] = f"/api/shared-assets/{asset_id}/download"
         return {"success": True, "asset": asset}
 
     def delete(self, asset_id: str) -> Dict[str, Any]:
         """Delete an asset from shared storage."""
-        metadata = self._load_metadata()
-        if asset_id not in metadata:
-            return {"success": False, "error": f"Asset not found: {asset_id}"}
+        with self._lock:
+            metadata = self._load_metadata()
+            if asset_id not in metadata:
+                return {"success": False, "error": f"Asset not found: {asset_id}"}
 
-        asset = metadata[asset_id]
+            asset = metadata[asset_id]
 
-        # Delete file
-        file_path = Path(asset["file_path"])
-        if file_path.exists():
-            file_path.unlink()
+            # Delete file
+            file_path = Path(asset["file_path"])
+            if file_path.exists():
+                file_path.unlink()
 
-        # Remove from metadata
-        del metadata[asset_id]
-        self._save_metadata(metadata)
+            # Remove from metadata
+            del metadata[asset_id]
+            self._save_metadata(metadata)
 
         logger.info(f"Deleted asset: {asset_id}")
         return {"success": True, "deleted": asset_id}
@@ -309,21 +342,22 @@ class SharedAssetsTool:
         tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Update asset metadata."""
-        metadata = self._load_metadata()
-        if asset_id not in metadata:
-            return {"success": False, "error": f"Asset not found: {asset_id}"}
+        with self._lock:
+            metadata = self._load_metadata()
+            if asset_id not in metadata:
+                return {"success": False, "error": f"Asset not found: {asset_id}"}
 
-        asset = metadata[asset_id]
-        if name:
-            asset["name"] = name
-        if description is not None:
-            asset["description"] = description
-        if tags is not None:
-            asset["tags"] = tags
+            asset = metadata[asset_id]
+            if name:
+                asset["name"] = name
+            if description is not None:
+                asset["description"] = description
+            if tags is not None:
+                asset["tags"] = tags
 
-        asset["updated_at"] = datetime.utcnow().isoformat()
-        metadata[asset_id] = asset
-        self._save_metadata(metadata)
+            asset["updated_at"] = datetime.utcnow().isoformat()
+            metadata[asset_id] = asset
+            self._save_metadata(metadata)
 
         return {"success": True, "asset": asset}
 
@@ -333,23 +367,24 @@ class SharedAssetsTool:
 
     def get_stats(self) -> Dict[str, Any]:
         """Get storage statistics."""
-        metadata = self._load_metadata()
-        assets = list(metadata.values())
+        with self._lock:
+            metadata = self._load_metadata()
+            assets = list(metadata.values())
 
-        # Count by category
-        by_category = {}
-        total_size = 0
-        for asset in assets:
-            cat = asset.get("category", "unknown")
-            by_category[cat] = by_category.get(cat, 0) + 1
-            total_size += asset.get("file_size", 0)
+            # Count by category
+            by_category = {}
+            total_size = 0
+            for asset in assets:
+                cat = asset.get("category", "unknown")
+                by_category[cat] = by_category.get(cat, 0) + 1
+                total_size += asset.get("file_size", 0)
 
-        return {
-            "total_assets": len(assets),
-            "total_size_bytes": total_size,
-            "total_size_mb": round(total_size / (1024 * 1024), 2),
-            "by_category": by_category,
-        }
+            return {
+                "total_assets": len(assets),
+                "total_size_bytes": total_size,
+                "total_size_mb": round(total_size / (1024 * 1024), 2),
+                "by_category": by_category,
+            }
 
     @staticmethod
     def _get_mime_type(extension: str) -> str:

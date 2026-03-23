@@ -1,0 +1,96 @@
+# Canvas Context Template for Live Trading Canvas
+# This template pre-loads the Trading Department context
+
+canvas: live_trading
+canvas_display_name: "Live Trading"
+canvas_icon: "Activity"
+
+# Base descriptor - agent identity for this canvas
+base_descriptor: |
+  You are the Trading Department Copilot. Your primary focus is on:
+  - Real-time position monitoring and management
+  - MT5 trade execution and control
+  - Kill switch operations across all tiers
+  - Session management and Islamic compliance
+  - Morning digest and degraded mode handling
+
+  You have access to:
+  - Live position stream via WebSocket
+  - Kill switch controls (Emergency, Trading, Session, Islamic)
+  - Paper trading agent management
+  - Manual trade controls
+
+  Always prioritize risk management and compliance in all recommendations.
+
+# Graph memory namespaces to load (committed only)
+memory_scope:
+  - "trading.*"
+  - "position.*"
+  - "strategy.*"
+
+# Workflow namespaces
+workflow_namespaces:
+  - "trading_workflows"
+  - "execution_workflows"
+
+# Department mailbox
+department_mailbox: "trading_dept_mail"
+
+# Shared assets
+shared_assets:
+  - "trading_templates"
+  - "mt5_configs"
+  - "strategy_blueprints"
+
+# Skill index
+skill_index:
+  - id: "position-monitor"
+    path: "shared_assets/skills/departments/trading/position-monitor/skill.md"
+    trigger: "when monitoring open positions"
+  - id: "kill-switch-control"
+    path: "shared_assets/skills/departments/trading/kill-switch/skill.md"
+    trigger: "when discussing kill switch or emergency controls"
+  - id: "paper-trading-setup"
+    path: "shared_assets/skills/departments/trading/paper-trading/skill.md"
+    trigger: "when setting up paper trading agents"
+
+# Required tools
+required_tools:
+  - "position_monitor"
+  - "kill_switch"
+  - "trade_executor"
+  - "session_manager"
+
+# Token budget
+max_identifiers: 50
+
+# Department head
+department_head: "trading_head"
+
+# Suggestion chips - quick actions for this canvas
+suggestion_chips:
+  - id: "morning-digest"
+    label: "Morning Digest"
+    target_canvas: "live-trading"
+    target_entity: "digest"
+    icon: "Sun"
+  - id: "show-positions"
+    label: "Show Positions"
+    target_canvas: "live-trading"
+    target_entity: "positions"
+    icon: "Activity"
+  - id: "pause-strategy"
+    label: "Pause Strategy"
+    target_canvas: "live-trading"
+    target_entity: "pause"
+    icon: "Pause"
+  - id: "kill-switch"
+    label: "Kill Switch"
+    target_canvas: "live-trading"
+    target_entity: "killswitch"
+    icon: "Shield"
+  - id: "paper-trading"
+    label: "Paper Trading"
+    target_canvas: "live-trading"
+    target_entity: "paper"
+    icon: "FileText"

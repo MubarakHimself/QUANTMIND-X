@@ -316,8 +316,8 @@ https://svelte.dev/e/component_invalid_directive -->
     flex-direction: column;
     width: 100%;
     height: 100%;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     overflow: hidden;
     font-size: 12px;
@@ -329,8 +329,8 @@ https://svelte.dev/e/component_invalid_directive -->
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px;
-    background: var(--bg-tertiary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border-bottom: 1px solid var(--color-border-subtle);
     gap: 8px;
   }
 
@@ -358,10 +358,10 @@ https://svelte.dev/e/component_invalid_directive -->
     align-items: center;
     gap: 6px;
     padding: 6px 10px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 11px;
     font-weight: 500;
     cursor: pointer;
@@ -369,13 +369,13 @@ https://svelte.dev/e/component_invalid_directive -->
   }
 
   .filter-btn:hover {
-    background: var(--bg-secondary);
-    border-color: var(--accent-primary);
+    background: var(--color-bg-surface);
+    border-color: var(--color-accent-cyan);
   }
 
   .filter-btn.active {
-    border-color: var(--accent-primary);
-    color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
+    color: var(--color-accent-cyan);
   }
 
   .filter-btn :global(.rotated) {
@@ -389,9 +389,9 @@ https://svelte.dev/e/component_invalid_directive -->
     min-width: 18px;
     height: 18px;
     padding: 0 5px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border-radius: 9px;
-    color: var(--bg-primary);
+    color: var(--color-bg-base);
     font-size: 10px;
     font-weight: 600;
   }
@@ -402,8 +402,8 @@ https://svelte.dev/e/component_invalid_directive -->
     top: calc(100% + 4px);
     left: 0;
     min-width: 160px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     z-index: 100;
@@ -418,24 +418,24 @@ https://svelte.dev/e/component_invalid_directive -->
     padding: 8px 12px;
     background: transparent;
     border: none;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 11px;
     cursor: pointer;
     transition: background 0.15s ease;
   }
 
   .filter-dropdown button:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .filter-dropdown button.active {
-    background: var(--bg-tertiary);
-    color: var(--accent-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-accent-cyan);
   }
 
   .filter-dropdown .count {
     margin-left: auto;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     padding: 2px 6px;
     border-radius: 8px;
     font-size: 10px;
@@ -451,16 +451,16 @@ https://svelte.dev/e/component_invalid_directive -->
   .search-wrapper input {
     width: 100%;
     padding: 6px 30px 6px 10px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 11px;
   }
 
   .search-wrapper input:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
   }
 
   .search-wrapper .clear-search {
@@ -475,14 +475,14 @@ https://svelte.dev/e/component_invalid_directive -->
     height: 16px;
     background: transparent;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     border-radius: 3px;
   }
 
   .search-wrapper .clear-search:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   /* Toolbar buttons */
@@ -493,16 +493,16 @@ https://svelte.dev/e/component_invalid_directive -->
     width: 28px;
     height: 28px;
     background: transparent;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     cursor: pointer;
     transition: all 0.15s ease;
   }
 
   .toolbar-btn:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
   }
 
   .toolbar-btn.danger:hover {
@@ -515,7 +515,7 @@ https://svelte.dev/e/component_invalid_directive -->
   .log-container {
     flex: 1;
     overflow-y: auto;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
   }
 
   .empty-state {
@@ -525,7 +525,7 @@ https://svelte.dev/e/component_invalid_directive -->
     justify-content: center;
     gap: 12px;
     height: 100%;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .empty-state small {
@@ -543,7 +543,7 @@ https://svelte.dev/e/component_invalid_directive -->
     align-items: flex-start;
     gap: 8px;
     padding: 4px 12px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
     font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
     font-size: 11px;
     line-height: 1.5;
@@ -551,12 +551,12 @@ https://svelte.dev/e/component_invalid_directive -->
   }
 
   .log-entry:hover {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
   }
 
   .log-timestamp {
     flex-shrink: 0;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 10px;
   }
 
@@ -577,15 +577,15 @@ https://svelte.dev/e/component_invalid_directive -->
   .log-source {
     flex-shrink: 0;
     padding: 2px 6px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 4px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 10px;
   }
 
   .log-message {
     flex: 1;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     word-break: break-word;
     white-space: pre-wrap;
   }
@@ -596,7 +596,7 @@ https://svelte.dev/e/component_invalid_directive -->
   }
 
   .log-entry.log-error:hover {
-    background: color-mix(in srgb, #ef4444 10%, var(--bg-secondary));
+    background: color-mix(in srgb, #ef4444 10%, var(--color-bg-surface));
   }
 
   .log-entry.log-warn {
@@ -604,7 +604,7 @@ https://svelte.dev/e/component_invalid_directive -->
   }
 
   .log-entry.log-warn:hover {
-    background: color-mix(in srgb, #f59e0b 8%, var(--bg-secondary));
+    background: color-mix(in srgb, #f59e0b 8%, var(--color-bg-surface));
   }
 
   .log-entry.log-success {
@@ -612,7 +612,7 @@ https://svelte.dev/e/component_invalid_directive -->
   }
 
   .log-entry.log-success:hover {
-    background: color-mix(in srgb, #10b981 8%, var(--bg-secondary));
+    background: color-mix(in srgb, #10b981 8%, var(--color-bg-surface));
   }
 
   /* Status bar */
@@ -621,10 +621,10 @@ https://svelte.dev/e/component_invalid_directive -->
     justify-content: space-between;
     align-items: center;
     padding: 4px 12px;
-    background: var(--bg-tertiary);
-    border-top: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border-top: 1px solid var(--color-border-subtle);
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .status-left {
@@ -638,9 +638,9 @@ https://svelte.dev/e/component_invalid_directive -->
     align-items: center;
     gap: 4px;
     padding: 2px 6px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border-radius: 4px;
-    color: var(--bg-primary);
+    color: var(--color-bg-base);
     font-weight: 500;
   }
 
@@ -650,15 +650,15 @@ https://svelte.dev/e/component_invalid_directive -->
   }
 
   .log-container::-webkit-scrollbar-track {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
   }
 
   .log-container::-webkit-scrollbar-thumb {
-    background: var(--border-subtle);
+    background: var(--color-border-subtle);
     border-radius: 4px;
   }
 
   .log-container::-webkit-scrollbar-thumb:hover {
-    background: var(--text-muted);
+    background: var(--color-text-muted);
   }
 </style>

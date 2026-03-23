@@ -37,11 +37,11 @@
     info: string;
   }> = {
     default: {
-      bg: 'var(--bg-tertiary)',
-      fg: 'var(--text-secondary)',
-      prompt: 'var(--accent-primary)',
-      input: 'var(--accent-primary)',
-      output: 'var(--text-secondary)',
+      bg: 'var(--color-bg-elevated)',
+      fg: 'var(--color-text-secondary)',
+      prompt: 'var(--color-accent-cyan)',
+      input: 'var(--color-accent-cyan)',
+      output: 'var(--color-text-secondary)',
       error: '#ef4444',
       success: '#10b981',
       warning: '#f59e0b',
@@ -596,8 +596,8 @@ VideoIngest Queue:
 <style>
   .bottom-panel {
     grid-area: bottom;
-    background: var(--bg-secondary);
-    border-top: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-top: 1px solid var(--color-border-subtle);
     min-height: 32px;
   }
   .bottom-panel.expanded {
@@ -609,7 +609,7 @@ VideoIngest Queue:
     justify-content: space-between;
     padding: 0 8px;
     height: 32px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
   .tabs {
     display: flex;
@@ -623,16 +623,16 @@ VideoIngest Queue:
     height: 32px;
     background: transparent;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 11px;
     cursor: pointer;
   }
   .tab:hover {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
   .tab.active {
-    color: var(--accent-primary);
-    border-bottom: 2px solid var(--accent-primary);
+    color: var(--color-accent-cyan);
+    border-bottom: 2px solid var(--color-accent-cyan);
   }
   .badge {
     background: #ef4444;
@@ -649,7 +649,7 @@ VideoIngest Queue:
   .actions button {
     background: none;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     padding: 4px;
   }
@@ -664,7 +664,7 @@ VideoIngest Queue:
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--term-bg, var(--bg-tertiary));
+    background: var(--term-bg, var(--color-bg-elevated));
   }
   .terminal-toolbar {
     display: flex;
@@ -672,7 +672,7 @@ VideoIngest Queue:
     justify-content: space-between;
     padding: 4px 8px;
     background: rgba(0, 0, 0, 0.2);
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
     position: relative;
   }
   .terminal-tabs {
@@ -684,7 +684,7 @@ VideoIngest Queue:
     font-size: 11px;
     background: rgba(255, 255, 255, 0.05);
     border-radius: 4px 4px 0 0;
-    color: var(--term-fg, var(--text-secondary));
+    color: var(--term-fg, var(--color-text-secondary));
     opacity: 0.7;
   }
   .terminal-tab.active {
@@ -703,13 +703,13 @@ VideoIngest Queue:
     height: 24px;
     background: transparent;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     border-radius: 4px;
   }
   .term-btn:hover {
     background: rgba(255, 255, 255, 0.1);
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
   .theme-picker {
     position: absolute;
@@ -718,8 +718,8 @@ VideoIngest Queue:
     display: flex;
     gap: 4px;
     padding: 8px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
     z-index: 10;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
@@ -727,20 +727,20 @@ VideoIngest Queue:
   .theme-option {
     padding: 4px 10px;
     font-size: 10px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     cursor: pointer;
     text-transform: capitalize;
   }
   .theme-option:hover {
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
   }
   .theme-option.active {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
-    border-color: var(--accent-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
+    border-color: var(--color-accent-cyan);
   }
   .terminal-scroll {
     flex: 1;
@@ -757,7 +757,7 @@ VideoIngest Queue:
     gap: 8px;
   }
   .term-timestamp {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 10px;
     opacity: 0.6;
     flex-shrink: 0;
@@ -770,7 +770,7 @@ VideoIngest Queue:
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
     background: rgba(0, 0, 0, 0.2);
   }
   .prompt {
@@ -786,7 +786,7 @@ VideoIngest Queue:
     outline: none;
   }
   .terminal-input input::placeholder {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     opacity: 0.5;
   }
 
@@ -803,12 +803,12 @@ VideoIngest Queue:
     gap: 12px;
     grid-column: span 2;
     padding: 12px 16px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 8px;
   }
   .status-text {
     font-size: 13px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
   .status-text.connected {
     color: #10b981;
@@ -826,20 +826,20 @@ VideoIngest Queue:
     align-items: center;
     gap: 6px;
     padding: 8px 16px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 12px;
     cursor: pointer;
   }
   .mt5-btn:hover {
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
   }
   .mt5-btn.primary {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
   .mt5-config {
     grid-column: span 2;
@@ -847,16 +847,16 @@ VideoIngest Queue:
   .mt5-config label {
     display: block;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin-bottom: 4px;
   }
   .mt5-config input {
     width: 100%;
     padding: 8px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 12px;
   }
   .mt5-info {
@@ -870,10 +870,10 @@ VideoIngest Queue:
     font-size: 11px;
   }
   .info-row span:first-child {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
   .info-row span:last-child {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   /* Errors */
@@ -886,7 +886,7 @@ VideoIngest Queue:
     align-items: center;
     gap: 8px;
     padding: 24px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
   .error-item {
     display: flex;
@@ -903,11 +903,11 @@ VideoIngest Queue:
   .error-msg {
     flex: 1;
     font-size: 12px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
   .error-loc {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   /* Tool Calls */
@@ -915,7 +915,7 @@ VideoIngest Queue:
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--term-bg, var(--bg-tertiary));
+    background: var(--term-bg, var(--color-bg-elevated));
   }
   .tool-calls-toolbar {
     display: flex;
@@ -923,7 +923,7 @@ VideoIngest Queue:
     gap: 8px;
     padding: 4px 8px;
     background: rgba(0, 0, 0, 0.2);
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
   .tool-btn {
     display: flex;
@@ -933,17 +933,17 @@ VideoIngest Queue:
     height: 24px;
     background: transparent;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     border-radius: 4px;
   }
   .tool-btn:hover {
     background: rgba(255, 255, 255, 0.1);
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
   .tool-calls-count {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
   .tool-calls-scroll {
     flex: 1;
@@ -960,7 +960,7 @@ VideoIngest Queue:
     justify-content: center;
     gap: 8px;
     padding: 24px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 12px;
   }
   .tool-calls-error {
@@ -973,9 +973,9 @@ VideoIngest Queue:
     padding: 4px 8px;
     font-size: 10px;
     font-weight: 600;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-transform: uppercase;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
     margin-bottom: 4px;
   }
   .tool-call-line {
@@ -983,7 +983,7 @@ VideoIngest Queue:
     grid-template-columns: 70px 90px 140px 50px 70px;
     gap: 4px;
     padding: 3px 8px;
-    color: var(--term-fg, var(--text-secondary));
+    color: var(--term-fg, var(--color-text-secondary));
     border-radius: 2px;
   }
   .tool-call-line:hover {
@@ -993,7 +993,7 @@ VideoIngest Queue:
     color: #ef4444;
   }
   .tc-time {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
   .tc-agent {
     overflow: hidden;
@@ -1015,7 +1015,7 @@ VideoIngest Queue:
     color: #ef4444;
   }
   .tc-duration {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   /* Logs */
@@ -1031,11 +1031,11 @@ VideoIngest Queue:
     line-height: 1.8;
   }
   .log-line .time {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-family: "JetBrains Mono", monospace;
   }
   .log-line .msg {
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
   .log-line.success .msg {
     color: #10b981;

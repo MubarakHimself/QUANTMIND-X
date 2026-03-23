@@ -225,8 +225,8 @@
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border-bottom: 1px solid var(--color-border-subtle);
     min-height: 40px;
   }
 
@@ -247,18 +247,18 @@
 
   .show-more-btn {
     padding: 4px 8px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 10px;
     cursor: pointer;
     transition: all 0.15s;
   }
 
   .show-more-btn:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
   }
 
   .add-menu-container {
@@ -271,18 +271,18 @@
     justify-content: center;
     gap: 4px;
     padding: 6px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.15s;
   }
 
   .add-btn:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    border-color: var(--accent-primary);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
+    border-color: var(--color-accent-cyan);
   }
 
   .add-btn.empty {
@@ -295,8 +295,8 @@
     top: 100%;
     right: 0;
     margin-top: 4px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     padding: 4px;
     min-width: 160px;
@@ -313,7 +313,7 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 12px;
     cursor: pointer;
     transition: background 0.15s;
@@ -321,7 +321,7 @@
   }
 
   .menu-option:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .menu-option span {

@@ -138,11 +138,11 @@
 
   function getStatusColor(status: string): string {
     switch (status) {
-      case 'completed': return 'var(--accent-success)';
-      case 'failed': return 'var(--accent-danger)';
-      case 'processing': return 'var(--accent-warning)';
-      case 'queued': return 'var(--accent-primary)';
-      default: return 'var(--text-muted)';
+      case 'completed': return 'var(--color-accent-green)';
+      case 'failed': return 'var(--color-accent-red)';
+      case 'processing': return 'var(--color-accent-amber)';
+      case 'queued': return 'var(--color-accent-cyan)';
+      default: return 'var(--color-text-muted)';
     }
   }
 
@@ -293,19 +293,19 @@
   .header h3 {
     margin: 0;
     font-size: 18px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .header p {
     margin: 4px 0 0;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   /* Auth Section */
   .auth-section {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
     padding: 12px;
   }
@@ -316,7 +316,7 @@
     gap: 6px;
     font-size: 12px;
     font-weight: 500;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     margin-bottom: 8px;
   }
 
@@ -330,22 +330,22 @@
     align-items: center;
     gap: 6px;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .auth-item.authenticated {
-    color: var(--accent-success);
+    color: var(--color-accent-green);
   }
 
   .auth-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--text-muted);
+    background: var(--color-text-muted);
   }
 
   .auth-item.authenticated .auth-dot {
-    background: var(--accent-success);
+    background: var(--color-accent-green);
   }
 
   /* Submit Form */
@@ -363,37 +363,37 @@
   .input-group input {
     flex: 1;
     padding: 10px 14px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-right: none;
     border-radius: 6px 0 0 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
   }
 
   .input-group input:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
   }
 
   .playlist-toggle {
     padding: 10px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-left: none;
     border-radius: 0 6px 6px 0;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.2s;
   }
 
   .playlist-toggle:hover {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
   }
 
   .playlist-toggle.active {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .submit-form > button {
@@ -401,8 +401,8 @@
     align-items: center;
     gap: 6px;
     padding: 10px 16px;
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
     border: none;
     border-radius: 6px;
     font-size: 13px;
@@ -418,9 +418,9 @@
   .error-message {
     padding: 10px;
     background: rgba(239, 68, 68, 0.1);
-    border: 1px solid var(--accent-danger);
+    border: 1px solid var(--color-accent-red);
     border-radius: 6px;
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
     font-size: 12px;
   }
 
@@ -439,29 +439,29 @@
   .jobs-header h4 {
     margin: 0;
     font-size: 14px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .refresh-btn {
     padding: 4px;
     background: transparent;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     border-radius: 4px;
   }
 
   .refresh-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .empty-state {
     padding: 32px;
     text-align: center;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 8px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .empty-state p {
@@ -482,8 +482,8 @@
 
   .job-card {
     padding: 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
   }
 
@@ -506,20 +506,20 @@
   .progress-bar {
     width: 80px;
     height: 4px;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 2px;
     overflow: hidden;
   }
 
   .progress-fill {
     height: 100%;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     transition: width 0.3s;
   }
 
   .job-url {
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-family: monospace;
     word-break: break-all;
     margin-bottom: 4px;
@@ -529,19 +529,19 @@
     display: flex;
     gap: 12px;
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .job-folder {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .job-result {
     margin-top: 8px;
     padding-top: 8px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
     font-size: 11px;
-    color: var(--accent-success);
+    color: var(--color-accent-green);
   }
 
   :global(.spin) {

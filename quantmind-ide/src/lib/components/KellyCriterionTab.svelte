@@ -202,8 +202,8 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
     padding: 16px;
   }
@@ -217,13 +217,13 @@
   .kelly-info h3 {
     margin: 0;
     font-size: 14px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .kelly-info p {
     margin: 4px 0 0;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .kelly-summary {
@@ -240,13 +240,13 @@
 
   .summary-item .label {
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .summary-item .value {
     font-size: 16px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .summary-item .value.success {
@@ -254,8 +254,8 @@
   }
 
   .kelly-rankings {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
     padding: 16px;
   }
@@ -263,7 +263,7 @@
   .kelly-rankings h4 {
     margin: 0 0 12px;
     font-size: 13px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .kelly-table {
@@ -275,11 +275,11 @@
     grid-template-columns: 50px 1fr 100px 100px 70px 80px 80px;
     gap: 8px;
     padding: 8px 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
     font-size: 10px;
     font-weight: 500;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-transform: uppercase;
   }
 
@@ -288,9 +288,9 @@
     grid-template-columns: 50px 1fr 100px 100px 70px 80px 80px;
     gap: 8px;
     padding: 10px 12px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
     font-size: 12px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     align-items: center;
   }
 
@@ -300,7 +300,7 @@
 
   .kelly-rank {
     font-weight: 600;
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .kelly-value {
@@ -314,7 +314,7 @@
     top: 50%;
     left: 0;
     height: 4px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     transform: translateY(-50%);
     border-radius: 2px;
   }
@@ -347,8 +347,8 @@
   }
 
   .kelly-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
     padding: 16px;
   }
@@ -362,7 +362,7 @@
 
   .kelly-card-header .bot-name {
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .status-badge {
@@ -400,12 +400,12 @@
   }
 
   .metric-label {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .metric-value {
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .metric-value.success {
@@ -429,7 +429,7 @@
   .gauge-track {
     position: relative;
     height: 8px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 4px;
     overflow: visible;
   }
@@ -457,7 +457,7 @@
     display: flex;
     justify-content: space-between;
     font-size: 9px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .half-mark {
@@ -469,21 +469,21 @@
     justify-content: space-between;
     font-size: 11px;
     padding-top: 8px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
 
   .suggested-fraction .label {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .suggested-fraction .value {
     font-weight: 500;
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .kelly-history {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
     padding: 16px;
   }
@@ -491,7 +491,7 @@
   .kelly-history h4 {
     margin: 0 0 12px;
     font-size: 13px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .history-list {
@@ -505,23 +505,23 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
     font-size: 11px;
   }
 
   .history-date {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .history-bot {
     flex: 1;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     margin-left: 8px;
   }
 
   .history-fraction {
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-family: 'JetBrains Mono', monospace;
   }
 

@@ -3,8 +3,10 @@
   import ActivityBar from "$lib/components/ActivityBar.svelte";
   import StatusBand from "$lib/components/StatusBand.svelte";
   import MainContent from "$lib/components/MainContent.svelte";
-  import BottomPanel from "$lib/components/BottomPanel.svelte";
+  import AgentPanel from "$lib/components/shell/AgentPanel.svelte";
   import { customWallpaper, wallpaperEnabled, loadSavedWallpaperEnabled, loadSavedWallpaper, setCustomWallpaper, toggleWallpaper, getActiveWallpaper } from "$lib/stores/themeStore";
+  import { activeCanvasStore } from "$lib/stores/canvasStore";
+  import { navigationStore } from "$lib/stores/navigationStore";
   import { onMount } from "svelte";
 
   // Initialize wallpaper
@@ -25,7 +27,13 @@
     }
   });
 
-  let activeView = $state("live");
+  let agentPanelCollapsed = $state(false);
+  let currentCanvas = $derived($activeCanvasStore);
+
+  // Agent panel only shown on dept canvases that have active sub-agents
+  const AGENT_PANEL_CANVASES = new Set(['research', 'development', 'risk', 'trading', 'portfolio']);
+  let showAgentPanel = $derived(AGENT_PANEL_CANVASES.has(currentCanvas));
+
   let openFiles: Array<{
     id: string;
     name: string;
@@ -34,12 +42,8 @@
   }> = $state([]);
   let activeTabId = $state("");
 
-  function handleViewChange(event: CustomEvent) {
-    const newView = event.detail.view;
-    activeView = newView;
-    if (newView !== "file") {
-      activeTabId = ""; // Clear tab ID when switching views
-    }
+  function handleOpenSettings() {
+    navigationStore.navigateToView('settings', 'Settings');
   }
 
   function handleOpenFile(event: CustomEvent) {
@@ -63,14 +67,9 @@
       activeTabId =
         openFiles.length > 0 ? openFiles[openFiles.length - 1].id : "";
   }
-
-  function handleOpenSettings() {
-    activeView = "settings";
-    activeTabId = "";
-  }
 </script>
 
-<div class="ide-layout">
+<div class="ide-layout" class:agent-panel-collapsed={agentPanelCollapsed || !showAgentPanel}>
   <!-- Wallpaper Background -->
   <div
     class="wallpaper-layer"
@@ -80,37 +79,40 @@
 
   <TopBar on:openSettings={handleOpenSettings} />
   <StatusBand />
-  <ActivityBar
-    bind:activeView
-    on:viewChange={handleViewChange}
-  />
+  <ActivityBar />
   <MainContent
-    {activeView}
     {openFiles}
     {activeTabId}
     on:openFile={handleOpenFile}
     on:closeTab={handleCloseTab}
-    on:viewChange={handleViewChange}
   />
-  <BottomPanel />
+  <AgentPanel
+    activeCanvas={currentCanvas}
+    bind:collapsed={agentPanelCollapsed}
+    hidden={!showAgentPanel}
+  />
 </div>
 
 <style>
   .ide-layout {
     display: grid;
     grid-template-areas:
-      "topbar topbar"
-      "statusband statusband"
-      "activity main"
-      "activity bottom";
-    grid-template-columns: var(--sidebar-width) 1fr;
-    grid-template-rows: var(--header-height) auto 1fr auto;
+      "topbar topbar topbar"
+      "statusband statusband statusband"
+      "activity main agent";
+    grid-template-columns: var(--sidebar-width) 1fr var(--agent-panel-width, 320px);
+    grid-template-rows: var(--header-height) auto 1fr;
     height: 100vh;
     width: 100vw;
     background: transparent;
     overflow: hidden;
     gap: 0;
     position: relative;
+  }
+
+  .ide-layout.agent-panel-collapsed {
+    grid-template-columns: var(--sidebar-width) 1fr 0px;
+    overflow: hidden;
   }
 
   /* Wallpaper background */
@@ -128,13 +130,13 @@
     background-size: 20px 20px;
   }
 
-  /* Wallpaper overlay - makes content readable */
+  /* Wallpaper overlay - only shown when wallpaper is active */
   .ide-layout::before {
     content: '';
     position: absolute;
     inset: 0;
-    background: var(--bg-primary);
-    opacity: calc(0.85 - (var(--wallpaper-visible, 1) * 0.5));
+    background: var(--color-bg-base);
+    opacity: calc(var(--wallpaper-visible, 0) * 0.7);
     z-index: -1;
     pointer-events: none;
   }

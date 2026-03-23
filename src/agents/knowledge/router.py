@@ -10,6 +10,7 @@ Features:
 
 import os
 import logging
+import threading
 from typing import List, Dict, Any, Optional
 import httpx
 
@@ -120,6 +121,98 @@ class PageIndexClient:
             logger.error(f"Unexpected error during PageIndex search: {e}")
             return []
     
+    async def search_async(self, query: str, collection: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Async search within a specific PageIndex collection.
+
+        Args:
+            query: The search query string
+            collection: Collection name (articles, books, logs)
+            limit: Maximum number of results to return
+
+        Returns:
+            List of search results with content, source, score, and collection
+
+        Raises:
+            Exception: Re-raises on failure so callers can handle graceful degradation
+        """
+        base_url = self._get_url_for_collection(collection)
+        search_url = f"{base_url}/search"
+        timeout = httpx.Timeout(10.0)
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            try:
+                response = await client.post(
+                    search_url,
+                    json={"query": query, "limit": limit},
+                )
+                response.raise_for_status()
+                data = response.json()
+                results = []
+                for item in data.get("results", []):
+                    results.append({
+                        "content": item.get("content", ""),
+                        "source": item.get("source", "unknown"),
+                        "score": item.get("score", 0.0),
+                        "collection": collection,
+                    })
+                return results
+            except Exception as e:
+                logger.error(f"Async PageIndex search failed for {collection}: {e}")
+                raise
+
+    async def health_check_async(self, collection: str) -> Dict[str, Any]:
+        """
+        Async health check for a specific PageIndex service.
+
+        Args:
+            collection: Collection name (articles, books, logs)
+
+        Returns:
+            Health status dict
+
+        Raises:
+            Exception: Re-raises on failure so callers can handle graceful degradation
+        """
+        base_url = self._get_url_for_collection(collection)
+        health_url = f"{base_url}/health"
+        timeout = httpx.Timeout(5.0)
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            try:
+                response = await client.get(health_url)
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
+                logger.error(f"Async health check failed for {collection}: {e}")
+                raise
+
+    async def get_stats_async(self, collection: str) -> Dict[str, Any]:
+        """
+        Async stats retrieval from a specific PageIndex service.
+
+        Args:
+            collection: Collection name (articles, books, logs)
+
+        Returns:
+            Stats dict
+
+        Raises:
+            Exception: Re-raises on failure so callers can handle graceful degradation
+        """
+        base_url = self._get_url_for_collection(collection)
+        stats_url = f"{base_url}/stats"
+        timeout = httpx.Timeout(5.0)
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            try:
+                response = await client.get(stats_url)
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
+                logger.error(f"Async stats request failed for {collection}: {e}")
+                raise
+
     def health_check(self, collection: str) -> Dict[str, Any]:
         """Check health status of a PageIndex service."""
         base_url = self._get_url_for_collection(collection)
@@ -155,11 +248,14 @@ class KnowledgeRouter:
     Provides unified access to articles, books, and logs collections.
     """
     _instance = None
+    _lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(KnowledgeRouter, cls).__new__(cls)
-            cls._instance._init_client()
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super(KnowledgeRouter, cls).__new__(cls)
+                    cls._instance._init_client()
         return cls._instance
 
     def _init_client(self):

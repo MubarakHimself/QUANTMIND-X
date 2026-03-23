@@ -122,8 +122,8 @@
   }
 
   .overview-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
     padding: 16px;
   }
@@ -138,7 +138,7 @@
   .card-header h3 {
     margin: 0;
     font-size: 14px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   /* Regime Card */
@@ -151,13 +151,13 @@
 
   .quality-label {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .quality-bar {
     flex: 1;
     height: 8px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 4px;
     overflow: hidden;
   }
@@ -171,7 +171,7 @@
   .quality-value {
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .regime-details {
@@ -188,12 +188,12 @@
 
   .regime-item .label {
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .regime-item .value {
     font-size: 12px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .regime-item .value.bullish {
@@ -216,19 +216,19 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
     font-size: 12px;
   }
 
   .symbol-name {
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .symbol-price {
     font-family: 'JetBrains Mono', monospace;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .symbol-change {
@@ -245,7 +245,7 @@
 
   .symbol-spread {
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   /* House Money Card */
@@ -289,14 +289,14 @@
   .hm-profit .label,
   .hm-house .label,
   .hm-threshold .label {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .hm-profit .value,
   .hm-house .value,
   .hm-threshold .value {
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .hm-profit .value.success {

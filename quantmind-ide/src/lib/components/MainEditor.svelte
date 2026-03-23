@@ -238,14 +238,14 @@
     grid-row: 1;
     display: flex;
     flex-direction: column;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     overflow: hidden;
   }
 
   .tab-bar {
     display: flex;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
     height: 36px;
     overflow-x: auto;
   }
@@ -255,18 +255,18 @@
     align-items: center;
     gap: 8px;
     padding: 0 12px;
-    background: var(--bg-secondary);
-    border-right: 1px solid var(--border-subtle);
-    color: var(--text-secondary);
+    background: var(--color-bg-surface);
+    border-right: 1px solid var(--color-border-subtle);
+    color: var(--color-text-secondary);
     cursor: pointer;
     min-width: fit-content;
     max-width: 180px;
   }
 
   .tab.active {
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    border-bottom: 1px solid var(--bg-primary);
+    background: var(--color-bg-base);
+    color: var(--color-text-primary);
+    border-bottom: 1px solid var(--color-bg-base);
     margin-bottom: -1px;
   }
 
@@ -283,7 +283,7 @@
     justify-content: center;
     background: none;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     padding: 2px;
     border-radius: 4px;
@@ -296,8 +296,8 @@
   }
 
   .tab-close:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .editor-toggle {
@@ -305,7 +305,7 @@
     margin-left: auto;
     padding: 4px;
     gap: 2px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .editor-toggle button {
@@ -316,17 +316,17 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.2s ease;
   }
 
   .editor-toggle button:hover {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .editor-toggle button.active {
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     color: #000;
   }
 
@@ -349,7 +349,7 @@
   h1 {
     font-size: 32px;
     font-weight: 600;
-    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    background: linear-gradient(135deg, var(--color-accent-cyan), var(--color-accent-amber));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -357,7 +357,7 @@
   }
 
   .subtitle {
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 14px;
     margin-bottom: 32px;
   }
@@ -375,10 +375,10 @@
     align-items: center;
     gap: 12px;
     padding: 16px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     cursor: pointer;
     transition: all 0.15s ease;
     text-align: left;
@@ -386,7 +386,7 @@
 
   .action-btn:hover {
     background: var(--glass-bg);
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
     transform: translateY(-2px);
   }
 
@@ -407,30 +407,30 @@
 
   .action-desc {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .hint {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 12px;
     margin-bottom: 24px;
   }
 
   .editor-info {
     padding: 16px 24px;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 8px;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
   }
 
   .editor-info p {
     margin: 4px 0;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .editor-info .features {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 11px;
   }
 
@@ -447,6 +447,6 @@
     font-size: 14px;
     line-height: 1.7;
     white-space: pre-wrap;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 </style>

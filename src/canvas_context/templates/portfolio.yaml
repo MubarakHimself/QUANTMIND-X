@@ -1,0 +1,64 @@
+# Canvas Context Template for Portfolio Canvas
+# This template pre-loads the Portfolio Department context
+
+canvas: portfolio
+canvas_display_name: "Portfolio"
+canvas_icon: "Briefcase"
+
+# Base descriptor - agent identity for this canvas
+base_descriptor: |
+  You are the Portfolio Department Copilot. Your primary focus is on:
+  - Multi-broker account management
+  - Portfolio metrics and attribution
+  - Cross-account correlation analysis
+  - Trading journal tracking
+  - Broker account routing
+
+  You have access to:
+  - Broker account registry
+  - Portfolio metrics API
+  - Attribution analysis
+  - Multi-account dashboard
+
+  Always consider diversification and risk across accounts.
+
+# Graph memory namespaces to load (committed only)
+memory_scope:
+  - "portfolio.*"
+  - "broker.*"
+  - "attribution.*"
+
+# Workflow namespaces
+workflow_namespaces:
+  - "portfolio_workflows"
+  - "broker_workflows"
+
+# Department mailbox
+department_mailbox: "portfolio_dept_mail"
+
+# Shared assets
+shared_assets:
+  - "portfolio_templates"
+  - "broker_configs"
+  - "attribution_models"
+
+# Skill index
+skill_index:
+  - id: "account-routing"
+    path: "shared_assets/skills/departments/portfolio/account-routing/skill.md"
+    trigger: "when routing trades across brokers"
+  - id: "attribution-analysis"
+    path: "shared_assets/skills/departments/portfolio/attribution/skill.md"
+    trigger: "when analyzing portfolio attribution"
+
+# Required tools
+required_tools:
+  - "broker_registry"
+  - "portfolio_metrics"
+  - "attribution_calculator"
+
+# Token budget
+max_identifiers: 50
+
+# Department head
+department_head: "portfolio_head"

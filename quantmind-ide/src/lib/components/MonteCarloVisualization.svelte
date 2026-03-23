@@ -408,8 +408,8 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -419,8 +419,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .header-left {
@@ -433,12 +433,12 @@
     margin: 0;
     font-size: 16px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .progress-badge {
     padding: 4px 10px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     color: #000;
     border-radius: 12px;
     font-size: 12px;
@@ -455,28 +455,28 @@
     align-items: center;
     gap: 6px;
     padding: 8px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 13px;
     cursor: pointer;
     transition: all 0.2s ease;
   }
 
   .action-btn:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
   }
 
   .action-btn.primary {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
     color: #000;
   }
 
   .action-btn.primary:hover {
-    background: var(--accent-secondary);
+    background: var(--color-accent-amber);
   }
 
   .dropdown {
@@ -489,8 +489,8 @@
     top: 100%;
     right: 0;
     margin-top: 4px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     z-index: 10;
@@ -507,20 +507,20 @@
     padding: 8px 12px;
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
     text-align: left;
     cursor: pointer;
   }
 
   .dropdown-menu button:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .tab-bar {
     display: flex;
-    border-bottom: 1px solid var(--border-subtle);
-    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-surface);
   }
 
   .tab-bar button {
@@ -531,20 +531,20 @@
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 13px;
     cursor: pointer;
     transition: all 0.2s ease;
   }
 
   .tab-bar button:hover {
-    color: var(--text-primary);
-    background: var(--bg-tertiary);
+    color: var(--color-text-primary);
+    background: var(--color-bg-elevated);
   }
 
   .tab-bar button.active {
-    color: var(--accent-primary);
-    border-bottom-color: var(--accent-primary);
+    color: var(--color-accent-cyan);
+    border-bottom-color: var(--color-accent-cyan);
   }
 
   .visualization-content {
@@ -556,8 +556,8 @@
 
   .summary-panel {
     padding: 16px;
-    background: var(--bg-secondary);
-    border-right: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-right: 1px solid var(--color-border-subtle);
     overflow-y: auto;
   }
 
@@ -565,7 +565,7 @@
     margin: 0 0 12px 0;
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .stats-grid {
@@ -579,31 +579,31 @@
     justify-content: space-between;
     align-items: center;
     padding: 10px 12px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
   }
 
   .stat-label {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .stat-value {
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .stat-value.positive {
-    color: var(--accent-success);
+    color: var(--color-accent-green);
   }
 
   .stat-value.negative {
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
   }
 
   .stat-value.warning {
-    color: var(--accent-warning);
+    color: var(--color-accent-amber);
   }
 
   .chart-container {
@@ -613,12 +613,12 @@
 
   .progress-bar {
     height: 3px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .progress-fill {
     height: 100%;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     transition: width 0.3s ease;
   }
 </style>

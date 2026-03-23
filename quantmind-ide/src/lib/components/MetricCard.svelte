@@ -115,8 +115,8 @@
     display: flex;
     flex-direction: column;
     padding: 16px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     transition: all 0.2s ease;
   }
@@ -128,12 +128,12 @@
   }
 
   .metric-card.warning {
-    border-color: var(--accent-warning);
+    border-color: var(--color-accent-amber);
     background: rgba(255, 152, 0, 0.05);
   }
 
   .metric-card.critical {
-    border-color: var(--accent-danger);
+    border-color: var(--color-accent-red);
     background: rgba(244, 67, 54, 0.05);
     animation: pulse-critical 2s infinite;
   }
@@ -156,15 +156,15 @@
     justify-content: center;
     width: 32px;
     height: 32px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .metric-title {
     font-size: 12px;
     font-weight: 500;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
@@ -185,13 +185,13 @@
   .value {
     font-size: 28px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     line-height: 1;
   }
 
   .unit {
     font-size: 14px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .metric-trend {
@@ -199,19 +199,19 @@
     align-items: center;
     gap: 4px;
     padding: 4px 8px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 12px;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .metric-trend.trend-up {
-    color: var(--accent-success);
+    color: var(--color-accent-green);
     background: rgba(76, 175, 80, 0.1);
   }
 
   .metric-trend.trend-down {
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
     background: rgba(244, 67, 54, 0.1);
   }
 
@@ -221,7 +221,7 @@
 
   .skeleton {
     height: 32px;
-    background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-secondary) 50%, var(--bg-tertiary) 75%);
+    background: linear-gradient(90deg, var(--color-bg-elevated) 25%, var(--color-bg-surface) 50%, var(--color-bg-elevated) 75%);
     background-size: 200% 100%;
     animation: skeleton-loading 1.5s infinite;
     border-radius: 4px;
@@ -238,7 +238,7 @@
 
   .threshold-bar {
     height: 4px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 2px;
     position: relative;
     overflow: hidden;
@@ -246,17 +246,17 @@
 
   .threshold-fill {
     height: 100%;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border-radius: 2px;
     transition: width 0.3s ease;
   }
 
   .metric-card.warning .threshold-fill {
-    background: var(--accent-warning);
+    background: var(--color-accent-amber);
   }
 
   .metric-card.critical .threshold-fill {
-    background: var(--accent-danger);
+    background: var(--color-accent-red);
   }
 
   .threshold-marker {
@@ -269,10 +269,10 @@
   }
 
   .threshold-marker.warning {
-    background: var(--accent-warning);
+    background: var(--color-accent-amber);
   }
 
   .threshold-marker.critical {
-    background: var(--accent-danger);
+    background: var(--color-accent-red);
   }
 </style>

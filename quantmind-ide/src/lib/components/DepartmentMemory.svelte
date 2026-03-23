@@ -499,7 +499,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     overflow: hidden;
   }
 
@@ -509,8 +509,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 20px 24px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .header-left {
@@ -520,19 +520,19 @@
   }
 
   .memory-icon {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .header-left h2 {
     margin: 0;
     font-size: 18px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .header-left p {
     margin: 2px 0 0;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .header-actions {
@@ -545,10 +545,10 @@
     align-items: center;
     gap: 6px;
     padding: 8px 14px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 12px;
     cursor: pointer;
     transition: all 0.15s;
@@ -559,9 +559,9 @@
   }
 
   .btn.primary {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .btn.primary:hover {
@@ -595,13 +595,13 @@
     align-items: center;
     gap: 12px;
     padding: 12px 24px;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .dept-label {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-weight: 500;
   }
 
@@ -615,19 +615,19 @@
     background: transparent;
     border: none;
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 12px;
     cursor: pointer;
     transition: all 0.15s;
   }
 
   .dept-tab:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .dept-tab.active {
     background: var(--dept-color);
-    color: var(--bg-primary);
+    color: var(--color-bg-base);
   }
 
   /* Stats Banner */
@@ -635,8 +635,8 @@
     display: flex;
     gap: 24px;
     padding: 12px 24px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .stat-item {
@@ -644,15 +644,15 @@
     align-items: center;
     gap: 6px;
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .stat-label {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .stat-value {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-weight: 500;
   }
 
@@ -661,8 +661,8 @@
     display: flex;
     gap: 4px;
     padding: 8px 24px 0;
-    border-bottom: 1px solid var(--border-subtle);
-    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-surface);
   }
 
   .tab-btn {
@@ -673,20 +673,20 @@
     background: transparent;
     border: none;
     border-radius: 8px 8px 0 0;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.15s;
     font-size: 13px;
   }
 
   .tab-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .tab-btn.active {
-    background: var(--bg-primary);
-    color: var(--accent-primary);
+    background: var(--color-bg-base);
+    color: var(--color-accent-cyan);
   }
 
   /* Filter Bar */
@@ -694,8 +694,8 @@
     display: flex;
     gap: 12px;
     padding: 16px 24px;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .search-group,
@@ -704,8 +704,8 @@
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
   }
 
@@ -713,7 +713,7 @@
   .filter-group select {
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 12px;
     outline: none;
   }
@@ -724,10 +724,10 @@
 
   .search-btn {
     padding: 4px 8px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border: none;
     border-radius: 4px;
-    color: var(--bg-primary);
+    color: var(--color-bg-base);
     font-size: 11px;
     cursor: pointer;
   }
@@ -747,8 +747,8 @@
   }
 
   .memory-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -763,7 +763,7 @@
   }
 
   .memory-header:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .memory-info {
@@ -778,12 +778,12 @@
     gap: 6px;
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .memory-category span {
     padding: 2px 8px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 4px;
     font-size: 11px;
   }
@@ -793,7 +793,7 @@
     align-items: center;
     gap: 4px;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .memory-body {
@@ -803,7 +803,7 @@
   .memory-text {
     margin: 0 0 12px;
     font-size: 13px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     line-height: 1.6;
     white-space: pre-wrap;
   }
@@ -816,10 +816,10 @@
 
   .tag {
     padding: 4px 10px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
     font-size: 11px;
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   /* Logs List */
@@ -830,8 +830,8 @@
   }
 
   .log-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -846,7 +846,7 @@
   }
 
   .log-header:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .log-info {
@@ -861,7 +861,7 @@
     gap: 6px;
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .log-count {
@@ -869,7 +869,7 @@
     align-items: center;
     gap: 4px;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .log-body {
@@ -881,9 +881,9 @@
 
   .log-entry {
     padding: 10px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
-    border-left: 2px solid var(--accent-primary);
+    border-left: 2px solid var(--color-accent-cyan);
   }
 
   .entry-time {
@@ -891,7 +891,7 @@
     align-items: center;
     gap: 4px;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin-bottom: 6px;
   }
 
@@ -901,14 +901,14 @@
     background: var(--bg-surface);
     border-radius: 4px;
     font-size: 10px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     margin-bottom: 6px;
   }
 
   .entry-content {
     margin: 0;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     white-space: pre-wrap;
   }
 
@@ -919,7 +919,7 @@
     align-items: center;
     justify-content: center;
     padding: 60px 24px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-align: center;
     gap: 16px;
   }
@@ -936,7 +936,7 @@
     align-items: center;
     justify-content: center;
     padding: 60px 24px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     gap: 16px;
   }
 
@@ -962,7 +962,7 @@
   }
 
   .modal {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 12px;
     width: 500px;
     max-width: 90%;
@@ -977,19 +977,19 @@
     justify-content: space-between;
     align-items: flex-start;
     padding: 16px 20px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .modal-header h3 {
     margin: 0;
     font-size: 16px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .modal-subtitle {
     margin: 4px 0 0;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .icon-btn {
@@ -1001,13 +1001,13 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
   }
 
   .icon-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .modal-content {
@@ -1025,24 +1025,24 @@
     margin-bottom: 6px;
     font-size: 12px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .form-group input,
   .form-group textarea {
     width: 100%;
     padding: 10px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
     outline: none;
   }
 
   .form-group input:focus,
   .form-group textarea:focus {
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
   }
 
   .modal-actions {
@@ -1050,6 +1050,6 @@
     justify-content: flex-end;
     gap: 8px;
     padding: 16px 20px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
 </style>

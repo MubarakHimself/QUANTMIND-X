@@ -1,168 +1,196 @@
 <script lang="ts">
-  import { self } from 'svelte/legacy';
-
-  import { createEventDispatcher } from 'svelte';
+  import { onMount } from 'svelte';
   import {
     Key, RefreshCw, Trash2, AlertCircle, Plus,
     Brain, Sparkles, Zap, Globe, Server, Cpu,
-    Copy, Eye, EyeOff
+    Copy, Eye, EyeOff, Check, X
   } from 'lucide-svelte';
+  import { apiFetch } from '$lib/api';
 
-
-  interface Props {
-    apiKeys?: Array<{
+  interface ApiKey {
     id: string;
     name: string;
-    key: string;
+    key_prefix: string;
     service: string;
-    created: string;
-    lastUsed?: string;
-  }>;
-    apiKeyModal?: boolean;
-    newApiKey?: any;
+    created_at: string;
+    last_used_at?: string;
   }
 
-  let { apiKeys = [], apiKeyModal = $bindable(false), newApiKey = $bindable({
-    name: '',
-    key: '',
-    service: 'openai'
-  }) }: Props = $props();
-
-  const dispatch = createEventDispatcher();
-
-  // Generate secure random API key
-  function generateSecureKey(): string {
-    const array = new Uint8Array(32);
-    crypto.getRandomValues(array);
-    const hexArray = Array.from(array).map(b => b.toString(16).padStart(2, '0'));
-    return 'qm_' + hexArray.join('');
-  }
-
-  // Show/hide generated key
+  let apiKeys: ApiKey[] = $state([]);
+  let isLoading = $state(false);
+  let isSaving = $state(false);
+  let error = $state<string | null>(null);
+  let copySuccess = $state<string | null>(null);
+  let showAddModal = $state(false);
   let showGeneratedKey = $state(false);
 
-  function handleGenerateKey() {
-    newApiKey.key = generateSecureKey();
-    showGeneratedKey = true;
+  let newKeyForm = $state({ name: '', key: '', service: 'openai' });
+
+  const SERVICE_ICONS: Record<string, typeof Brain> = {
+    openai: Brain, anthropic: Sparkles, gemini: Zap,
+    openrouter: Globe, together: Server, groq: Cpu
+  };
+
+  function getServiceIcon(service: string) {
+    return SERVICE_ICONS[service] || Key;
   }
 
-  // Copy to clipboard
-  async function copyToClipboard(text: string) {
+  async function loadApiKeys() {
+    isLoading = true;
+    error = null;
     try {
-      await navigator.clipboard.writeText(text);
-      dispatch('copySuccess', { text });
-    } catch (err) {
-      console.error('Failed to copy:', err);
+      const data = await apiFetch<{ keys: ApiKey[] }>('/api-keys');
+      apiKeys = data.keys || [];
+    } catch (e) {
+      error = 'Failed to load API keys';
+      console.error(e);
+    } finally {
+      isLoading = false;
     }
   }
 
-  // Copy key from list
-  async function copyKeyValue(key: string) {
-    await copyToClipboard(key);
+  async function addApiKey() {
+    if (!newKeyForm.name || !newKeyForm.key) return;
+    isSaving = true;
+    error = null;
+    try {
+      await apiFetch('/api-keys', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: newKeyForm.name,
+          key: newKeyForm.key,
+          service: newKeyForm.service
+        })
+      });
+      showAddModal = false;
+      newKeyForm = { name: '', key: '', service: 'openai' };
+      showGeneratedKey = false;
+      await loadApiKeys();
+    } catch (e) {
+      error = 'Failed to add API key';
+      console.error(e);
+    } finally {
+      isSaving = false;
+    }
   }
 
-  function getServiceIcon(service: string) {
-    const icons: Record<string, typeof Brain> = {
-      openai: Brain,
-      anthropic: Sparkles,
-      gemini: Zap,
-      openrouter: Globe,
-      together: Server,
-      groq: Cpu
-    };
-    return icons[service] || Key;
+  async function deleteApiKey(id: string) {
+    try {
+      await apiFetch(`/api-keys/${id}`, { method: 'DELETE' });
+      await loadApiKeys();
+    } catch (e) {
+      error = 'Failed to delete API key';
+      console.error(e);
+    }
   }
 
-  function testConnection(service: string) {
-    dispatch('testConnection', { service });
+  function generateSecureKey(): string {
+    const arr = new Uint8Array(32);
+    crypto.getRandomValues(arr);
+    return 'qm_' + Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  function addApiKey() {
-    dispatch('addApiKey');
+  function handleGenerateKey() {
+    newKeyForm.key = generateSecureKey();
+    showGeneratedKey = true;
   }
 
-  function removeApiKey(id: string) {
-    dispatch('removeApiKey', { id });
+  async function copyToClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      copySuccess = text.slice(0, 8) + '...';
+      setTimeout(() => copySuccess = null, 2000);
+    } catch (e) {
+      console.error('Copy failed:', e);
+    }
   }
 
-  function openModal() {
-    apiKeyModal = true;
-    dispatch('openModal');
+  function formatDate(dateStr: string): string {
+    try { return new Date(dateStr).toLocaleDateString(); } catch { return dateStr; }
   }
 
-  function closeModal() {
-    apiKeyModal = false;
-    dispatch('closeModal');
-  }
+  onMount(() => { loadApiKeys(); });
 </script>
 
 <div class="panel">
   <div class="panel-header">
     <h3>API Keys</h3>
-    <button class="btn primary" onclick={openModal}>
-      <Plus size={14} /> Add Key
-    </button>
+    <div class="header-actions">
+      <button class="icon-btn" onclick={loadApiKeys} title="Refresh">
+        <RefreshCw size={16} class={isLoading ? 'spinning' : ''} />
+      </button>
+      <button class="icon-btn accent" onclick={() => showAddModal = true} title="Add Key">
+        <Plus size={16} />
+      </button>
+    </div>
   </div>
 
+  {#if error}
+    <div class="alert-error"><AlertCircle size={14} /> <span>{error}</span></div>
+  {/if}
+
+  {#if copySuccess}
+    <div class="alert-success"><Check size={14} /> <span>Copied {copySuccess}</span></div>
+  {/if}
+
   <div class="info-box">
-    <AlertCircle size={16} />
-    <span>Your API keys are stored locally and encrypted. Never share them with anyone.</span>
+    <AlertCircle size={14} />
+    <span>API keys are stored encrypted server-side. The full key is only shown once at creation.</span>
   </div>
 
   <div class="keys-list">
-    {#each apiKeys as key}
-      {@const SvelteComponent = getServiceIcon(key.service)}
-      <div class="key-item">
-        <div class="key-icon">
-          <SvelteComponent />
-        </div>
-        <div class="key-info">
-          <div class="key-name">{key.name}</div>
-          <div class="key-service">{key.service}</div>
-        </div>
-        <div class="key-value">
-          <code>{key.key.slice(0, 8)}...</code>
-          <button class="icon-btn copy-btn" onclick={() => copyKeyValue(key.key)} title="Copy Key">
-            <Copy size={14} />
-          </button>
-        </div>
-        <div class="key-actions">
-          <button class="icon-btn" onclick={() => testConnection(key.service)} title="Test Connection">
-            <RefreshCw size={14} />
-          </button>
-          <button class="icon-btn danger" onclick={() => removeApiKey(key.id)} title="Remove">
-            <Trash2 size={14} />
-          </button>
-        </div>
-      </div>
-    {:else}
+    {#if apiKeys.length === 0 && !isLoading}
       <div class="empty-state">
-        <Key size={32} />
+        <Key size={36} />
         <p>No API keys configured</p>
-        <button class="btn primary" onclick={openModal}>
-          Add Your First API Key
+        <button class="btn primary" onclick={() => showAddModal = true}>
+          <Plus size={13} /> Add Key
         </button>
       </div>
-    {/each}
+    {:else}
+      {#each apiKeys as apiKey}
+        {@const SvelteComponent = getServiceIcon(apiKey.service)}
+        <div class="key-item">
+          <div class="key-icon">
+            <SvelteComponent size={16} />
+          </div>
+          <div class="key-info">
+            <div class="key-name">{apiKey.name}</div>
+            <div class="key-service">{apiKey.service}</div>
+          </div>
+          <div class="key-prefix">
+            <code>{apiKey.key_prefix}••••••••</code>
+          </div>
+          <div class="key-meta">
+            <span class="meta-date">{formatDate(apiKey.created_at)}</span>
+          </div>
+          <div class="key-actions">
+            <button class="icon-btn" onclick={() => deleteApiKey(apiKey.id)} title="Delete key">
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
+      {/each}
+    {/if}
   </div>
 </div>
 
-<!-- API Key Modal -->
-{#if apiKeyModal}
-  <div class="modal-overlay" onclick={self(closeModal)}>
-    <div class="modal">
+{#if showAddModal}
+  <div class="modal-backdrop" onclick={() => showAddModal = false} role="button" tabindex="0"
+    onkeydown={(e) => e.key === 'Escape' && (showAddModal = false)}>
+    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog">
       <div class="modal-header">
-        <h3>Add API Key</h3>
-        <button onclick={closeModal}><RefreshCw size={20} /></button>
+        <h4>Add API Key</h4>
+        <button class="icon-btn" onclick={() => showAddModal = false}><X size={16} /></button>
       </div>
       <div class="modal-body">
         <div class="form-group">
           <label>Name</label>
-          <input type="text" placeholder="My OpenAI Key" bind:value={newApiKey.name} />
+          <input type="text" class="text-input" placeholder="My OpenAI Key" bind:value={newKeyForm.name} />
         </div>
         <div class="form-group">
           <label>Service</label>
-          <select bind:value={newApiKey.service}>
+          <select class="text-input" bind:value={newKeyForm.service}>
             <option value="openai">OpenAI</option>
             <option value="anthropic">Anthropic</option>
             <option value="gemini">Google Gemini</option>
@@ -173,399 +201,361 @@
         </div>
         <div class="form-group">
           <label>API Key</label>
-          <div class="key-input-wrapper">
-            {#if showGeneratedKey}
-              <div class="generated-key-display">
-                <code class="key-value">{newApiKey.key}</code>
-                <button class="icon-btn" onclick={() => copyToClipboard(newApiKey.key)} title="Copy to clipboard">
-                  <Copy size={14} />
-                </button>
-                <button class="icon-btn" onclick={() => showGeneratedKey = false} title="Hide">
-                  <EyeOff size={14} />
-                </button>
-              </div>
-            {:else}
-              <input type="password" placeholder="sk-..." bind:value={newApiKey.key} />
-            {/if}
-          </div>
+          {#if showGeneratedKey}
+            <div class="generated-key">
+              <code class="generated-key-value">{newKeyForm.key}</code>
+              <button class="icon-btn" onclick={() => copyToClipboard(newKeyForm.key)} title="Copy">
+                <Copy size={13} />
+              </button>
+              <button class="icon-btn" onclick={() => showGeneratedKey = false} title="Hide">
+                <EyeOff size={13} />
+              </button>
+            </div>
+          {:else}
+            <input type="password" class="text-input" placeholder="sk-..." bind:value={newKeyForm.key} />
+          {/if}
           <div class="generate-row">
-            <button type="button" class="btn secondary generate-btn" onclick={handleGenerateKey}>
-              <Key size={14} /> Generate Secure Key
+            <button type="button" class="btn secondary small" onclick={handleGenerateKey}>
+              <Key size={12} /> Generate Secure Key
             </button>
-            {#if newApiKey.key && !showGeneratedKey}
-              <button type="button" class="btn-text" onclick={() => showGeneratedKey = true}>
-                <Eye size={12} /> Show
+            {#if newKeyForm.key && !showGeneratedKey}
+              <button type="button" class="btn-link" onclick={() => showGeneratedKey = true}>
+                <Eye size={11} /> Show
               </button>
             {/if}
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn secondary" onclick={closeModal}>Cancel</button>
-        <button class="btn primary" onclick={addApiKey}>Add Key</button>
+        <button class="btn secondary" onclick={() => showAddModal = false}>Cancel</button>
+        <button class="btn primary" onclick={addApiKey} disabled={isSaving || !newKeyForm.name || !newKeyForm.key}>
+          {isSaving ? 'Adding...' : 'Add Key'}
+        </button>
       </div>
     </div>
   </div>
 {/if}
 
 <style>
-  /* Panel Header */
   .panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
   }
 
   .panel-header h3 {
     margin: 0;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
     color: var(--text-primary);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
-  /* Info Box */
+  .header-actions { display: flex; gap: 8px; }
+
+  .alert-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: rgba(255, 59, 59, 0.1);
+    border: 1px solid rgba(255, 59, 59, 0.25);
+    border-radius: 6px;
+    color: #ff3b3b;
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+
+  .alert-success {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: rgba(0, 200, 150, 0.08);
+    border: 1px solid rgba(0, 200, 150, 0.2);
+    border-radius: 6px;
+    color: #00c896;
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+
   .info-box {
     display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 12px 16px;
-    background: rgba(59, 130, 246, 0.1);
-    border: 1px solid rgba(59, 130, 246, 0.2);
-    border-radius: 8px;
-    margin-bottom: 20px;
-    color: #60a5fa;
-    font-size: 13px;
-    line-height: 1.5;
-  }
-
-  .info-box :global(svg) {
-    flex-shrink: 0;
-    margin-top: 2px;
-  }
-
-  /* Keys List */
-  .keys-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  /* Key Item */
-  .key-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 8px;
-    transition: all 0.15s ease;
-  }
-
-  .key-item:hover {
-    background: var(--bg-surface);
-    border-color: var(--accent-primary);
-    transform: translateX(2px);
-  }
-
-  .key-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    background: rgba(99, 102, 241, 0.15);
-    border-radius: 8px;
-    color: var(--accent-primary);
-  }
-
-  .key-info {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .key-name {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-primary);
-    margin-bottom: 2px;
-  }
-
-  .key-service {
-    font-size: 12px;
-    color: var(--text-muted);
-    text-transform: capitalize;
-  }
-
-  .key-value {
-    display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 12px;
-    background: var(--bg-primary);
+    padding: 10px 12px;
+    background: rgba(0, 212, 255, 0.06);
+    border: 1px solid rgba(0, 212, 255, 0.15);
     border-radius: 6px;
-    font-family: monospace;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: rgba(0, 212, 255, 0.8);
+    margin-bottom: 16px;
   }
 
-  .key-value code {
-    color: var(--text-muted);
-  }
+  .keys-list { display: flex; flex-direction: column; gap: 8px; }
 
-  .key-actions {
-    display: flex;
-    gap: 4px;
-  }
-
-  /* Icon Button */
-  .icon-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    background: transparent;
-    border: none;
-    border-radius: 6px;
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .icon-btn:hover {
-    background: var(--bg-primary);
-    color: var(--text-primary);
-  }
-
-  .icon-btn.danger:hover {
-    background: rgba(239, 68, 68, 0.15);
-    color: #ef4444;
-  }
-
-  /* Copy button */
-  .key-item .copy-btn {
-    opacity: 0;
-    transition: opacity 0.15s;
-  }
-
-  .key-item:hover .copy-btn {
-    opacity: 1;
-  }
-
-  /* Empty State */
   .empty-state {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 48px 24px;
+    padding: 40px;
+    color: rgba(255, 255, 255, 0.3);
+    gap: 14px;
     text-align: center;
-    color: var(--text-muted);
   }
 
-  .empty-state :global(svg) {
-    margin-bottom: 16px;
-    opacity: 0.5;
+  .empty-state p { margin: 0; font-size: 13px; }
+
+  .key-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: rgba(8, 13, 20, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 8px;
+    transition: border-color 0.15s;
   }
 
-  .empty-state p {
-    margin: 0 0 16px;
-    font-size: 14px;
-  }
+  .key-item:hover { border-color: rgba(255, 255, 255, 0.14); }
 
-  /* Modal */
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.7);
+  .key-icon {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    width: 34px;
+    height: 34px;
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.15);
+    border-radius: 7px;
+    color: #00d4ff;
+    flex-shrink: 0;
   }
 
-  .modal {
-    background: var(--bg-secondary);
-    border-radius: 12px;
-    width: 450px;
-    max-width: 95vw;
-    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
-    overflow: hidden;
-  }
+  .key-info { flex: 1; min-width: 0; }
 
-  .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .modal-header h3 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
+  .key-name {
+    font-size: 13px;
+    font-weight: 500;
     color: var(--text-primary);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
   }
 
-  .modal-header button {
+  .key-service {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.35);
+    text-transform: capitalize;
+    margin-top: 2px;
+  }
+
+  .key-prefix {
     display: flex;
     align-items: center;
+  }
+
+  .key-prefix code {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.05);
+    padding: 3px 7px;
+    border-radius: 4px;
+  }
+
+  .key-meta { margin-left: 8px; }
+
+  .meta-date {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.3);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  .key-actions { display: flex; gap: 4px; }
+
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
-    background: transparent;
+    width: 30px;
+    height: 30px;
     border: none;
     border-radius: 6px;
-    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.4);
     cursor: pointer;
     transition: all 0.15s;
   }
 
-  .modal-header button:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+  .icon-btn:hover { background: rgba(255, 59, 59, 0.12); color: #ff3b3b; }
+
+  .icon-btn.accent {
+    background: rgba(0, 212, 255, 0.12);
+    color: #00d4ff;
+    border: 1px solid rgba(0, 212, 255, 0.2);
   }
 
-  .modal-body {
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
+  .icon-btn.accent:hover { background: rgba(0, 212, 255, 0.2); }
+
+  .spinning { animation: spin 1s linear infinite; }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 
-  .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .form-group label {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-secondary);
-  }
-
-  .form-group input,
-  .form-group select {
-    padding: 10px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 6px;
-    color: var(--text-primary);
-    font-size: 14px;
-    transition: all 0.15s;
-  }
-
-  .form-group input:focus,
-  .form-group select:focus {
-    outline: none;
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
-  }
-
-  .form-group input::placeholder {
-    color: var(--text-muted);
-    opacity: 0.6;
-  }
-
-  .modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    padding: 16px 20px;
-    border-top: 1px solid var(--border-subtle);
-  }
-
-  /* Buttons */
   .btn {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 10px 16px;
-    border-radius: 6px;
-    font-size: 13px;
+    gap: 5px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 5px;
+    font-size: 12px;
     font-weight: 500;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
     cursor: pointer;
     transition: all 0.15s;
-    border: none;
   }
 
-  .btn.primary {
-    background: var(--accent-primary);
-    color: white;
-  }
-
-  .btn.primary:hover {
-    opacity: 0.9;
-    transform: translateY(-1px);
-  }
+  .btn.primary { background: #00d4ff; color: #080d14; }
+  .btn.primary:hover { background: #00bce6; }
+  .btn.primary:disabled { opacity: 0.45; cursor: not-allowed; }
 
   .btn.secondary {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.1);
   }
 
-  .btn.secondary:hover {
-    background: var(--bg-surface);
-    color: var(--text-primary);
-  }
+  .btn.secondary:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+  .btn.secondary.small { padding: 4px 9px; font-size: 11px; }
 
-  .key-input-wrapper {
-    display: flex;
+  .btn-link {
+    display: inline-flex;
     align-items: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    color: #00d4ff;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    cursor: pointer;
+    padding: 3px 6px;
+    border-radius: 4px;
+    transition: background 0.15s;
   }
 
-  .generated-key-display {
+  .btn-link:hover { background: rgba(0, 212, 255, 0.08); }
+
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+
+  .form-group label {
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  .text-input {
+    width: 100%;
+    padding: 7px 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    box-sizing: border-box;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .text-input:focus {
+    outline: none;
+    border-color: rgba(0, 212, 255, 0.5);
+    box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.15);
+  }
+
+  select.text-input { cursor: pointer; }
+
+  .generated-key {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    padding: 7px 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(0, 212, 255, 0.2);
     border-radius: 6px;
-    width: 100%;
   }
 
-  .key-value {
+  .generated-key-value {
     flex: 1;
-    font-family: monospace;
-    font-size: 12px;
-    color: var(--text-primary);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 11px;
+    color: #00d4ff;
     word-break: break-all;
   }
 
   .generate-row {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-top: 8px;
+    gap: 10px;
+    margin-top: 6px;
   }
 
-  .generate-btn {
-    font-size: 12px;
-    padding: 6px 12px;
-  }
-
-  .btn-text {
-    display: inline-flex;
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
     align-items: center;
-    gap: 4px;
-    background: none;
-    border: none;
-    color: var(--accent-primary);
-    font-size: 12px;
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 4px;
-    transition: background 0.15s;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
   }
 
-  .btn-text:hover {
-    background: var(--bg-tertiary);
+  .modal {
+    background: rgba(8, 13, 20, 0.97);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    width: 100%;
+    max-width: 440px;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  }
+
+  .modal-header h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  .modal-body {
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 18px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
   }
 </style>

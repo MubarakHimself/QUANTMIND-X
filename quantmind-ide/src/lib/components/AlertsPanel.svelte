@@ -237,8 +237,8 @@
   .alerts-panel {
     display: flex;
     flex-direction: column;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -248,7 +248,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     cursor: pointer;
     user-select: none;
     width: 100%;
@@ -258,7 +258,7 @@
   }
 
   .panel-header:hover {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
   }
 
   .header-left {
@@ -269,7 +269,7 @@
 
   .title {
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .alert-counters {
@@ -308,16 +308,16 @@
     width: 28px;
     height: 28px;
     background: transparent;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     cursor: pointer;
     transition: all 0.2s ease;
   }
 
   .action-btn:hover {
-    background: var(--bg-primary);
-    color: var(--text-primary);
+    background: var(--color-bg-base);
+    color: var(--color-text-primary);
   }
 
   .panel-filters {
@@ -325,8 +325,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 16px;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border-bottom: 1px solid var(--color-border-subtle);
     font-size: 12px;
   }
 
@@ -334,15 +334,15 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .filter-group select {
     padding: 4px 8px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 4px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 12px;
     cursor: pointer;
   }
@@ -360,7 +360,7 @@
     justify-content: center;
     gap: 8px;
     padding: 40px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .alert-item {
@@ -368,7 +368,7 @@
     align-items: flex-start;
     gap: 12px;
     padding: 12px 16px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
     transition: background 0.15s ease;
   }
 
@@ -377,7 +377,7 @@
   }
 
   .alert-item:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .alert-item.critical {
@@ -428,7 +428,7 @@
   }
 
   .alert-message {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
     line-height: 1.4;
     word-wrap: break-word;
@@ -439,7 +439,7 @@
     gap: 12px;
     margin-top: 4px;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .alert-source {

@@ -399,7 +399,7 @@
     padding: 0.15rem 0.4rem;
     border-radius: 4px;
     background: var(--surface-3);
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .table-badge.new-table {
@@ -520,7 +520,7 @@
 
   .nullable-badge {
     background: var(--surface-4);
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .not-null-badge {
@@ -530,7 +530,7 @@
 
   .column-default {
     font-size: 0.7rem;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin-top: 0.25rem;
   }
 
@@ -539,7 +539,7 @@
     gap: 1rem;
     margin-top: 0.75rem;
     font-size: 0.75rem;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .data-grid {
@@ -556,7 +556,7 @@
     justify-content: center;
     padding: 3rem;
     gap: 1rem;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .empty-state {
@@ -566,7 +566,7 @@
     justify-content: center;
     padding: 3rem;
     gap: 1rem;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .empty-state h3 {
@@ -678,7 +678,7 @@
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .icon-btn:hover {
@@ -702,7 +702,7 @@
 
   .pagination-info {
     font-size: 0.8rem;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .pagination-controls {
@@ -739,7 +739,7 @@
 
   .page-info {
     font-size: 0.8rem;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   :global(.spin) {

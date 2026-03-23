@@ -3,19 +3,15 @@
   import {
     Bot,
     DollarSign,
-    Percent,
     Shield,
     Route,
-    Activity,
-    Target,
-    Clock,
     Sun,
     Moon,
     WifiOff,
     TrendingUp,
     Gauge,
+    Target,
     CheckCircle2,
-    AlertCircle,
     Circle
   } from 'lucide-svelte';
   import {
@@ -26,7 +22,7 @@
     getRiskSettings,
     getRouterSettings
   } from '$lib/api';
-  import { navigationStore } from '../stores/navigationStore';
+  import { activeCanvasStore } from '../stores/canvasStore';
 
   // Svelte 5 Runes
   let loading = $state(true);
@@ -82,10 +78,10 @@
   };
 
   // Derived: formatted P&L
-  let formattedPnl = $derived(() => {
+  let formattedPnl = $derived((() => {
     const sign = dailyPnl >= 0 ? '+' : '';
     return `${sign}$${dailyPnl.toFixed(2)}`;
-  });
+  })());
 
   // Watch for P&L changes and trigger flash
   $effect(() => {
@@ -312,17 +308,22 @@
     return labels[mode] || mode;
   }
 
-  // Navigation handlers
+  // Navigation handlers — use activeCanvasStore as single source of truth (AC 12-5-7)
   function navigateToLiveTrading() {
-    navigationStore.navigateToView('live', 'Live Trading');
+    activeCanvasStore.setActiveCanvas('live-trading');
   }
 
   function navigateToPortfolio() {
-    navigationStore.navigateToView('ea', 'EA Management');
+    activeCanvasStore.setActiveCanvas('portfolio');
   }
 
   function navigateToRisk() {
-    navigationStore.navigateToView('router', 'Strategy Router');
+    activeCanvasStore.setActiveCanvas('risk');
+  }
+
+  // Router mode label → risk canvas (AC 12-5-7)
+  function navigateToRouter() {
+    activeCanvasStore.setActiveCanvas('risk');
   }
 
   function showNodeStatus() {
@@ -386,7 +387,7 @@
           class:flash-positive={pnlFlash === 'positive'}
           class:flash-negative={pnlFlash === 'negative'}
         >
-          {formattedPnl()}
+          {formattedPnl}
         </span>
         {#if contaboDegraded}
           <span class="stale-label">[stale]</span>
@@ -455,6 +456,15 @@
         <Shield size={12} />
         <span class="metric-label">Risk:</span>
         <span class="metric-value">{formatRiskMode(riskMode)}</span>
+      </div>
+
+      <div class="divider">|</div>
+
+      <!-- ===== ROUTER MODE (AC 12-5-7) ===== -->
+      <div class="segment router clickable" onclick={navigateToRouter} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToRouter()}>
+        <Route size={12} />
+        <span class="metric-label">Router:</span>
+        <span class="metric-value">{routerMode}</span>
       </div>
 
       <!-- ===== DUPLICATE FOR SEAMLESS LOOP ===== -->
@@ -499,7 +509,7 @@
           class:flash-positive={pnlFlash === 'positive'}
           class:flash-negative={pnlFlash === 'negative'}
         >
-          {formattedPnl()}
+          {formattedPnl}
         </span>
         {#if contaboDegraded}
           <span class="stale-label">[stale]</span>
@@ -569,16 +579,22 @@
         <span class="metric-label">Risk:</span>
         <span class="metric-value">{formatRiskMode(riskMode)}</span>
       </div>
+
+      <div class="divider">|</div>
+
+      <!-- ===== ROUTER MODE (AC 12-5-7) ===== -->
+      <div class="segment router clickable" onclick={navigateToRouter} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToRouter()}>
+        <Route size={12} />
+        <span class="metric-label">Router:</span>
+        <span class="metric-value">{routerMode}</span>
+      </div>
     </div>
   {/if}
 </div>
 
 <style>
   .status-band {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
+    grid-area: statusband;
     height: 32px;
     display: flex;
     align-items: center;
@@ -586,13 +602,13 @@
     background: rgba(8, 13, 20, 0.08);
     backdrop-filter: blur(24px) saturate(160%);
     -webkit-backdrop-filter: blur(24px) saturate(160%);
-    border-top: 1px solid rgba(0, 212, 255, 0.1);
+    border-bottom: 1px solid rgba(0, 212, 255, 0.1);
     font-family: 'JetBrains Mono', 'Fragment Mono', 'Fira Code', monospace;
     font-size: 11px;
     font-weight: 400;
     color: #e2e8f0;
     overflow: hidden;
-    z-index: 1000;
+    z-index: 90;
   }
 
   .ticker-wrapper {

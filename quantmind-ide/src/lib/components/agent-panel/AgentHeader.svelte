@@ -118,8 +118,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 8px;
-    border-bottom: 1px solid var(--border-subtle);
-    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-surface);
     min-height: 48px;
   }
 
@@ -138,21 +138,21 @@
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.15s ease;
     border-radius: 4px 4px 0 0;
   }
 
   .agent-tab:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .agent-tab.active {
-    color: var(--accent-primary);
-    border-bottom-color: var(--accent-primary);
-    background: var(--bg-tertiary);
+    color: var(--color-accent-cyan);
+    border-bottom-color: var(--color-accent-cyan);
+    background: var(--color-bg-elevated);
   }
 
   .agent-tab.active .agent-name {
@@ -180,14 +180,14 @@
     background: transparent;
     border: none;
     border-radius: 6px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.15s ease;
   }
 
   .action-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .action-btn:active {
@@ -195,7 +195,7 @@
   }
 
   .toggle-list-btn.active {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   /* Responsive adjustments */

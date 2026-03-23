@@ -1,0 +1,62 @@
+# Canvas Context Template for Trading Canvas
+# This template pre-loads the Trading Department context (alias for live_trading)
+
+canvas: trading
+canvas_display_name: "Trading"
+canvas_icon: "TrendingUp"
+
+# Base descriptor - agent identity for this canvas
+base_descriptor: |
+  You are the Trading Department Copilot. Your primary focus is on:
+  - Trade execution and order management
+  - Strategy execution
+  - Position sizing and risk management
+  - Trade journaling
+
+  You have access to:
+  - Trade execution API
+  - Position management
+  - Strategy signals
+  - Trading journal
+
+  Execute trades with proper risk controls and document all decisions.
+
+# Graph memory namespaces to load (committed only)
+memory_scope:
+  - "trading.*"
+  - "signals.*"
+  - "orders.*"
+
+# Workflow namespaces
+workflow_namespaces:
+  - "trading_workflows"
+  - "execution_workflows"
+
+# Department mailbox
+department_mailbox: "trading_dept_mail"
+
+# Shared assets
+shared_assets:
+  - "trading_templates"
+  - "signal_library"
+
+# Skill index
+skill_index:
+  - id: "trade-execution"
+    path: "shared_assets/skills/departments/trading/execution/skill.md"
+    trigger: "when executing trades"
+  - id: "position-sizing"
+    path: "shared_assets/skills/departments/trading/sizing/skill.md"
+    trigger: "when calculating position size"
+
+# Required tools
+required_tools:
+  - "trade_executor"
+  - "position_sizer"
+  - "signal_loader"
+
+# Token budget
+max_identifiers: 50
+
+# Department head
+department_head: "trading_head"

@@ -1,8 +1,12 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import { Play, Square, FileText, Trash2 } from 'lucide-svelte';
+  import { Play, Square, FileText, Trash2, MoreVertical, XCircle } from 'lucide-svelte';
+  import PositionCloseModal from '$lib/components/live-trading/PositionCloseModal.svelte';
+  import { closePosition, type PositionInfo } from '$lib/stores/trading';
 
-
+  // Menu state
+  let showMenu = $state(false);
+  let showCloseModal = $state(false);
 
   interface Props {
     agent: {
@@ -111,9 +115,23 @@
   <!-- Agent Header -->
   <div class="agent-header">
     <div class="agent-name">{agent.strategy_name}</div>
-    <div class="agent-status" style="--status-color: {getStatusColor(agent.status)}">
-      <span class="status-dot"></span>
-      <span class="status-text">{agent.status}</span>
+    <div class="header-right">
+      <div class="agent-status" style="--status-color: {getStatusColor(agent.status)}">
+        <span class="status-dot"></span>
+        <span class="status-text">{agent.status}</span>
+      </div>
+      <button class="menu-btn" onclick={(e) => { e.stopPropagation(); showMenu = !showMenu; }} aria-label="More options">
+        <MoreVertical size={14} />
+      </button>
+      {#if showMenu}
+        <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+        <div class="dropdown-menu">
+          <button class="menu-item danger" onclick={(e) => { e.stopPropagation(); showMenu = false; showCloseModal = true; }}>
+            <XCircle size={14} />
+            <span>Close Position</span>
+          </button>
+        </div>
+      {/if}
     </div>
   </div>
 
@@ -223,6 +241,20 @@
   </div>
 </div>
 
+{#if showCloseModal}
+  <PositionCloseModal
+    position={{
+      ticket: agent.magic_number || 0,
+      bot_id: agent.agent_id,
+      symbol: agent.symbol || 'UNKNOWN',
+      direction: 'buy',
+      lot: 0.01,
+      current_pnl: performanceMetrics?.total_pnl || 0
+    }}
+    onClose={() => showCloseModal = false}
+  />
+{/if}
+
 <style>
   .agent-card {
     background: #1e293b;
@@ -237,6 +269,74 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+  }
+
+  .menu-btn {
+    background: transparent;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+  }
+
+  .menu-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #e2e8f0;
+  }
+
+  .dropdown-menu {
+    position: absolute;
+    top: 28px;
+    right: 0;
+    background: rgba(13, 17, 23, 0.95);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 4px;
+    z-index: 100;
+    min-width: 140px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    color: #e2e8f0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+    text-align: left;
+  }
+
+  .menu-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .menu-item.danger {
+    color: #ff3b3b;
+  }
+
+  .menu-item.danger:hover {
+    background: rgba(255, 59, 59, 0.1);
   }
 
   .agent-name {

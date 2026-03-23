@@ -45,7 +45,16 @@ RUN pip3 install --break-system-packages \
     redis \
     apscheduler \
     psutil \
-    pyarrow
+    pyarrow \
+    python-snappy \
+    prometheus-remote-write \
+    opentelemetry-api \
+    opentelemetry-sdk \
+    opentelemetry-instrumentation-fastapi \
+    opentelemetry-instrumentation-sqlalchemy \
+    opentelemetry-instrumentation-psycopg2 \
+    opentelemetry-exporter-otlp \
+    opentelemetry-exporter-otlp-proto-grpc
 
 # Install Gemini CLI and Qwen Code CLI
 RUN npm install -g @google/gemini-cli @qwen-code/qwen-code

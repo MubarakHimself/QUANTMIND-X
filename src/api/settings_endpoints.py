@@ -892,3 +892,78 @@ async def get_active_wallpaper():
 
     return {"active": wallpaper}
 
+
+
+# ---------------------------------------------------------------------------
+# Connection Settings (backend/network configuration)
+# ---------------------------------------------------------------------------
+
+@router.get("/connection")
+def get_connection_settings():
+    """Get connection configuration."""
+    import os
+    return {
+        "api_host": os.getenv("API_HOST", "0.0.0.0"),
+        "api_port": int(os.getenv("PORT", "8000")),
+        "mt5_host": os.getenv("MT5_HOST", "localhost"),
+        "mt5_port": int(os.getenv("MT5_PORT", "18812")),
+        "redis_url": os.getenv("REDIS_URL", "redis://localhost:6379"),
+        "db_path": os.getenv("DATABASE_PATH", "data/quantmind.db"),
+        "cors_origins": os.getenv("CORS_ORIGINS", "*"),
+    }
+
+
+@router.post("/connection")
+def save_connection_settings(settings: dict):
+    """Persist connection settings to .env."""
+    from pathlib import Path
+    env_path = Path(".env")
+    mapping = {
+        "mt5_host": "MT5_HOST",
+        "mt5_port": "MT5_PORT",
+        "redis_url": "REDIS_URL",
+        "cors_origins": "CORS_ORIGINS",
+    }
+    lines = env_path.read_text().splitlines() if env_path.exists() else []
+    for key, env_key in mapping.items():
+        if key in settings:
+            val = str(settings[key])
+            import os
+            os.environ[env_key] = val
+            found = False
+            for i, line in enumerate(lines):
+                if line.startswith(f"{env_key}="):
+                    lines[i] = f"{env_key}={val}"
+                    found = True
+                    break
+            if not found:
+                lines.append(f"{env_key}={val}")
+    env_path.write_text("\n".join(lines) + "\n")
+    return {"status": "saved"}
+
+
+@router.post("/connection/test")
+def test_connection():
+    """Test connectivity to configured services."""
+    import socket, os
+    results = {}
+    # Test Redis
+    try:
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        host = redis_url.split("//")[-1].split(":")[0]
+        port = int(redis_url.split(":")[-1]) if ":" in redis_url.split("//")[-1] else 6379
+        s = socket.create_connection((host, port), timeout=2)
+        s.close()
+        results["redis"] = "ok"
+    except Exception as e:
+        results["redis"] = f"error: {e}"
+    # Test MT5 bridge
+    try:
+        host = os.getenv("MT5_HOST", "localhost")
+        port = int(os.getenv("MT5_PORT", "18812"))
+        s = socket.create_connection((host, port), timeout=2)
+        s.close()
+        results["mt5"] = "ok"
+    except Exception as e:
+        results["mt5"] = f"error: {e}"
+    return results

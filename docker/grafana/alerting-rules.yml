@@ -1,0 +1,158 @@
+# QuantMindX Grafana Alerting Rules
+# These rules define alerts for the QuantMindX trading platform APM
+
+groups:
+  - name: quantmind_api_alerts
+    interval: 30s
+    rules:
+      # APM-001: High API Error Rate
+      - alert: HighAPIErrorRate
+        expr: sum(rate(quantmind_api_errors_total[5m])) / sum(rate(quantmind_api_requests_total[5m])) * 100 > 5
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+          alert_id: APM-001
+        annotations:
+          summary: "High API Error Rate"
+          description: "API error rate is {{ $value | printf \"%.2f\" }}% (threshold: 5%)"
+          runbook: "https://wiki.quantmindx.com/runbooks/apm-001"
+          dashboard: "/d/quantmind-apm"
+
+      # APM-002: High API Latency
+      - alert: HighAPILatency
+        expr: histogram_quantile(0.95, sum(rate(quantmind_api_request_duration_seconds_bucket[5m])) by (le)) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+          alert_id: APM-002
+        annotations:
+          summary: "High API Latency"
+          description: "API P95 latency is {{ $value | printf \"%.3f\" }}s (threshold: 1s)"
+          runbook: "https://wiki.quantmindx.com/runbooks/apm-002"
+          dashboard: "/d/quantmind-apm"
+
+  - name: quantmind_trading_alerts
+    interval: 30s
+    rules:
+      # APM-003: MT5 Disconnected
+      - alert: MT5Disconnected
+        expr: quantmind_mt5_connection_status == 0
+        for: 30s
+        labels:
+          severity: critical
+          team: trading
+          alert_id: APM-003
+        annotations:
+          summary: "MT5 Disconnected"
+          description: "MT5 connection has been down for more than 30 seconds"
+          runbook: "https://wiki.quantmindx.com/runbooks/apm-003"
+          dashboard: "/d/quantmind-apm"
+
+      # APM-004: High Chaos Score
+      - alert: HighChaosScore
+        expr: quantmind_chaos_score > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: trading
+          alert_id: APM-004
+        annotations:
+          summary: "High Market Chaos Score"
+          description: "Chaos score is {{ $value | printf \"%.2f\" }} (threshold: 0.8)"
+          runbook: "https://wiki.quantmindx.com/runbooks/apm-004"
+          dashboard: "/d/quantmind-apm"
+
+      # APM-005: Bot Quarantine Spike
+      - alert: BotQuarantineSpike
+        expr: sum(quantmind_active_eas{status="quarantine"}) > 5
+        for: 2m
+        labels:
+          severity: warning
+          team: trading
+          alert_id: APM-005
+        annotations:
+          summary: "Bot Quarantine Spike"
+          description: "{{ $value }} EAs are in quarantine (threshold: 5)"
+          runbook: "https://wiki.quantmindx.com/runbooks/apm-005"
+          dashboard: "/d/quantmind-apm"
+
+      # High MT5 Trade Latency
+      - alert: HighMT5TradeLatency
+        expr: histogram_quantile(0.95, sum(rate(quantmind_mt5_latency_seconds_bucket{operation="trade"}[5m])) by (le)) > 2
+        for: 5m
+        labels:
+          severity: warning
+          team: trading
+          alert_id: APM-007
+        annotations:
+          summary: "High MT5 Trade Latency"
+          description: "MT5 trade P95 latency is {{ $value | printf \"%.3f\" }}s (threshold: 2s)"
+          runbook: "https://wiki.quantmindx.com/runbooks/apm-007"
+          dashboard: "/d/quantmind-apm"
+
+  - name: quantmind_data_alerts
+    interval: 30s
+    rules:
+      # APM-006: Tick Stream Drops
+      - alert: TickStreamDrops
+        expr: sum(rate(quantmind_tick_stream_drops_total[1m])) > 10
+        for: 1m
+        labels:
+          severity: warning
+          team: data
+          alert_id: APM-006
+        annotations:
+          summary: "Tick Stream Drops"
+          description: "Tick drop rate is {{ $value | printf \"%.1f\" }}/min (threshold: 10/min)"
+          runbook: "https://wiki.quantmindx.com/runbooks/apm-006"
+          dashboard: "/d/quantmind-apm"
+
+  - name: quantmind_system_alerts
+    interval: 30s
+    rules:
+      # System Degradation
+      - alert: SystemDegradation
+        expr: quantmind_degradation_level >= 2
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+          alert_id: APM-008
+        annotations:
+          summary: "System Degradation"
+          description: "Degradation level is {{ $value | printf \"%.0f\" }} (level 2+ indicates degraded operation)"
+          runbook: "https://wiki.quantmindx.com/runbooks/apm-008"
+          dashboard: "/d/quantmind-apm"
+
+      # Circuit Breaker Open
+      - alert: CircuitBreakerOpen
+        expr: quantmind_circuit_breaker_state == 1
+        for: 30s
+        labels:
+          severity: warning
+          team: platform
+          alert_id: APM-009
+        annotations:
+          summary: "Circuit Breaker Open"
+          description: "Circuit breaker has opened - requests are being rejected"
+          runbook: "https://wiki.quantmindx.com/runbooks/apm-009"
+          dashboard: "/d/quantmind-apm"
+
+  - name: quantmind_sync_alerts
+    interval: 60s
+    rules:
+      # HMM Sync Failure
+      - alert: HMMSyncFailure
+        expr: rate(quantmind_hmm_sync_failures_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: data
+          alert_id: APM-010
+        annotations:
+          summary: "HMM Model Sync Failure"
+          description: "HMM model sync has failed - check network connectivity"
+          runbook: "https://wiki.quantmindx.com/runbooks/apm-010"
+          dashboard: "/d/quantmind-apm"

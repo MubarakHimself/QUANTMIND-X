@@ -142,16 +142,16 @@
   }
 
   .chat-item:hover {
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
   }
 
   .chat-item.active {
-    background: var(--bg-tertiary);
-    border-color: var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border-color: var(--color-border-subtle);
   }
 
   .chat-item.active:hover {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
   }
 
   .active-indicator {
@@ -160,7 +160,7 @@
     top: 4px;
     bottom: 4px;
     width: 3px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border-radius: 0 2px 2px 0;
   }
 
@@ -170,15 +170,15 @@
     justify-content: center;
     width: 28px;
     height: 28px;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 6px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     flex-shrink: 0;
   }
 
   .chat-item.active .chat-icon {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .chat-info {
@@ -192,7 +192,7 @@
   .chat-title {
     font-size: 12px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -203,7 +203,7 @@
     align-items: center;
     gap: 8px;
     font-size: 10px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .chat-date {
@@ -218,7 +218,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
     opacity: 0.7;
   }
 
@@ -230,7 +230,7 @@
     right: 8px;
     top: 50%;
     transform: translateY(-50%);
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 6px;
     padding: 2px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
@@ -245,23 +245,23 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.15s;
   }
 
   .action-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .delete-btn:hover {
-    color: var(--accent-danger);
+    color: var(--color-accent-red);
     background: rgba(239, 68, 68, 0.1);
   }
 
   .pin-btn:hover {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   /* Pinned state */

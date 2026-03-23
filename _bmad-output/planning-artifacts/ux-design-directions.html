@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QUANTMINDX ITT — Design Directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Syne:wght@700;800&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root {
+  --c-bg:     #080d14;
+  --c-amber:  #d4920e;
+  --c-cyan:   #00aacc;
+  --c-red:    #c42a2a;
+  --c-green:  #00a878;
+  --c-text:   #d8e2ef;
+  --c-muted:  #4e5e72;
+  --c-border: rgba(255,255,255,0.055);
+  --f-data:   'JetBrains Mono', monospace;
+  --f-head:   'Syne', sans-serif;
+  --f-body:   'Space Grotesk', sans-serif;
+}
+
+/* ── SHOWCASE SHELL ── */
+body { font-family: var(--f-body); background: #020609; color: var(--c-text); min-height: 100vh; }
+
+.showcase-header { padding: 26px 40px 18px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.showcase-header h1 { font-family: var(--f-head); font-weight: 800; font-size: 22px; letter-spacing: -0.01em; }
+.showcase-header h1 span { color: var(--c-cyan); }
+.showcase-header p { color: var(--c-muted); font-size: 12px; margin-top: 5px; line-height: 1.55; max-width: 680px; }
+.axis-tags { display: flex; gap: 7px; margin-top: 12px; flex-wrap: wrap; }
+.axis-tag { font-family: var(--f-data); font-size: 10px; padding: 3px 9px; border-radius: 3px; border: 1px solid; }
+.at-glass  { color: rgba(0,170,204,0.8);  border-color: rgba(0,170,204,0.25);  background: rgba(0,170,204,0.04); }
+.at-status { color: rgba(212,146,14,0.8); border-color: rgba(212,146,14,0.25); background: rgba(212,146,14,0.04); }
+.at-tiles  { color: rgba(0,168,120,0.8);  border-color: rgba(0,168,120,0.25);  background: rgba(0,168,120,0.04); }
+
+/* ── DIRECTION NAV ── */
+.dir-nav { display: flex; gap: 8px; padding: 18px 40px; border-bottom: 1px solid rgba(255,255,255,0.05); overflow-x: auto; }
+.dir-card { flex-shrink: 0; padding: 11px 14px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.015); cursor: pointer; transition: all 0.15s; min-width: 125px; }
+.dir-card:hover { border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); }
+.dir-card.active { border-color: rgba(0,170,204,0.5); background: rgba(0,170,204,0.06); }
+.dc-num { font-family: var(--f-data); font-size: 9px; color: var(--c-muted); margin-bottom: 3px; letter-spacing: 0.04em; }
+.dc-name { font-size: 12px; font-weight: 600; color: var(--c-text); margin-bottom: 7px; }
+.dc-pills { display: flex; flex-direction: column; gap: 3px; }
+.dc-pill { font-family: var(--f-data); font-size: 9px; padding: 2px 5px; border-radius: 2px; width: fit-content; }
+.p-gh { background: rgba(0,170,204,0.1);  color: rgba(0,170,204,0.75); }
+.p-gl { background: rgba(0,170,204,0.03); color: rgba(0,170,204,0.4); border: 1px solid rgba(0,170,204,0.15); }
+.p-gm { background: rgba(0,170,204,0.06); color: rgba(0,170,204,0.6); }
+.p-sd { background: rgba(212,146,14,0.1); color: rgba(212,146,14,0.75); }
+.p-sm { background: rgba(212,146,14,0.03);color: rgba(212,146,14,0.4); border: 1px solid rgba(212,146,14,0.15); }
+.p-tc { background: rgba(0,168,120,0.1);  color: rgba(0,168,120,0.75); }
+.p-ts { background: rgba(0,168,120,0.03); color: rgba(0,168,120,0.4); border: 1px solid rgba(0,168,120,0.15); }
+
+/* ── PREVIEW CONTROLS ── */
+.preview-controls { display: flex; align-items: center; gap: 14px; padding: 18px 40px 0; }
+.canvas-toggle { display: flex; border: 1px solid rgba(255,255,255,0.09); border-radius: 5px; overflow: hidden; }
+.ct-btn { padding: 6px 16px; background: transparent; border: none; color: var(--c-muted); cursor: pointer; font-family: var(--f-data); font-size: 11px; transition: all 0.15s; white-space: nowrap; }
+.ct-btn.active { background: rgba(0,170,204,0.09); color: var(--c-cyan); }
+.dir-desc-inline { font-size: 12px; color: var(--c-muted); line-height: 1.5; max-width: 600px; }
+.dir-desc-inline strong { color: var(--c-text); }
+
+/* ── TERMINAL FRAME ── */
+.preview-area { padding: 14px 40px 40px; }
+.terminal-frame {
+  width: 100%; max-width: 1200px; height: 700px;
+  border-radius: 9px; overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  position: relative;
+  background:
+    radial-gradient(ellipse 60% 80% at 15% 40%, rgba(6,22,46,0.7) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 60% at 85% 15%, rgba(3,14,30,0.6) 0%, transparent 60%),
+    radial-gradient(ellipse 80% 50% at 50% 100%, rgba(4,16,34,0.5) 0%, transparent 60%),
+    linear-gradient(155deg, #04101c 0%, #020c16 45%, #050e1a 75%, #030810 100%);
+}
+
+/* ── TOP BAR ── */
+.topbar {
+  height: 40px; display: flex; align-items: center;
+  padding: 0 14px; gap: 7px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  position: relative; z-index: 10;
+  transition: background 0.3s, backdrop-filter 0.3s;
+}
+.tb-brand {
+  font-family: var(--f-head); font-weight: 800; font-size: 11px;
+  color: var(--c-cyan); letter-spacing: 0.08em; margin-right: 4px;
+  opacity: 0.9;
+}
+.tb-btn {
+  height: 22px; padding: 0 8px; border-radius: 3px; border: 1px solid;
+  font-size: 10px; font-family: var(--f-data); display: flex; align-items: center;
+  gap: 4px; background: transparent; cursor: pointer; white-space: nowrap; letter-spacing: 0.02em;
+}
+.tb-kill   { border-color: rgba(212,146,14,0.3); color: var(--c-amber); background: rgba(212,146,14,0.04); }
+.tb-copilot{ border-color: rgba(0,170,204,0.25);  color: var(--c-cyan);  background: rgba(0,170,204,0.04); }
+.tb-notif  { border-color: rgba(255,255,255,0.1); color: var(--c-text);  background: rgba(255,255,255,0.02); }
+.tb-spacer { flex: 1; }
+.node-health { display: flex; gap: 10px; font-family: var(--f-data); font-size: 9px; color: var(--c-muted); align-items: center; }
+.nh-node { display: flex; align-items: center; gap: 3px; }
+.nh-dot { width: 5px; height: 5px; border-radius: 50%; }
+.nh-g { background: var(--c-green); }
+.nh-a { background: var(--c-amber); }
+.tb-settings { width: 22px; height: 22px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); color: var(--c-muted); font-size: 11px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-family: var(--f-data); }
+
+/* ── STATUS BAND ── */
+.statusband {
+  height: 30px; display: flex; align-items: center;
+  padding: 0 14px; gap: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.035);
+  font-family: var(--f-data); font-size: 10px; overflow: hidden;
+  position: relative; z-index: 10;
+  transition: background 0.3s;
+}
+.sb-item { padding: 0 10px; border-right: 1px solid rgba(255,255,255,0.045); height: 100%; display: flex; align-items: center; gap: 4px; white-space: nowrap; cursor: pointer; transition: background 0.12s; }
+.sb-item:hover { background: rgba(255,255,255,0.035); }
+.sb-item:first-child { padding-left: 0; }
+.sb-dot { width: 4px; height: 4px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.cg { color: var(--c-green); }
+.ca { color: var(--c-amber); }
+.cr { color: var(--c-red); }
+.cc { color: var(--c-cyan); }
+.cm { color: var(--c-muted); }
+.ct { color: var(--c-text); }
+
+/* ── MAIN LAYOUT ── */
+.main-layout { display: flex; height: calc(700px - 70px); }
+
+/* ── ACTIVITY BAR ── */
+.activitybar { width: 48px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; padding: 8px 0; gap: 1px; border-right: 1px solid var(--c-border); }
+.ab-icon {
+  width: 36px; height: 30px; border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.12s; position: relative;
+  font-family: var(--f-data); font-size: 10px; color: var(--c-muted); font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.ab-icon:hover { background: rgba(255,255,255,0.05); color: var(--c-text); }
+.ab-icon.active { background: rgba(0,170,204,0.1); color: var(--c-cyan); }
+.ab-icon.ab-proposed { color: rgba(255,255,255,0.2); font-style: italic; }
+.ab-spacer { flex: 1; }
+.ab-divider { width: 24px; height: 1px; background: rgba(255,255,255,0.06); margin: 3px 0; }
+
+/* ── CANVAS WORKSPACE ── */
+.canvas-workspace { flex: 1; overflow: hidden; position: relative; }
+.canvas-inner { height: 100%; display: flex; flex-direction: column; }
+.canvas-header { padding: 14px 18px 8px; display: flex; align-items: baseline; gap: 10px; }
+.canvas-title { font-family: var(--f-head); font-weight: 800; font-size: 20px; color: var(--c-text); }
+.canvas-sub { font-size: 10px; color: var(--c-muted); font-family: var(--f-data); }
+.tile-grid { flex: 1; overflow-y: auto; padding: 0 18px 18px; display: grid; align-content: start; transition: gap 0.3s, padding 0.3s; }
+
+/* ── TILE ── */
+.tile {
+  border-radius: 7px; padding: 13px; position: relative;
+  overflow: hidden; cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.065);
+  transition: border-color 0.2s, background 0.3s, backdrop-filter 0.3s;
+}
+.tile:hover { border-color: rgba(255,255,255,0.13); }
+.tile::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(255,255,255,0.008) 2px,rgba(255,255,255,0.008) 3px);
+}
+.tile-label { font-family: var(--f-data); font-size: 9px; color: var(--c-muted); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 6px; }
+.tile-val { font-family: var(--f-data); font-weight: 500; }
+.tile-val.xl { font-size: 22px; }
+.tile-val.lg { font-size: 16px; }
+.tile-val.md { font-size: 13px; }
+.tile-h { font-family: var(--f-head); font-weight: 700; font-size: 12px; color: var(--c-text); margin-bottom: 8px; display: flex; align-items: center; gap: 7px; }
+.tile-muted { color: var(--c-muted); font-family: var(--f-data); font-size: 10px; margin-top: 4px; }
+.tile-span2 { grid-column: span 2; }
+
+/* Session clocks */
+.sc-row { display: flex; gap: 0; }
+.sc-item { flex: 1; text-align: center; padding: 4px 8px; border-right: 1px solid rgba(255,255,255,0.045); }
+.sc-item:last-child { border-right: none; }
+.sc-zone { font-family: var(--f-data); font-size: 8px; color: var(--c-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.sc-time { font-family: var(--f-data); font-size: 18px; font-weight: 500; margin: 3px 0; }
+.sc-badge { font-family: var(--f-data); font-size: 8px; padding: 1px 5px; border-radius: 2px; display: inline-block; }
+.sc-open   { background: rgba(0,168,120,0.1);  color: var(--c-green); }
+.sc-closed { background: rgba(78,94,114,0.1);  color: var(--c-muted); }
+
+/* Bot list */
+.bot-list { display: flex; flex-direction: column; gap: 2px; }
+.bot-row { display: flex; align-items: center; gap: 6px; font-family: var(--f-data); font-size: 10px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+.bot-row:last-child { border-bottom: none; }
+.bot-dot { width: 4px; height: 4px; border-radius: 50%; flex-shrink: 0; }
+.bot-name { color: var(--c-text); flex: 1; }
+.bot-pairs { color: var(--c-muted); min-width: 36px; }
+.bot-pnl { min-width: 48px; text-align: right; }
+.pos { color: var(--c-green); }
+.neg { color: var(--c-red); }
+
+/* Metric rows */
+.metric-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.03); font-family: var(--f-data); font-size: 11px; }
+.metric-row:last-child { border-bottom: none; }
+.metric-label { color: var(--c-muted); font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* ── AGENT PANEL ── */
+.agent-panel { flex-shrink: 0; border-left: 1px solid var(--c-border); display: flex; flex-direction: column; transition: width 0.3s, background 0.3s; }
+.ap-header { height: 36px; display: flex; align-items: center; padding: 0 10px; gap: 5px; border-bottom: 1px solid var(--c-border); }
+.ap-dept { font-family: var(--f-data); font-size: 9px; padding: 2px 6px; border-radius: 2px; background: rgba(0,170,204,0.07); color: rgba(0,170,204,0.75); border: 1px solid rgba(0,170,204,0.18); letter-spacing: 0.04em; }
+.ap-spacer { flex: 1; }
+.ap-icon-btn { width: 18px; height: 18px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.07); background: transparent; color: var(--c-muted); font-size: 9px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-family: var(--f-data); }
+.ap-body { flex: 1; padding: 9px; overflow: hidden; display: flex; flex-direction: column; gap: 7px; }
+.ap-msg { padding: 7px 9px; border-radius: 5px; font-size: 11px; line-height: 1.55; }
+.ap-agent { background: rgba(0,170,204,0.05);  border: 1px solid rgba(0,170,204,0.09);  color: var(--c-text); }
+.ap-user  { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); color: var(--c-text); align-self: flex-end; max-width: 88%; }
+.ap-tool  { font-family: var(--f-data); font-size: 9px; color: var(--c-muted); padding: 3px 7px; background: rgba(255,255,255,0.02); border-radius: 3px; border-left: 2px solid rgba(0,170,204,0.2); }
+.ap-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.ap-chip  { font-family: var(--f-data); font-size: 9px; padding: 3px 7px; border-radius: 2px; border: 1px solid rgba(0,170,204,0.2); background: rgba(0,170,204,0.04); color: rgba(0,170,204,0.7); cursor: pointer; }
+.ap-footer { padding: 8px 9px; border-top: 1px solid var(--c-border); }
+.ap-input { width: 100%; background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; padding: 6px 9px; font-size: 11px; font-family: var(--f-body); color: var(--c-text); outline: none; }
+.ap-input::placeholder { color: var(--c-muted); }
+
+/* ── WORKSHOP CANVAS ── */
+.ws-layout { display: flex; height: 100%; }
+.ws-sidebar { width: 195px; flex-shrink: 0; border-right: 1px solid var(--c-border); padding: 13px 10px; display: flex; flex-direction: column; gap: 1px; transition: background 0.3s; }
+.ws-new { padding: 7px 10px; border-radius: 5px; background: rgba(0,170,204,0.07); border: 1px solid rgba(0,170,204,0.18); color: rgba(0,170,204,0.8); font-size: 11px; font-family: var(--f-data); cursor: pointer; display: flex; align-items: center; gap: 5px; margin-bottom: 10px; letter-spacing: 0.02em; }
+.ws-section { font-family: var(--f-data); font-size: 9px; color: var(--c-muted); text-transform: uppercase; letter-spacing: 0.07em; padding: 8px 8px 3px; }
+.ws-item { padding: 5px 9px; border-radius: 4px; font-size: 11px; color: var(--c-muted); cursor: pointer; transition: all 0.12s; display: flex; align-items: center; gap: 5px; font-family: var(--f-data); }
+.ws-item:hover { background: rgba(255,255,255,0.04); color: var(--c-text); }
+.ws-item.ws-active { background: rgba(255,255,255,0.05); color: var(--c-text); }
+.ws-main { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 28px 30px 14px; overflow: hidden; }
+.ws-greeting { font-family: var(--f-head); font-weight: 800; font-size: 21px; color: var(--c-text); text-align: center; margin-bottom: 4px; }
+.ws-greeting span { color: var(--c-cyan); }
+.ws-sub { font-family: var(--f-data); font-size: 10px; color: var(--c-muted); text-align: center; margin-bottom: 20px; letter-spacing: 0.02em; }
+.ws-digest { width: 100%; max-width: 580px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 6px; }
+.ws-dig-item { padding: 10px 12px; border-radius: 6px; background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.055); }
+.ws-dig-meta { font-family: var(--f-data); font-size: 9px; color: var(--c-muted); margin-bottom: 4px; letter-spacing: 0.02em; }
+.ws-dig-text { font-size: 12px; color: var(--c-text); line-height: 1.55; }
+.ws-dig-actions { display: flex; gap: 6px; margin-top: 7px; }
+.ws-dig-btn { font-family: var(--f-data); font-size: 10px; padding: 3px 9px; border-radius: 3px; cursor: pointer; }
+.wdb-approve { background: rgba(0,168,120,0.09); border: 1px solid rgba(0,168,120,0.22); color: var(--c-green); }
+.wdb-view    { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.09); color: var(--c-muted); }
+.ws-chips-lbl { font-family: var(--f-data); font-size: 9px; color: var(--c-muted); margin-bottom: 7px; text-align: center; letter-spacing: 0.05em; text-transform: uppercase; }
+.ws-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 18px; }
+.ws-chip { font-family: var(--f-data); font-size: 11px; padding: 6px 12px; border-radius: 4px; border: 1px solid rgba(0,170,204,0.18); background: rgba(0,170,204,0.04); color: rgba(0,170,204,0.75); cursor: pointer; transition: background 0.12s; }
+.ws-chip:hover { background: rgba(0,170,204,0.08); }
+.ws-input-wrap { width: 100%; max-width: 580px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09); border-radius: 8px; padding: 10px 13px; display: flex; align-items: center; gap: 8px; margin-top: auto; }
+.ws-input { flex: 1; background: transparent; border: none; font-size: 13px; color: var(--c-text); font-family: var(--f-body); outline: none; }
+.ws-input::placeholder { color: var(--c-muted); }
+.ws-send { width: 26px; height: 26px; border-radius: 4px; background: rgba(0,170,204,0.1); border: 1px solid rgba(0,170,204,0.25); color: var(--c-cyan); font-size: 11px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-family: var(--f-data); }
+
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="showcase-header">
+  <h1>QUANTMINDX ITT — <span>Design Directions</span></h1>
+  <p>Six directions across three visual axes. All Frosted Terminal tokens, typography, and shell dimensions are locked. Variations: glass intensity, StatusBand density, tile density only.</p>
+  <div class="axis-tags">
+    <span class="axis-tag at-glass">Glass Intensity</span>
+    <span class="axis-tag at-status">StatusBand Density</span>
+    <span class="axis-tag at-tiles">Tile Density</span>
+  </div>
+</div>
+
+<div class="dir-nav">
+  <div class="dir-card active" onclick="setDir(1,this)">
+    <div class="dc-num">DIR 01</div>
+    <div class="dc-name">Deep Terminal</div>
+    <div class="dc-pills">
+      <span class="dc-pill p-gh">Glass: heavy</span>
+      <span class="dc-pill p-sd">Band: dense</span>
+      <span class="dc-pill p-tc">Tiles: compact</span>
+    </div>
+  </div>
+  <div class="dir-card" onclick="setDir(2,this)">
+    <div class="dc-num">DIR 02</div>
+    <div class="dc-name">Breathing Space</div>
+    <div class="dc-pills">
+      <span class="dc-pill p-gh">Glass: heavy</span>
+      <span class="dc-pill p-sm">Band: minimal</span>
+      <span class="dc-pill p-ts">Tiles: spacious</span>
+    </div>
+  </div>
+  <div class="dir-card" onclick="setDir(3,this)">
+    <div class="dc-num">DIR 03</div>
+    <div class="dc-name">Ghost Panel</div>
+    <div class="dc-pills">
+      <span class="dc-pill p-gl">Glass: ghost</span>
+      <span class="dc-pill p-sd">Band: dense</span>
+      <span class="dc-pill p-tc">Tiles: compact</span>
+    </div>
+  </div>
+  <div class="dir-card" onclick="setDir(4,this)">
+    <div class="dc-num">DIR 04</div>
+    <div class="dc-name">Open Air</div>
+    <div class="dc-pills">
+      <span class="dc-pill p-gl">Glass: ghost</span>
+      <span class="dc-pill p-sm">Band: minimal</span>
+      <span class="dc-pill p-ts">Tiles: spacious</span>
+    </div>
+  </div>
+  <div class="dir-card" onclick="setDir(5,this)">
+    <div class="dc-num">DIR 05</div>
+    <div class="dc-name">Balanced Terminal</div>
+    <div class="dc-pills">
+      <span class="dc-pill p-gh">Glass: heavy</span>
+      <span class="dc-pill p-sd">Band: dense</span>
+      <span class="dc-pill p-ts">Tiles: spacious</span>
+    </div>
+  </div>
+  <div class="dir-card" onclick="setDir(6,this)">
+    <div class="dc-num">DIR 06</div>
+    <div class="dc-name">Frosted Ghost</div>
+    <div class="dc-pills">
+      <span class="dc-pill p-gm">Glass: medium</span>
+      <span class="dc-pill p-sd">Band: dense</span>
+      <span class="dc-pill p-ts">Tiles: spacious</span>
+    </div>
+  </div>
+</div>
+
+<div class="preview-controls">
+  <div class="canvas-toggle">
+    <button class="ct-btn active" id="btn-lt" onclick="setCanvas('lt')">01  LIVE TRADING</button>
+    <button class="ct-btn" id="btn-ws" onclick="setCanvas('ws')">08  WORKSHOP</button>
+  </div>
+  <div class="dir-desc-inline" id="dir-desc-text">
+    <strong>Deep Terminal</strong> — Maximum density. Heavy glass, 8-item StatusBand, compact tiles. The Bloomberg ceiling.
+  </div>
+</div>
+
+<div class="preview-area">
+  <div class="terminal-frame" id="terminal">
+
+    <!-- TOP BAR -->
+    <div class="topbar" id="topbar">
+      <span class="tb-brand">QMX·ITT</span>
+      <div class="tb-btn tb-kill">KILL · 08:31</div>
+      <div class="tb-btn tb-copilot">CPLT</div>
+      <div class="tb-btn tb-notif">N · 3</div>
+      <div class="tb-spacer"></div>
+      <div class="node-health">
+        <div class="nh-node"><div class="nh-dot nh-g"></div><span>CZ</span></div>
+        <div class="nh-node"><div class="nh-dot nh-g"></div><span>CN</span></div>
+        <div class="nh-node"><div class="nh-dot nh-a"></div><span>LO</span></div>
+      </div>
+      <div class="tb-settings">cfg</div>
+    </div>
+
+    <!-- STATUS BAND -->
+    <div class="statusband" id="statusband">
+      <div class="sb-item">
+        <span class="sb-dot" style="background:var(--c-green)"></span>
+        <span class="cg">LONDON</span><span class="cm">open</span>
+      </div>
+      <div class="sb-item">
+        <span class="cm">NY</span>
+        <span class="ct" style="font-size:9px">14:31</span>
+        <span class="cm" style="font-size:9px">closed</span>
+      </div>
+      <div class="sb-item" id="sb-x1">
+        <span class="cm">TOK</span>
+        <span class="ct" style="font-size:9px">22:31</span>
+        <span class="cm" style="font-size:9px">closed</span>
+      </div>
+      <div class="sb-item">
+        <span class="sb-dot" style="background:var(--c-amber)"></span>
+        <span class="ca">12 bots</span>
+      </div>
+      <div class="sb-item">
+        <span class="cg">+$847</span>
+        <span class="cm">today</span>
+      </div>
+      <div class="sb-item" id="sb-x2">
+        <span class="sb-dot" style="background:var(--c-green)"></span><span class="cm">CZ</span>
+        <span class="sb-dot" style="background:var(--c-green)"></span><span class="cm">CN</span>
+        <span class="sb-dot" style="background:var(--c-amber)"></span><span class="cm">LO</span>
+      </div>
+      <div class="sb-item" id="sb-x3">
+        <span class="cc">3 workflows</span>
+      </div>
+      <div class="sb-item" id="sb-x4">
+        <span class="cm">ddwn</span>
+        <span class="ct">2.1%</span>
+      </div>
+    </div>
+
+    <!-- MAIN LAYOUT -->
+    <div class="main-layout">
+
+      <!-- ACTIVITY BAR -->
+      <div class="activitybar" id="activitybar">
+        <div class="ab-icon active" id="ab1">LT</div>
+        <div class="ab-icon" id="ab2">RS</div>
+        <div class="ab-icon" id="ab3">DV</div>
+        <div class="ab-icon" id="ab4">RK</div>
+        <div class="ab-icon" id="ab5">TR</div>
+        <div class="ab-icon" id="ab6">PF</div>
+        <div class="ab-icon" id="ab7">SA</div>
+        <div class="ab-icon" id="ab8">WS</div>
+        <div class="ab-icon ab-proposed" title="Proposed: FlowForge / Orchestration" id="ab9">FF</div>
+        <div class="ab-spacer"></div>
+        <div class="ab-divider"></div>
+        <div class="ab-icon" style="font-size:9px">cfg</div>
+      </div>
+
+      <!-- LIVE TRADING CANVAS -->
+      <div class="canvas-workspace" id="canvas-lt">
+        <div class="canvas-inner">
+          <div class="canvas-header">
+            <span class="canvas-title">Live Trading</span>
+            <span class="canvas-sub">Cloudzy · London session · 08:31 UTC+0</span>
+          </div>
+          <div class="tile-grid" id="tile-grid">
+
+            <div class="tile tile-span2" id="tile-clocks">
+              <div class="tile-label">Session Clocks</div>
+              <div class="sc-row">
+                <div class="sc-item">
+                  <div class="sc-zone">Tokyo / Asian</div>
+                  <div class="sc-time cm">17:31</div>
+                  <span class="sc-badge sc-closed">CLOSED</span>
+                </div>
+                <div class="sc-item">
+                  <div class="sc-zone">London / EU</div>
+                  <div class="sc-time cg">08:31</div>
+                  <span class="sc-badge sc-open">OPEN</span>
+                </div>
+                <div class="sc-item">
+                  <div class="sc-zone">New York / US</div>
+                  <div class="sc-time cm">03:31</div>
+                  <span class="sc-badge sc-closed">OPENS 13:30</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="tile">
+              <div class="tile-label">Daily P&amp;L</div>
+              <div class="tile-val xl pos">+$847.20</div>
+              <div class="tile-muted">Week <span class="cg">+$2,341</span> &nbsp;|&nbsp; Month <span class="cg">+$9,102</span></div>
+            </div>
+
+            <div class="tile">
+              <div class="tile-h">Active Bots <span class="ca" style="font-size:10px;font-family:var(--f-data);font-weight:400">12 running</span></div>
+              <div class="bot-list">
+                <div class="bot-row"><div class="bot-dot" style="background:var(--c-green)"></div><span class="bot-name">XAUUSD_v3</span><span class="bot-pairs">4 pos</span><span class="bot-pnl pos">+$312</span></div>
+                <div class="bot-row"><div class="bot-dot" style="background:var(--c-green)"></div><span class="bot-name">EURUSD_HFT</span><span class="bot-pairs">2 pos</span><span class="bot-pnl pos">+$89</span></div>
+                <div class="bot-row"><div class="bot-dot" style="background:var(--c-amber)"></div><span class="bot-name">GBPJPY_swing</span><span class="bot-pairs">1 pos</span><span class="bot-pnl neg">−$44</span></div>
+                <div class="bot-row"><div class="bot-dot" style="background:var(--c-green)"></div><span class="bot-name">NAS100_breakout</span><span class="bot-pairs">3 pos</span><span class="bot-pnl pos">+$201</span></div>
+                <div class="bot-row"><div class="bot-dot" style="background:var(--c-muted)"></div><span class="bot-name cm">USDJPY_range</span><span class="bot-pairs cm">0 pos</span><span class="bot-pnl cm">flat</span></div>
+              </div>
+            </div>
+
+            <div class="tile">
+              <div class="tile-h">Risk Snapshot</div>
+              <div class="metric-row"><span class="metric-label">Drawdown today</span><span class="tile-val md ct">2.1%</span></div>
+              <div class="metric-row"><span class="metric-label">Kelly fraction</span><span class="tile-val md ca">0.34</span></div>
+              <div class="metric-row"><span class="metric-label">HMM regime</span><span class="tile-val md cc">TREND</span></div>
+              <div class="metric-row"><span class="metric-label">Open positions</span><span class="tile-val md ct">10</span></div>
+            </div>
+
+            <div class="tile">
+              <div class="tile-label">Node Health</div>
+              <div class="metric-row"><span class="metric-label">Cloudzy</span><span class="cg" style="font-family:var(--f-data);font-size:10px">12ms</span></div>
+              <div class="metric-row"><span class="metric-label">Contabo</span><span class="cg" style="font-family:var(--f-data);font-size:10px">38ms</span></div>
+              <div class="metric-row"><span class="metric-label">ZMQ feed</span><span class="cg" style="font-family:var(--f-data);font-size:10px">live</span></div>
+              <div class="metric-row"><span class="metric-label">Workflows</span><span class="cc" style="font-family:var(--f-data);font-size:10px">3 active</span></div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- WORKSHOP CANVAS -->
+      <div class="canvas-workspace hidden" id="canvas-ws">
+        <div class="ws-layout">
+          <div class="ws-sidebar" id="ws-sidebar">
+            <div class="ws-new">+ New Chat</div>
+            <div class="ws-section">Today</div>
+            <div class="ws-item ws-active">Morning Digest</div>
+            <div class="ws-item">Forge strategy</div>
+            <div class="ws-section">Projects</div>
+            <div class="ws-item">Alpha Forge pipeline</div>
+            <div class="ws-item">Drawdown review</div>
+            <div class="ws-section">Library</div>
+            <div class="ws-item">Memory</div>
+            <div class="ws-item">Skills</div>
+          </div>
+          <div class="ws-main">
+            <div class="ws-greeting">Good morning, <span>Mubarak</span></div>
+            <div class="ws-sub">3 PENDING APPROVALS · LONDON OPEN · 12 BOTS RUNNING</div>
+            <div class="ws-digest">
+              <div class="ws-dig-item">
+                <div class="ws-dig-meta">ALPHA FORGE · 06:14 UTC · strategy-XAUUSD-momentum-v4</div>
+                <div class="ws-dig-text">Backtest complete. Sharpe 1.84, max drawdown 6.2%, 847 trades over 18 months. Passes prop firm constraints. Ready for paper trading promotion.</div>
+                <div class="ws-dig-actions">
+                  <span class="ws-dig-btn wdb-approve">Approve</span>
+                  <span class="ws-dig-btn wdb-view">View report</span>
+                </div>
+              </div>
+              <div class="ws-dig-item">
+                <div class="ws-dig-meta">RISK DEPT · 07:02 UTC · kelly-review-2026-03-13</div>
+                <div class="ws-dig-text">Kelly reduction to 0.31 (−9%) recommended. HMM shift at 06:40, Ising magnetization 0.72 — elevated cross-asset correlation.</div>
+                <div class="ws-dig-actions">
+                  <span class="ws-dig-btn wdb-approve">Apply</span>
+                  <span class="ws-dig-btn wdb-view">Full analysis</span>
+                </div>
+              </div>
+            </div>
+            <div class="ws-chips-lbl">Suggested actions</div>
+            <div class="ws-chips">
+              <div class="ws-chip">/morning-digest</div>
+              <div class="ws-chip">/forge-strategy</div>
+              <div class="ws-chip">/drawdown-review</div>
+              <div class="ws-chip">/sdd-spec</div>
+              <div class="ws-chip">/context-enrich</div>
+            </div>
+            <div class="ws-input-wrap">
+              <input class="ws-input" placeholder="Message FloorManager — or select a skill above" />
+              <div class="ws-send">&#8593;</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AGENT PANEL -->
+      <div class="agent-panel" id="agent-panel">
+        <div class="ap-header">
+          <div class="ap-dept" id="ap-dept-label">RISK HEAD</div>
+          <div class="ap-spacer"></div>
+          <div class="ap-icon-btn">+</div>
+          <div class="ap-icon-btn">&#9664;</div>
+        </div>
+        <div class="ap-body">
+          <div class="ap-msg ap-agent">HMM regime shifted to TREND at 06:40. Ising magnetization rising (0.72). Kelly recommendation updated to 0.31.</div>
+          <div class="ap-tool">fetch_regime_state() · 06:41</div>
+          <div class="ap-tool">update_kelly_fraction(0.31) · 06:41</div>
+          <div class="ap-msg ap-user">What is driving the Ising shift?</div>
+          <div class="ap-msg ap-agent">Cross-asset correlation spike on DXY/XAUUSD. 14 concurrent positions moving together. Magnetization at 0.72 indicates herd behaviour risk.</div>
+          <div class="ap-chips">
+            <div class="ap-chip">/drawdown-review</div>
+            <div class="ap-chip">/kelly-settings</div>
+          </div>
+        </div>
+        <div class="ap-footer">
+          <input class="ap-input" placeholder="@ / skills..." />
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const DIRS = {
+  1: { desc: '<strong>Deep Terminal</strong> — Maximum density. Heavy glass (0.78), 8-item band, compact tiles (220px, 10px gap). Bloomberg ceiling.', glassOp:0.78, glassBlur:18, shellOp:0.86, sbDense:true,  tileW:220, tileGap:10 },
+  2: { desc: '<strong>Breathing Space</strong> — Heavy glass, minimal 4-item band, spacious tiles (280px, 18px gap). Dense environment, airy content.', glassOp:0.78, glassBlur:18, shellOp:0.86, sbDense:false, tileW:280, tileGap:18 },
+  3: { desc: '<strong>Ghost Panel</strong> — Near-transparent glass (0.10), dense band, compact tiles. Interface floats on the wallpaper.', glassOp:0.10, glassBlur:6,  shellOp:0.28, sbDense:true,  tileW:220, tileGap:10 },
+  4: { desc: '<strong>Open Air</strong> — Ghost glass, minimal band, spacious tiles. Wallpaper dominant. Every element earns its presence.', glassOp:0.10, glassBlur:6,  shellOp:0.28, sbDense:false, tileW:280, tileGap:18 },
+  5: { desc: '<strong>Balanced Terminal</strong> — Heavy glass, dense 8-item band, spacious tiles. Recommended default. Dense awareness, breathing content.', glassOp:0.78, glassBlur:18, shellOp:0.86, sbDense:true,  tileW:280, tileGap:18 },
+  6: { desc: '<strong>Frosted Ghost</strong> — Medium glass (0.38), dense band, spacious tiles. Hybrid: more wallpaper than Deep Terminal, more structure than Ghost.', glassOp:0.38, glassBlur:11, shellOp:0.52, sbDense:true,  tileW:280, tileGap:18 },
+};
+
+let cur = 'lt';
+
+function applyDir(n) {
+  const d = DIRS[n];
+  const g = `rgba(8,13,20,${d.glassOp})`;
+  const s = `rgba(6,11,18,${d.shellOp})`;
+  const bl = `blur(${d.glassBlur}px)`;
+
+  ['topbar','statusband'].forEach(id => {
+    const el = document.getElementById(id);
+    el.style.background = s;
+    el.style.backdropFilter = bl;
+    el.style.webkitBackdropFilter = bl;
+  });
+  const ap = document.getElementById('agent-panel');
+  ap.style.background = s;
+  ap.style.backdropFilter = bl;
+  ap.style.webkitBackdropFilter = bl;
+  ap.style.width = '290px';
+
+  const wsSide = document.getElementById('ws-sidebar');
+  if(wsSide){ wsSide.style.background = s; wsSide.style.backdropFilter = bl; }
+
+  document.querySelectorAll('.tile').forEach(t => {
+    t.style.background = g;
+    t.style.backdropFilter = bl;
+    t.style.webkitBackdropFilter = bl;
+  });
+
+  const tg = document.getElementById('tile-grid');
+  tg.style.gridTemplateColumns = `repeat(auto-fill, minmax(${d.tileW}px, 1fr))`;
+  tg.style.gap = d.tileGap + 'px';
+
+  ['sb-x1','sb-x2','sb-x3','sb-x4'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.style.display = d.sbDense ? 'flex' : 'none';
+  });
+
+  document.getElementById('dir-desc-text').innerHTML = d.desc;
+}
+
+function setDir(n, el) {
+  document.querySelectorAll('.dir-card').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  applyDir(n);
+}
+
+function setCanvas(c) {
+  cur = c;
+  document.getElementById('canvas-lt').classList.toggle('hidden', c !== 'lt');
+  document.getElementById('canvas-ws').classList.toggle('hidden', c !== 'ws');
+  document.getElementById('btn-lt').classList.toggle('active', c === 'lt');
+  document.getElementById('btn-ws').classList.toggle('active', c === 'ws');
+  document.getElementById('ap-dept-label').textContent = c === 'ws' ? 'FLOOR MGR' : 'RISK HEAD';
+  for(let i=1;i<=9;i++){
+    const el=document.getElementById('ab'+i);
+    if(el) el.classList.toggle('active', (c==='lt'&&i===1)||(c==='ws'&&i===8));
+  }
+}
+
+applyDir(1);
+</script>
+</body>
+</html>

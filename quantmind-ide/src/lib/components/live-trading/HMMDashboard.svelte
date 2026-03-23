@@ -289,8 +289,8 @@
     flex-direction: column;
     gap: 16px;
     padding: 16px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 12px;
   }
 
@@ -304,7 +304,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .hmm-title h3 {
@@ -323,10 +323,10 @@
     align-items: center;
     gap: 4px;
     padding: 8px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     cursor: pointer;
     font-size: 12px;
     transition: all 0.15s ease;
@@ -334,8 +334,8 @@
 
   .action-btn:hover:not(:disabled) {
     background: var(--bg-hover);
-    border-color: var(--accent-primary);
-    color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
+    color: var(--color-accent-cyan);
   }
 
   .action-btn:disabled {
@@ -344,7 +344,7 @@
   }
 
   .sync-btn {
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .sync-btn:hover:not(:disabled) {
@@ -371,8 +371,8 @@
 
   .status-card {
     padding: 16px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
   }
 
@@ -381,7 +381,7 @@
     align-items: center;
     gap: 8px;
     margin-bottom: 12px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 13px;
     font-weight: 500;
   }
@@ -404,13 +404,13 @@
 
   .status-label {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .status-value {
     font-size: 12px;
     font-weight: 500;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .status-value.success {
@@ -423,7 +423,7 @@
 
   .regime-display {
     padding: 16px;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border: 2px solid;
     border-radius: 8px;
     text-align: center;
@@ -441,14 +441,14 @@
     justify-content: center;
     gap: 12px;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .regime-symbol {
     text-align: center;
     margin-top: 12px;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .mode-display {
@@ -462,12 +462,12 @@
   .mode-name {
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .mode-weight {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .mode-indicators {
@@ -481,7 +481,7 @@
     align-items: center;
     gap: 8px;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .mode-indicator.active {
@@ -492,7 +492,7 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--border-subtle);
+    background: var(--color-border-subtle);
   }
 
   .mode-indicator.active .indicator-dot {
@@ -501,8 +501,8 @@
 
   .training-section {
     padding: 16px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
   }
 
@@ -516,7 +516,7 @@
   .training-header h4 {
     margin: 0;
     font-size: 14px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .train-btn {
@@ -524,10 +524,10 @@
     align-items: center;
     gap: 6px;
     padding: 8px 16px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border: none;
     border-radius: 6px;
-    color: var(--bg-primary);
+    color: var(--color-bg-base);
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
@@ -546,20 +546,20 @@
   .training-hint {
     margin: 0;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .agreement-section {
     padding: 16px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 10px;
   }
 
   .agreement-section h4 {
     margin: 0 0 12px;
     font-size: 14px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .agreement-metrics {
@@ -572,19 +572,19 @@
     display: flex;
     justify-content: space-between;
     padding: 8px 12px;
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 6px;
   }
 
   .metric-key {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .metric-value {
     font-size: 12px;
     font-weight: 500;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .spinning {

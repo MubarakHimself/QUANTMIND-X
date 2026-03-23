@@ -10,7 +10,8 @@
     Shield, Wallet, TrendingUp, Zap, Globe, Lock, User, Bell,
     Eye, EyeOff, Trash2, Edit3, Download, Upload as UploadIcon,
     FolderOpen, Code, Terminal, Cpu, HardDrive,
-    Brain, Sparkles, FileText, Cpu as ModelIcon
+    Brain, Sparkles, FileText, Cpu as ModelIcon, Activity, Heart,
+    Palette
   } from 'lucide-svelte';
   import ThemeSelector from './ThemeSelector.svelte';
   import {
@@ -21,14 +22,18 @@
     DatabasePanel,
     ConnectionPanel,
     SecurityPanel,
-    ProvidersPanel
+    ProvidersPanel,
+    ServersPanel,
+    NotificationSettingsPanel,
+    ServerHealthPanel,
+    AppearancePanel
   } from './settings';
   import { getRouterSettings, saveRouterSettings } from '$lib/api';
 
   const dispatch = createEventDispatcher();
 
   // Settings tabs
-  type SettingsTab = 'general' | 'api-keys' | 'providers' | 'mcp-servers' | 'agents' | 'models' | 'risk' | 'database' | 'connection' | 'security';
+  type SettingsTab = 'general' | 'appearance' | 'api-keys' | 'providers' | 'servers' | 'notifications' | 'server-health' | 'mcp-servers' | 'agents' | 'models' | 'risk' | 'database' | 'connection' | 'security';
   let activeTab: SettingsTab = $state('general');
   let settingsVisible = $state(false);
 
@@ -768,6 +773,14 @@
         </button>
         <button
           class="tab"
+          class:active={activeTab === 'appearance'}
+          onclick={() => activeTab = 'appearance'}
+        >
+          <Palette size={16} />
+          <span>Appearance</span>
+        </button>
+        <button
+          class="tab"
           class:active={activeTab === 'api-keys'}
           onclick={() => activeTab = 'api-keys'}
         >
@@ -784,6 +797,30 @@
         >
           <Key size={16} />
           <span>Providers</span>
+        </button>
+        <button
+          class="tab"
+          class:active={activeTab === 'servers'}
+          onclick={() => activeTab = 'servers'}
+        >
+          <Server size={16} />
+          <span>Servers</span>
+        </button>
+        <button
+          class="tab"
+          class:active={activeTab === 'notifications'}
+          onclick={() => activeTab = 'notifications'}
+        >
+          <Bell size={16} />
+          <span>Notifications</span>
+        </button>
+        <button
+          class="tab"
+          class:active={activeTab === 'server-health'}
+          onclick={() => activeTab = 'server-health'}
+        >
+          <Activity size={16} />
+          <span>Server Health</span>
         </button>
         <button
           class="tab"
@@ -855,36 +892,41 @@
           </div>
         {/if}
 
+        <!-- Appearance Settings -->
+        {#if activeTab === 'appearance'}
+          <div class="panel">
+            <AppearancePanel />
+          </div>
+        {/if}
+
         <!-- API Keys -->
         {#if activeTab === 'api-keys'}
-          <ApiKeysPanel
-            bind:apiKeys
-            bind:apiKeyModal
-            bind:newApiKey
-            on:addApiKey={addApiKey}
-            on:removeApiKey={(e) => removeApiKey(e.detail.id)}
-          />
+          <ApiKeysPanel />
         {/if}
 
         <!-- Providers -->
         {#if activeTab === 'providers'}
-          <ProvidersPanel
-            bind:providers
-            on:saveProvider={handleSaveProvider}
-            on:deleteProvider={handleDeleteProvider}
-          />
+          <ProvidersPanel />
+        {/if}
+
+        <!-- Servers -->
+        {#if activeTab === 'servers'}
+          <ServersPanel />
+        {/if}
+
+        <!-- Notifications -->
+        {#if activeTab === 'notifications'}
+          <NotificationSettingsPanel />
+        {/if}
+
+        <!-- Server Health -->
+        {#if activeTab === 'server-health'}
+          <ServerHealthPanel />
         {/if}
 
         <!-- MCP Servers -->
         {#if activeTab === 'mcp-servers'}
-          <McpServersPanel
-            bind:mcpServers
-            bind:mcpModalOpen
-            bind:newMcpServer
-            on:addMcpServer={addMcpServer}
-            on:toggleMcpServer={(e) => toggleMcpServer(e.detail.id)}
-            on:removeMcpServer={(e) => removeMcpServer(e.detail.id)}
-          />
+          <McpServersPanel />
         {/if}
 
         <!-- Agents -->
@@ -896,11 +938,15 @@
             bind:agentsMdContent
             bind:agentsMdLoading
             bind:agentsMdSaved
-            on:exportAgentsMd={exportAgentsMd}
-            on:importAgentsMd={importAgentsMd}
-            on:saveAgentsMd={saveAgentsMd}
-            on:selectAgent={handleAgentSelect}
-            on:updateAgentConfig={handleAgentConfigUpdate}
+            onexportAgentsMd={exportAgentsMd}
+            onimportAgentsMd={importAgentsMd}
+            onsaveAgentsMd={saveAgentsMd}
+            onselectAgent={(agent) => { selectedAgent = agent; }}
+            onupdateAgentConfig={(agent, field, value) => {
+              if (agentConfigs[agent]) {
+                (agentConfigs[agent] as Record<string, unknown>)[field] = value;
+              }
+            }}
           />
         {/if}
 
@@ -1059,7 +1105,7 @@
   }
 
   .settings-panel {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 12px;
     width: 900px;
     max-width: 95vw;
@@ -1075,7 +1121,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 20px 24px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .header-left {
@@ -1087,13 +1133,13 @@
   .header-left h2 {
     margin: 0;
     font-size: 18px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .header-left p {
     margin: 2px 0 0;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .header-actions {
@@ -1108,31 +1154,31 @@
     justify-content: center;
     width: 38px;
     height: 38px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     cursor: pointer;
     transition: all 0.15s ease;
   }
 
   :global(.settings-header) .icon-btn:hover {
-    background: var(--bg-primary);
-    border-color: var(--border-medium);
-    color: var(--text-primary);
+    background: var(--color-bg-base);
+    border-color: var(--color-border-medium);
+    color: var(--color-text-primary);
     transform: translateY(-1px);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   }
 
   :global(.settings-header) .icon-btn.primary {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
     color: white;
   }
 
   :global(.settings-header) .icon-btn.primary:hover {
-    background: var(--accent-secondary);
-    border-color: var(--accent-secondary);
+    background: var(--color-accent-amber);
+    border-color: var(--color-accent-amber);
     box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
   }
 
@@ -1148,8 +1194,8 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    border-right: 1px solid var(--border-subtle);
-    background: var(--bg-primary);
+    border-right: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-base);
     overflow-y: auto;
   }
 
@@ -1161,7 +1207,7 @@
     background: transparent;
     border: none;
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 13px;
     cursor: pointer;
     text-align: left;
@@ -1170,20 +1216,20 @@
   }
 
   .settings-tabs .tab:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .settings-tabs .tab.active {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .settings-tabs .badge {
     position: absolute;
     right: 8px;
-    background: var(--bg-tertiary);
-    color: var(--text-muted);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-muted);
     font-size: 10px;
     padding: 2px 6px;
     border-radius: 10px;
@@ -1191,7 +1237,7 @@
 
   .settings-tabs .tab.active .badge {
     background: rgba(255, 255, 255, 0.2);
-    color: var(--bg-primary);
+    color: var(--color-bg-base);
   }
 
   .settings-panels {
@@ -1201,20 +1247,20 @@
   }
 
   .panel {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 8px;
   }
 
   .panel h3 {
     margin: 0 0 20px;
     font-size: 16px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .panel h4 {
     margin: 20px 0 12px;
     font-size: 14px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   /* Common styles for panels */
@@ -1237,8 +1283,8 @@
   .panel :global(.setting-group) {
     margin-bottom: 24px;
     padding: 16px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
   }
 
@@ -1246,7 +1292,7 @@
     display: block;
     font-size: 12px;
     font-weight: 500;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     margin-bottom: 12px;
   }
 
@@ -1259,7 +1305,7 @@
   }
 
   .panel :global(.setting-row span:first-child) {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .panel :global(.info-box) {
@@ -1272,7 +1318,7 @@
     border: 1px solid rgba(99, 102, 241, 0.3);
     border-radius: 8px;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
   }
 
   .panel :global(.btn) {
@@ -1289,13 +1335,13 @@
   }
 
   .panel :global(.btn.primary) {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .panel :global(.btn.secondary) {
-    background: var(--bg-tertiary);
-    color: var(--text-secondary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
   }
 
   .panel :global(.icon-btn) {
@@ -1307,19 +1353,19 @@
     background: transparent;
     border: none;
     border-radius: 6px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.15s;
   }
 
   .panel :global(.icon-btn:hover) {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .panel :global(.icon-btn.primary) {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-base);
   }
 
   .panel :global(.icon-btn.danger:hover) {
@@ -1333,10 +1379,10 @@
   .panel :global(select),
   .panel :global(textarea) {
     padding: 8px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
     font-family: inherit;
   }
@@ -1381,7 +1427,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: var(--border-subtle);
+    background-color: var(--color-border-subtle);
     transition: 0.3s;
     border-radius: 24px;
   }
@@ -1399,7 +1445,7 @@
   }
 
   .panel :global(input:checked + .slider) {
-    background-color: var(--accent-primary);
+    background-color: var(--color-accent-cyan);
   }
 
   .panel :global(input:checked + .slider:before) {
@@ -1410,7 +1456,7 @@
     -webkit-appearance: none;
     width: 120px;
     height: 6px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 3px;
     outline: none;
   }
@@ -1419,7 +1465,7 @@
     -webkit-appearance: none;
     width: 16px;
     height: 16px;
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     border-radius: 50%;
     cursor: pointer;
   }
@@ -1460,13 +1506,13 @@
   .panel :global(.hint) {
     margin-top: 8px;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .panel :global(.empty-state) {
     text-align: center;
     padding: 40px 20px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .panel :global(.empty-state p) {
@@ -1485,7 +1531,7 @@
   }
 
   .panel :global(.modal) {
-    background: var(--bg-secondary);
+    background: var(--color-bg-surface);
     border-radius: 12px;
     width: 480px;
     max-width: 90vw;
@@ -1500,7 +1546,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px 20px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .panel :global(.modal-header h3) {
@@ -1511,7 +1557,7 @@
   .panel :global(.modal-header button) {
     background: none;
     border: none;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     padding: 4px;
   }
@@ -1526,7 +1572,7 @@
     justify-content: flex-end;
     gap: 8px;
     padding: 16px 20px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
 
   .panel :global(.form-group) {
@@ -1537,7 +1583,7 @@
     display: block;
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     margin-bottom: 6px;
   }
 
@@ -1551,13 +1597,13 @@
     display: block;
     margin-top: 4px;
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .panel :global(.divider) {
     text-align: center;
     margin: 20px 0;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     font-size: 12px;
   }
 
@@ -1572,18 +1618,18 @@
     align-items: center;
     gap: 8px;
     padding: 10px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 12px;
     cursor: pointer;
     transition: all 0.15s;
   }
 
   .panel :global(.template-card:hover) {
-    border-color: var(--accent-primary);
-    background: var(--bg-primary);
+    border-color: var(--color-accent-cyan);
+    background: var(--color-bg-base);
   }
 
   .panel :global(.password-input-wrapper) {
@@ -1602,7 +1648,7 @@
     gap: 12px;
     margin-top: 24px;
     padding-top: 16px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-border-subtle);
   }
 
   .panel :global(.spinning) {

@@ -145,7 +145,7 @@
   .modal-subtitle {
     margin: 0.25rem 0 0;
     font-size: 0.8rem;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .icon-btn {
@@ -158,7 +158,7 @@
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .icon-btn:hover {

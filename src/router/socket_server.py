@@ -118,7 +118,28 @@ class SocketServer:
         if self.message_count > 0:
             avg_latency = self.total_latency / self.message_count
             logger.info(f"Socket server stopped. Avg latency: {avg_latency:.2f}ms over {self.message_count} messages")
-    
+
+    def is_connected(self, node: Optional[str] = None) -> bool:
+        """
+        Check if a node or the socket server itself is connected.
+
+        Args:
+            node: Optional node name to check. If None, checks if the
+                  socket server is running and bound.
+
+        Returns:
+            True if the node/server is connected, False otherwise.
+        """
+        if node is None:
+            # Check if socket server is running
+            return self.running and self.socket is not None
+        else:
+            # Check if specific node is in connections
+            if node in self.connections:
+                conn_info = self.connections[node]
+                return conn_info.get("active", False)
+            return False
+
     async def receive_message(self) -> Dict[str, Any]:
         """
         Receive and parse message from client.

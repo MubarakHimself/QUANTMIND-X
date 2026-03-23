@@ -194,8 +194,8 @@
   }
 
   .setting-group {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 12px;
     padding: 0;
     overflow: hidden;
@@ -207,7 +207,7 @@
     align-items: center;
     gap: 10px;
     padding: 14px 16px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, transparent 100%);
   }
 
@@ -223,14 +223,14 @@
     height: 28px;
     background: rgba(99, 102, 241, 0.15);
     border-radius: 6px;
-    color: var(--accent-primary);
+    color: var(--color-accent-cyan);
   }
 
   .section-header h3 {
     margin: 0;
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     flex: 1;
   }
 
@@ -247,7 +247,7 @@
     align-items: center;
     gap: 12px;
     padding: 12px 14px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border: 1px solid transparent;
     border-radius: 8px;
     cursor: pointer;
@@ -256,13 +256,13 @@
 
   .radio-card:hover {
     background: var(--bg-surface);
-    border-color: var(--border-subtle);
+    border-color: var(--color-border-subtle);
     transform: translateX(2px);
   }
 
   .radio-card.selected {
     background: rgba(99, 102, 241, 0.08);
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
   }
 
   .radio-card input {
@@ -279,7 +279,7 @@
   .radio-title {
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -298,21 +298,21 @@
 
   .radio-description {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .radio-indicator {
     width: 16px;
     height: 16px;
-    border: 2px solid var(--border-subtle);
+    border: 2px solid var(--color-border-subtle);
     border-radius: 50%;
     position: relative;
     transition: all 0.2s ease;
   }
 
   .radio-card.selected .radio-indicator {
-    border-color: var(--accent-primary);
-    background: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
+    background: var(--color-accent-cyan);
   }
 
   .radio-card.selected .radio-indicator::after {
@@ -333,7 +333,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .setting-row:last-of-type {
@@ -349,12 +349,12 @@
   .setting-label > span:first-child {
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .setting-hint {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .setting-control {
@@ -364,10 +364,10 @@
 
   .setting-row input {
     padding: 8px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
     width: 100px;
     text-align: right;
@@ -375,12 +375,12 @@
   }
 
   .setting-row input:hover {
-    border-color: var(--text-muted);
+    border-color: var(--color-text-muted);
   }
 
   .setting-row input:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
     box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
   }
 
@@ -447,7 +447,7 @@
   .form-row label {
     font-size: 11px;
     font-weight: 500;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
@@ -455,29 +455,29 @@
   .form-row input,
   .form-row textarea {
     padding: 10px 12px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     font-size: 13px;
     transition: all 0.15s ease;
   }
 
   .form-row input:hover,
   .form-row textarea:hover {
-    border-color: var(--text-muted);
+    border-color: var(--color-text-muted);
   }
 
   .form-row input:focus,
   .form-row textarea:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--color-accent-cyan);
     box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
   }
 
   .form-row input::placeholder,
   .form-row textarea::placeholder {
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     opacity: 0.6;
   }
 
@@ -500,10 +500,10 @@
     justify-content: center;
     gap: 6px;
     padding: 10px 16px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
@@ -512,7 +512,7 @@
 
   .btn:hover:not(:disabled) {
     background: var(--bg-surface);
-    border-color: var(--text-muted);
+    border-color: var(--color-text-muted);
     transform: translateY(-1px);
   }
 
@@ -521,8 +521,8 @@
   }
 
   .btn.primary {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
     color: white;
     flex: 1;
   }

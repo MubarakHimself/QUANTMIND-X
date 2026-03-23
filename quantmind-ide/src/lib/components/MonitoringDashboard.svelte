@@ -34,10 +34,10 @@
 
   function getConnectionColor(state: string): string {
     switch (state) {
-      case 'connected': return 'var(--accent-success)';
+      case 'connected': return 'var(--color-accent-green)';
       case 'connecting':
-      case 'reconnecting': return 'var(--accent-warning)';
-      default: return 'var(--accent-danger)';
+      case 'reconnecting': return 'var(--color-accent-amber)';
+      default: return 'var(--color-accent-red)';
     }
   }
 
@@ -277,7 +277,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-primary);
+    background: var(--color-bg-base);
     overflow: hidden;
   }
 
@@ -296,8 +296,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 12px 20px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .header-left {
@@ -310,7 +310,7 @@
     margin: 0;
     font-size: 16px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .connection-status {
@@ -330,14 +330,14 @@
 
   .last-update {
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   .time-range-selector {
     display: flex;
     gap: 4px;
     padding: 4px;
-    background: var(--bg-tertiary);
+    background: var(--color-bg-elevated);
     border-radius: 6px;
   }
 
@@ -347,17 +347,17 @@
     border: none;
     border-radius: 4px;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.2s ease;
   }
 
   .time-range-selector button:hover {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .time-range-selector button.active {
-    background: var(--accent-primary);
+    background: var(--color-accent-cyan);
     color: #000;
   }
 
@@ -368,16 +368,16 @@
     width: 32px;
     height: 32px;
     background: transparent;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 6px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     cursor: pointer;
     transition: all 0.2s ease;
   }
 
   .icon-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
   }
 
   .dashboard-content {
@@ -399,8 +399,8 @@
 
   .metrics-section,
   .chart-section {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     padding: 16px;
   }
@@ -412,7 +412,7 @@
     margin: 0 0 16px 0;
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
   }
 
   .metrics-grid {
@@ -435,16 +435,16 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 20px;
-    background: var(--bg-secondary);
-    border-top: 1px solid var(--border-subtle);
+    background: var(--color-bg-surface);
+    border-top: 1px solid var(--color-border-subtle);
   }
 
   .health-bar.healthy {
-    border-top-color: var(--accent-success);
+    border-top-color: var(--color-accent-green);
   }
 
   .health-bar.unhealthy {
-    border-top-color: var(--accent-danger);
+    border-top-color: var(--color-accent-red);
     background: rgba(244, 67, 54, 0.05);
   }
 
@@ -464,11 +464,11 @@
   }
 
   .status-dot.healthy {
-    background: var(--accent-success);
+    background: var(--color-accent-green);
   }
 
   .status-dot.unhealthy {
-    background: var(--accent-danger);
+    background: var(--color-accent-red);
   }
 
   @keyframes pulse {
@@ -480,7 +480,7 @@
     display: flex;
     gap: 24px;
     font-size: 12px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
   }
 
   /* Responsive adjustments */

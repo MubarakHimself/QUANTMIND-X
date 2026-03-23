@@ -121,6 +121,8 @@ class SkillMetadata:
     returns: Dict[str, Any] = field(default_factory=dict)
     requires: List[str] = field(default_factory=list)  # Required skills
     tags: List[str] = field(default_factory=list)
+    version: str = "1.0.0"
+    slash_command: str = ""
 
 
 @dataclass
@@ -187,6 +189,7 @@ class SkillManager:
         self._departments: Dict[str, List[str]] = {}
         self._skill_aliases: Dict[str, str] = {}
         self._execution_history: List[SkillResult] = []
+        self._usage_counts: Dict[str, int] = {}  # Track usage_count per skill
         self._max_history = 1000
         self._enable_cache = enable_cache
         self._cache_ttl = cache_ttl  # Cache TTL in seconds
@@ -204,6 +207,8 @@ class SkillManager:
         returns: Optional[Dict[str, Any]] = None,
         requires: Optional[List[str]] = None,
         tags: Optional[List[str]] = None,
+        version: str = "1.0.0",
+        slash_command: Optional[str] = None,
     ) -> Skill:
         """
         Register a new skill.
@@ -218,12 +223,18 @@ class SkillManager:
             returns: Return value schema
             requires: List of required skill names
             tags: List of tags for discovery
+            version: Semantic version (e.g., "1.0.0")
+            slash_command: Slash command for invoking skill (auto-generated if not provided)
 
         Returns:
             Registered Skill instance
         """
         if name in self._skills:
             logger.warning(f"Overwriting existing skill: {name}")
+
+        # Auto-generate slash_command if not provided
+        if slash_command is None:
+            slash_command = "/" + name.replace("_", "-")
 
         metadata = SkillMetadata(
             name=name,
@@ -234,6 +245,8 @@ class SkillManager:
             returns=returns or {},
             requires=requires or [],
             tags=tags or [],
+            version=version,
+            slash_command=slash_command,
         )
 
         skill = Skill(name=name, func=func, metadata=metadata)
@@ -251,6 +264,9 @@ class SkillManager:
                 self._departments[dept] = []
             if name not in self._departments[dept]:
                 self._departments[dept].append(name)
+
+        # Initialize usage_count tracking
+        self._usage_counts[name] = 0
 
         logger.info(f"Registered skill: {name} (category: {category}, departments: {departments})")
         return skill
@@ -310,6 +326,7 @@ class SkillManager:
     def get_skill_info(self, name: str) -> Dict[str, Any]:
         """Get detailed information about a skill."""
         skill = self.get_skill(name)
+        resolved_name = self._skill_aliases.get(name, name)
         return {
             "name": skill.metadata.name,
             "description": skill.metadata.description,
@@ -319,6 +336,9 @@ class SkillManager:
             "returns": skill.metadata.returns,
             "requires": skill.metadata.requires,
             "tags": skill.metadata.tags,
+            "version": skill.metadata.version,
+            "slash_command": skill.metadata.slash_command,
+            "usage_count": self._usage_counts.get(resolved_name, 0),
         }
 
     def execute(
@@ -367,6 +387,10 @@ class SkillManager:
                 data=result_data,
                 execution_time_ms=execution_time,
             )
+
+            # Increment usage_count for this skill (resolve alias to actual skill name)
+            resolved_name = self._skill_aliases.get(name, name)
+            self._usage_counts[resolved_name] = self._usage_counts.get(resolved_name, 0) + 1
 
             logger.info(f"Skill '{name}' executed successfully in {execution_time:.2f}ms")
 
@@ -675,3 +699,135 @@ def set_skill_manager(manager: SkillManager) -> None:
     """Set the global SkillManager instance."""
     global _global_manager
     _global_manager = manager
+
+
+# ==============================================================================
+# SkillForge - Skill Schema Validation
+# ==============================================================================
+
+import yaml
+from dataclasses import dataclass
+
+
+@dataclass
+class ValidationResult:
+    """Result of skill schema validation."""
+    is_valid: bool
+    errors: List[str]
+
+
+@dataclass
+class ParseResult:
+    """Result of skill YAML parsing."""
+    success: bool
+    data: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class SkillForge:
+    """
+    Skill schema validation and parsing.
+
+    Validates skill definitions against required schema fields:
+    - name: Skill identifier
+    - version: Semantic version
+    - description: Human-readable description
+    - triggers: List of trigger definitions
+    - actions: List of action definitions
+    - parameters: Parameter schema (optional)
+    """
+
+    REQUIRED_FIELDS = ["name", "version", "description", "triggers", "actions"]
+
+    def validate_skill_schema(self, skill_data: Dict[str, Any]) -> ValidationResult:
+        """
+        Validate a skill definition against the schema.
+
+        Args:
+            skill_data: Skill definition dictionary
+
+        Returns:
+            ValidationResult with is_valid and errors list
+        """
+        errors = []
+
+        # Check required fields
+        for field in self.REQUIRED_FIELDS:
+            if field not in skill_data:
+                errors.append(f"Missing required field: {field}")
+
+        # Validate name
+        if "name" in skill_data:
+            name = skill_data["name"]
+            if not isinstance(name, str) or not name:
+                errors.append("Field 'name' must be a non-empty string")
+
+        # Validate version
+        if "version" in skill_data:
+            version = skill_data["version"]
+            if not isinstance(version, str):
+                errors.append("Field 'version' must be a string")
+
+        # Validate description
+        if "description" in skill_data:
+            desc = skill_data["description"]
+            if not isinstance(desc, str):
+                errors.append("Field 'description' must be a string")
+
+        # Validate triggers
+        if "triggers" in skill_data:
+            triggers = skill_data["triggers"]
+            if not isinstance(triggers, list):
+                errors.append("Field 'triggers' must be a list")
+            else:
+                for i, trigger in enumerate(triggers):
+                    if not isinstance(trigger, dict):
+                        errors.append(f"Trigger[{i}] must be a dict with 'type' field")
+
+        # Validate actions
+        if "actions" in skill_data:
+            actions = skill_data["actions"]
+            if not isinstance(actions, list):
+                errors.append("Field 'actions' must be a list")
+            else:
+                for i, action in enumerate(actions):
+                    if not isinstance(action, dict):
+                        errors.append(f"Action[{i}] must be a dict with 'type' field")
+
+        # Validate parameters if present
+        if "parameters" in skill_data:
+            params = skill_data["parameters"]
+            if not isinstance(params, dict):
+                errors.append("Field 'parameters' must be a dictionary")
+
+        return ValidationResult(
+            is_valid=len(errors) == 0,
+            errors=errors,
+        )
+
+    def parse_skill_definition(self, yaml_content: str) -> ParseResult:
+        """
+        Parse a skill definition from YAML content.
+
+        Args:
+            yaml_content: YAML string containing skill definition
+
+        Returns:
+            ParseResult with success, data, or error
+        """
+        try:
+            data = yaml.safe_load(yaml_content)
+            if data is None:
+                return ParseResult(
+                    success=False,
+                    error="Empty YAML content",
+                )
+            return ParseResult(
+                success=True,
+                data=data,
+            )
+        except yaml.YAMLError as e:
+            return ParseResult(
+                success=False,
+                error=f"YAML parse error: {str(e)}",
+            )
