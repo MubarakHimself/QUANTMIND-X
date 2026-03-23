@@ -22,8 +22,11 @@ export const API_CONFIG = {
     return import.meta.env.VITE_CONTABO_HMM_API || 'http://localhost:8001';
   },
 
-  // Which API to use (determined by build mode)
+  // Which API to use (VITE_API_URL override > build mode)
   get API_URL() {
+    if (import.meta.env.VITE_API_URL) {
+      return import.meta.env.VITE_API_URL;
+    }
     return import.meta.env.PROD
       ? this.CLOUDZY_API_URL
       : this.LOCAL_API_URL;
