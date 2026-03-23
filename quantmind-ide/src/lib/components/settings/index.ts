@@ -10,3 +10,4 @@ export { default as ServersPanel } from './ServersPanel.svelte';
 export { default as NotificationSettingsPanel } from './NotificationSettingsPanel.svelte';
 export { default as ServerHealthPanel } from './ServerHealthPanel.svelte';
 export { default as AppearancePanel } from './AppearancePanel.svelte';
+export { default as DeployPanel } from './DeployPanel.svelte';

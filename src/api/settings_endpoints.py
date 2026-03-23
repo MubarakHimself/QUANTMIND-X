@@ -1000,3 +1000,158 @@ def test_connection():
     except Exception as e:
         results["mt5"] = f"error: {e}"
     return results
+
+
+# ── Deploy / Version Control ────────────────────────────────────────────────
+
+from pydantic import BaseModel
+import subprocess
+import os
+
+APP_DIR = "/opt/quantmindx"
+
+
+class RollbackRequest(BaseModel):
+    git_ref: str
+
+
+def _run_git(cwd: str, *args: str) -> tuple[int, str, str]:
+    result = subprocess.run(
+        ["git"] + list(args),
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return result.returncode, result.stdout.strip(), result.stderr.strip()
+
+
+@router.get("/deploy/version", response_model=dict)
+def get_deploy_version():
+    """
+    Returns current server version: commit SHA, message, branch, and health.
+    """
+    try:
+        _, sha, _ = _run_git(APP_DIR, "rev-parse", "HEAD")
+        _, msg, _ = _run_git(APP_DIR, "log", "-1", "--format=%s")
+        _, branch, _ = _run_git(APP_DIR, "branch", "--show-current")
+        _, ahead, _ = _run_git(APP_DIR, "fetch", "origin", branch)
+        _, behind, _ = _run_git(APP_DIR, "rev-list", f"origin/{branch}..HEAD", "--count")
+        behind_count = behind or "0"
+
+        # Health check
+        health = "unknown"
+        try:
+            import urllib.request
+            req = urllib.request.Request("http://localhost:8000/health")
+            with urllib.request.urlopen(req, timeout=3) as r:
+                health = r.read().decode() if r.status == 200 else "unhealthy"
+        except Exception:
+            health = "unreachable"
+
+        return {
+            "commit": sha[:8],
+            "full_sha": sha,
+            "message": msg,
+            "branch": branch,
+            "behind_origin": int(behind_count),
+            "health": health,
+            "app_dir": APP_DIR,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.post("/deploy/latest", response_model=dict)
+def deploy_latest():
+    """
+    Pulls latest from GitHub origin/main and restarts the API service.
+    Returns the new commit info.
+    """
+    try:
+        # Save current commit for rollback
+        _, prev_sha, _ = _run_git(APP_DIR, "rev-parse", "HEAD")
+
+        # Fetch + reset
+        code, out, err = _run_git(APP_DIR, "fetch", "origin", "main")
+        if code != 0:
+            return {"error": f"git fetch failed: {err}"}
+
+        code, out, err = _run_git(APP_DIR, "reset", "--hard", "origin/main")
+        if code != 0:
+            return {"error": f"git reset failed: {err}"}
+
+        # Restart service
+        restart = subprocess.run(
+            ["systemctl", "restart", "quantmind-api"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if restart.returncode != 0:
+            return {"error": f"systemctl restart failed: {restart.stderr}"}
+
+        _, new_sha, _ = _run_git(APP_DIR, "rev-parse", "--short", "HEAD")
+        _, new_msg, _ = _run_git(APP_DIR, "log", "-1", "--format=%s")
+
+        return {
+            "status": "deployed",
+            "previous_commit": prev_sha[:8],
+            "new_commit": new_sha,
+            "message": new_msg,
+        }
+    except subprocess.TimeoutExpired:
+        return {"error": "Deploy timed out"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.post("/deploy/rollback", response_model=dict)
+def rollback_deploy(body: RollbackRequest):
+    """
+    Rollback to a specific git ref (commit SHA, branch, or tag) and restart.
+    """
+    try:
+        git_ref = body.git_ref.strip()
+        if not git_ref:
+            return {"error": "git_ref is required"}
+
+        # Save current commit first
+        _, prev_sha, _ = _run_git(APP_DIR, "rev-parse", "HEAD")
+
+        # Verify ref exists
+        code, _, err = _run_git(APP_DIR, "rev-parse", "--verify", git_ref)
+        if code != 0:
+            return {"error": f"Invalid git ref: {git_ref} — {err}"}
+
+        # Fetch all to ensure we have the ref
+        _run_git(APP_DIR, "fetch", "--all", "--tags")
+
+        # Reset
+        code, _, err = _run_git(APP_DIR, "reset", "--hard", git_ref)
+        if code != 0:
+            return {"error": f"git reset failed: {err}"}
+
+        # Restart
+        restart = subprocess.run(
+            ["systemctl", "restart", "quantmind-api"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if restart.returncode != 0:
+            return {"error": f"systemctl restart failed: {restart.stderr}"}
+
+        _, new_sha, _ = _run_git(APP_DIR, "rev-parse", "--short", "HEAD")
+        _, new_msg, _ = _run_git(APP_DIR, "log", "-1", "--format=%s")
+
+        return {
+            "status": "rolled_back",
+            "previous_commit": prev_sha[:8],
+            "rolled_back_to": new_sha,
+            "message": new_msg,
+        }
+    except subprocess.TimeoutExpired:
+        return {"error": "Rollback timed out"}
+    except Exception as e:
+        return {"error": str(e)}

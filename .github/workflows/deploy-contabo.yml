@@ -1,18 +1,71 @@
 name: Deploy to Contabo
 
+# Fire on every CI workflow completing (all 5 + any new ones added)
 on:
   workflow_run:
-    workflows: ["SonarCloud SAST"]
+    workflows: ["*"]
     types: [completed]
 
 permissions:
   contents: read
+  actions: read
+  statuses: read
+
+env:
+  WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+  COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
 
 jobs:
+  # ── Gate: only proceed if ALL CI workflows passed ──────────────────────
+  gate:
+    name: Gate — ${{ github.event.workflow_run.name }}
+    runs-on: ubuntu-latest
+    # Only run for our known CI workflows
+    if: >
+      github.event.workflow_run.name == 'SonarCloud SAST' ||
+      github.event.workflow_run.name == 'CodeQL Advanced' ||
+      github.event.workflow_run.name == 'Multi-Platform Build' ||
+      github.event.workflow_run.name == 'OWASP ZAP DAST' ||
+      github.event.workflow_run.name == 'Dependency Audit'
+    outputs:
+      all_passed: ${{ steps.check-ci.outputs.all_passed }}
+      trigger_workflow: ${{ github.event.workflow_run.name }}
+    steps:
+      - name: Check all CI statuses
+        id: check-ci
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Checking CI for commit: $COMMIT_SHA"
+          echo "Triggered by: $WORKFLOW_NAME"
+
+          # Check all 5 CI workflows for this commit
+          WORKFLOWS=("SonarCloud SAST" "CodeQL Advanced" "Multi-Platform Build" "OWASP ZAP DAST" "Dependency Audit")
+          ALL_PASSED=true
+          DEPLOY_SHA=""
+
+          for WF in "${WORKFLOWS[@]}"; do
+            # Use gh api to get the latest run for this workflow + commit
+            STATUS=$(gh api \
+              "repos/${{ github.repository }}/actions/runs" \
+              --jq ".workflow_runs[] | select(.name == \"$WF\" and .head_sha == \"$COMMIT_SHA\") | .conclusion" \
+              --paginate 2>/dev/null | head -1)
+
+            echo "$WF: ${STATUS:-not_found}"
+            if [ "${STATUS}" != "success" ]; then
+              ALL_PASSED=false
+            fi
+          done
+
+          echo "all_passed=$ALL_PASSED"
+          echo "deploy_sha=$COMMIT_SHA"
+
+  # ── Deploy — only runs when gate passes ────────────────────────────────
   deploy:
     name: Deploy to Contabo
+    needs: gate
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ needs.gate.outputs.all_passed == 'true' }}
     environment: production
     steps:
       - name: Configure SSH
@@ -23,6 +76,8 @@ jobs:
           ssh-keyscan -H 155.133.27.86 >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Deploy to Contabo
+        env:
+          DEPLOY_SHA: ${{ needs.gate.outputs.deploy_sha }}
         run: |
           ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
               -i ~/.ssh/id_ed25519 root@155.133.27.86 << 'DEPLOY_SCRIPT'
@@ -33,14 +88,14 @@ jobs:
             # Save previous commit for rollback
             git rev-parse HEAD > /tmp/prev_commit.txt
 
-            # Pull latest code
-            git fetch origin main
-            git reset --hard origin/main
+            # Pull the specific commit that passed CI
+            git fetch origin $DEPLOY_SHA
+            git reset --hard $DEPLOY_SHA
 
             # Restart systemd API service
             systemctl restart quantmind-api
 
-            echo "Deployed: $(git rev-parse --short HEAD)"
+            echo "Deployed: $(git rev-parse --short $DEPLOY_SHA)"
           DEPLOY_SCRIPT
 
       - name: Health check

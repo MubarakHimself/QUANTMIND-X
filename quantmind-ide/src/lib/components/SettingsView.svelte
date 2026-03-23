@@ -8,7 +8,7 @@
     Settings as SettingsIcon, Key, Server, Bot, Database, Sliders,
     Save, RefreshCw, Plus, X, Check, AlertCircle, ChevronRight,
     Shield, Wallet, TrendingUp, Zap, Globe, Lock, User, Bell,
-    Eye, EyeOff, Trash2, Edit3, Download, Upload as UploadIcon,
+    Eye, EyeOff, Trash2, Edit3, Download, Upload as UploadIcon, Upload,
     FolderOpen, Code, Terminal, Cpu, HardDrive,
     Brain, Sparkles, FileText, Cpu as ModelIcon, Activity, Heart,
     Palette
@@ -26,14 +26,15 @@
     ServersPanel,
     NotificationSettingsPanel,
     ServerHealthPanel,
-    AppearancePanel
+    AppearancePanel,
+    DeployPanel
   } from './settings';
   import { getRouterSettings, saveRouterSettings } from '$lib/api';
 
   const dispatch = createEventDispatcher();
 
   // Settings tabs
-  type SettingsTab = 'general' | 'appearance' | 'api-keys' | 'providers' | 'servers' | 'notifications' | 'server-health' | 'mcp-servers' | 'agents' | 'models' | 'risk' | 'database' | 'connection' | 'security';
+  type SettingsTab = 'general' | 'appearance' | 'api-keys' | 'providers' | 'servers' | 'notifications' | 'server-health' | 'mcp-servers' | 'agents' | 'models' | 'risk' | 'database' | 'connection' | 'security' | 'deploy';
   let activeTab: SettingsTab = $state('general');
   let settingsVisible = $state(false);
 
@@ -881,6 +882,14 @@
           <Lock size={16} />
           <span>Security</span>
         </button>
+        <button
+          class="tab"
+          class:active={activeTab === 'deploy'}
+          onclick={() => activeTab = 'deploy'}
+        >
+          <Upload size={16} />
+          <span>Deploy</span>
+        </button>
       </div>
 
       <!-- Settings Panels -->
@@ -1079,6 +1088,11 @@
           <SecurityPanel
             bind:securitySettings
           />
+        {/if}
+
+        <!-- Deploy -->
+        {#if activeTab === 'deploy'}
+          <DeployPanel />
         {/if}
       </div>
     </div>
