@@ -18,8 +18,8 @@ jobs:
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.CONTABO_SSH_KEY }}" | base64 -d > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
+          install -m 600 /dev/null ~/.ssh/id_ed25519
+          echo "${{ secrets.CONTABO_SSH_KEY }}" | base64 -d >> ~/.ssh/id_ed25519
           ssh-keyscan -H 155.133.27.86 >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Deploy to Contabo
