@@ -259,6 +259,38 @@ async def update_agent_settings(settings: AgentSettings):
     save_settings(current)
     return {"success": True, "settings": settings.dict()}
 
+
+# Department system prompt endpoints — direct read/write, no markdown parsing
+_DEPARTMENT_AGENTS = ["research", "development", "trading", "risk", "portfolio", "floor_manager"]
+
+
+@router.get("/agents/{agent_id}/system-prompt")
+async def get_agent_system_prompt(agent_id: str):
+    """Get the system prompt for a department agent directly from settings."""
+    if agent_id not in _DEPARTMENT_AGENTS:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+    current = load_settings()
+    system_prompts = current.get("agents", {}).get("system_prompts", {})
+    prompt = system_prompts.get(agent_id, "")
+    return {"agent_id": agent_id, "system_prompt": prompt}
+
+
+@router.post("/agents/{agent_id}/system-prompt")
+async def save_agent_system_prompt(agent_id: str, body: dict[str, str]):
+    """Save the system prompt for a department agent directly to settings."""
+    if agent_id not in _DEPARTMENT_AGENTS:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+    prompt = body.get("system_prompt", "")
+    current = load_settings()
+    if "agents" not in current:
+        current["agents"] = {}
+    if "system_prompts" not in current["agents"]:
+        current["agents"]["system_prompts"] = {}
+    current["agents"]["system_prompts"][agent_id] = prompt
+    save_settings(current)
+    return {"agent_id": agent_id, "system_prompt": prompt}
+
+
 # Skills
 @router.get("/skills")
 async def get_agent_skills(department: Optional[str] = None):

@@ -161,28 +161,28 @@
     analyst: []
   };
   
-  // Agent.md editing state
+  // System prompt editing state
   let editingAgentMd = false;
   let agentMdContent = '';
   
   function openAgentMdEditor() {
-    // Load agent.md content
-    agentMdContent = `# ${agents.find(a => a.id === activeAgent)?.name} Agent\n\n## System Prompt\n${currentSettings.systemPrompt}\n\n## Capabilities\n- Analyze trading strategies\n- Run backtests\n- Manage trading bots\n\n## Limitations\n- Requires API access to trading platforms`;
+    // Load raw system prompt from current settings
+    agentMdContent = currentSettings.systemPrompt || '';
     editingAgentMd = true;
   }
   
   async function saveAgentMd() {
-    // Save to agent.md file via backend
+    // Save raw system prompt to settings
     try {
-      await fetch('http://localhost:8000/api/agents/' + activeAgent + '/system-prompt', {
+      await fetch(`/api/settings/agents/${activeAgent}/system-prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: agentMdContent })
+        body: JSON.stringify({ system_prompt: agentMdContent })
       });
       editingAgentMd = false;
-      showToast('Agent system prompt saved!');
+      showToast('System prompt saved!');
     } catch (e) {
-      console.error('Failed to save agent.md:', e);
+      console.error('Failed to save system prompt:', e);
       showToast('Failed to save changes', 'error');
     }
   }

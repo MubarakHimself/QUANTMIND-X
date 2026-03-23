@@ -157,7 +157,24 @@
   }
 
   function updateAgentConfig(field: string, value: unknown) {
+    // Update local state
     onupdateAgentConfig?.(selectedAgent, field, value);
+    // Auto-save system prompt changes to backend
+    if (field === 'systemPrompt' && typeof value === 'string') {
+      saveSystemPrompt(selectedAgent, value);
+    }
+  }
+
+  async function saveSystemPrompt(agentId: string, prompt: string) {
+    try {
+      await fetch(`/api/settings/agents/${agentId}/system-prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ system_prompt: prompt })
+      });
+    } catch (e) {
+      console.error('Failed to save system prompt for', agentId, e);
+    }
   }
 
   function addSkill() {
