@@ -76,7 +76,7 @@ chromadb>=0.4.0        # Vector database for embedding storage
 # Monitoring & Observability
 prometheus-client==0.19.0
 python-snappy>=0.6.0        # Snappy compression for Grafana Cloud remote_write
-prometheus-remote-write>=0.1.0  # Protobuf WriteRequest encoding for remote_write
+# prometheus-remote-write — not on PyPI; use protobuf directly if needed
 
 # OpenTelemetry for Distributed Tracing
 opentelemetry-api>=1.21.0
