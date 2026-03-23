@@ -1,0 +1,85 @@
+name: Build MQL5 Compiler Image
+
+# Manual trigger only — MT5 installer is proprietary and requires login
+# to download. Build must be done on Contabo where the installer is available.
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag (e.g. ghcr.io/quantmind/quantmindx/mql5-compiler:latest)'
+        required: false
+        default: 'ghcr.io/quantmind/quantmindx/mql5-compiler:latest'
+        type: string
+
+env:
+  IMAGE_TAG: ${{ inputs.image_tag || 'ghcr.io/quantmind/quantmindx/mql5-compiler:latest' }}
+
+jobs:
+  # ── Build on Contabo ─────────────────────────────────────────────────────
+  # This job SSH's into Contabo and runs the build script there so the
+  # proprietary MT5 installer doesn't need to leave the server.
+  build-on-contabo:
+    name: Build on Contabo
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          install -m 600 /dev/null ~/.ssh/id_ed25519
+          echo "${{ secrets.CONTABO_SSH_KEY }}" | base64 -d >> ~/.ssh/id_ed25519
+          ssh-keyscan -H 155.133.27.86 >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Check MT5 installer on Contabo
+        run: |
+          echo "=== Checking for MT5 installer on Contabo ==="
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 root@155.133.27.86 << 'SSH_CHECK'
+            set -e
+            MT5_DIR="/opt/mt5-compiler"
+            INSTALLER="${MT5_DIR}/mt5setup.exe"
+
+            echo "Checking ${INSTALLER}..."
+            if [ -f "${INSTALLER}" ]; then
+              echo "FOUND: MT5 installer at ${INSTALLER}"
+              ls -lh "${INSTALLER}"
+            else
+              echo "NOT FOUND: Please place mt5setup.exe at ${INSTALLER}"
+              echo "Download from: https://www.metatrader5.com/en/download"
+              exit 1
+            fi
+          SSH_CHECK
+
+      - name: Build Docker image on Contabo
+        run: |
+          echo "=== Building Docker image on Contabo ==="
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 root@155.133.27.86 << 'SSH_BUILD'
+            set -e
+            MT5_DIR="/opt/mt5-compiler"
+
+            # Copy Dockerfile + compile.sh + build.sh to Contabo
+            scp -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 \
+              -r /home/mubarkahimself/Desktop/QUANTMINDX/docker/mql5-compiler/ \
+              root@155.133.27.86:${MT5_DIR}/docker/
+
+            echo "Dockerfiles copied. Running build..."
+            bash ${MT5_DIR}/docker/mql5-compiler/build.sh ${{ env.IMAGE_TAG }}
+          SSH_BUILD
+
+      - name: Push to GHCR
+        run: |
+          echo "=== Logging into GHCR and pushing image ==="
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 root@155.133.27.86 << 'SSH_PUSH'
+            set -e
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            docker push ${{ env.IMAGE_TAG }}
+            echo "=== Push complete ==="
+            echo "Image: ${{ env.IMAGE_TAG }}"
+          SSH_PUSH
+
+      - name: Verify image exists
+        run: |
+          echo "=== Verifying image in GHCR ==="
+          # Just check the manifest exists
+          curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://ghcr.io/v2/quantmind/quantmindx/mql5-compiler/manifests/latest"
