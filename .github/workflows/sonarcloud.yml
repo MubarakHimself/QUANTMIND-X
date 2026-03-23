@@ -140,6 +140,8 @@ jobs:
         with:
           projectBaseDir: quantmind-ide
           args: >
+            -Dsonar.projectKey=MubarakHimself_QUANTMIND-X
+            -Dsonar.organization=mubarakhimself
             -Dsonar.sources=src/
             -Dsonar.tests=src/**/*.test.ts
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/.svelte-kit/**
