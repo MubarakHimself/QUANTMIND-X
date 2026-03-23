@@ -143,6 +143,17 @@ agent-os/
 .mulch/
 agent-workshop/
 
+# BMAD methodology files (local only)
+_bmad/
+_bmad-output/
+
+# Claude desktop workspace (local planning docs)
+claude-desktop-workfolder/
+
+# OpenCode IDE files
+.opencode/
+opencode/
+
 # Development Summary Files
 *_SUMMARY.md
 TASK_GROUP*.md
