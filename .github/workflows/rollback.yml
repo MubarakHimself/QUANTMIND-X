@@ -11,6 +11,9 @@ on:
 permissions:
   contents: read
 
+env:
+  GIT_REF: ${{ inputs.git_ref }}
+
 jobs:
   rollback:
     name: Rollback to ${{ inputs.git_ref }}
@@ -19,14 +22,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.git_ref }}
 
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.CONTABO_SSH_KEY }}" | base64 -d > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
+          install -m 600 /dev/null ~/.ssh/id_ed25519
+          echo "${{ secrets.CONTABO_SSH_KEY }}" | base64 -d >> ~/.ssh/id_ed25519
           ssh-keyscan -H 155.133.27.86 >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Rollback on Contabo
@@ -35,9 +36,9 @@ jobs:
               -i ~/.ssh/id_ed25519 root@155.133.27.86 << 'ROLLBACK_SCRIPT'
             set -e
             cd /opt/quantmindx
-            echo "Rolling back to: $GITHUB_EVENT_INPUTS_GIT_REF"
+            echo "Rolling back to: $GIT_REF"
             git fetch --all --tags
-            git reset --hard "$GITHUB_EVENT_INPUTS_GIT_REF"
+            git reset --hard "$GIT_REF"
             systemctl restart quantmind-api
             echo "Rollback deployed"
           ROLLBACK_SCRIPT
