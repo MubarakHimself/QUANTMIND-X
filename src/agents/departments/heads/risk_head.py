@@ -368,14 +368,15 @@ class RiskHead(DepartmentHead):
         Returns:
             Drawdown status
         """
-        # In production, would fetch actual account data
-        # For now, return a placeholder
+        # Demo data — real data requires live broker connection
         return {
             "account_id": account_id,
             "current_drawdown": 0.0,
             "max_allowed_drawdown": 20.0,
             "status": "ok",
             "message": "Account within drawdown limits",
+            "demo_mode": True,
+            "demo_message": "Connect MT5 broker accounts to see live drawdown data",
         }
 
     def calculate_var(

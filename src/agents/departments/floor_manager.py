@@ -961,12 +961,31 @@ Starting system restore from backup (FR69: machine portability)...
 
         client = _anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
         routing_prompt = (
-            "You are the Floor Manager of a trading AI system. "
-            "Classify which department(s) should handle this task. "
-            "Available: research, development, risk, trading, portfolio.\n"
-            f"Task: {task}\n"
-            'Respond with JSON: {"departments": ["department1"], '
-            '"reasoning": "...", "priority": "normal|high|urgent"}'
+            "You are the Floor Manager of QUANTMINDX, an AI-driven algorithmic trading platform.\n"
+            "Your job is to classify incoming tasks and route them to the right department(s).\n\n"
+            "DEPARTMENTS AND THEIR SCOPE:\n"
+            "- research: Strategy discovery, hypothesis generation, backtesting, knowledge base queries, "
+            "market analysis, alpha research, TRD authoring. Use when the request is about FINDING or VALIDATING a strategy.\n"
+            "- development: EA/bot implementation, MQL5/Python/PineScript code generation, "
+            "compilation, TRD-to-code conversion. Use when the request is about BUILDING or CODING something.\n"
+            "- risk: Position sizing, drawdown checks, VaR calculations, backtest PASS/FAIL evaluation, "
+            "risk parameter management. Use when the request is about APPROVING or MEASURING risk.\n"
+            "- trading: Order execution (paper/demo MT5), fill tracking, slippage monitoring, "
+            "paper trading sessions. Use when the request is about EXECUTING or MONITORING trades.\n"
+            "- portfolio: Allocation optimization, rebalancing, performance attribution, "
+            "correlation analysis, portfolio reports. Use when the request is about the OVERALL PORTFOLIO.\n\n"
+            "ROUTING RULES:\n"
+            "- New strategy idea → research\n"
+            "- 'Write/build/code an EA' → development (may also need research for spec)\n"
+            "- 'Is this strategy safe?' / 'Check risk' → risk\n"
+            "- 'Execute / start paper trading' → trading (requires risk approval first)\n"
+            "- 'How is my portfolio doing?' → portfolio\n"
+            "- Multi-step workflows (e.g. research→develop→risk→trade) → list all departments in order\n"
+            "- Urgent = live trading impact or account risk; High = time-sensitive; Normal = routine\n\n"
+            f"TASK: {task}\n\n"
+            "Respond ONLY with valid JSON (no markdown):\n"
+            '{"departments": ["dept1"], "reasoning": "one sentence", "priority": "normal|high|urgent", '
+            '"workflow": ["dept1", "dept2"]}'
         )
 
         try:

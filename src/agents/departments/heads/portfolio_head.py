@@ -183,8 +183,8 @@ class PortfolioHead(DepartmentHead):
         Returns:
             Total equity
         """
-        # In production, would query broker registry and aggregate balances
-        # Demo data representing multiple accounts
+        # Demo data — real data requires MT5 broker connection
+        # demo_mode: true means this data is simulated, not live
         accounts = [
             {"account_id": "acc_main", "balance": 50000.0},
             {"account_id": "acc_backup", "balance": 25000.0},
@@ -197,6 +197,8 @@ class PortfolioHead(DepartmentHead):
             "total_equity": total_equity,
             "accounts": accounts,
             "account_count": len(accounts),
+            "demo_mode": True,
+            "demo_message": "Connect MT5 broker accounts to see live equity data",
         }
 
     def get_strategy_pnl(self, period: str = "all") -> Dict[str, Any]:
@@ -209,7 +211,7 @@ class PortfolioHead(DepartmentHead):
         Returns:
             P&L by strategy
         """
-        # Demo data - in production would aggregate from trade database
+        # Demo data — real data requires trade history from MT5/broker
         strategies = [
             {"strategy": "TrendFollower_v2.1", "pnl": 2450.0},
             {"strategy": "RangeTrader_v1.5", "pnl": 820.0},
@@ -225,6 +227,8 @@ class PortfolioHead(DepartmentHead):
             "period": period,
             "total_pnl": total_pnl,
             "by_strategy": strategies,
+            "demo_mode": True,
+            "demo_message": "Connect MT5 broker accounts to see live P&L data",
         }
 
     def get_broker_pnl(self, period: str = "all") -> Dict[str, Any]:
@@ -237,7 +241,7 @@ class PortfolioHead(DepartmentHead):
         Returns:
             P&L by broker
         """
-        # Demo data - in production would aggregate from broker accounts
+        # Demo data — real data requires broker account connections
         brokers = [
             {"broker": "ICMarkets", "pnl": 3100.0},
             {"broker": "OANDA", "pnl": 1280.0},
@@ -252,6 +256,8 @@ class PortfolioHead(DepartmentHead):
             "period": period,
             "total_pnl": total_pnl,
             "by_broker": brokers,
+            "demo_mode": True,
+            "demo_message": "Connect broker accounts to see live attribution",
         }
 
     def get_account_drawdowns(self) -> Dict[str, Any]:
