@@ -1,0 +1,77 @@
+name: Deploy to Contabo
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Contabo
+    runs-on: ubuntu-latest
+    # Only deploy if CI checks passed (this workflow runs after push, CI already green)
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.CONTABO_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H 155.133.27.86 >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy to Contabo
+        run: |
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+              -i ~/.ssh/id_ed25519 root@155.133.27.86 << 'DEPLOY_SCRIPT'
+            set -e
+
+            cd /opt/quantmindx
+
+            # Save current commit for rollback
+            echo "$GITHUB_RUN_ID" > /tmp/deploy_run.txt
+            git rev-parse HEAD > /tmp/prev_commit.txt
+            cp /tmp/prev_commit.txt /tmp/rollback_ref.txt
+
+            # Pull latest code
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Restart systemd API service
+            systemctl restart quantmind-api
+
+            echo "Deployed: $(git rev-parse --short HEAD)"
+          DEPLOY_SCRIPT
+
+      - name: Health check
+        run: |
+          echo "Waiting for API to start..."
+          for i in $(seq 1 30); do
+            if curl -sf http://155.133.27.86:8000/health > /dev/null 2>&1; then
+              echo "Health check passed!"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Health check failed after 60s"
+          exit 1
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Deploy failed — rolling back..."
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 root@155.133.27.86 << 'ROLLBACK_SCRIPT'
+            set -e
+            cd /opt/quantmindx
+            PREV_COMMIT=$(cat /tmp/prev_commit.txt)
+            echo "Rolling back to: $PREV_COMMIT"
+            git reset --hard "$PREV_COMMIT"
+            systemctl restart quantmind-api
+            echo "Rollback complete"
+          ROLLBACK_SCRIPT

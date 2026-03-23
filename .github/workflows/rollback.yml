@@ -1,0 +1,63 @@
+name: Rollback Contabo
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: "Git ref to rollback to (commit SHA, branch, or tag)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    name: Rollback to ${{ inputs.git_ref }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.CONTABO_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H 155.133.27.86 >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Rollback on Contabo
+        run: |
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+              -i ~/.ssh/id_ed25519 root@155.133.27.86 << 'ROLLBACK_SCRIPT'
+            set -e
+            cd /opt/quantmindx
+            echo "Rolling back to: $GITHUB_EVENT_INPUTS_GIT_REF"
+            git fetch --all --tags
+            git reset --hard "$GITHUB_EVENT_INPUTS_GIT_REF"
+            systemctl restart quantmind-api
+            echo "Rollback deployed"
+          ROLLBACK_SCRIPT
+
+      - name: Health check
+        run: |
+          echo "Waiting for API to start..."
+          for i in $(seq 1 30); do
+            if curl -sf http://155.133.27.86:8000/health > /dev/null 2>&1; then
+              echo "Health check passed!"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Health check failed after 60s"
+          exit 1
+
+      - name: Confirm rollback
+        if: success()
+        run: |
+          ssh -i ~/.ssh/id_ed25519 root@155.133.27.86 \
+            'cd /opt/quantmindx && git log --oneline -3'
+          echo "Rollback complete: $GITHUB_RUN_ID"
