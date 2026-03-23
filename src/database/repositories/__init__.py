@@ -27,6 +27,7 @@ from .bot_repository import BotRepository
 from .account_loss_state_repository import AccountLossStateRepository
 from .circuit_breaker_repository import CircuitBreakerRepository
 from .market_repository import MarketRepository, SharedAssetRepository, StrategyFolderRepository
+from .strategy_repository import StrategyRepository
 
 # Trading repositories
 from .trading_repository import (
@@ -377,6 +378,7 @@ __all__ = [
     'MarketRepository',
     'SharedAssetRepository',
     'StrategyFolderRepository',
+    'StrategyRepository',
     # Trading repositories
     'RiskTierTransitionRepository',
     'CryptoTradeRepository',
