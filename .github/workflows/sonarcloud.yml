@@ -143,8 +143,9 @@ jobs:
             -Dsonar.projectKey=MubarakHimself_QUANTMIND-X
             -Dsonar.organization=mubarakhimself
             -Dsonar.sources=src/
-            -Dsonar.tests=src/**/*.test.ts
-            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/.svelte-kit/**
+            -Dsonar.tests=src/
+            -Dsonar.test.inclusions=**/*.test.ts,**/*.spec.ts
+            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/.svelte-kit/**,**/agents/**
             -Dsonar.typescript.lcov.reportPaths=coverage/coverage-final.json
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
