@@ -13,8 +13,11 @@ jobs:
     name: Frontend Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest]
+        # windows/macos excluded: vite-plugin-monaco-editor has a Windows path bug
+        # and deployment target is Linux only. Re-enable when Monaco plugin is fixed.
 
     defaults:
       run:
