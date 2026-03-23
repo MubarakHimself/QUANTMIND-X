@@ -3,6 +3,7 @@ Settings API Endpoints
 
 Manages user settings, API keys, MCP servers, agent configuration,
 risk management, database settings, and custom wallpapers.
+Pipeline test: CI → Deploy to Contabo → Health Check ✓
 """
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
