@@ -60,6 +60,20 @@ class HubSyncResponse(BaseModel):
     errors: List[str] = []
     details: Optional[Dict[str, Any]] = None
 
+
+class FirecrawlSettings(BaseModel):
+    """Settings for Firecrawl scraper."""
+    api_key: Optional[str] = None
+    scraper_type: str = "simple"  # "simple" or "firecrawl"
+
+
+class FirecrawlSettingsResponse(BaseModel):
+    """Response model for Firecrawl settings."""
+    api_key_set: bool
+    scraper_type: str
+    scraper_available: bool
+    firecrawl_available: bool
+
 # Initialize handler
 knowledge_handler = KnowledgeAPIHandler()
 
@@ -105,6 +119,73 @@ def update_sync_state(
         state["last_error"] = last_error
     SYNC_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     SYNC_STATE_FILE.write_text(json.dumps(state, indent=2))
+
+
+# =============================================================================
+# Firecrawl Settings
+# =============================================================================
+
+FIRECRAWL_SETTINGS_FILE = Path("config/settings/firecrawl.json")
+
+
+def load_firecrawl_settings() -> dict:
+    """Load Firecrawl settings from file."""
+    if FIRECRAWL_SETTINGS_FILE.exists():
+        try:
+            return json.loads(FIRECRAWL_SETTINGS_FILE.read_text())
+        except Exception:
+            pass
+    return {"api_key": None, "scraper_type": "simple"}
+
+
+def save_firecrawl_settings(settings: dict):
+    """Save Firecrawl settings to file."""
+    FIRECRAWL_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    FIRECRAWL_SETTINGS_FILE.write_text(json.dumps(settings, indent=2))
+
+
+def check_scraper_available() -> tuple[bool, bool]:
+    """Check if scrapers are available."""
+    simple_available = Path("scripts/simple_scraper.py").exists()
+    firecrawl_available = Path("scripts/firecrawl_scraper.py").exists()
+    return simple_available, firecrawl_available
+
+
+@router.get("/firecrawl/settings", response_model=FirecrawlSettingsResponse)
+async def get_firecrawl_settings():
+    """
+    Get Firecrawl settings including API key status and scraper availability.
+    """
+    settings = load_firecrawl_settings()
+    simple_available, firecrawl_available = check_scraper_available()
+
+    return FirecrawlSettingsResponse(
+        api_key_set=settings.get("api_key") is not None and settings.get("api_key", "") != "",
+        scraper_type=settings.get("scraper_type", "simple"),
+        scraper_available=simple_available,
+        firecrawl_available=firecrawl_available
+    )
+
+
+@router.post("/firecrawl/settings")
+async def update_firecrawl_settings(firecrawl_settings: FirecrawlSettings):
+    """
+    Update Firecrawl settings including API key and scraper type.
+    """
+    settings = {
+        "api_key": firecrawl_settings.api_key,
+        "scraper_type": firecrawl_settings.scraper_type
+    }
+    save_firecrawl_settings(settings)
+
+    simple_available, firecrawl_available = check_scraper_available()
+
+    return FirecrawlSettingsResponse(
+        api_key_set=firecrawl_settings.api_key is not None and firecrawl_settings.api_key != "",
+        scraper_type=firecrawl_settings.scraper_type,
+        scraper_available=simple_available,
+        firecrawl_available=firecrawl_available
+    )
 
 
 @router.get("")
@@ -314,12 +395,27 @@ def count_existing_articles() -> int:
     return count
 
 
-def run_scraper_background(batch_size: int = 10, start_index: int = 0):
+def get_articles_by_category() -> dict:
+    """Get article count grouped by category."""
+    categories = {}
+    if SCRAPED_ARTICLES_DIR.exists():
+        for category_dir in SCRAPED_ARTICLES_DIR.iterdir():
+            if category_dir.is_dir():
+                category_name = category_dir.name
+                articles = list(category_dir.glob("*.md"))
+                categories[category_name] = {
+                    "count": len(articles),
+                    "total_size": sum(f.stat().st_size for f in articles if f.is_file())
+                }
+    return categories
+
+
+def run_scraper_background(batch_size: int = 10, start_index: int = 0, scraper_type: str = "simple", api_key: str = None):
     """
     Run the scraper in the background.
     This function is called by BackgroundTasks.
     """
-    logger.info(f"Starting background scraper: batch_size={batch_size}, start_index={start_index}")
+    logger.info(f"Starting background scraper: batch_size={batch_size}, start_index={start_index}, scraper_type={scraper_type}")
 
     # Update state to running
     update_sync_state(
@@ -329,8 +425,11 @@ def run_scraper_background(batch_size: int = 10, start_index: int = 0):
     )
 
     try:
-        # Check if simple_scraper.py exists
-        scraper_path = Path("scripts/simple_scraper.py")
+        # Select scraper based on type
+        if scraper_type == "firecrawl":
+            scraper_path = Path("scripts/firecrawl_scraper.py")
+        else:
+            scraper_path = Path("scripts/simple_scraper.py")
 
         if not scraper_path.exists():
             logger.error(f"Scraper not found: {scraper_path}")
@@ -338,18 +437,25 @@ def run_scraper_background(batch_size: int = 10, start_index: int = 0):
                 status="failed",
                 batch_size=batch_size,
                 start_index=start_index,
-                last_error="Scraper script not found"
+                last_error=f"Scraper script not found: {scraper_path}"
             )
             return
 
+        # Build command arguments
+        cmd_args = [
+            sys.executable,
+            str(scraper_path),
+            "--batch-size", str(batch_size),
+            "--start-index", str(start_index)
+        ]
+
+        # Add API key for firecrawl scraper
+        if scraper_type == "firecrawl" and api_key:
+            cmd_args.extend(["--api-key", api_key])
+
         # Run the scraper with limited batch for API usage
         result = subprocess.run(
-            [
-                sys.executable,
-                str(scraper_path),
-                "--batch-size", str(batch_size),
-                "--start-index", str(start_index)
-            ],
+            cmd_args,
             capture_output=True,
             text=True,
             timeout=3600  # 1 hour timeout
@@ -397,7 +503,9 @@ async def sync_knowledge(
     background_tasks: BackgroundTasks,
     batch_size: int = 10,
     start_index: int = 0,
-    sync_mode: str = "background"
+    sync_mode: str = "background",
+    scraper_type: str = "simple",
+    api_key: Optional[str] = None
 ):
     """
     Trigger knowledge sync by running the scraper.
@@ -409,25 +517,40 @@ async def sync_knowledge(
         batch_size: Number of articles to scrape (default: 10)
         start_index: Starting index in the articles list (default: 0)
         sync_mode: "background" (async) or "sync" (wait for completion)
+        scraper_type: "simple" or "firecrawl" (default: from settings or "simple")
+        api_key: Firecrawl API key (optional, uses settings if not provided)
 
     Returns:
         JSON with sync status and article count
     """
+    # Load settings to get default scraper_type and api_key
+    firecrawl_settings = load_firecrawl_settings()
+    scraper_type = scraper_type or firecrawl_settings.get("scraper_type", "simple")
+
+    # Use provided api_key or fall back to stored settings
+    if api_key is None or api_key == "":
+        api_key = firecrawl_settings.get("api_key", "")
+
     # Count existing articles before sync
     existing_count = count_existing_articles()
 
-    # Check if scraper is available
-    scraper_path = Path("scripts/simple_scraper.py")
+    # Select scraper based on type
+    if scraper_type == "firecrawl":
+        scraper_path = Path("scripts/firecrawl_scraper.py")
+    else:
+        scraper_path = Path("scripts/simple_scraper.py")
+
     export_file = Path("data/exports/engineering_ranked.json")
 
     if not scraper_path.exists():
         return {
             "success": False,
             "status": "scraper_not_found",
-            "message": "Scraper script not found at scripts/simple_scraper.py",
+            "message": f"Scraper script not found at {scraper_path}",
             "articles_synced": 0,
             "existing_articles": existing_count,
-            "errors": ["Scraper script not found"]
+            "errors": [f"Scraper script not found: {scraper_path}"],
+            "scraper_type": scraper_type
         }
 
     if not export_file.exists():
@@ -451,16 +574,23 @@ async def sync_knowledge(
             "current_sync": current_state
         }
 
+    # Build command arguments
+    cmd_args = [
+        sys.executable,
+        str(scraper_path),
+        "--batch-size", str(batch_size),
+        "--start-index", str(start_index)
+    ]
+
+    # Add API key for firecrawl scraper
+    if scraper_type == "firecrawl" and api_key:
+        cmd_args.extend(["--api-key", api_key])
+
     if sync_mode == "sync":
         # Run synchronously (for automated workflows)
         try:
             result = subprocess.run(
-                [
-                    sys.executable,
-                    str(scraper_path),
-                    "--batch-size", str(batch_size),
-                    "--start-index", str(start_index)
-                ],
+                cmd_args,
                 capture_output=True,
                 text=True,
                 timeout=3600  # 1 hour timeout
@@ -480,7 +610,8 @@ async def sync_knowledge(
                     "message": f"Scraped {batch_size} articles successfully",
                     "articles_synced": new_count,
                     "existing_articles": existing_count,
-                    "errors": []
+                    "errors": [],
+                    "scraper_type": scraper_type
                 }
             else:
                 update_sync_state(
@@ -529,12 +660,12 @@ async def sync_knowledge(
             }
     else:
         # Run in background (default)
-        background_tasks.add_task(run_scraper_background, batch_size, start_index)
+        background_tasks.add_task(run_scraper_background, batch_size, start_index, scraper_type, api_key)
 
         return {
             "success": True,
             "status": "sync_started",
-            "message": f"Scraping {batch_size} articles starting from index {start_index}",
+            "message": f"Scraping {batch_size} articles starting from index {start_index} using {scraper_type} scraper",
             "articles_synced": 0,  # Will be updated when scraper completes
             "existing_articles": existing_count,
             "sync_state": get_sync_state(),
@@ -562,6 +693,17 @@ async def get_sync_status():
     # Get sync state
     sync_state = get_sync_state()
 
+    # Get categories breakdown
+    categories = get_articles_by_category()
+
+    # Calculate progress
+    progress = 0
+    if sync_state.get("status") == "running":
+        batch_size = sync_state.get("last_batch_size", 0)
+        start_index = sync_state.get("last_start_index", 0)
+        if batch_size > 0:
+            progress = min(100, int((start_index / (start_index + batch_size)) * 100))
+
     return {
         "success": True,
         "status": sync_state.get("status", "idle"),
@@ -569,7 +711,77 @@ async def get_sync_status():
         "source_available": source_available,
         "existing_articles": existing_count,
         "output_directory": str(SCRAPED_ARTICLES_DIR),
-        "sync_state": sync_state
+        "sync_state": sync_state,
+        "categories": categories,
+        "progress": progress
+    }
+
+
+@router.get("/articles")
+async def get_scraped_articles(
+    sort_by: str = "name",
+    order: str = "asc",
+    category: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0
+):
+    """
+    Get scraped articles with details for sorting and filtering.
+
+    Args:
+        sort_by: Field to sort by (name, size, modified, category)
+        order: Sort order (asc or desc)
+        category: Filter by category
+        limit: Maximum number of articles to return
+        offset: Number of articles to skip
+
+    Returns:
+        JSON with articles list and total count
+    """
+    articles = []
+
+    if SCRAPED_ARTICLES_DIR.exists():
+        for category_dir in SCRAPED_ARTICLES_DIR.iterdir():
+            if category_dir.is_dir():
+                category_name = category_dir.name
+                if category and category != category_name:
+                    continue
+
+                for article_file in category_dir.glob("*.md"):
+                    try:
+                        stat = article_file.stat()
+                        articles.append({
+                            "id": article_file.stem,
+                            "name": article_file.stem.replace("_", " ").title(),
+                            "category": category_name,
+                            "size_bytes": stat.st_size,
+                            "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                            "path": str(article_file)
+                        })
+                    except Exception:
+                        pass
+
+    # Sort articles
+    reverse = order == "desc"
+    if sort_by == "size":
+        articles.sort(key=lambda x: x.get("size_bytes", 0), reverse=reverse)
+    elif sort_by == "modified":
+        articles.sort(key=lambda x: x.get("modified", ""), reverse=reverse)
+    elif sort_by == "category":
+        articles.sort(key=lambda x: x.get("category", ""), reverse=reverse)
+    else:
+        articles.sort(key=lambda x: x.get("name", ""), reverse=reverse)
+
+    total = len(articles)
+    paginated = articles[offset:offset + limit]
+
+    return {
+        "success": True,
+        "articles": paginated,
+        "total": total,
+        "categories": list(get_articles_by_category().keys()),
+        "sort_by": sort_by,
+        "order": order
     }
 
 

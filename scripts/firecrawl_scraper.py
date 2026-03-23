@@ -7,7 +7,7 @@ Prompts for API key at runtime
 import json
 import time
 from pathlib import Path
-from typing import List, Dict
+from typing import Dict
 from datetime import datetime
 import getpass
 
@@ -156,7 +156,7 @@ class FirecrawlMQL5Scraper:
                 markdown_content = result.data.markdown
             
             if not markdown_content:
-                print(f"   ⚠️  No markdown content in response, using full result")
+                print("   ⚠️  No markdown content in response, using full result")
                 markdown_content = str(result)
             
             # Create metadata header
@@ -198,7 +198,7 @@ scraped_at: {datetime.now().isoformat()}
         self.start_time = time.time()
         
         print(f"\n{'='*70}")
-        print(f"🚀 STARTING FIRECRAWL SCRAPER")
+        print("🚀 STARTING FIRECRAWL SCRAPER")
         print(f"{'='*70}")
         print(f"Batch size: {self.batch_size}")
         print(f"Start index: {self.start_index}")
@@ -210,8 +210,8 @@ scraped_at: {datetime.now().isoformat()}
                 print(f"\n⏭️  Skipping (already scraped): {article['title'][:60]}...")
                 self.scraped_count += 1
                 continue
-            
-            success = self.scrape_article(article)
+
+            self.scrape_article(article)
             
             # Rate limit: 10 requests/min = 1 request every 6 seconds
             # Use 7 seconds to be safe
@@ -223,7 +223,7 @@ scraped_at: {datetime.now().isoformat()}
         elapsed_minutes = elapsed_time / 60
         
         print(f"\n{'='*70}")
-        print(f"✨ SCRAPING COMPLETE")
+        print("✨ SCRAPING COMPLETE")
         print(f"{'='*70}")
         print(f"✅ Successfully scraped: {self.scraped_count}/{len(self.articles)}")
         print(f"❌ Failed: {len(self.failed_urls)}")
@@ -265,7 +265,7 @@ def main():
     
     # Validate batch size
     if args.batch_size > 500:
-        print(f"⚠️  Warning: Firecrawl free tier limit is 500 pages/month")
+        print("⚠️  Warning: Firecrawl free tier limit is 500 pages/month")
         print(f"   Requested: {args.batch_size}")
         response = input("Continue anyway? (y/n): ").strip().lower()
         if response != 'y':

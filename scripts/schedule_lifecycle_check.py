@@ -22,7 +22,6 @@ Usage:
 Reference: docs/architecture/lifecycle_management.md
 """
 
-import os
 import sys
 import json
 import logging

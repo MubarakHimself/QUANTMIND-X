@@ -166,7 +166,7 @@ def main():
     for cat, count in sorted(category_stats.items(), key=lambda x: -x[1])[:10]:
         print(f"   {cat}: {count}")
     
-    print(f"\n✨ Done! Index ready for analysis.")
+    print("\n✨ Done! Index ready for analysis.")
 
 if __name__ == "__main__":
     main()

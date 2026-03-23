@@ -75,6 +75,25 @@
   let syncLoading = $state(false);
   let syncing = $state(false);
 
+  // Firecrawl settings state
+  let firecrawlSettings: {
+    api_key_set: boolean;
+    scraper_type: string;
+    scraper_available: boolean;
+    firecrawl_available: boolean;
+  } | null = null;
+  let showApiKeyModal = false;
+  let apiKeyInput = "";
+  let selectedScraperType = "simple";
+  let savingSettings = false;
+
+  // Articles sorting and filtering
+  let sortBy = "name";
+  let sortOrder = "asc";
+  let selectedCategory = "";
+  let availableCategories: string[] = [];
+  let progress = 0;
+
   // Update breadcrumbs when namespace changes
   run(() => {
     if (selectedNamespace) {
@@ -101,9 +120,15 @@
   async function fetchArticles() {
     articlesLoading = true;
     try {
-      const response = await fetch("/api/knowledge");
+      let url = `/api/knowledge/articles?sort_by=${sortBy}&order=${sortOrder}&limit=100`;
+      if (selectedCategory) {
+        url += `&category=${selectedCategory}`;
+      }
+      const response = await fetch(url);
       if (response.ok) {
-        articles = await response.json();
+        const data = await response.json();
+        articles = data.articles;
+        availableCategories = data.categories || [];
       } else {
         error = "Failed to fetch articles";
       }
@@ -113,6 +138,11 @@
     } finally {
       articlesLoading = false;
     }
+  }
+
+  // Fetch articles when sort/filter changes
+  $: if (sortBy || sortOrder || selectedCategory) {
+    fetchArticles();
   }
 
   // Fetch namespaces
@@ -135,11 +165,52 @@
       if (response.ok) {
         const data = await response.json();
         syncStatus = data;
+        progress = data.progress || 0;
+        if (data.categories) {
+          availableCategories = Object.keys(data.categories);
+        }
       }
     } catch (e) {
       console.error("Failed to fetch sync status:", e);
     } finally {
       syncLoading = false;
+    }
+  }
+
+  // Fetch Firecrawl settings
+  async function fetchFirecrawlSettings() {
+    try {
+      const response = await fetch("/api/knowledge/firecrawl/settings");
+      if (response.ok) {
+        firecrawlSettings = await response.json();
+        selectedScraperType = firecrawlSettings?.scraper_type || "simple";
+      }
+    } catch (e) {
+      console.error("Failed to fetch Firecrawl settings:", e);
+    }
+  }
+
+  // Save Firecrawl settings
+  async function saveFirecrawlSettings() {
+    savingSettings = true;
+    try {
+      const response = await fetch("/api/knowledge/firecrawl/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          api_key: apiKeyInput,
+          scraper_type: selectedScraperType
+        }),
+      });
+      if (response.ok) {
+        firecrawlSettings = await response.json();
+        showApiKeyModal = false;
+        apiKeyInput = "";
+      }
+    } catch (e) {
+      console.error("Failed to save Firecrawl settings:", e);
+    } finally {
+      savingSettings = false;
     }
   }
 
@@ -150,7 +221,7 @@
       const response = await fetch("/api/knowledge/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ batch_size: 10, start_index: 0 }),
+        body: JSON.stringify({ batch_size: 10, start_index: 0, scraper_type: selectedScraperType }),
       });
       if (response.ok) {
         const data = await response.json();
@@ -334,7 +405,7 @@
 
   // Lifecycle
   onMount(async () => {
-    await Promise.all([fetchDocuments(), fetchNamespaces(), fetchArticles(), fetchSyncStatus()]);
+    await Promise.all([fetchDocuments(), fetchNamespaces(), fetchArticles(), fetchSyncStatus(), fetchFirecrawlSettings()]);
     loading = false;
   });
 </script>
@@ -364,6 +435,28 @@
             {/if}
           </span>
         </div>
+        <!-- Scraper Type Selector -->
+        <div class="scraper-selector">
+          <select
+            bind:value={selectedScraperType}
+            class="scraper-select"
+            disabled={syncing}
+          >
+            <option value="simple">Simple Scraper</option>
+            <option value="firecrawl" disabled={!firecrawlSettings?.firecrawl_available}>
+              Firecrawl {firecrawlSettings?.firecrawl_available ? '' : '(unavailable)'}
+            </option>
+          </select>
+          {#if selectedScraperType === 'firecrawl'}
+            <button
+              class="api-key-btn"
+              on:click={() => showApiKeyModal = true}
+              title="Configure API Key"
+            >
+              {firecrawlSettings?.api_key_set ? 'API Key Set' : 'Set API Key'}
+            </button>
+          {/if}
+        </div>
         <button
           class="sync-btn"
           onclick={triggerSync}
@@ -378,30 +471,100 @@
         </button>
       </div>
       <div class="sync-details">
-        <div class="sync-stat">
-          <span class="stat-label">Articles:</span>
-          <span class="stat-value">{syncStatus.existing_articles || 0}</span>
+        <!-- Progress Bar -->
+        {#if syncStatus.status === 'running' || syncStatus.status === 'syncing'}
+          <div class="sync-progress">
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: {progress}%"></div>
+            </div>
+            <span class="progress-text">{progress}% Complete</span>
+          </div>
+        {/if}
+
+        <div class="sync-stats-row">
+          <div class="sync-stat">
+            <span class="stat-label">Articles:</span>
+            <span class="stat-value">{syncStatus.existing_articles || 0}</span>
+          </div>
+          <div class="sync-stat">
+            <span class="stat-label">Last Sync:</span>
+            <span class="stat-value">
+              {#if syncStatus.sync_state?.last_sync}
+                {new Date(syncStatus.sync_state.last_sync).toLocaleString()}
+              {:else}
+                Never
+              {/if}
+            </span>
+          </div>
+          <div class="sync-stat">
+            <span class="stat-label">Last Synced:</span>
+            <span class="stat-value">{syncStatus.sync_state?.articles_synced || 0} articles</span>
+          </div>
         </div>
-        <div class="sync-stat">
-          <span class="stat-label">Last Sync:</span>
-          <span class="stat-value">
-            {#if syncStatus.sync_state?.last_sync}
-              {new Date(syncStatus.sync_state.last_sync).toLocaleString()}
-            {:else}
-              Never
-            {/if}
-          </span>
-        </div>
-        <div class="sync-stat">
-          <span class="stat-label">Last Synced:</span>
-          <span class="stat-value">{syncStatus.sync_state?.articles_synced || 0} articles</span>
-        </div>
+
+        <!-- Categories breakdown -->
+        {#if syncStatus.categories && Object.keys(syncStatus.categories).length > 0}
+          <div class="categories-breakdown">
+            <span class="stat-label">By Category:</span>
+            <div class="category-tags">
+              {#each Object.entries(syncStatus.categories) as [cat, data]}
+                <span class="category-count">{cat}: {data.count}</span>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
         {#if syncStatus.errors && syncStatus.errors.length > 0}
           <div class="sync-errors">
             <span class="error-label">Errors:</span>
             <span class="error-value">{syncStatus.errors.join(', ')}</span>
           </div>
         {/if}
+      </div>
+    </div>
+  {/if}
+
+  <!-- API Key Modal -->
+  {#if showApiKeyModal}
+    <div class="modal-backdrop" on:click={() => showApiKeyModal = false}>
+      <div class="modal-content" on:click|stopPropagation>
+        <div class="modal-header">
+          <h3>Configure Firecrawl API Key</h3>
+          <button class="close-btn" on:click={() => showApiKeyModal = false}>×</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-description">
+            Enter your Firecrawl API key to enable the Firecrawl scraper.
+            You can get an API key from <a href="https://firecrawl.dev" target="_blank" rel="noopener">firecrawl.dev</a>
+          </p>
+          <div class="form-group">
+            <label for="apiKey">API Key</label>
+            <input
+              id="apiKey"
+              type="password"
+              bind:value={apiKeyInput}
+              placeholder="Enter your Firecrawl API key"
+              class="form-input"
+            />
+          </div>
+          <div class="form-group">
+            <label for="scraperType">Scraper Type</label>
+            <select id="scraperType" bind:value={selectedScraperType} class="form-select">
+              <option value="simple">Simple Scraper</option>
+              <option value="firecrawl">Firecrawl</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" on:click={() => showApiKeyModal = false}>Cancel</button>
+          <button
+            class="btn-primary"
+            on:click={saveFirecrawlSettings}
+            disabled={savingSettings}
+          >
+            {savingSettings ? 'Saving...' : 'Save Settings'}
+          </button>
+        </div>
       </div>
     </div>
   {/if}
@@ -557,7 +720,41 @@
 
   <!-- Scraped Articles Section -->
   <div class="articles-section">
-    <h3>Scraped Articles ({articles.length})</h3>
+    <div class="articles-header">
+      <h3>Scraped Articles ({articles.length})</h3>
+      <div class="articles-controls">
+        <!-- Category Filter -->
+        <select
+          bind:value={selectedCategory}
+          class="filter-select"
+        >
+          <option value="">All Categories</option>
+          {#each availableCategories as cat}
+            <option value={cat}>{cat}</option>
+          {/each}
+        </select>
+
+        <!-- Sort By -->
+        <select
+          bind:value={sortBy}
+          class="filter-select"
+        >
+          <option value="name">Name</option>
+          <option value="size">Size</option>
+          <option value="modified">Date</option>
+          <option value="category">Category</option>
+        </select>
+
+        <!-- Sort Order -->
+        <button
+          class="sort-order-btn"
+          on:click={() => sortOrder = sortOrder === 'asc' ? 'desc' : 'asc'}
+          title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+        >
+          {sortOrder === 'asc' ? '↑' : '↓'}
+        </button>
+      </div>
+    </div>
 
     {#if articlesLoading}
       <div class="loading-state">
@@ -569,7 +766,7 @@
       </div>
     {:else}
       <div class="articles-list">
-        {#each articles.slice(0, 20) as article}
+        {#each articles as article}
           <div class="article-item">
             <div class="article-info">
               <div class="article-name">{article.name}</div>
@@ -577,6 +774,8 @@
                 <span class="category-tag">{article.category}</span>
                 <span>•</span>
                 <span>{formatSize(article.size_bytes)}</span>
+                <span>•</span>
+                <span class="date">{article.modified ? new Date(article.modified).toLocaleDateString() : ''}</span>
               </div>
             </div>
           </div>
@@ -684,11 +883,102 @@
     cursor: not-allowed;
   }
 
+  .scraper-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 12px;
+  }
+
+  .scraper-select {
+    background: var(--bg-secondary, #313244);
+    color: var(--text-primary, #cdd6f4);
+    border: 1px solid var(--border, #45475a);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+
+  .scraper-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .api-key-btn {
+    background: transparent;
+    border: 1px solid var(--accent, #89b4fa);
+    color: var(--accent, #89b4fa);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .api-key-btn:hover {
+    background: var(--accent, #89b4fa);
+    color: var(--bg-primary, #1e1e2e);
+  }
+
   .sync-details {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-size: 0.8rem;
+  }
+
+  .sync-stats-row {
     display: flex;
     flex-wrap: wrap;
     gap: 16px;
-    font-size: 0.8rem;
+  }
+
+  .sync-progress {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .progress-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--bg-tertiary, #45475a);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--accent, #89b4fa);
+    transition: width 0.3s ease;
+  }
+
+  .progress-text {
+    font-size: 0.75rem;
+    color: var(--accent, #89b4fa);
+    min-width: 80px;
+  }
+
+  .categories-breakdown {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .category-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .category-count {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    background: var(--bg-tertiary, #45475a);
+    border-radius: 4px;
+    color: var(--text-secondary, #a6adc8);
   }
 
   .sync-stat {
@@ -1025,10 +1315,54 @@
     border-top: 1px solid var(--border-color, #313244);
   }
 
+  .articles-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
   .articles-section h3 {
-    margin: 0 0 16px;
+    margin: 0;
     font-size: 1rem;
     color: var(--text-primary, #cdd6f4);
+  }
+
+  .articles-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .filter-select {
+    background: var(--bg-secondary, #313244);
+    color: var(--text-primary, #cdd6f4);
+    border: 1px solid var(--border-color, #45475a);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+
+  .filter-select:focus {
+    outline: none;
+    border-color: var(--accent, #89b4fa);
+  }
+
+  .sort-order-btn {
+    background: var(--bg-secondary, #313244);
+    border: 1px solid var(--border-color, #45475a);
+    color: var(--text-primary, #cdd6f4);
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+
+  .sort-order-btn:hover {
+    background: var(--bg-tertiary, #45475a);
   }
 
   .articles-list {
@@ -1066,6 +1400,11 @@
     color: var(--text-secondary, #a6adc8);
   }
 
+  .article-meta .date {
+    font-size: 0.7rem;
+    color: var(--text-secondary, #a6adc8);
+  }
+
   .category-tag {
     padding: 2px 8px;
     background: rgba(137, 180, 250, 0.15);
@@ -1073,5 +1412,152 @@
     border-radius: 4px;
     font-size: 0.7rem;
     text-transform: capitalize;
+  }
+
+  /* Modal Styles */
+  .modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .modal-content {
+    background: var(--bg-secondary, #313244);
+    border: 1px solid var(--border, #45475a);
+    border-radius: 12px;
+    width: 90%;
+    max-width: 450px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border, #45475a);
+  }
+
+  .modal-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--text-primary, #cdd6f4);
+  }
+
+  .close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary, #a6adc8);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .close-btn:hover {
+    color: var(--text-primary, #cdd6f4);
+  }
+
+  .modal-body {
+    padding: 20px;
+  }
+
+  .modal-description {
+    margin: 0 0 16px;
+    font-size: 0.85rem;
+    color: var(--text-secondary, #a6adc8);
+    line-height: 1.5;
+  }
+
+  .modal-description a {
+    color: var(--accent, #89b4fa);
+    text-decoration: none;
+  }
+
+  .modal-description a:hover {
+    text-decoration: underline;
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+  }
+
+  .form-group:last-child {
+    margin-bottom: 0;
+  }
+
+  .form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.8rem;
+    color: var(--text-primary, #cdd6f4);
+    font-weight: 500;
+  }
+
+  .form-input, .form-select {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg-primary, #1e1e2e);
+    border: 1px solid var(--border, #45475a);
+    border-radius: 6px;
+    color: var(--text-primary, #cdd6f4);
+    font-size: 0.9rem;
+    box-sizing: border-box;
+  }
+
+  .form-input:focus, .form-select:focus {
+    outline: none;
+    border-color: var(--accent, #89b4fa);
+  }
+
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 20px;
+    border-top: 1px solid var(--border, #45475a);
+  }
+
+  .btn-secondary {
+    background: transparent;
+    border: 1px solid var(--border, #45475a);
+    color: var(--text-primary, #cdd6f4);
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .btn-secondary:hover {
+    background: var(--bg-tertiary, #45475a);
+  }
+
+  .btn-primary {
+    background: var(--accent, #89b4fa);
+    border: none;
+    color: var(--bg-primary, #1e1e2e);
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+
+  .btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 </style>

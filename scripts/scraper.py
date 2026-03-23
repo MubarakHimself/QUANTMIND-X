@@ -74,9 +74,7 @@ class MQL5Scraper:
         article_id_match = re.search(r'/articles/(\d+)', url)
         if not article_id_match:
             return []
-        
-        current_id = int(article_id_match.group(1))
-        
+
         # Look for sequential article IDs in content (simple heuristic)
         found_urls = []
         
@@ -258,7 +256,7 @@ def main():
         failed = len(results) - successful
         series_detected = sum(1 for r in results if r.get('series_info', {}).get('is_series'))
         
-        print(f"\nScraping complete!")
+        print("\nScraping complete!")
         print(f"  Successful: {successful}")
         print(f"  Failed: {failed}")
         print(f"  Series detected: {series_detected}")

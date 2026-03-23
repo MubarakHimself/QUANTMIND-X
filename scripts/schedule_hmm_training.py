@@ -20,7 +20,6 @@ Usage:
 Reference: docs/architecture/components.md
 """
 
-import os
 import sys
 import json
 import logging
