@@ -6,23 +6,50 @@ on:
 
 permissions:
   contents: read
+  actions: read
+  statuses: read
 
 jobs:
+  # ── CI gate ────────────────────────────────────────────────────────────────
+  ci-checks:
+    name: CI Checks
+    runs-on: ubuntu-latest
+    outputs:
+      all_passed: ${{ steps.ci-status.outputs.all_passed }}
+    steps:
+      - name: Check CI status
+        id: ci-status
+        run: |
+          # Check all 5 CI workflows for this commit
+          COMMIT_SHA=${{ github.sha }}
+          WORKFLOWS=("SonarCloud SAST" "CodeQL Advanced" "Multi-Platform Build" "OWASP ZAP DAST" "Dependency Audit")
+          ALL_PASSED=true
+
+          for WF in "${WORKFLOWS[@]}"; do
+            STATUS=$(curl -s -u "x-access-token:${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/runs?head_sha=$COMMIT_SHA&workflow_name=$WF&per_page=1" \
+              | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['workflow_runs'][0]['conclusion'] if d['workflow_runs'] else 'not_run')" 2>/dev/null)
+            echo "$WF: $STATUS"
+            if [ "$STATUS" != "success" ]; then
+              ALL_PASSED=false
+            fi
+          done
+
+          echo "all_passed=$ALL_PASSED" >> $GITHUB_OUTPUT
+          echo "All CI passed: $ALL_PASSED"
+
+  # ── Deploy ────────────────────────────────────────────────────────────────
   deploy:
     name: Deploy to Contabo
+    needs: ci-checks
     runs-on: ubuntu-latest
-    # Only deploy if CI checks passed (this workflow runs after push, CI already green)
+    if: ${{ needs.ci-checks.outputs.all_passed == 'true' }}
     environment: production
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref }}
-
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.CONTABO_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.CONTABO_SSH_KEY }}" | base64 -d > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H 155.133.27.86 >> ~/.ssh/known_hosts 2>/dev/null
 
@@ -34,10 +61,8 @@ jobs:
 
             cd /opt/quantmindx
 
-            # Save current commit for rollback
-            echo "$GITHUB_RUN_ID" > /tmp/deploy_run.txt
+            # Save previous commit for rollback
             git rev-parse HEAD > /tmp/prev_commit.txt
-            cp /tmp/prev_commit.txt /tmp/rollback_ref.txt
 
             # Pull latest code
             git fetch origin main
@@ -51,7 +76,7 @@ jobs:
 
       - name: Health check
         run: |
-          echo "Waiting for API to start..."
+          echo "Waiting for API to restart..."
           for i in $(seq 1 30); do
             if curl -sf http://155.133.27.86:8000/health > /dev/null 2>&1; then
               echo "Health check passed!"
