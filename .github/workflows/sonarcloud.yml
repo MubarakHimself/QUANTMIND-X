@@ -54,7 +54,7 @@ jobs:
           pytest tests/ --cov=src --cov-report=xml --tb=short || true
 
       - name: Run frontend tests
-        run: npm test -- --run --coverage --reporter=json
+        run: npm run test:run -- --coverage --reporter=json
         working-directory: quantmind-ide
 
       - name: SonarCloud Scan
@@ -132,7 +132,7 @@ jobs:
         working-directory: quantmind-ide
 
       - name: Run tests
-        run: npm test -- --run --coverage --reporter=json
+        run: npm run test:run -- --coverage --reporter=json
         working-directory: quantmind-ide
 
       - name: SonarCloud Scan
