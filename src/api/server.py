@@ -197,10 +197,14 @@ except ImportError as e:
 # Optional MT5-dependent imports (Linux compatibility)
 paper_trading_router = None
 try:
-    from src.api.paper_trading_endpoints import router as paper_trading_router
+    from src.api.paper_trading import router as paper_trading_router
     logger.info("Paper trading endpoints loaded")
-except ImportError as e:
-    logger.warning(f"Paper trading endpoints not available (MT5 required): {e}")
+except ImportError:
+    try:
+        from src.api.paper_trading_endpoints import router as paper_trading_router
+        logger.info("Paper trading endpoints loaded (legacy)")
+    except ImportError as e:
+        logger.warning(f"Paper trading endpoints not available (MT5 required): {e}")
 
 # Optional department mail endpoints (may have dependency issues)
 department_mail_router = None

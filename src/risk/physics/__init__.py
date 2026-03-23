@@ -13,6 +13,11 @@ from .ising_sensor import IsingRegimeSensor, IsingSensorConfig, IsingSystem
 from .chaos_sensor import ChaosSensor
 from .correlation_sensor import CorrelationSensor
 
+try:
+    from .hmm_sensor import HMMRegimeSensor
+except ImportError:
+    HMMRegimeSensor = None
+
 __all__ = [
     "IsingRegimeSensor",
     "IsingSensorConfig",
@@ -20,6 +25,8 @@ __all__ = [
     "ChaosSensor",
     "CorrelationSensor",
 ]
+if HMMRegimeSensor is not None:
+    __all__.append('HMMRegimeSensor')
 
 # Backward compatibility - HMM sensor (legacy module)
 try:

@@ -4,6 +4,9 @@ Unified Database Manager
 Provides a unified interface to SQLite (via SQLAlchemy).
 Implements singleton pattern for application-wide database access with
 automatic retry logic and connection management.
+
+This module delegates to repository classes for modularity while maintaining
+backward compatibility with the existing API.
 """
 
 import os
@@ -11,9 +14,16 @@ from datetime import datetime, date
 from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
 
-from .engine import engine, Session, init_database as init_sqlite_db
+from .engine import engine, Session, init_database as init_sqlite_db, close_session
 from .models import PropFirmAccount, DailySnapshot, TradeProposal, AgentTasks, StrategyPerformance, BrokerRegistry, HouseMoneyState, BotCircuitBreaker, Base
 from .retry import DatabaseConnectionManager, create_connection_manager, with_retry
+from .repositories import (
+    AccountRepository,
+    SnapshotRepository,
+    ProposalRepository,
+    TaskRepository,
+    StrategyRepository,
+)
 
 
 class DatabaseManager:
@@ -65,6 +75,13 @@ class DatabaseManager:
             import logging
             logging.getLogger(__name__).warning(f"Initial database connection check failed: {e}")
 
+        # Initialize repository instances
+        self.accounts = AccountRepository()
+        self.snapshots = SnapshotRepository()
+        self.proposals = ProposalRepository()
+        self.tasks = TaskRepository()
+        self.strategies = StrategyRepository()
+
         self._initialized = True
 
     def __enter__(self):
@@ -105,7 +122,7 @@ class DatabaseManager:
             Session.remove()
 
     # ========================================================================
-    # SQLite Methods - Prop Firm Accounts
+    # SQLite Methods - Prop Firm Accounts (delegated to AccountRepository)
     # ========================================================================
 
     def get_prop_account(self, account_id: str) -> Optional[PropFirmAccount]:
@@ -118,14 +135,7 @@ class DatabaseManager:
         Returns:
             PropFirmAccount object or None if not found
         """
-        with self.get_session() as session:
-            account = session.query(PropFirmAccount).filter(
-                PropFirmAccount.account_id == account_id
-            ).first()
-            if account is not None:
-                # Load all attributes to avoid detached instance errors
-                session.expunge(account)
-            return account
+        return self.accounts.get(account_id)
 
     def create_prop_account(
         self,
@@ -150,23 +160,17 @@ class DatabaseManager:
         Returns:
             Created PropFirmAccount object
         """
-        with self.get_session() as session:
-            account = PropFirmAccount(
-                firm_name=firm_name,
-                account_id=account_id,
-                daily_loss_limit_pct=daily_loss_limit_pct,
-                hard_stop_buffer_pct=hard_stop_buffer_pct,
-                target_profit_pct=target_profit_pct,
-                min_trading_days=min_trading_days
-            )
-            session.add(account)
-            session.flush()
-            session.refresh(account)
-            session.expunge(account)
-            return account
+        return self.accounts.create(
+            account_id=account_id,
+            firm_name=firm_name,
+            daily_loss_limit_pct=daily_loss_limit_pct,
+            hard_stop_buffer_pct=hard_stop_buffer_pct,
+            target_profit_pct=target_profit_pct,
+            min_trading_days=min_trading_days
+        )
 
     # ========================================================================
-    # SQLite Methods - Daily Snapshots
+    # SQLite Methods - Daily Snapshots (delegated to SnapshotRepository)
     # ========================================================================
 
     def save_daily_snapshot(
@@ -191,59 +195,12 @@ class DatabaseManager:
         Returns:
             Created or updated DailySnapshot object
         """
-        if snapshot_date is None:
-            snapshot_date = date.today().isoformat()
-
-        with self.get_session() as session:
-            # Get account by account_id string
-            account = session.query(PropFirmAccount).filter(
-                PropFirmAccount.account_id == str(account_id)
-            ).first()
-
-            # Auto-create account if it doesn't exist
-            if account is None:
-                account = PropFirmAccount(
-                    firm_name="Unknown",
-                    account_id=str(account_id)
-                )
-                session.add(account)
-                session.flush()
-
-            # Check if snapshot exists for this date
-            snapshot = session.query(DailySnapshot).filter(
-                DailySnapshot.account_id == account.id,
-                DailySnapshot.date == snapshot_date
-            ).first()
-
-            if snapshot is None:
-                # Create new snapshot
-                snapshot = DailySnapshot(
-                    account_id=account.id,
-                    date=snapshot_date,
-                    daily_start_balance=balance,
-                    high_water_mark=max(equity, balance),
-                    current_equity=equity,
-                    daily_drawdown_pct=0.0,
-                    is_breached=False
-                )
-                session.add(snapshot)
-            else:
-                # Update existing snapshot
-                snapshot.current_equity = equity
-                snapshot.high_water_mark = max(snapshot.high_water_mark, equity)
-                snapshot.snapshot_timestamp = datetime.utcnow()
-
-                # Recalculate drawdown
-                if snapshot.daily_start_balance > 0:
-                    snapshot.daily_drawdown_pct = (
-                        (snapshot.daily_start_balance - equity) /
-                        snapshot.daily_start_balance * 100
-                    )
-
-            session.flush()
-            session.refresh(snapshot)
-            session.expunge(snapshot)
-            return snapshot
+        return self.snapshots.save(
+            account_id=account_id,
+            equity=equity,
+            balance=balance,
+            snapshot_date=snapshot_date
+        )
 
     def get_daily_snapshot(
         self,
@@ -260,37 +217,7 @@ class DatabaseManager:
         Returns:
             Dictionary with snapshot data or None if not found
         """
-        if snapshot_date is None:
-            snapshot_date = date.today().isoformat()
-
-        with self.get_session() as session:
-            account = session.query(PropFirmAccount).filter(
-                PropFirmAccount.account_id == str(account_id)
-            ).first()
-
-            if account is None:
-                return None
-
-            snapshot = session.query(DailySnapshot).filter(
-                DailySnapshot.account_id == account.id,
-                DailySnapshot.date == snapshot_date
-            ).first()
-
-            if snapshot is None:
-                return None
-
-            # Return dictionary to avoid DetachedInstanceError
-            return {
-                'id': snapshot.id,
-                'account_id': snapshot.account_id,
-                'date': snapshot.date,
-                'daily_start_balance': snapshot.daily_start_balance,
-                'high_water_mark': snapshot.high_water_mark,
-                'current_equity': snapshot.current_equity,
-                'daily_drawdown_pct': snapshot.daily_drawdown_pct,
-                'is_breached': snapshot.is_breached,
-                'snapshot_timestamp': snapshot.snapshot_timestamp
-            }
+        return self.snapshots.get(account_id, snapshot_date)
 
     def get_latest_snapshot(self, account_id: str) -> Optional[DailySnapshot]:
         """
@@ -302,24 +229,7 @@ class DatabaseManager:
         Returns:
             Latest DailySnapshot object or None if not found
         """
-        with self.get_session() as session:
-            account = session.query(PropFirmAccount).filter(
-                PropFirmAccount.account_id == str(account_id)
-            ).first()
-
-            if account is None:
-                return None
-
-            snapshot = session.query(DailySnapshot).filter(
-                DailySnapshot.account_id == account.id
-            ).order_by(DailySnapshot.date.desc()).first()
-
-            if snapshot is None:
-                return None
-
-            # Detach from session to avoid DetachedInstanceError
-            session.expunge(snapshot)
-            return snapshot
+        return self.snapshots.get_latest(account_id)
 
     def get_daily_drawdown(self, account_id: str) -> float:
         """
@@ -332,11 +242,7 @@ class DatabaseManager:
             Daily drawdown percentage (e.g., 2.5 for 2.5% drawdown)
             Returns 0.0 if account or snapshot not found
         """
-        snapshot = self.get_daily_snapshot(account_id)
-        if snapshot is None:
-            return 0.0
-
-        return snapshot['daily_drawdown_pct']
+        return self.snapshots.get_drawdown(account_id)
 
     def get_daily_start_balance(self, account_id: str) -> float:
         """
@@ -348,14 +254,10 @@ class DatabaseManager:
         Returns:
             Daily start balance, or 0.0 if not found
         """
-        snapshot = self.get_daily_snapshot(account_id)
-        if snapshot is None:
-            return 0.0
-
-        return snapshot['daily_start_balance']
+        return self.snapshots.get_start_balance(account_id)
 
     # ========================================================================
-    # SQLite Methods - Trade Proposals
+    # SQLite Methods - Trade Proposals (delegated to ProposalRepository)
     # ========================================================================
 
     def create_trade_proposal(
@@ -379,20 +281,13 @@ class DatabaseManager:
         Returns:
             Created TradeProposal object
         """
-        with self.get_session() as session:
-            proposal = TradeProposal(
-                bot_id=bot_id,
-                symbol=symbol,
-                kelly_score=kelly_score,
-                regime=regime,
-                proposed_lot_size=proposed_lot_size,
-                status='pending'
-            )
-            session.add(proposal)
-            session.flush()
-            session.refresh(proposal)
-            session.expunge(proposal)
-            return proposal
+        return self.proposals.create(
+            bot_id=bot_id,
+            symbol=symbol,
+            kelly_score=kelly_score,
+            regime=regime,
+            proposed_lot_size=proposed_lot_size
+        )
 
     def update_trade_proposal(
         self,
@@ -409,24 +304,10 @@ class DatabaseManager:
         Returns:
             Updated TradeProposal object or None if not found
         """
-        with self.get_session() as session:
-            proposal = session.query(TradeProposal).filter(
-                TradeProposal.id == proposal_id
-            ).first()
-
-            if proposal is None:
-                return None
-
-            proposal.status = status
-            proposal.reviewed_at = datetime.utcnow()
-
-            session.flush()
-            session.refresh(proposal)
-            session.expunge(proposal)
-            return proposal
+        return self.proposals.update(proposal_id, status)
 
     # ========================================================================
-    # SQLite Methods - Agent Tasks
+    # SQLite Methods - Agent Tasks (delegated to TaskRepository)
     # ========================================================================
 
     def create_agent_task(
@@ -448,18 +329,12 @@ class DatabaseManager:
         Returns:
             Created AgentTasks object
         """
-        with self.get_session() as session:
-            task = AgentTasks(
-                agent_type=agent_type,
-                task_type=task_type,
-                task_data=task_data,
-                status=status
-            )
-            session.add(task)
-            session.flush()
-            session.refresh(task)
-            session.expunge(task)
-            return task
+        return self.tasks.create(
+            agent_type=agent_type,
+            task_type=task_type,
+            task_data=task_data,
+            status=status
+        )
 
     def update_agent_task(
         self,
@@ -478,24 +353,7 @@ class DatabaseManager:
         Returns:
             Updated AgentTasks object or None if not found
         """
-        with self.get_session() as session:
-            task = session.query(AgentTasks).filter(
-                AgentTasks.id == task_id
-            ).first()
-
-            if task is None:
-                return None
-
-            task.status = status
-            if status == 'completed' and completed_at is None:
-                task.completed_at = datetime.utcnow()
-            elif completed_at is not None:
-                task.completed_at = completed_at
-
-            session.flush()
-            session.refresh(task)
-            session.expunge(task)
-            return task
+        return self.tasks.update(task_id, status, completed_at)
 
     def get_agent_tasks(
         self,
@@ -514,25 +372,14 @@ class DatabaseManager:
         Returns:
             List of AgentTasks objects
         """
-        with self.get_session() as session:
-            query = session.query(AgentTasks)
-
-            if agent_type is not None:
-                query = query.filter(AgentTasks.agent_type == agent_type)
-
-            if status is not None:
-                query = query.filter(AgentTasks.status == status)
-
-            query = query.order_by(AgentTasks.created_at.desc()).limit(limit)
-
-            tasks = query.all()
-            # Expunge all tasks to avoid detached instance errors
-            for task in tasks:
-                session.expunge(task)
-            return tasks
+        return self.tasks.get_all(
+            agent_type=agent_type,
+            status=status,
+            limit=limit
+        )
 
     # ========================================================================
-    # SQLite Methods - Strategy Performance
+    # SQLite Methods - Strategy Performance (delegated to StrategyRepository)
     # ========================================================================
 
     def create_strategy_performance(
@@ -562,22 +409,16 @@ class DatabaseManager:
         Returns:
             Created StrategyPerformance object
         """
-        with self.get_session() as session:
-            performance = StrategyPerformance(
-                strategy_name=strategy_name,
-                backtest_results=backtest_results,
-                kelly_score=kelly_score,
-                sharpe_ratio=sharpe_ratio,
-                max_drawdown=max_drawdown,
-                win_rate=win_rate,
-                profit_factor=profit_factor,
-                total_trades=total_trades
-            )
-            session.add(performance)
-            session.flush()
-            session.refresh(performance)
-            session.expunge(performance)
-            return performance
+        return self.strategies.create(
+            strategy_name=strategy_name,
+            backtest_results=backtest_results,
+            kelly_score=kelly_score,
+            sharpe_ratio=sharpe_ratio,
+            max_drawdown=max_drawdown,
+            win_rate=win_rate,
+            profit_factor=profit_factor,
+            total_trades=total_trades
+        )
 
     def get_strategy_performance(
         self,
@@ -598,25 +439,12 @@ class DatabaseManager:
         Returns:
             List of StrategyPerformance objects
         """
-        with self.get_session() as session:
-            query = session.query(StrategyPerformance)
-
-            if strategy_name is not None:
-                query = query.filter(StrategyPerformance.strategy_name == strategy_name)
-
-            if min_kelly_score is not None:
-                query = query.filter(StrategyPerformance.kelly_score >= min_kelly_score)
-
-            if min_sharpe_ratio is not None:
-                query = query.filter(StrategyPerformance.sharpe_ratio >= min_sharpe_ratio)
-
-            query = query.order_by(StrategyPerformance.created_at.desc()).limit(limit)
-
-            performances = query.all()
-            # Expunge all performances to avoid detached instance errors
-            for perf in performances:
-                session.expunge(perf)
-            return performances
+        return self.strategies.get(
+            strategy_name=strategy_name,
+            min_kelly_score=min_kelly_score,
+            min_sharpe_ratio=min_sharpe_ratio,
+            limit=limit
+        )
 
     def get_best_strategies(
         self,
@@ -633,21 +461,7 @@ class DatabaseManager:
         Returns:
             List of top StrategyPerformance objects
         """
-        with self.get_session() as session:
-            query = session.query(StrategyPerformance)
-
-            if order_by == 'sharpe_ratio':
-                query = query.order_by(StrategyPerformance.sharpe_ratio.desc())
-            else:
-                query = query.order_by(StrategyPerformance.kelly_score.desc())
-
-            query = query.limit(limit)
-
-            strategies = query.all()
-            # Expunge all strategies to avoid detached instance errors
-            for strategy in strategies:
-                session.expunge(strategy)
-            return strategies
+        return self.strategies.get_best(limit=limit, order_by=order_by)
 
     def close_all_sessions(self):
         """Close all database sessions."""
