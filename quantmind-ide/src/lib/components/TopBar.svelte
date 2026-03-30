@@ -15,6 +15,7 @@
     killSwitchCountdown,
     killSwitchFired,
     killSwitchAriaLabel,
+    newsKillZoneState,
     armKillSwitch,
     fetchKillSwitchStatus
   } from "../stores/kill-switch";
@@ -77,6 +78,16 @@
       {:else}
         <span>KILL</span>
       {/if}
+      <!-- News kill zone indicator -->
+      {#if $newsKillZoneState === 'KILL_ZONE'}
+        <span class="news-badge kill-zone" title="News kill zone active">NZ</span>
+      {:else if $newsKillZoneState === 'PRE_NEWS'}
+        <span class="news-badge pre-news" title="Pre-news warning">PR</span>
+      {:else if $newsKillZoneState === 'POST_NEWS'}
+        <span class="news-badge post-news" title="Post-news recovery">PS</span>
+      {:else}
+        <span class="news-badge safe" title="No news kill zone">SF</span>
+      {/if}
     </button>
 
     <!-- Copilot → Workshop canvas -->
@@ -107,8 +118,8 @@
   <!-- Right: Node health + Settings -->
   <div class="right-section">
     <div class="node-health">
-      <span class="nh-node"><span class="nh-dot nh-green"></span>CZ</span>
-      <span class="nh-node"><span class="nh-dot nh-green"></span>CN</span>
+      <span class="nh-node"><span class="nh-dot nh-green"></span>T1</span>
+      <span class="nh-node"><span class="nh-dot nh-green"></span>T2</span>
       <span class="nh-node"><span class="nh-dot nh-amber"></span>LO</span>
     </div>
     <button
@@ -242,6 +253,43 @@
     cursor: not-allowed;
     animation: none;
     opacity: 0.6;
+  }
+
+  /* News kill zone badge */
+  .news-badge {
+    font-size: 8px;
+    font-family: var(--font-mono);
+    padding: 0 3px;
+    border-radius: 2px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin-left: 2px;
+  }
+
+  .news-badge.safe {
+    color: #00a878;
+    background: rgba(0, 168, 120, 0.15);
+  }
+
+  .news-badge.pre-news {
+    color: #f0a500;
+    background: rgba(240, 165, 0, 0.15);
+  }
+
+  .news-badge.post-news {
+    color: #f0a500;
+    background: rgba(240, 165, 0, 0.1);
+  }
+
+  .news-badge.kill-zone {
+    color: #ff3b3b;
+    background: rgba(255, 59, 59, 0.2);
+    animation: newsFlash 1s ease-in-out infinite alternate;
+  }
+
+  @keyframes newsFlash {
+    from { opacity: 1; }
+    to   { opacity: 0.5; }
   }
 
   /* Copilot */

@@ -6,12 +6,37 @@
  * - Countdown timer
  * - Selected tier
  * - API status
+ * - News kill zone state (SAFE / KILL_ZONE / PRE_NEWS / POST_NEWS)
  */
 
 import { writable, derived, get } from 'svelte/store';
+import { wsClient } from '$lib/ws-client';
+import type { WebSocketMessage } from '$lib/ws-client';
 
 // Kill switch states
 export type KillSwitchState = 'ready' | 'armed' | 'fired';
+
+// News kill zone states
+export type NewsKillZoneState = 'SAFE' | 'PRE_NEWS' | 'KILL_ZONE' | 'POST_NEWS';
+
+export interface SessionBlackoutStatus {
+  is_blackout: boolean;
+  reason: string | null;
+  minutes_to_event: number | null;
+  event_name: string | null;
+}
+
+export interface NewsBlackoutMessage {
+  type: 'news_blackout_update';
+  timestamp: string;
+  sessions: Record<string, SessionBlackoutStatus>;
+  upcoming_events: Array<{
+    title: string;
+    currency: string;
+    time: string;
+    minutes_to_event: number;
+  }>;
+}
 
 // Kill switch tier types
 export type KillSwitchTier = 1 | 2 | 3;
@@ -56,6 +81,11 @@ export const killSwitchFired = writable<boolean>(false);
 // Store for loading state during API calls
 export const killSwitchLoading = writable<boolean>(false);
 
+// News kill zone state — driven by NewsBlackoutService WebSocket broadcasts
+export const newsKillZoneState = writable<NewsKillZoneState>('SAFE');
+export const newsSessionStatuses = writable<Record<string, SessionBlackoutStatus>>({});
+export const newsUpcomingEvents = writable<NewsBlackoutMessage['upcoming_events']>([]);
+
 // Store for error messages
 export const killSwitchError = writable<string | null>(null);
 
@@ -71,6 +101,42 @@ export const killSwitchAriaLabel = derived(
 
 // Countdown timer interval reference
 let countdownInterval: ReturnType<typeof setInterval> | null = null;
+
+// ── News Kill Zone WebSocket handler ─────────────────────────────────────────
+
+let newsWsHandler: ((msg: WebSocketMessage) => void) | null = null;
+let newsWsConnected = false;
+
+export function connectNewsBlackoutWs() {
+  if (newsWsConnected) return;
+  newsWsConnected = true;
+  try {
+    newsWsHandler = (msg: WebSocketMessage) => {
+      if (msg.type === 'news_blackout_update') {
+        const data = msg as unknown as NewsBlackoutMessage;
+        newsSessionStatuses.set(data.sessions || {});
+        newsUpcomingEvents.set(data.upcoming_events || []);
+
+        // Derive overall news state from session statuses
+        const sessions = data.sessions || {};
+        const statuses = Object.values(sessions);
+
+        if (statuses.some(s => s.is_blackout)) {
+          newsKillZoneState.set('KILL_ZONE');
+        } else if (statuses.some(s => s.minutes_to_event !== null && s.minutes_to_event > 0 && s.minutes_to_event <= 30)) {
+          newsKillZoneState.set('PRE_NEWS');
+        } else if (statuses.some(s => s.minutes_to_event !== null && s.minutes_to_event < 0 && s.minutes_to_event >= -30)) {
+          newsKillZoneState.set('POST_NEWS');
+        } else {
+          newsKillZoneState.set('SAFE');
+        }
+      }
+    };
+    wsClient.on('news_blackout_update', newsWsHandler);
+  } catch (e) {
+    console.warn('[KillSwitch] Failed to connect news blackout WebSocket:', e);
+  }
+}
 
 /**
  * Arm the kill switch - starts countdown
@@ -204,6 +270,9 @@ export async function confirmKillSwitch(): Promise<boolean> {
  * Get kill switch status from API
  */
 export async function fetchKillSwitchStatus(): Promise<void> {
+  // Connect news blackout WebSocket once
+  connectNewsBlackoutWs();
+
   try {
     const response = await fetch('/api/kill-switch/status');
     if (!response.ok) {

@@ -250,6 +250,7 @@ try:
     from src.api.trading.routes import router as trading_router
     from src.api.trading_session_risk_endpoints import router as trading_session_risk_router
     from src.api.session_kelly_endpoints import router as session_kelly_router
+    from src.api.economic_calendar_endpoints import router as economic_calendar_router
     from src.api.hmm_inference_server import router as hmm_inference_router, ensemble_router
     from src.api.provider_config_endpoints import router as provider_config_router
     from src.api.server_config_endpoints import router as server_config_router, server_router
@@ -546,6 +547,7 @@ app.include_router(portfolio_broker_router)  # Portfolio broker registry (Story 
 app.include_router(backtest_results_router)  # Backtest results API (Story 4-4) — needed on both nodes
 app.include_router(risk_router)  # Risk API (Story 4-6) — needed on both nodes
 app.include_router(session_kelly_router)  # Session Kelly API (Story 4.10) — needed on both nodes
+app.include_router(economic_calendar_router)  # Economic Calendar — full calendar view with blackouts
 app.include_router(sqs_router)  # SQS API (Story 4-7) — needed on both nodes
 app.include_router(svss_router)  # SVSS REST API (VWAP, RVOL, Volume Profile, MFI) — needed on both nodes
 app.include_router(dpr_router)  # DPR Queue Tier Remix (Story 17.2) — needed on both nodes
