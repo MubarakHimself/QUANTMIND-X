@@ -11,13 +11,33 @@
 
   import PhysicsSensorTile from './PhysicsSensorTile.svelte';
   import { Brain } from 'lucide-svelte';
+  import { apiFetch } from '$lib/api';
   import type { PhysicsHMMData } from '$lib/stores/risk';
 
-  export let data: PhysicsHMMData | null = null;
-  export let isLoading: boolean = false;
+  let { data = null, isLoading = false } = $props<{
+    data: PhysicsHMMData | null;
+    isLoading: boolean;
+  }>();
+
+  let togglingShadow = $state(false);
+
+  async function toggleShadowMode() {
+    if (togglingShadow) return;
+    togglingShadow = true;
+    try {
+      await apiFetch('/api/hmm/shadow-mode/toggle?enabled=' + String(!data?.is_shadow_mode), {
+        method: 'POST'
+      });
+      // Physics store polls every 5s — no manual refresh needed
+    } catch (e) {
+      console.error('Failed to toggle shadow mode:', e);
+    } finally {
+      togglingShadow = false;
+    }
+  }
 
   // Get alert message based on state
-  $: alertMessage = data ? getAlertMessage(data.alert, data.is_shadow_mode) : '';
+  let alertMessage = $derived(data ? getAlertMessage(data.alert, data.is_shadow_mode) : '');
 
   function getAlertMessage(alert: string, shadowMode: boolean): string {
     if (shadowMode) {
@@ -30,10 +50,10 @@
   }
 
   // Get regime display name
-  $: regimeName = data?.current_state ?? 'Unknown';
+  let regimeName = $derived(data?.current_state ?? 'Unknown');
 
   // Get regime color
-  $: regimeColor = getRegimeColor(data?.current_state);
+  let regimeColor = $derived(getRegimeColor(data?.current_state));
 
   function getRegimeColor(state: string | null | undefined): string {
     if (!state) return 'rgba(255, 255, 255, 0.5)';
@@ -46,14 +66,18 @@
   }
 
   // Get transition probabilities as array for histogram
-  $: transitionEntries = data?.transition_probabilities
-    ? Object.entries(data.transition_probabilities)
-    : [];
+  let transitionEntries = $derived(
+    data?.transition_probabilities
+      ? Object.entries(data.transition_probabilities)
+      : []
+  );
 
   // Find max probability for scaling
-  $: maxProb = transitionEntries.length > 0
-    ? Math.max(...transitionEntries.map(([_, v]) => v))
-    : 1;
+  let maxProb = $derived(
+    transitionEntries.length > 0
+      ? Math.max(...transitionEntries.map(([_, v]) => v))
+      : 1
+  );
 </script>
 
 <PhysicsSensorTile
@@ -73,13 +97,20 @@
         </div>
       </div>
 
-      <!-- Shadow Mode Badge -->
-      {#if data.is_shadow_mode}
-        <div class="shadow-badge">
-          <span class="shadow-dot"></span>
-          <span>Shadow Mode</span>
-        </div>
-      {/if}
+      <!-- Shadow Mode Toggle -->
+      <div class="shadow-row">
+        <span class="data-label">Shadow Mode</span>
+        <button
+          class="shadow-toggle"
+          class:active={data.is_shadow_mode}
+          class:spinning={togglingShadow}
+          onclick={toggleShadowMode}
+          title={data.is_shadow_mode ? 'Disable shadow mode' : 'Enable shadow mode'}
+        >
+          <span class="toggle-dot"></span>
+          <span>{data.is_shadow_mode ? 'ON' : 'OFF'}</span>
+        </button>
+      </div>
 
       <!-- Transition Probabilities (Histogram/Distribution) -->
       {#if transitionEntries.length > 0}
@@ -138,33 +169,59 @@
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
   }
 
-  .shadow-badge {
+  .shadow-row {
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
-    background: rgba(255, 183, 0, 0.15);
-    border: 1px solid rgba(255, 183, 0, 0.3);
-    border-radius: 4px;
-    font-size: 10px;
-    color: #ffb700;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    width: fit-content;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   }
 
-  .shadow-dot {
+  .shadow-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 10px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: rgba(255, 255, 255, 0.4);
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+  }
+
+  .shadow-toggle:hover {
+    border-color: rgba(255, 183, 0, 0.4);
+    background: rgba(255, 183, 0, 0.08);
+  }
+
+  .shadow-toggle.active {
+    background: rgba(255, 183, 0, 0.15);
+    border-color: rgba(255, 183, 0, 0.4);
+    color: #ffb700;
+  }
+
+  .toggle-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #ffb700;
-    animation: pulse 2s infinite;
+    background: rgba(255, 255, 255, 0.3);
+    transition: background 0.2s ease;
   }
 
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
+  .shadow-toggle.active .toggle-dot {
+    background: #ffb700;
+    box-shadow: 0 0 6px rgba(255, 183, 0, 0.8);
+  }
+
+  .shadow-toggle.spinning {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .probabilities {
