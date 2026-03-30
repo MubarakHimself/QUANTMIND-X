@@ -41,6 +41,8 @@ class ChatRequest(BaseModel):
     context: Optional[Dict[str, Any]] = Field(default=None, description="Optional context")
     history: Optional[List[Dict[str, str]]] = Field(default=None, description="Conversation history for context")
     stream: bool = Field(default=False, description="Whether to stream the response")
+    model: Optional[str] = Field(default=None, description="Override model ID for this request")
+    provider: Optional[str] = Field(default=None, description="Override provider for this request")
 
 
 class ChatResponse(BaseModel):
@@ -592,6 +594,67 @@ async def clear_conversation():
     return {"status": "success", "message": "Conversation history cleared"}
 
 
+# ========== Sub-Agent Spawn Endpoints ==========
+
+class SpawnSubAgentRequest(BaseModel):
+    """Request to spawn a sub-agent with optional model/provider override."""
+    agent_type: str = Field(..., description="Sub-agent type: strategy_researcher, market_analyst, backtester, mql5_dev")
+    task: str = Field(..., description="Task description for the sub-agent")
+    department: Optional[str] = Field(default=None, description="Department context")
+    model: Optional[str] = Field(default=None, description="Model ID override (e.g. claude-3-5-sonnet-20241022)")
+    provider: Optional[str] = Field(default=None, description="Provider name override (e.g. anthropic, openrouter)")
+
+
+@router.post("/subagents/spawn")
+async def spawn_subagent(request: SpawnSubAgentRequest):
+    """
+    Spawn a sub-agent with an optional model and provider override.
+
+    Supported agent_type values: strategy_researcher, market_analyst, backtester, mql5_dev
+    """
+    try:
+        from src.agents.subagent.spawner import get_spawner
+        spawner = get_spawner()
+
+        kwargs: Dict[str, Any] = {}
+        if request.model:
+            kwargs["model_name"] = request.model
+        if request.provider:
+            kwargs["provider_name"] = request.provider
+
+        agent_id = spawner.spawn(
+            agent_type=request.agent_type,
+            task=request.task,
+            department=request.department,
+            **kwargs,
+        )
+        return {
+            "status": "spawned",
+            "agent_id": agent_id,
+            "agent_type": request.agent_type,
+            "model": request.model,
+            "provider": request.provider,
+        }
+    except Exception as e:
+        logger.error(f"Failed to spawn sub-agent: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/subagents/list")
+async def list_subagents():
+    """
+    List all currently spawned sub-agents and their status.
+    """
+    try:
+        from src.agents.subagent.spawner import get_spawner
+        spawner = get_spawner()
+        agents = spawner.list_agents()
+        return {"agents": agents, "count": len(agents)}
+    except Exception as e:
+        logger.error(f"Failed to list sub-agents: {e}")
+        return {"agents": [], "count": 0}
+
+
 @router.get("/mail/{department}")
 async def get_department_mail(department: str, unread_only: bool = True, limit: int = 50):
     """
@@ -658,7 +721,7 @@ async def health_check():
 
 # ========== WebSocket Endpoint for Streaming Chat ==========
 
-@router.websocket("/ws")
+@router.websocket("/ws/floor")
 async def floor_manager_websocket(websocket: WebSocket):
     """
     WebSocket endpoint for streaming chat with the Floor Manager.
