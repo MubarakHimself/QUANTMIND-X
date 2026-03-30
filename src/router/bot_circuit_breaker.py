@@ -5,19 +5,20 @@ Manages bot-level performance tracking and automatic quarantine.
 Prevents catastrophic losses from malfunctioning strategies.
 
 **Validates: Task Group 7.4 - BotCircuitBreaker table and manager**
-**Configurable Loss Thresholds:**
-- Personal Book: 5 consecutive losses
-- Prop Firm Book: 3 consecutive losses (tighter)
+**Configurable Loss Thresholds (S3-6.5):**
+- Personal Book (scalping): 2 consecutive losses
+- Prop Firm Book (ORB): 3 consecutive losses
 """
 
 import logging
 from typing import Optional, Tuple, List, Dict, Any
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 from enum import Enum
 
 from src.database.db_manager import DBManager
 from src.database.models import BotCircuitBreaker
 from src.router.fee_monitor import FeeMonitor
+from src.router.decline_recovery import DeclineRecoveryEngine, DeclineState
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +31,11 @@ class AccountBook(str, Enum):
 
 # Default thresholds by book type
 LOSS_THRESHOLDS = {
-    AccountBook.PERSONAL: 5,      # Keep existing
-    AccountBook.PROP_FIRM: 3,     # Tighter for prop firms
+    AccountBook.PERSONAL: 2,      # Scalping: 2 consecutive losses (S3-6.5)
+    AccountBook.PROP_FIRM: 3,     # ORB / prop firms: 3 consecutive losses (S3-6.5)
 }
 DEFAULT_DAILY_TRADE_LIMIT = 20
+THREE_LOSS_WEEKLY_THRESHOLD = 3  # S3-11: 3 separate days with 3-loss streak → quarantine week
 
 
 class BotCircuitBreakerManager:
@@ -41,8 +43,8 @@ class BotCircuitBreakerManager:
     Manager for Bot Circuit Breaker operations.
 
     Implements automatic quarantine based on configurable thresholds by book type:
-    - Personal Book: 5 consecutive losses
-    - Prop Firm Book: 3 consecutive losses (tighter)
+    - Personal Book (scalping): 2 consecutive losses (S3-6.5)
+    - Prop Firm Book (ORB): 3 consecutive losses (S3-6.5)
     - Daily trade limit: 20 trades (configurable)
 
     Usage:
@@ -99,6 +101,9 @@ class BotCircuitBreakerManager:
             account_balance=self.account_balance
         )
 
+        # Section 8.2: Decline and Recovery integration
+        self.decline_recovery_engine = DeclineRecoveryEngine()
+
         logger.info(
             f"BotCircuitBreakerManager initialized: "
             f"account_book={self.account_book.value}, "
@@ -130,7 +135,10 @@ class BotCircuitBreakerManager:
                     last_trade_time=None,
                     is_quarantined=False,
                     quarantine_reason=None,
-                    quarantine_start=None
+                    quarantine_start=None,
+                    # S3-11: 3-Loss-in-a-Row Circuit Breaker fields
+                    daily_loss_streak_days=0,
+                    last_loss_streak_date=None,
                 )
                 session.add(state)
                 session.flush()
@@ -139,9 +147,30 @@ class BotCircuitBreakerManager:
             session.expunge(state)
             return state
 
+    def _is_new_week(self, last_date: Optional[date], current_date: date) -> bool:
+        """
+        Check if current_date falls in a new week compared to last_date.
+
+        A new week is detected when last_date is None OR more than 7 days ago.
+
+        Args:
+            last_date: The reference date to compare against
+            current_date: The current date to check
+
+        Returns:
+            True if current_date is in a new week period
+        """
+        if last_date is None:
+            return True
+        return (current_date - last_date).days > 7
+
     def check_allowed(self, bot_id: str) -> Tuple[bool, Optional[str]]:
         """
         Check if a bot is allowed to trade.
+
+        S3-11 / Section 7.4 checks:
+        - Daily block: if bot hit 3 consecutive losses today (last_loss_streak_date == today)
+        - Weekly quarantine: if daily_loss_streak_days >= 3 within current week
 
         Returns:
             Tuple of (is_allowed, reason)
@@ -149,11 +178,29 @@ class BotCircuitBreakerManager:
             - reason: None if allowed, otherwise explanation
         """
         state = self.get_or_create_state(bot_id)
+        today = date.today()
 
         # Check if quarantined - use bool() to handle SQLAlchemy Column type
         if bool(state.is_quarantined):  # type: ignore[arg-type]
+            # S3-11 weekly quarantine: block until new week
+            quarantine_start = state.quarantine_start  # type: ignore[attr-defined]
+            if quarantine_start is not None:
+                quarantine_week_start = quarantine_start.date()
+                # If quarantine_start is not today and it's still the same week
+                # (i.e., quarantine was set earlier this week), block for rest of week
+                if quarantine_week_start != today and not self._is_new_week(quarantine_week_start, today):
+                    reason = str(state.quarantine_reason) if state.quarantine_reason else "Bot is quarantined for the week"  # type: ignore[arg-type]
+                    return False, reason
             reason = str(state.quarantine_reason) if state.quarantine_reason else "Bot is quarantined"  # type: ignore[arg-type]
             return False, reason
+
+        # S3-11: Daily 3-loss-in-a-row block (non-quarantined case)
+        # Block if last_loss_streak_date is today (already triggered 3-loss today)
+        last_loss_streak_date = state.last_loss_streak_date  # type: ignore[attr-defined]
+        if last_loss_streak_date is not None:
+            last_streak_day = last_loss_streak_date.date()
+            if last_streak_day == today and int(state.daily_loss_streak_days) > 0:  # type: ignore[arg-type]
+                return False, "3 consecutive losses triggered today: blocked for rest of day"
 
         # Check daily trade limit - use int() to handle SQLAlchemy Column type
         if int(state.daily_trade_count) >= self.default_daily_trade_limit:  # type: ignore[arg-type]
@@ -219,6 +266,52 @@ class BotCircuitBreakerManager:
         if should_halt:
             self.quarantine_bot(bot_id, reason=f"FEE_KILL_SWITCH: {reason}")
             state.is_quarantined = True  # type: ignore[assignment]
+
+        # S3-11: 3-Loss-in-a-Row Circuit Breaker
+        # Check if this is a new streak day (first 3-loss trigger of the day)
+        last_loss_streak_date = state.last_loss_streak_date  # type: ignore[attr-defined]
+        last_streak_day = last_loss_streak_date.date() if last_loss_streak_date else None
+
+        if is_loss and int(state.consecutive_losses) >= 3:  # type: ignore[arg-type]
+            if last_streak_day is None or last_streak_day < trade_date:
+                # S3-11: Reset weekly counter if we're in a new week
+                if last_streak_day is not None and self._is_new_week(last_streak_day, trade_date):
+                    state.daily_loss_streak_days = 0  # type: ignore[assignment]
+                    logger.info(f"S3-11 new week detected: reset weekly counter for {bot_id}")
+
+                # First 3-loss trigger of the day - increment daily streak counter
+                state.daily_loss_streak_days = int(state.daily_loss_streak_days) + 1  # type: ignore[assignment]
+                state.last_loss_streak_date = datetime.now(timezone.utc)  # type: ignore[assignment]
+                logger.info(
+                    f"S3-11 daily loss streak triggered: bot={bot_id}, "
+                    f"daily_loss_streak_days={int(state.daily_loss_streak_days)}, "
+                    f"trade_date={trade_date}"
+                )
+
+                # S3-11 weekly quarantine: if 3+ streak days in current week, quarantine for rest of week
+                if int(state.daily_loss_streak_days) >= THREE_LOSS_WEEKLY_THRESHOLD:  # type: ignore[arg-type]
+                    reason = (
+                        f"S3-11 weekly quarantine: {int(state.daily_loss_streak_days)} "
+                        f"3-loss streak days this week (threshold: {THREE_LOSS_WEEKLY_THRESHOLD})"
+                    )
+                    self.quarantine_bot(bot_id, reason=reason)
+                    state.is_quarantined = True  # type: ignore[assignment]
+                    logger.warning(f"S3-11 weekly quarantine activated: {bot_id}, reason: {reason}")
+
+                    # Section 8.2: Flag bot for decline and recovery workflow
+                    # Check if this is the 3rd day with 3 losses (the threshold trigger)
+                    if int(state.daily_loss_streak_days) == THREE_LOSS_WEEKLY_THRESHOLD:
+                        # Get current decline state
+                        current_state = self.decline_recovery_engine.get_decline_state(bot_id)
+                        if current_state == DeclineState.NORMAL:
+                            # Flag the bot for decline recovery
+                            self.decline_recovery_engine.flag_bot(
+                                bot_id=bot_id,
+                                reason=reason,
+                                regime_state="UNKNOWN",  # Would need HMM integration for actual regime
+                                performance_delta=0.0,  # Would need actual performance calculation
+                            )
+                            logger.info(f"S3-11: Bot {bot_id} flagged for decline recovery")
 
         # Check quarantine triggers
         if int(state.consecutive_losses) >= self.max_consecutive_losses:  # type: ignore[arg-type]
@@ -300,6 +393,9 @@ class BotCircuitBreakerManager:
         state.quarantine_reason = None  # type: ignore[attr-defined]
         state.quarantine_start = None  # type: ignore[assignment]
         state.consecutive_losses = 0  # type: ignore[assignment]
+        # S3-11: Reset 3-loss streak tracking on reactivation
+        state.daily_loss_streak_days = 0  # type: ignore[assignment]
+        state.last_loss_streak_date = None  # type: ignore[assignment]
 
         # Save to database
         with self.db.get_session() as session:
@@ -339,6 +435,9 @@ class BotCircuitBreakerManager:
                 "is_quarantined": bool(state.is_quarantined),  # type: ignore[arg-type]
                 "quarantine_reason": state.quarantine_reason,  # type: ignore[attr-defined]
                 "quarantine_start": state.quarantine_start.isoformat() if state.quarantine_start else None,  # type: ignore[attr-defined]
+                # S3-11: 3-Loss-in-a-Row Circuit Breaker fields
+                "daily_loss_streak_days": int(state.daily_loss_streak_days),  # type: ignore[arg-type]
+                "last_loss_streak_date": state.last_loss_streak_date.isoformat() if state.last_loss_streak_date else None,  # type: ignore[attr-defined]
             }
 
     def get_quarantined_bots(self) -> List[Dict[str, Any]]:
@@ -360,6 +459,9 @@ class BotCircuitBreakerManager:
                     "daily_trade_count": int(s.daily_trade_count),  # type: ignore[arg-type]
                     "quarantine_reason": s.quarantine_reason,  # type: ignore[attr-defined]
                     "quarantine_start": s.quarantine_start.isoformat() if s.quarantine_start else None,  # type: ignore[attr-defined]
+                    # S3-11: 3-Loss-in-a-Row Circuit Breaker fields
+                    "daily_loss_streak_days": int(s.daily_loss_streak_days),  # type: ignore[arg-type]
+                    "last_loss_streak_date": s.last_loss_streak_date.isoformat() if s.last_loss_streak_date else None,  # type: ignore[attr-defined]
                 }
                 for s in states
             ]
@@ -384,6 +486,9 @@ class BotCircuitBreakerManager:
                     "is_quarantined": bool(s.is_quarantined),  # type: ignore[arg-type]
                     "quarantine_reason": s.quarantine_reason,  # type: ignore[attr-defined]
                     "quarantine_start": s.quarantine_start.isoformat() if s.quarantine_start else None,  # type: ignore[attr-defined]
+                    # S3-11: 3-Loss-in-a-Row Circuit Breaker fields
+                    "daily_loss_streak_days": int(s.daily_loss_streak_days),  # type: ignore[arg-type]
+                    "last_loss_streak_date": s.last_loss_streak_date.isoformat() if s.last_loss_streak_date else None,  # type: ignore[attr-defined]
                 }
                 for s in states
             ]
