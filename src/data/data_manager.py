@@ -499,6 +499,61 @@ class DataManager:
             logger.error(f"Dukascopy fetch error: {e}")
             return None
 
+    def _fetch_from_local_parquet_dirs(self, symbol: str, timeframe: int) -> Optional[pd.DataFrame]:
+        """Fetch data from pre-existing local parquet directories.
+
+        Checks:
+        - data/real_m5/{SYMBOL}_M5.parquet
+        - data/real_m5_multi_year/{SYMBOL}_M5.parquet
+        - data/historical/{symbol}/{timeframe}/data.parquet (default cache)
+
+        Args:
+            symbol: Trading symbol (e.g., "EURUSD")
+            timeframe: MQL5 timeframe constant
+
+        Returns:
+            DataFrame with OHLCV data or None
+        """
+        tf_str = MQL5Timeframe.to_string(timeframe)
+        # e.g. "M5" -> "M5" for filename pattern {SYMBOL}_M5.parquet
+        tf_filename = f"_{tf_str}"
+
+        # Base project directory (parent of src/)
+        project_root = Path(__file__).parent.parent.parent
+
+        # Check real_m5_multi_year first (more comprehensive historical data),
+        # then real_m5 (more recent but limited range)
+        local_dirs = [
+            project_root / "data" / "real_m5_multi_year",
+            project_root / "data" / "real_m5",
+        ]
+
+        for local_dir in local_dirs:
+            if not local_dir.exists():
+                continue
+
+            # Try both exact match and case-insensitive
+            parquet_file = local_dir / f"{symbol}{tf_filename}.parquet"
+            if parquet_file.exists():
+                try:
+                    df = pd.read_parquet(parquet_file)
+                    logger.info(f"Local parquet: {parquet_file} ({len(df)} bars)")
+                    return df
+                except Exception as e:
+                    logger.warning(f"Failed to read {parquet_file}: {e}")
+
+            # Case-insensitive fallback for mixed-case symbols
+            for f in local_dir.glob(f"*{tf_filename}.parquet"):
+                if f.stem.upper().startswith(symbol.upper()):
+                    try:
+                        df = pd.read_parquet(f)
+                        logger.info(f"Local parquet (case-insensitive): {f} ({len(df)} bars)")
+                        return df
+                    except Exception as e:
+                        logger.warning(f"Failed to read {f}: {e}")
+
+        return None
+
     # -------------------------------------------------------------------------
     # Cache Operations
     # -------------------------------------------------------------------------
@@ -700,9 +755,14 @@ class DataManager:
             if len(cached) > 0:
                 # Filter by date range if specified
                 if start_date or end_date:
+                    # Ensure dates are timezone-aware (UTC) for comparison
                     if start_date:
+                        if start_date.tzinfo is None:
+                            start_date = start_date.replace(tzinfo=timezone.utc)
                         cached = cached[cached['time'] >= start_date]
                     if end_date:
+                        if end_date.tzinfo is None:
+                            end_date = end_date.replace(tzinfo=timezone.utc)
                         cached = cached[cached['time'] <= end_date]
 
                 # Return cached if we have enough data
@@ -724,6 +784,27 @@ class DataManager:
                 ("dukascopy", self.enable_dukascopy, self._fetch_from_dukascopy, DataSource.DUKASCOPY),
                 ("api", self.enable_api, self._fetch_from_api, DataSource.API),
             ]
+
+        # Try local parquet directories before network sources
+        local_data = self._fetch_from_local_parquet_dirs(symbol, timeframe)
+        if local_data is not None and len(local_data) > 0:
+            # Save to standard cache for future use
+            self._save_to_cache(symbol, timeframe, local_data, DataSource.CACHE)
+            # Filter by date range if specified
+            if start_date or end_date:
+                # Ensure dates are timezone-aware (UTC) for comparison
+                sd_filter = start_date
+                ed_filter = end_date
+                if start_date and start_date.tzinfo is None:
+                    sd_filter = start_date.replace(tzinfo=timezone.utc)
+                if end_date and end_date.tzinfo is None:
+                    ed_filter = end_date.replace(tzinfo=timezone.utc)
+                if sd_filter:
+                    local_data = local_data[local_data['time'] >= sd_filter]
+                if ed_filter:
+                    local_data = local_data[local_data['time'] <= ed_filter]
+            if len(local_data) >= count * 0.9:
+                return local_data.tail(count)
 
         # Try each source in order
         for name, enabled, fetch_func, data_source in sources:
