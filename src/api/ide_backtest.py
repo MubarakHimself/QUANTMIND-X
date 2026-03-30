@@ -6,11 +6,16 @@ API endpoints for backtesting.
 
 import logging
 import asyncio
+import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, HTTPException
 
 from src.api.ide_models import BacktestRunRequest
+from src.data.data_manager import DataManager
+from src.database.engine import get_session
+from src.database.models import StrategyPerformance
+from src.database.models.base import TradingMode
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +39,6 @@ async def run_backtest(request: BacktestRunRequest):
 
     Uses fee-aware Kelly position sizing when broker_id is provided.
     """
-    import uuid
-    import numpy as np
-    import pandas as pd
-
     try:
         from src.backtesting.mode_runner import run_full_system_backtest, BacktestMode
         from src.backtesting.mt5_engine import MQL5Timeframe
@@ -96,20 +97,32 @@ def on_bar(tester):
         tester.sell(symbol, 0.1)
 '''
 
-    # Create mock data for demo
-    date_range = pd.date_range(
-        start=request.start_date,
-        end=request.end_date,
-        freq='H' if 'H' in request.timeframe else 'D'
+    # Fetch real OHLCV data from DataManager (Dukascopy)
+    dm = DataManager(prefer_dukascopy=True)
+    timeframe_minutes = MQL5Timeframe.to_minutes(timeframe_int)
+
+    # Calculate bar count from date range
+    start_dt = datetime.strptime(request.start_date, '%Y-%m-%d')
+    end_dt = datetime.strptime(request.end_date, '%Y-%m-%d')
+    delta = end_dt - start_dt
+    bars_needed = int(delta.total_seconds() / (timeframe_minutes * 60))
+    bars_needed = max(bars_needed, 100)  # minimum 100 bars
+
+    data = dm.fetch_data(
+        symbol=request.symbol,
+        timeframe=timeframe_int,
+        count=bars_needed,
+        start_date=start_dt,
+        end_date=end_dt,
+        prefer_dukascopy=True
     )
-    data = pd.DataFrame({
-        'time': date_range,
-        'open': np.random.uniform(1.08, 1.10, len(date_range)),
-        'high': np.random.uniform(1.08, 1.11, len(date_range)),
-        'low': np.random.uniform(1.07, 1.10, len(date_range)),
-        'close': np.random.uniform(1.08, 1.10, len(date_range)),
-        'volume': np.random.randint(1000, 10000, len(date_range))
-    })
+
+    if len(data) == 0:
+        raise HTTPException(
+            status_code=503,
+            detail=f"No data available for {request.symbol} on {request.timeframe} "
+                   f"from {request.start_date} to {request.end_date}"
+        )
 
     # Store backtest session
     _backtest_sessions[backtest_id] = {
@@ -162,15 +175,76 @@ def on_bar(tester):
             else:
                 backtest_result = result
 
-            # Store results
+            # Extract metrics from backtest result
+            final_balance = getattr(backtest_result, 'final_cash', 0.0) or 0.0
+            initial_cash = request.initial_cash if request.initial_cash is not None else 10000.0
+            net_profit = final_balance - initial_cash
+            total_trades = getattr(backtest_result, 'trades', 0) or 0
+            win_rate = getattr(backtest_result, 'win_rate', 0.0) or 0.0
+            sharpe_ratio = getattr(backtest_result, 'sharpe', 0.0) or 0.0
+            drawdown = getattr(backtest_result, 'drawdown', 0.0) or 0.0
+            return_pct = getattr(backtest_result, 'return_pct', 0.0) or 0.0
+
+            # Calculate Kelly score (simplified: win_rate * profit_factor - 1)
+            profit_factor = getattr(backtest_result, 'profit_factor', 0.0) or 0.0
+            kelly_score = (win_rate / 100.0 * profit_factor) - 1.0 if profit_factor > 0 else 0.0
+
+            # Build backtest_results JSON with full detail
+            backtest_results_json = {
+                "backtest_id": backtest_id,
+                "final_balance": final_balance,
+                "initial_cash": initial_cash,
+                "net_profit": net_profit,
+                "total_trades": total_trades,
+                "win_rate": win_rate,
+                "sharpe_ratio": sharpe_ratio,
+                "max_drawdown": drawdown,
+                "return_pct": return_pct,
+                "profit_factor": profit_factor,
+                "variant": request.variant,
+                "symbol": request.symbol,
+                "timeframe": request.timeframe,
+                "start_date": request.start_date,
+                "end_date": request.end_date,
+                "strategy_code": request.strategy_code,
+                "full_result": backtest_result.to_dict() if hasattr(backtest_result, 'to_dict') else {}
+            }
+
+            # Persist to database
+            try:
+                session = get_session()
+                perf_record = StrategyPerformance(
+                    strategy_name=request.strategy_name if hasattr(request, 'strategy_name') and request.strategy_name else f"{request.symbol}_{request.variant}",
+                    backtest_results=backtest_results_json,
+                    kelly_score=round(kelly_score, 4),
+                    sharpe_ratio=round(sharpe_ratio, 4),
+                    max_drawdown=round(drawdown, 4),
+                    win_rate=round(win_rate, 4),
+                    profit_factor=round(profit_factor, 4),
+                    total_trades=total_trades,
+                    mode=TradingMode.DEMO,
+                    variant=request.variant,
+                    symbol=request.symbol,
+                    timeframe=request.timeframe,
+                )
+                session.add(perf_record)
+                session.commit()
+                logger.info(f"Persisted backtest result to database: {perf_record.id}")
+            except Exception as db_err:
+                logger.error(f"Failed to persist backtest result: {db_err}")
+                session.rollback()
+            finally:
+                session.close()
+
+            # Store results in memory
             _backtest_results[backtest_id] = {
                 "backtest_id": backtest_id,
-                "final_balance": backtest_result.final_cash,
-                "total_trades": backtest_result.trades,
-                "win_rate": getattr(backtest_result, 'win_rate', None),
-                "sharpe_ratio": backtest_result.sharpe,
-                "drawdown": backtest_result.drawdown,
-                "return_pct": backtest_result.return_pct,
+                "final_balance": final_balance,
+                "total_trades": total_trades,
+                "win_rate": win_rate,
+                "sharpe_ratio": sharpe_ratio,
+                "drawdown": drawdown,
+                "return_pct": return_pct,
                 "duration_seconds": None,
                 "results": backtest_result.to_dict() if hasattr(backtest_result, 'to_dict') else {}
             }

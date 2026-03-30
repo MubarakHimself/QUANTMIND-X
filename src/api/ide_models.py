@@ -185,6 +185,7 @@ class BacktestRunRequest(BaseModel):
         default="vanilla",
         description="Backtest variant: vanilla, spiced, vanilla_full, spiced_full"
     )
+    strategy_name: Optional[str] = Field(None, description="Strategy name for record tracking")
     strategy_code: Optional[str] = Field(None, description="Python strategy code")
     initial_cash: Optional[float] = Field(10000.0, description="Initial cash balance")
     commission: Optional[float] = Field(0.001, description="Commission per trade")

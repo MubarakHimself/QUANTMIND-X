@@ -26,6 +26,10 @@ class StrategyPerformance(Base):
         total_trades: Total number of trades
         mode: Trading mode (demo or live)
         created_at: Record creation timestamp
+        variant: Backtest variant (vanilla, spiced, vanilla_full, spiced_full)
+        symbol: Trading symbol (EURUSD, GBPUSD, etc.)
+        timeframe: Timeframe (M1, M5, M15, M30, H1, H4, D1)
+        parent_id: Parent strategy performance ID for genealogy tracking
     """
     __tablename__ = 'strategy_performance'
 
@@ -40,10 +44,16 @@ class StrategyPerformance(Base):
     total_trades = Column(Integer, nullable=True)
     mode = Column(Enum(TradingMode), nullable=False, default=TradingMode.LIVE, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    variant = Column(String(50), nullable=True, index=True)
+    symbol = Column(String(20), nullable=True, index=True)
+    timeframe = Column(String(10), nullable=True)
+    parent_id = Column(Integer, nullable=True)
 
     __table_args__ = (
         Index('ix_strategy_performance_kelly', 'kelly_score'),
         Index('ix_strategy_performance_sharpe', 'sharpe_ratio'),
+        Index('ix_strategy_performance_variant', 'variant'),
+        Index('ix_strategy_performance_symbol', 'symbol'),
     )
 
     def __repr__(self):
@@ -133,17 +143,24 @@ class HouseMoneyState(Base):
     Tracks daily P&L and adjusts risk multiplier based on house money effect.
     Increases risk when trading with profits, decreases when down.
 
+    Story 4.10: Session-scoped fields added for session-level tracking.
+
     Attributes:
         id: Primary key
         account_id: MT5 account number (string for flexibility)
         daily_start_balance: Balance at start of trading day
         current_pnl: Current daily profit/loss
         high_water_mark: Highest equity reached today
-        risk_multiplier: Current risk multiplier (1.0=baseline, 1.5=up>5%, 0.5=down>3%)
+        risk_multiplier: Current risk multiplier (1.0=baseline, 1.4=up>+8%, 0.5=down<-10%)
         is_preservation_mode: Whether preservation mode is active
         date: Calendar date (YYYY-MM-DD format)
         created_at: Record creation timestamp
         updated_at: Last update timestamp
+        # Story 4.10: Session-scoped fields
+        current_session: Current trading session (LONDON, NEW_YORK, OVERLAP, etc.)
+        session_start: When current session started
+        is_premium_session: Whether in premium assault session
+        premium_assault_type: Type of premium assault if applicable
     """
     __tablename__ = 'house_money_state'
 
@@ -155,16 +172,22 @@ class HouseMoneyState(Base):
     risk_multiplier = Column(Float, nullable=False, default=1.0)
     is_preservation_mode = Column(Boolean, nullable=False, default=False)
     date = Column(String(10), nullable=False)  # YYYY-MM-DD format
+    # Story 4.10: Session-scoped fields
+    current_session = Column(String(20), nullable=True)  # LONDON, NEW_YORK, OVERLAP, ASIAN, CLOSED
+    session_start = Column(DateTime, nullable=True)  # When session started
+    is_premium_session = Column(Boolean, nullable=False, default=False)
+    premium_assault_type = Column(String(30), nullable=True)  # london_open, london_ny_overlap, ny_open
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     __table_args__ = (
         UniqueConstraint('account_id', 'date', name='uq_house_money_account_date'),
         Index('idx_house_money_date', 'date'),
+        Index('idx_house_money_session', 'current_session'),
     )
 
     def __repr__(self):
-        return f"<HouseMoneyState(id={self.id}, account={self.account_id}, date={self.date}, pnl={self.current_pnl}, multiplier={self.risk_multiplier})>"
+        return f"<HouseMoneyState(id={self.id}, account={self.account_id}, date={self.date}, pnl={self.current_pnl}, multiplier={self.risk_multiplier}, session={self.current_session})>"
 
 
 class StrategyFamilyState(Base):
