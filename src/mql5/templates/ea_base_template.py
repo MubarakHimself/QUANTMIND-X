@@ -3,6 +3,9 @@ MQL5 EA Base Template
 
 Template for generating MQL5 Expert Advisor code from TRD documents.
 """
+import re
+from datetime import datetime
+from typing import Dict, Any, List, Tuple
 
 EA_TEMPLATE = '''//+------------------------------------------------------------------+
 //| {{strategy_name}}.mq5
@@ -50,6 +53,26 @@ input bool     InpUseBreakEven = {{use_break_even}}; // Use Break Even
 input int      InpBreakEvenTrigger = {{break_even_trigger}}; // Break Even Trigger (points)
 input int      InpBreakEvenDist = {{break_even_distance}}; // Break Even Distance (points)
 
+input group "=== ATR Stop Loss ==="
+input bool     InpUseATRStop = false;              // Use ATR-based Stop Loss
+input int      InpATRPeriod = 14;                   // ATR Period
+input double   InpATRMultiplier = 1.5;               // ATR Multiplier (1.5x = 1.5R SL)
+
+input group "=== Bot Configuration ==="
+input string   InpBotType = "{{bot_type}}";        // Bot Type (scalping/orb/structural/swing)
+input string   InpSessionTags = "{{session_tags}}"; // Session Tags (comma-separated: LONDONS,ASIA,NEWYORK)
+
+input group "=== News Blackout ==="
+input bool     InpUseNewsBlackout = {{news_blackout}};  // Enable News Blackout
+input int      InpBlackoutMinutes = 15;              // Blackout Window (minutes before/after event)
+
+input group "=== Hybrid SL/TP (Option B+C) ==="
+input bool     InpUseHybridSLTP = true;               // Use Hybrid SL/TP Management
+input double   InpBETriggerPct = 0.5;                // Breakeven Trigger (% of SL distance)
+input double   InpPartialClosePct = 30;               // Partial Close % (at 1xSL profit)
+input double   InpRVOLThreshold = 1.4;                 // RVOL threshold for 3R TP
+input int      InpMaxHoldMinutes = 20;                // Max Hold Time (minutes)
+
 //+------------------------------------------------------------------+
 //| Global Variables
 //+------------------------------------------------------------------+
@@ -60,6 +83,8 @@ datetime        g_last_bar_time = 0;
 double          g_daily_loss = 0;
 datetime        g_daily_reset = 0;
 int             g_total_orders_today = 0;
+datetime        g_position_open_time = 0;  // For max hold time tracking
+bool            g_hybrid_sl_moved[1];     // Flag: SL already moved to BE
 
 //+------------------------------------------------------------------+
 //| Expert initialization function
@@ -333,7 +358,40 @@ void OpenPosition()
         price = m_symbol.Ask();
     }
 
-    m_trade.Buy(lot_size, InpSymbol, price, 0, 0, InpExpertName);
+    // Calculate SL/TP distances
+    double sl_distance = 0;
+    double tp_distance = 0;
+    if(InpUseATRStop)
+    {
+        sl_distance = CalculateATRStopDistance();
+    }
+
+    double ask = m_symbol.Ask();
+    double bid = m_symbol.Bid();
+    double sl = 0;
+    double tp = 0;
+
+    if(order_type == ORDER_TYPE_BUY)
+    {
+        if(sl_distance > 0)
+            sl = ask - sl_distance;
+        tp = ask + (sl_distance > 0 ? sl_distance * 2 : 0);
+    }
+    else
+    {
+        if(sl_distance > 0)
+            sl = bid + sl_distance;
+        tp = bid - (sl_distance > 0 ? sl_distance * 2 : 0);
+    }
+
+    // Reset hybrid SL/TP tracking for new position
+    g_position_open_time = TimeCurrent();
+    static bool sl_moved_to_be = false;
+    static bool partial_executed = false;
+    sl_moved_to_be = false;
+    partial_executed = false;
+
+    m_trade.Buy(lot_size, InpSymbol, price, sl, tp, InpExpertName);
 
     if(m_trade.ResultRetcode() != RETCODE_DONE)
     {
@@ -345,6 +403,25 @@ void OpenPosition()
         Print("Position opened: ", order_type == ORDER_TYPE_BUY ? "BUY" : "SELL",
               " Lot: ", lot_size, " Price: ", price);
     }
+}
+
+//+------------------------------------------------------------------+
+//| Calculate ATR-based stop loss distance
+//+------------------------------------------------------------------+
+double CalculateATRStopDistance()
+{
+    if(!InpUseATRStop)
+        return 0;
+
+    int handle = iATR(InpSymbol, InpTimeframe, InpATRPeriod);
+    if(handle == INVALID_HANDLE)
+        return 0;
+
+    double atr[];
+    if(CopyBuffer(handle, 0, 0, 1, atr) <= 0)
+        return 0;
+
+    return atr[0] * InpATRMultiplier;
 }
 
 //+------------------------------------------------------------------+
@@ -364,6 +441,12 @@ double CalculateLotSize()
     double point = SymbolInfoDouble(InpSymbol, SYMBOL_POINT);
 
     double sl_points = 1000; // Default SL
+    if(InpUseATRStop)
+    {
+        double atr_dist = CalculateATRStopDistance();
+        if(atr_dist > 0)
+            sl_points = atr_dist / point;
+    }
     double lot_size = (risk_amount / (sl_points * tick_value / tick_size)) / (point / tick_size);
 
     return MathMin(MathMax(lot_size, m_symbol.LotsMin()), InpMaxLot);
@@ -379,30 +462,128 @@ void ManagePosition(int index)
 
     double profit = PositionGetDouble(POSITION_PROFIT);
 
-    // Break even
-    if(InpUseBreakEven && profit >= InpBreakEvenTrigger * InpPoint)
+    // Track position open time on first call
+    if(g_position_open_time == 0)
     {
-        double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
-        ENUM_POSITION_TYPE type = PositionGetInteger(POSITION_TYPE);
+        g_position_open_time = PositionGetInteger(POSITION_TIME);
+    }
 
+    // Time-based exit check
+    if(InpMaxHoldMinutes > 0)
+    {
+        MqlDateTime now;
+        TimeCurrent(now);
+        datetime current_time = StringToTime(TimeToString(TimeCurrent(), TIME_DATE) + " " +
+                            IntegerToString(now.hour) + ":" +
+                            IntegerToString(now.min) + ":" +
+                            IntegerToString(now.sec));
+
+        if(current_time - g_position_open_time >= InpMaxHoldMinutes * 60)
+        {
+            m_trade.PositionClose(PositionGetTicket(index));
+            g_position_open_time = 0;
+            return;
+        }
+    }
+
+    // Use Hybrid SL/TP if enabled
+    if(InpUseHybridSLTP)
+    {
+        ManageHybridSLTP(index);
+    }
+    else
+    {
+        // Standard Break even
+        if(InpUseBreakEven && profit >= InpBreakEvenTrigger * InpPoint)
+        {
+            double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
+            ENUM_POSITION_TYPE type = PositionGetInteger(POSITION_TYPE);
+
+            double new_sl = (type == POSITION_TYPE_BUY) ?
+                open_price + InpBreakEvenDist * InpPoint :
+                open_price - InpBreakEvenDist * InpPoint;
+
+            m_trade.PositionModify(PositionGetTicket(index), new_sl, PositionGetDouble(POSITION_SL));
+        }
+
+        // Trailing stop
+        if(InpUseTrail && profit >= InpTrailDistance * InpPoint)
+        {
+            double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
+            ENUM_POSITION_TYPE type = PositionGetInteger(POSITION_TYPE);
+
+            double new_sl = (type == POSITION_TYPE_BUY) ?
+                open_price + InpTrailDistance * InpPoint :
+                open_price - InpTrailDistance * InpPoint;
+
+            m_trade.PositionModify(PositionGetTicket(index), new_sl, PositionGetDouble(POSITION_TP));
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Hybrid SL/TP Management
+//| Option B+C: BE at 0.5SL, 30% partial at 1SL, RVOL-adaptive TP
+//+------------------------------------------------------------------+
+void ManageHybridSLTP(int index)
+{
+    if(!PositionSelectByTicket(PositionGetTicket(index)))
+        return;
+
+    double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
+    double sl_price = PositionGetDouble(POSITION_SL);
+    double tp_price = PositionGetDouble(POSITION_TP);
+    double profit = PositionGetDouble(POSITION_PROFIT);
+    double volume = PositionGetDouble(POSITION_VOLUME);
+    ENUM_POSITION_TYPE type = PositionGetInteger(POSITION_TYPE);
+    ulong ticket = PositionGetTicket(index);
+
+    double sl_distance = (type == POSITION_TYPE_BUY) ?
+        (open_price - sl_price) / SymbolInfoDouble(InpSymbol, SYMBOL_POINT) :
+        (sl_price - open_price) / SymbolInfoDouble(InpSymbol, SYMBOL_POINT);
+
+    double current_profit_pips = (type == POSITION_TYPE_BUY) ?
+        (SymbolInfoDouble(InpSymbol, SYMBOL_BID) - open_price) / SymbolInfoDouble(InpSymbol, SYMBOL_POINT) :
+        (open_price - SymbolInfoDouble(InpSymbol, SYMBOL_ASK)) / SymbolInfoDouble(InpSymbol, SYMBOL_POINT);
+
+    // Step 1: At InpBETriggerPct (0.5x) SL profit — move SL to breakeven
+    double be_trigger_pips = sl_distance * InpBETriggerPct;
+    static bool sl_moved_to_be = false;  // Per-position flag (reset per position)
+
+    if(current_profit_pips >= be_trigger_pips && sl_price > 0 && !sl_moved_to_be)
+    {
         double new_sl = (type == POSITION_TYPE_BUY) ?
             open_price + InpBreakEvenDist * InpPoint :
             open_price - InpBreakEvenDist * InpPoint;
-
-        m_trade.PositionModify(PositionGetTicket(index), new_sl, PositionGetDouble(POSITION_SL));
+        m_trade.PositionModify(ticket, new_sl, tp_price);
+        sl_moved_to_be = true;
+        Print("Hybrid SL/TP: SL moved to breakeven at profit ", current_profit_pips, " pips");
     }
 
-    // Trailing stop
-    if(InpUseTrail && profit >= InpTrailDistance * InpPoint)
+    // Step 2: At 1x SL profit — close InpPartialClosePct (30%) partial
+    double partial_trigger_pips = sl_distance * 1.0;
+    static bool partial_executed = false;  // Per-position flag
+
+    if(current_profit_pips >= partial_trigger_pips && volume > InpFixedLot * 0.5 && !partial_executed)
     {
-        double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
-        ENUM_POSITION_TYPE type = PositionGetInteger(POSITION_TYPE);
+        double partial_volume = volume * (InpPartialClosePct / 100.0);
+        m_trade.PositionClosePartial(ticket, partial_volume);
+        partial_executed = true;
+        Print("Hybrid SL/TP: Partial close ", InpPartialClosePct, "% at profit ", current_profit_pips, " pips");
+    }
 
-        double new_sl = (type == POSITION_TYPE_BUY) ?
-            open_price + InpTrailDistance * InpPoint :
-            open_price - InpTrailDistance * InpPoint;
+    // Step 3: RVOL-adaptive TP (TP=3R if RVOL>=InpRVOLThreshold, else TP=2R)
+    // Note: RVOL reading from SVSS Redis channel in production
+    double rvol = 1.0;  // Default; replace with SVSS RVOL reading
+    double tp_distance_pips = (rvol >= InpRVOLThreshold) ? sl_distance * 3.0 : sl_distance * 2.0;
+    double new_tp = (type == POSITION_TYPE_BUY) ?
+        open_price + tp_distance_pips * InpPoint :
+        open_price - tp_distance_pips * InpPoint;
 
-        m_trade.PositionModify(PositionGetTicket(index), new_sl, PositionGetDouble(POSITION_TP));
+    if(rvol >= InpRVOLThreshold && tp_price != new_tp)
+    {
+        m_trade.PositionModify(ticket, sl_price, new_tp);
+        Print("Hybrid SL/TP: RVOL=", rvol, " TP set to 3R at ", tp_distance_pips, " pips");
     }
 }
 
@@ -455,3 +636,147 @@ TRD_TO_MQL5_MAPPING = {
     "break_even_trigger": ("InpBreakEvenTrigger", "int"),
     "break_even_distance": ("InpBreakEvenDist", "int"),
 }
+
+
+class EABaseTemplate:
+    """
+    Encapsulates MQL5 EA template rendering and validation.
+
+    Usage:
+        template = EABaseTemplate()
+        mql5_code = template.render(trd)
+        is_valid, errors = template.validate(mql5_source)
+    """
+
+    def __init__(self):
+        self._defaults = {
+            "magic_number": "123456",
+            "max_orders": "5",
+            "spread_filter": "30",
+            "slippage": "3",
+            "daily_loss_cap": "5.0",
+            "session_mask": "UK/US",
+            "force_close_hour": "22",
+            "overnight_hold": "false",
+            "use_trailing_stop": "false",
+            "trailing_distance": "50",
+            "use_break_even": "false",
+            "break_even_trigger": "100",
+            "break_even_distance": "10",
+            "ma_fast": "10",
+            "ma_slow": "20",
+            "bot_type": "scalping",
+            "session_tags": "LONDON,NEW_YORK",
+            "news_blackout": "true",
+        }
+
+    def render(self, trd: "TRDDocument") -> str:
+        """
+        Render EA_TEMPLATE from TRD document.
+
+        Args:
+            trd: TRD document with parameters
+
+        Returns:
+            Generated MQL5 source code as string
+        """
+        if not trd.strategy_id or not trd.strategy_name:
+            raise ValueError("TRD must have strategy_id and strategy_name")
+
+        variables = self._prepare_template_variables(trd)
+        code = EA_TEMPLATE
+
+        for key, value in variables.items():
+            placeholder = "{{" + key + "}}"
+            code = code.replace(placeholder, str(value))
+
+        # Remove any remaining placeholders (set to defaults)
+        code = re.sub(r'\{\{(\w+)\}\}', '', code)
+
+        return code
+
+    def _prepare_template_variables(self, trd: "TRDDocument") -> Dict[str, Any]:
+        """Prepare template variables from TRD document."""
+        variables: Dict[str, Any] = {
+            "strategy_name": trd.strategy_name.replace(" ", "_"),
+            "strategy_id": trd.strategy_id,
+            "version": trd.version,
+            "generated_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "strategy_type": trd.strategy_type.value if hasattr(trd.strategy_type, 'value') else str(trd.strategy_type) if trd.strategy_type else "trend",
+            "strategy_description": trd.description or "Generated by QUANTMINDX",
+        }
+
+        variables["symbol"] = trd.symbol
+        variables["timeframe"] = trd.timeframe
+
+        # EA template fields
+        variables["bot_type"] = trd.bot_type if trd.bot_type else "scalping"
+        variables["session_tags"] = ",".join(trd.session_tags) if trd.session_tags else "LONDON,NEW_YORK"
+        variables["news_blackout"] = "true" if trd.news_blackout else "false"
+
+        self._map_parameters(trd, variables)
+
+        if trd.position_sizing:
+            ps = trd.position_sizing
+            variables["fixed_lot_size"] = str(ps.fixed_lot_size)
+            variables["max_lots"] = str(ps.max_lots)
+            variables["risk_percent"] = str(ps.risk_percent)
+        else:
+            variables["fixed_lot_size"] = "0.01"
+            variables["max_lots"] = "1.0"
+            variables["risk_percent"] = "1.0"
+
+        for key, default_value in self._defaults.items():
+            if key not in variables:
+                variables[key] = default_value
+
+        return variables
+
+    def _map_parameters(self, trd: "TRDDocument", variables: Dict[str, Any]) -> None:
+        """Map TRD parameters to template variables."""
+        for trd_param, (mql_var, mql_type) in TRD_TO_MQL5_MAPPING.items():
+            value = trd.parameters.get(trd_param)
+
+            if value is not None:
+                if mql_type == "bool":
+                    value = "true" if value else "false"
+                elif mql_type == "string":
+                    value = str(value)
+
+                variables[mql_var] = value
+
+    def validate(self, mql5_source: str) -> Tuple[bool, List[str]]:
+        """
+        Validate rendered MQL5 source.
+
+        Args:
+            mql5_source: MQL5 source code to validate
+
+        Returns:
+            Tuple of (is_valid, list_of_errors)
+        """
+        errors: List[str] = []
+
+        lines = mql5_source.split('\n')
+        brace_count = 0
+        paren_count = 0
+
+        for i, line in enumerate(lines, 1):
+            brace_count += line.count('{') - line.count('}')
+            paren_count += line.count('(') - line.count(')')
+
+            if ';;' in line:
+                errors.append(f"Line {i}: Double semicolon")
+
+        if brace_count != 0:
+            errors.append(f"Unmatched braces: {brace_count} difference")
+
+        if paren_count != 0:
+            errors.append(f"Unmatched parentheses: {paren_count} difference")
+
+        required_functions = ['OnInit', 'OnTick', 'OnDeinit']
+        for func in required_functions:
+            if func not in mql5_source:
+                errors.append(f"Missing required function: {func}")
+
+        return len(errors) == 0, errors

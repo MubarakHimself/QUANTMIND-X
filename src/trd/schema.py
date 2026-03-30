@@ -111,6 +111,13 @@ class TRDDocument:
     # Trading parameters
     parameters: Dict[str, Any] = field(default_factory=dict)
 
+    # EA template fields
+    bot_type: str = "scalping"  # Bot strategy type (scalping/orb/structural/swing)
+    session_tags: List[str] = field(default_factory=list)  # Trading session tags (LONDON, ASIA, NEW_YORK)
+    news_blackout: bool = True  # Enable news blackout kill zones
+    atr_stop_period: int = 14   # ATR period for ATR-based stop loss
+    atr_stop_multiplier: float = 1.5  # ATR multiplier for stop distance (1.5x = 1.5R)
+
     # Metadata
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
@@ -134,6 +141,11 @@ class TRDDocument:
             "exit_conditions": self.exit_conditions,
             "position_sizing": self.position_sizing.to_dict() if self.position_sizing else None,
             "parameters": self.parameters,
+            "bot_type": self.bot_type,
+            "session_tags": self.session_tags,
+            "news_blackout": self.news_blackout,
+            "atr_stop_period": self.atr_stop_period,
+            "atr_stop_multiplier": self.atr_stop_multiplier,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "author": self.author,
@@ -186,6 +198,11 @@ class TRDDocument:
             exit_conditions=data.get("exit_conditions", []),
             position_sizing=position_sizing,
             parameters=data.get("parameters", {}),
+            bot_type=data.get("bot_type", "scalping"),
+            session_tags=data.get("session_tags", []),
+            news_blackout=data.get("news_blackout", True),
+            atr_stop_period=data.get("atr_stop_period", 14),
+            atr_stop_multiplier=data.get("atr_stop_multiplier", 1.5),
             created_at=created_at,
             updated_at=updated_at,
             author=data.get("author", "Research Department"),
