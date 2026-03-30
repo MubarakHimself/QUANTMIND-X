@@ -27,15 +27,18 @@ logger = logging.getLogger("quantmind.server")
 # NODE_ROLE Configuration (Story 1-3: Backend Deployment Split)
 # =============================================================================
 # Controls which router groups register at startup
-# Accepted values: contabo | cloudzy | local (default: local)
-# - contabo: Agent/compute endpoints only (AI agents, memory, workflows)
-# - cloudzy: Live trading endpoints only (MT5, trading, broker)
+# Accepted values: node_backend | node_trading | local (default: local)
+# - node_backend (was contabo): Agent/compute endpoints only (AI agents, memory, workflows)
+# - node_trading (was cloudzy): Live trading endpoints only (MT5, trading, broker)
 # - local: All endpoints (development mode)
+# Legacy names cloudzy/contabo still work via automatic normalization
 
 NODE_ROLE = os.getenv("NODE_ROLE", "local").lower()
+# Normalize old cloud provider names to generic aliases
+NODE_ROLE = {"cloudzy": "node_trading", "contabo": "node_backend"}.get(NODE_ROLE, NODE_ROLE)
 
 # Validate NODE_ROLE
-VALID_ROLES = {"contabo", "cloudzy", "local"}
+VALID_ROLES = {"node_trading", "node_backend", "local"}
 if NODE_ROLE not in VALID_ROLES:
     logger.warning(
         f"Invalid NODE_ROLE '{NODE_ROLE}'. "
@@ -85,6 +88,7 @@ CONTABO_ROUTERS = {
     "workflow_router",         # Alpha Forge
     "hmm_router",              # Risk sensors
     "hmm_inference_router",    # HMM inference
+    "ensemble_router",         # Ensemble regime detection
     "knowledge_router",        # Knowledge endpoints
     "knowledge_unified_router", # Unified knowledge search API (Story 6-1)
     "knowledge_ingest_router",  # Web scraping + personal knowledge (Story 6-2)
@@ -110,16 +114,16 @@ BOTH_ROUTERS = {
 # not at module import time. This is essential for tests that patch os.environ.
 
 def _get_include_cloudzy() -> bool:
-    """Check if Cloudzy (trading) routers should be included based on NODE_ROLE."""
+    """Check if trading routers should be included based on NODE_ROLE."""
     role = os.getenv("NODE_ROLE", "").lower()
-    # cloudzy node includes trading routers
-    return role == "cloudzy"
+    # cloudzy / node_trading node OR local dev includes trading routers
+    return role in ("cloudzy", "node_trading", "local")
 
 def _get_include_contabo() -> bool:
-    """Check if Contabo (agent/compute) routers should be included based on NODE_ROLE."""
+    """Check if agent/compute routers should be included based on NODE_ROLE."""
     role = os.getenv("NODE_ROLE", "").lower()
-    # contabo node includes agent/compute routers
-    return role == "contabo"
+    # contabo / node_backend node OR local dev includes agent/compute routers
+    return role in ("contabo", "node_backend", "local")
 
 # Module-level __getattr__ to make INCLUDE_CLOUDZY and INCLUDE_CONTABO dynamic
 # These are accessed like regular module attributes but computed on each access
@@ -180,9 +184,17 @@ try:
     from src.api.agent_queue_endpoints import router as agent_queue_router
     from src.api.workflow_endpoints import router as workflow_router
     from src.api.prefect_workflow_endpoints import router as prefect_workflow_router
+    from src.api.flowforge_workflow_proxy import router as flowforge_workflow_proxy_router  # Story 11.8: FlowForge ↔ Prefect API Contract
+    from src.api.weekend_cycle_endpoints import router as weekend_cycle_router  # Weekend Update Cycle (Story 8.13)
     from src.api.approval_gate import router as approval_gate_router
     from src.api.kill_switch_endpoints import router as kill_switch_router
     from src.api.hmm_endpoints import router as hmm_router
+    from src.api.dpr_endpoints import router as dpr_router  # DPR Queue Tier Remix (Story 17.2)
+    from src.api.ssl_endpoints import router as ssl_router  # SSL Circuit Breaker (Story 18.1)
+    from src.api.dead_zone_endpoints import router as dead_zone_router  # Dead Zone Workflow 3 EOD Reports
+    from src.api.trading_session_endpoints import router as trading_session_router  # Canonical window session detection
+    from src.api.trading_tilt_endpoints import router as trading_tilt_router  # Tilt phase status (Story 16.1)
+    from src.api.cooldown_endpoints import router as cooldown_router  # Inter-Session Cooldown (Story 16.3)
     from src.api.tradingview_endpoints import router as tradingview_router
     from src.api.github_endpoints import router as github_router
     from src.api.monte_carlo_ws import monte_carlo_ws_endpoint
@@ -211,6 +223,7 @@ try:
     from src.api.floor_manager_endpoints import router as floor_manager_router
     from src.api.copilot_kill_switch_endpoints import router as copilot_kill_switch_router
     from src.api.workshop_copilot_endpoints import router as workshop_copilot_router
+    from src.api.copilot_endpoints import router as copilot_router
     from src.api.video_to_ea_endpoints import router as video_to_ea_router
     from src.api.ide_knowledge import router as knowledge_router
     from src.api.knowledge_endpoints import router as knowledge_unified_router
@@ -231,10 +244,13 @@ try:
     from src.api.portfolio_endpoints import router as portfolio_router
     from src.api.portfolio_broker_endpoints import router as portfolio_broker_router
     from src.api.risk_endpoints import router as risk_router
+    from src.api.sqs_endpoints import router as sqs_router
     from src.api.task_sse_endpoints import router as task_sse_router
     from src.api.pdf_endpoints import router as pdf_router
     from src.api.trading.routes import router as trading_router
-    from src.api.hmm_inference_server import router as hmm_inference_router
+    from src.api.trading_session_risk_endpoints import router as trading_session_risk_router
+    from src.api.session_kelly_endpoints import router as session_kelly_router
+    from src.api.hmm_inference_server import router as hmm_inference_router, ensemble_router
     from src.api.provider_config_endpoints import router as provider_config_router
     from src.api.server_config_endpoints import router as server_config_router, server_router
     from src.api.notification_config_endpoints import router as notification_config_router
@@ -249,6 +265,10 @@ try:
     from src.api.tool_forge_endpoints import router as tool_forge_router  # Tool Forge — Dynamic Tool Creation
     from src.api.agent_thought_stream_endpoints import router as agent_thought_router  # Agent thought SSE
     from src.api.agent_tile_endpoints import router as agent_tile_router  # Agent tile system
+    from src.api.workflow_templates_endpoints import router as workflow_templates_router  # Workflow Templates (Story C1)
+    from src.api.race_endpoints import router as race_router  # Strategy Race Board (Story C3)
+    from src.api.trading_results_endpoints import router as trading_results_router  # Trading results for DPR scoring
+    from src.api.svss_endpoints import router as svss_router  # SVSS REST API (VWAP, RVOL, Volume Profile, MFI)
 except ImportError as e:
     logger.error(f"Import Error: {e}")
     # Fallback/Debug info
@@ -370,8 +390,8 @@ async def prometheus_middleware(request: Request, call_next):
 # Router Registration (Conditional on NODE_ROLE)
 # =============================================================================
 # Routers are registered based on NODE_ROLE setting:
-# - cloudzy: Live trading routers only
-# - contabo: Agent/compute routers only
+# - node_trading: Live trading routers only
+# - node_backend: Agent/compute routers only
 # - local: All routers (development mode)
 # =============================================================================
 
@@ -408,7 +428,9 @@ if _get_include_cloudzy():
         app.include_router(paper_trading_router) # Paper trading
     app.include_router(tradingview_router)       # TradingView charts
     app.include_router(lifecycle_scanner_router) # Lifecycle monitoring
-    logger.info("Registered Cloudzy routers: trading, broker, kill_switch, paper_trading, tradingview")
+    app.include_router(trading_session_risk_router) # RHM session risk state
+    app.include_router(trading_results_router)  # Trading results for DPR scoring
+    logger.info("Registered Cloudzy routers: trading, broker, kill_switch, paper_trading, tradingview, trading_session_risk, trading_results")
 
 # ---------------------------------------------------------------------------
 # Contabo Routers (Agent/Compute)
@@ -427,7 +449,7 @@ if _get_include_contabo():
     app.include_router(server_health_router)  # Server health metrics (Story 10-5)
     app.include_router(node_update_router)  # Node sequential update with rollback (Story 11-3)
     app.include_router(reasoning_router)  # Agent reasoning transparency (Story 10-2)
-    app.include_router(server_router)  # Morning digest & node health (Story 3-7)
+    # server_router registered unconditionally below (morning digest, node health)
     app.include_router(model_router)
 
     # Agent Management
@@ -450,12 +472,19 @@ if _get_include_contabo():
     app.include_router(floor_manager_router)
     app.include_router(copilot_kill_switch_router)
     app.include_router(workshop_copilot_router)
+    app.include_router(copilot_router)  # /api/copilot/chat - UI always routes through Copilot
     app.include_router(workflow_router)
     app.include_router(prefect_workflow_router)
+    app.include_router(flowforge_workflow_proxy_router)  # Story 11.8: FlowForge ↔ Prefect API Contract
+    app.include_router(weekend_cycle_router)  # Weekend Update Cycle (Story 8.13)
 
     # Risk & HMM
     app.include_router(hmm_router)
+    app.include_router(dpr_router)  # DPR Queue Tier Remix (Story 17.2)
+    app.include_router(ssl_router)  # SSL Circuit Breaker (Story 18.1)
+    app.include_router(dead_zone_router)  # Dead Zone Workflow 3 EOD Reports
     app.include_router(hmm_inference_router)
+    app.include_router(ensemble_router)  # Ensemble regime detection (HMM + MS-GARCH + BOCPD)
 
     # Knowledge & Research
     app.include_router(knowledge_router)
@@ -498,11 +527,16 @@ app.include_router(pipeline_status_router)  # Pipeline Status Board (Story 8-7)
 app.include_router(strategy_versions_router)  # Version Control (Story 8-4)
 app.include_router(variant_browser_router)  # Variant Browser (Story 8-8)
 app.include_router(ab_race_router)  # A/B Race Board (Story 8-9)
+app.include_router(race_router)  # Strategy Race Board (Story C3)
 app.include_router(provenance_router)  # Provenance Chain (Story 8-9)
+app.include_router(workflow_templates_router)  # Workflow Templates (Story C1)
 app.include_router(loss_propagation_router)  # Loss Propagation (Story 8-9)
 app.include_router(router_router)     # Router endpoints
 app.include_router(journal_router)    # Journal
 app.include_router(session_router)     # Sessions
+app.include_router(trading_session_router)  # Canonical window session detection (SessionTimeline)
+app.include_router(trading_tilt_router)     # Tilt phase status (Story 16.1)
+app.include_router(cooldown_router)         # Inter-Session Cooldown (Story 16.3)
 app.include_router(mcp_router)         # MCP endpoints
 app.include_router(approval_gate_router) # Approval gate
 app.include_router(deployment_router)  # EA deployment pipeline (FR79)
@@ -511,6 +545,11 @@ app.include_router(demo_mode_router)   # Demo mode
 app.include_router(portfolio_broker_router)  # Portfolio broker registry (Story 9-1)
 app.include_router(backtest_results_router)  # Backtest results API (Story 4-4) — needed on both nodes
 app.include_router(risk_router)  # Risk API (Story 4-6) — needed on both nodes
+app.include_router(session_kelly_router)  # Session Kelly API (Story 4.10) — needed on both nodes
+app.include_router(sqs_router)  # SQS API (Story 4-7) — needed on both nodes
+app.include_router(svss_router)  # SVSS REST API (VWAP, RVOL, Volume Profile, MFI) — needed on both nodes
+app.include_router(dpr_router)  # DPR Queue Tier Remix (Story 17.2) — needed on both nodes
+app.include_router(server_router)  # Morning digest & node health (Story 3-7) — needed on all nodes
 
 # IDE-specific (non-agent)
 app.include_router(mt5_router)         # MT5 IDE
@@ -529,6 +568,16 @@ app.include_router(zero_auth_router)          # Zero-Auth: Qwen CLI + Gemini ADC
 app.include_router(autonomous_scheduler_router)  # Overnight research scheduler
 app.include_router(tool_forge_router)         # Dynamic tool creation / registry
 app.include_router(settings_router)          # Settings (connection, appearance, etc.)
+app.include_router(skills_router)            # Skill Catalogue (always-on for UI)
+app.include_router(provider_config_router)    # AI provider configurations
+
+# ── Copilot & Floor Manager (always-on for Workshop UI) ──────────────────────
+# The Workshop UI (CopilotPanel) calls /api/copilot/chat - these must be available
+# in ALL modes: local (development), node_backend, and node_trading.
+app.include_router(floor_manager_router)      # Floor Manager chat + task routing
+app.include_router(copilot_router)           # /api/copilot/chat - Workshop UI entry point
+app.include_router(workshop_copilot_router)   # Workshop copilot secondary endpoints
+app.include_router(copilot_kill_switch_router)  # Copilot kill switch
 
 logger.info(f"Router registration complete for NODE_ROLE={NODE_ROLE}")
 
@@ -568,7 +617,26 @@ async def broker_websocket_endpoint(websocket: WebSocket):
 @app.on_event("startup")
 async def startup_event():
     logger.info("QuantMind API Server starting on port 8000...")
-    
+
+    # Ensure all SQLAlchemy models have their tables (idempotent create_all)
+    try:
+        from src.database.engine import init_database
+        init_database()
+        logger.info("Database tables verified/created.")
+    except Exception as e:
+        logger.warning(f"DB init warning: {e}")
+
+    # Run graph memory DB migrations (idempotent - safe to run every startup)
+    try:
+        import os
+        os.makedirs("data", exist_ok=True)
+        from src.memory.graph.migration import migrate_graph_memory_db
+        graph_db = os.environ.get("GRAPH_MEMORY_DB", "data/graph_memory.db")
+        migrate_graph_memory_db(graph_db)
+        logger.info(f"Graph memory DB migrations applied: {graph_db}")
+    except Exception as e:
+        logger.warning(f"Graph memory migration warning: {e}")
+
     # Start Prometheus metrics server
     # Note: Grafana Cloud push is disabled - using Prometheus agent for remote_write
     # to avoid duplicate metric ingestion. See docker-compose.production.yml
@@ -608,7 +676,30 @@ async def startup_event():
         )
         set_strategy_router(router)
         logger.info("StrategyRouter initialized for API endpoints")
-        
+
+        # Wire NewsBlackoutService into ProgressiveKillSwitch (after router is ready)
+        try:
+            from src.market.news_blackout import NewsBlackoutService
+            from src.api.websocket_endpoints import ws_manager
+
+            news_blackout = NewsBlackoutService()
+            news_blackout.set_ws_manager(ws_manager)
+
+            # Force PKS creation by accessing the property, then wire NewsSensor
+            pks = router.progressive_kill_switch
+            if pks and hasattr(pks, "session_monitor") and pks.session_monitor:
+                pks.session_monitor.set_news_sensor(news_blackout._news_sensor)
+                logger.info("NewsBlackoutService wired to ProgressiveKillSwitch SessionMonitor")
+
+            # Wire into app.state for API endpoint access
+            app.state.news_blackout = news_blackout
+
+            # Start the service (background scheduler)
+            news_blackout.start()
+            logger.info("NewsBlackoutService started")
+        except Exception as e:
+            logger.warning(f"Could not start NewsBlackoutService: {e}")
+
         # Start Contabo regime polling in background
         try:
             import asyncio
@@ -668,19 +759,10 @@ async def startup_event():
     
     logger.info("Endpoints mounted: /api/ide, /api/chat, /api/analytics, /api/settings, /api/trd, /api/router, /api/journal, /api/sessions, /api/v1/backtest, /api/paper-trading, /api/mcp, /api/agents, /api/workflows, /api/kill-switch, /api/hmm, /api/metrics, /api/brokers, /api/eas, /api/virtual-accounts, /api/agent-tools, /api/batch, /health")
 
-    # Start NewsFeedPoller (Contabo only, requires FINNHUB_API_KEY)
-    if _get_include_contabo() and os.environ.get("FINNHUB_API_KEY"):
-        try:
-            from src.knowledge.news.poller import NewsFeedPoller
-            app.state.news_poller = NewsFeedPoller()
-            app.state.news_poller.start()
-            logger.info("NewsFeedPoller started (60s interval, Story 6-3)")
-        except Exception as e:
-            logger.warning(f"Could not start NewsFeedPoller: {e}")
-    elif _get_include_contabo() and not os.environ.get("FINNHUB_API_KEY"):
-        logger.warning(
-            "NewsFeedPoller NOT started: FINNHUB_API_KEY not set in environment"
-        )
+    # NewsBlackoutService started separately via its own scheduler on startup.
+    # It replaces the old NewsFeedPoller — kill switch is driven by Finnhub
+    # economic calendar data, not the news feed poller.
+    # See: src/market/news_blackout.py
 
     # Start metrics WebSocket broadcast task
     try:
@@ -734,13 +816,7 @@ async def shutdown_event():
     except Exception as e:
         logger.error(f"Error stopping market scanner scheduler: {e}")
 
-    # Stop NewsFeedPoller
-    try:
-        if hasattr(app.state, 'news_poller'):
-            app.state.news_poller.stop()
-            logger.info("NewsFeedPoller stopped")
-    except Exception as e:
-        logger.error(f"Error stopping NewsFeedPoller: {e}")
+    # NewsFeedPoller removed — replaced by NewsBlackoutService (src/market/news_blackout.py)
 
     # Stop Agent Stream Handler
     try:
