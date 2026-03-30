@@ -26,8 +26,39 @@ from backtesting.mode_runner import (
 from backtesting.walk_forward import WalkForwardOptimizer, WalkForwardResult
 from backtesting.monte_carlo import MonteCarloSimulator, MonteCarloResult
 from backtesting.pbo_calculator import PBOCalculator
+from src.data.data_manager import DataManager
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DataSplitConfig:
+    """Configuration for train/test/gap data split.
+
+    Default 30/40/30 split:
+    - 30% training data (in-sample)
+    - 40% test data (out-of-sample)
+    - 30% gap (excluded, prevents look-ahead bias)
+    """
+    train_pct: float = 0.30
+    test_pct: float = 0.40
+    gap_pct: float = 0.30
+
+    def __post_init__(self):
+        total = self.train_pct + self.test_pct + self.gap_pct
+        if abs(total - 1.0) > 0.001:
+            raise ValueError(
+                f"DataSplitConfig percentages ({self.train_pct:.0%} + "
+                f"{self.test_pct:.0%} + {self.gap_pct:.0%}) must sum to 100%"
+            )
+
+    def as_walk_forward_params(self) -> Dict[str, float]:
+        """Return dict suitable for WalkForwardOptimizer constructor."""
+        return {
+            "train_pct": self.train_pct,
+            "test_pct": self.test_pct,
+            "gap_pct": self.gap_pct,
+        }
 
 
 @dataclass
@@ -104,7 +135,8 @@ class FullBacktestPipeline:
         mc_simulations: int = 1000,
         run_pbo: bool = True,
         pbo_blocks: int = 5,
-        pbo_simulations: int = 100
+        pbo_simulations: int = 100,
+        data_split: Optional[DataSplitConfig] = None,
     ):
         """Initialize full backtest pipeline.
 
@@ -117,6 +149,7 @@ class FullBacktestPipeline:
             run_pbo: Whether to run PBO calculation
             pbo_blocks: Number of blocks for PBO calculation
             pbo_simulations: Number of simulations for PBO
+            data_split: Train/test/gap split config (default: 30/40/30)
         """
         self.initial_cash = initial_cash
         self.commission = commission
@@ -126,6 +159,7 @@ class FullBacktestPipeline:
         self.run_pbo = run_pbo
         self.pbo_blocks = pbo_blocks
         self.pbo_simulations = pbo_simulations
+        self.data_split = data_split or DataSplitConfig()
 
         # Initialize PBO calculator
         self._pbo_calculator = PBOCalculator(
@@ -133,11 +167,43 @@ class FullBacktestPipeline:
             n_simulations=pbo_simulations
         )
 
-        logger.info("FullBacktestPipeline initialized")
+        logger.info(
+            f"FullBacktestPipeline initialized: data_split="
+            f"{self.data_split.train_pct:.0%}/{self.data_split.test_pct:.0%}/"
+            f"{self.data_split.gap_pct:.0%}"
+        )
+
+    def fetch_data(self, symbol: str, timeframe: int) -> pd.DataFrame:
+        """Fetch OHLCV data from Dukascopy via DataManager.
+
+        Args:
+            symbol: Trading symbol (e.g., "EURUSD")
+            timeframe: MQL5 timeframe constant
+
+        Returns:
+            DataFrame with OHLCV data (max 730 days)
+        """
+        logger.info(f"Fetching data for {symbol} from Dukascopy...")
+        dm = DataManager(prefer_dukascopy=True)
+
+        # Calculate bar count: 730 days * 24 hours for H1
+        # Use a large count to get max data (approximately 730 days)
+        lookback_days = 730
+        timeframe_minutes = MQL5Timeframe.to_minutes(timeframe)
+        bars_needed = (lookback_days * 24 * 60) // timeframe_minutes
+
+        data = dm.fetch_data(symbol, timeframe, count=bars_needed)
+
+        if len(data) == 0:
+            logger.error(f"No data fetched for {symbol}")
+        else:
+            logger.info(f"Fetched {len(data)} bars for {symbol}")
+
+        return data
 
     def run_all_variants(
         self,
-        data: pd.DataFrame,
+        data: Optional[pd.DataFrame],
         symbol: str,
         timeframe: int,
         strategy_code: str
@@ -145,7 +211,7 @@ class FullBacktestPipeline:
         """Run all 4 backtest variants with comparison analysis.
 
         Args:
-            data: OHLCV data
+            data: OHLCV data (optional, will fetch from Dukascopy if None)
             symbol: Trading symbol
             timeframe: MQL5 timeframe constant
             strategy_code: Python strategy code
@@ -153,6 +219,11 @@ class FullBacktestPipeline:
         Returns:
             BacktestComparison with all results and analysis
         """
+        # Fetch data if not provided
+        if data is None:
+            logger.info(f"No data provided, fetching from Dukascopy for {symbol}")
+            data = self.fetch_data(symbol, timeframe)
+
         logger.info(f"Running all 4 backtest variants for {symbol}")
 
         comparison = BacktestComparison()
@@ -202,7 +273,8 @@ class FullBacktestPipeline:
         # 3. Run Vanilla+Full (Walk-Forward)
         logger.info("Running Vanilla+Full (Walk-Forward) backtest...")
         try:
-            wf_optimizer = WalkForwardOptimizer(train_pct=0.5, test_pct=0.2, gap_pct=0.1)
+            wf_params = self.data_split.as_walk_forward_params()
+            wf_optimizer = WalkForwardOptimizer(**wf_params)
             wf_result = wf_optimizer.optimize(
                 data=data,
                 symbol=symbol,
@@ -232,7 +304,8 @@ class FullBacktestPipeline:
         # 4. Run Spiced+Full (Walk-Forward + Regime Filter)
         logger.info("Running Spiced+Full (Walk-Forward + Regime Filter) backtest...")
         try:
-            wf_optimizer_spiced = WalkForwardOptimizer(train_pct=0.5, test_pct=0.2, gap_pct=0.1)
+            wf_params_spiced = self.data_split.as_walk_forward_params()
+            wf_optimizer_spiced = WalkForwardOptimizer(**wf_params_spiced)
             wf_result_spiced = wf_optimizer_spiced.optimize(
                 data=data,
                 symbol=symbol,
@@ -566,4 +639,5 @@ class FullBacktestPipeline:
 __all__ = [
     'FullBacktestPipeline',
     'BacktestComparison',
+    'DataSplitConfig',
 ]

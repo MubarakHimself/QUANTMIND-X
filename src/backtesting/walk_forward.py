@@ -434,8 +434,12 @@ class WalkForwardOptimizer:
         )
 
 
+# Alias for backward compatibility
+WalkForwardAnalyzer = WalkForwardOptimizer
+
 __all__ = [
     'WalkForwardOptimizer',
+    'WalkForwardAnalyzer',
     'WalkForwardWindow',
     'WalkForwardResult',
 ]
