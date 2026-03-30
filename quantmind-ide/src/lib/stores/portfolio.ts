@@ -164,67 +164,12 @@ function createPortfolioStore() {
           loading: false
         }));
       } catch (error) {
-        // If API fails, use demo data for development
-        const demoAccounts: BrokerAccount[] = [
-          {
-            broker_id: 'broker_ftmo',
-            broker_name: 'FTMO',
-            account_id: 'acc_001',
-            server: 'mt5.ftmo.com',
-            account_type: 'PROP_FIRM',
-            balance: 100000,
-            equity: 98500,
-            margin: 5000,
-            leverage: 100,
-            currency: 'USD',
-            connected: true,
-            is_active: true,
-            status: 'connected',
-            drawdown: 1.5,
-            exposure: 45
-          },
-          {
-            broker_id: 'broker_personal',
-            broker_name: 'Exness',
-            account_id: 'acc_002',
-            server: 'mt5.exness.com',
-            account_type: 'MACHINE_GUN',
-            balance: 8000,
-            equity: 8200,
-            margin: 400,
-            leverage: 500,
-            currency: 'USD',
-            connected: true,
-            is_active: false,
-            status: 'connected',
-            drawdown: 0,
-            exposure: 30
-          }
-        ];
-
-        const totalEquity = demoAccounts.reduce((sum, acc) => sum + acc.equity, 0);
-        const totalBalance = demoAccounts.reduce((sum, acc) => sum + acc.balance, 0);
-        const dailyPnL = totalEquity - totalBalance;
-        const totalDrawdown = Math.max(0, totalBalance - totalEquity);
-        const drawdownPercent = totalBalance > 0 ? (totalDrawdown / totalBalance) * 100 : 0;
-
-        const portfolioSummary: PortfolioSummary = {
-          totalEquity,
-          dailyPnL,
-          totalDrawdown,
-          drawdownPercent
-        };
-
-        let drawdownAlert = null;
-        if (drawdownPercent > 10) {
-          drawdownAlert = { active: true, percent: drawdownPercent };
-        }
-
+        // No mock data — fail gracefully with empty state
         update(state => ({
           ...state,
-          accounts: demoAccounts,
-          portfolioSummary,
-          drawdownAlert,
+          accounts: [],
+          portfolioSummary: { totalEquity: 0, dailyPnL: 0, totalDrawdown: 0, drawdownPercent: 0 },
+          drawdownAlert: null,
           loading: false
         }));
       }
@@ -250,25 +195,11 @@ function createPortfolioStore() {
           loading: false
         }));
       } catch (error) {
-        // Use demo data for development
-        const demoStrategies: Strategy[] = [
-          { id: 'strat_001', name: 'Gold Scalper', type: 'SCALPER' },
-          { id: 'strat_002', name: 'EURUSD HFT', type: 'HFT' },
-          { id: 'strat_003', name: 'Swing Strategy', type: 'SWING' },
-          { id: 'strat_004', name: 'ICT Structure', type: 'STRUCTURAL' }
-        ];
-
-        const demoRules: RoutingRule[] = [
-          { strategy_id: 'strat_001', strategy_name: 'Gold Scalper', account_id: 'acc_001', enabled: true, regime_filter: 'LONDON', strategy_type_filter: 'SCALPER' },
-          { strategy_id: 'strat_002', strategy_name: 'EURUSD HFT', account_id: 'acc_002', enabled: true, regime_filter: 'NEW_YORK', strategy_type_filter: 'HFT' },
-          { strategy_id: 'strat_003', strategy_name: 'Swing Strategy', account_id: 'acc_001', enabled: false, regime_filter: 'ASIAN', strategy_type_filter: 'SWING' },
-          { strategy_id: 'strat_004', strategy_name: 'ICT Structure', account_id: 'acc_002', enabled: true, regime_filter: 'LONDON', strategy_type_filter: 'STRUCTURAL' }
-        ];
-
+        // No mock data — fail gracefully with empty state
         update(state => ({
           ...state,
-          routingRules: demoRules,
-          strategies: demoStrategies,
+          routingRules: [],
+          strategies: [],
           loading: false
         }));
       }
@@ -285,7 +216,7 @@ function createPortfolioStore() {
           body: JSON.stringify({ strategy_id: strategyId, enabled })
         });
       } catch (error) {
-        // Fallback: just update local state for demo
+        console.error('[Portfolio] Failed to toggle routing rule:', error);
       }
 
       update(state => ({
@@ -342,17 +273,10 @@ function createPortfolioStore() {
           loading: false
         }));
       } catch (error) {
-        // Use demo data for development
-        const demoAttribution: StrategyAttribution[] = [
-          { strategy_id: 'strat_001', strategy_name: 'Gold Scalper', equity_contribution: 45000, pnl_contribution: 3200, drawdown_contribution: -500, portfolio_percent: 42.5, broker_account: 'acc_001', broker_name: 'FTMO' },
-          { strategy_id: 'strat_002', strategy_name: 'EURUSD HFT', equity_contribution: 28000, pnl_contribution: 1850, drawdown_contribution: -200, portfolio_percent: 26.4, broker_account: 'acc_002', broker_name: 'Exness' },
-          { strategy_id: 'strat_003', strategy_name: 'Swing Strategy', equity_contribution: 18000, pnl_contribution: -450, drawdown_contribution: -800, portfolio_percent: 17.0, broker_account: 'acc_001', broker_name: 'FTMO' },
-          { strategy_id: 'strat_004', strategy_name: 'ICT Structure', equity_contribution: 15000, pnl_contribution: 1200, drawdown_contribution: -100, portfolio_percent: 14.1, broker_account: 'acc_002', broker_name: 'Exness' }
-        ];
-
+        // No mock data — fail gracefully with empty state
         update(state => ({
           ...state,
-          attribution: demoAttribution,
+          attribution: [],
           loading: false
         }));
       }
@@ -392,26 +316,10 @@ function createPortfolioStore() {
           loading: false
         }));
       } catch (error) {
-        // Use demo data for development
-        const strategies = ['Gold Scalper', 'EURUSD HFT', 'Swing Strategy', 'ICT Structure'];
-        const demoCorrelation: CorrelationCell[] = [];
-
-        // Generate NxN correlation matrix (lower triangle)
-        for (let i = 0; i < strategies.length; i++) {
-          for (let j = 0; j <= i; j++) {
-            const correlation = i === j ? 1.0 : Math.round((Math.random() * 2 - 1) * 100) / 100;
-            demoCorrelation.push({
-              strategy_a: strategies[i],
-              strategy_b: strategies[j],
-              correlation,
-              data_period: '2026-01-01 to 2026-03-15'
-            });
-          }
-        }
-
+        // No mock data — fail gracefully with empty state
         update(state => ({
           ...state,
-          correlationMatrix: demoCorrelation,
+          correlationMatrix: [],
           loading: false
         }));
       }
@@ -436,22 +344,10 @@ function createPortfolioStore() {
           loading: false
         }));
       } catch (error) {
-        // Use demo data for development
-        const demoPerformance: PerformanceMetrics = {
-          total_return: 8.5,
-          sharpe_ratio: 1.82,
-          max_drawdown: -4.2,
-          win_rate: 62.5,
-          profit_factor: 2.15,
-          avg_trade: 125.50,
-          total_trades: 156,
-          profitable_trades: 98,
-          losing_trades: 58
-        };
-
+        // No mock data — fail gracefully with empty state
         update(state => ({
           ...state,
-          performance: demoPerformance,
+          performance: null,
           loading: false
         }));
       }

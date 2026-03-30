@@ -163,13 +163,9 @@
         }
         sessionsError = false;
       } else {
-        // Fallback mock data for development
-        sessions = {
-          ASIAN: { active: false, name: 'Asian Session' },
-          LONDON: { active: true, name: 'London Session' },
-          NEW_YORK: { active: false, name: 'New York Session' }
-        };
-        currentSession = 'LONDON';
+        // No mock data — indicate error state
+        sessions = {};
+        sessionsError = true;
       }
 
       // Fetch market state using helper
@@ -217,7 +213,7 @@
       }
 
       // Simulate node health check (in real app, this would be an API call)
-      // For now, simulate Contabo sometimes being unreachable
+      // For now, simulate node_backend sometimes being unreachable
       const randomCheck = Math.random();
       if (randomCheck < 0.1) {
         contaboDegraded = true;
@@ -400,13 +396,13 @@
       <div class="segment nodes clickable" onclick={showNodeStatus} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && showNodeStatus()}>
         <span class="segment-label">Nodes</span>
         <div class="node-dots">
-          <!-- Cloudzy -->
-          <div class="node-dot" title="Cloudzy: Trading Node">
+          <!-- node_trading -->
+          <div class="node-dot" title="node_trading: Trading Node">
             <Circle size={8} fill={getNodeStatusColor(nodeHealth.cloudzy.status)} stroke="none" />
           </div>
           <span class="node-sep">·</span>
-          <!-- Contabo -->
-          <div class="node-dot" class:degraded={contaboDegraded} title={contaboDegraded ? 'Contabo: Unreachable' : 'Contabo: Agent Node'}>
+          <!-- node_backend -->
+          <div class="node-dot" class:degraded={contaboDegraded} title={contaboDegraded ? 'node_backend: Unreachable' : 'node_backend: Agent Node'}>
             {#if contaboDegraded}
               <WifiOff size={10} class="node-icon degraded" />
             {:else}
@@ -522,13 +518,13 @@
       <div class="segment nodes clickable" onclick={showNodeStatus} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && showNodeStatus()}>
         <span class="segment-label">Nodes</span>
         <div class="node-dots">
-          <!-- Cloudzy -->
-          <div class="node-dot" title="Cloudzy: Trading Node">
+          <!-- node_trading -->
+          <div class="node-dot" title="node_trading: Trading Node">
             <Circle size={8} fill={getNodeStatusColor(nodeHealth.cloudzy.status)} stroke="none" />
           </div>
           <span class="node-sep">·</span>
-          <!-- Contabo -->
-          <div class="node-dot" class:degraded={contaboDegraded} title={contaboDegraded ? 'Contabo: Unreachable' : 'Contabo: Agent Node'}>
+          <!-- node_backend -->
+          <div class="node-dot" class:degraded={contaboDegraded} title={contaboDegraded ? 'node_backend: Unreachable' : 'node_backend: Agent Node'}>
             {#if contaboDegraded}
               <WifiOff size={10} class="node-icon degraded" />
             {:else}
