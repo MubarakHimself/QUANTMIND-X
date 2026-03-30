@@ -27,9 +27,14 @@
 
   const API_BASE = "/api";
 
-  let activeAgent = $state("copilot");
+  // Always use Copilot - FloorManager is never called directly from UI
+  // Copilot internally delegates to FloorManager when needed
+  let activeAgent = "copilot";
   let message = $state("");
   let showDelegationUI = $state(false);
+
+  // Track delegated tasks (populated when Copilot internally delegates to FloorManager)
+  let activeDelegatedTasks: Array<{ taskId: string; timestamp: number }> = $state([]);
 
   // Skills state
   let availableSkills: Array<{ id: string; name: string; description: string; enabled: boolean }> = $state([]);
@@ -80,6 +85,9 @@
   let settingsOpen = $state(false);
   let textareaElement: HTMLTextAreaElement = $state();
   let messagesContainer: HTMLDivElement = $state();
+
+  // Derived state: show badge when FloorManager is invoked via delegation
+  let isCoordinatingDepartments = $derived(activeDelegatedTasks.length > 0);
 
   // Auto-resize textarea
   function autoResize() {
@@ -293,21 +301,16 @@
           { role: "assistant", content: clientResponse, agent: activeAgent },
         ];
       } else {
-        // Send to backend with SSE streaming support
-        const res = await fetch(`${API_BASE}/chat/send`, {
+        // Send to Copilot endpoint - Copilot internally delegates to FloorManager when needed
+        const res = await fetch(`${API_BASE}/copilot/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: userMessage,
-            agent_id: activeAgent,
             history: messages
               .slice(0, -1)
               .filter((m) => m.role !== "thought")
               .map((m) => ({ role: m.role, content: m.content })),
-            model: aiSettings.model,
-            api_keys: apiKeys,
-            skill_id: selectedSkill || null,
-            stream: true,
           }),
         });
 
@@ -315,91 +318,25 @@
           throw new Error(`API Error: ${res.statusText}`);
         }
 
-        const contentType = res.headers.get("content-type") || "";
+        const data = await res.json();
 
-        if (contentType.includes("text/event-stream") || contentType.includes("text/plain")) {
-          // SSE streaming path
-          const reader = res.body?.getReader();
-          const decoder = new TextDecoder();
-          let fullContent = "";
-          let lineBuffer = "";
-          let assistantAdded = false;
-
-          if (reader) {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-
-              lineBuffer += decoder.decode(value, { stream: true });
-              const lines = lineBuffer.split("\n");
-              lineBuffer = lines.pop() ?? "";
-
-              for (const line of lines) {
-                if (!line.startsWith("data: ")) continue;
-                try {
-                  const event = JSON.parse(line.slice(6));
-
-                  if (event.type === "thought") {
-                    messages = [...messages, {
-                      role: "thought",
-                      content: event.content,
-                      department: event.department,
-                      thought_type: "reasoning",
-                    }];
-                    await tick();
-                    scrollToBottom();
-                  } else if (event.type === "content" && event.delta) {
-                    fullContent += event.delta;
-                    if (!assistantAdded) {
-                      messages = [...messages, {
-                        role: "assistant",
-                        content: fullContent,
-                        agent: activeAgent,
-                      }];
-                      assistantAdded = true;
-                    } else {
-                      // Update last message in place
-                      const updated = [...messages];
-                      updated[updated.length - 1] = { ...updated[updated.length - 1], content: fullContent };
-                      messages = updated;
-                    }
-                    await tick();
-                    scrollToBottom();
-                  } else if (event.type === "done") {
-                    if (!assistantAdded && fullContent) {
-                      messages = [...messages, {
-                        role: "assistant",
-                        content: fullContent,
-                        agent: activeAgent,
-                      }];
-                    }
-                  }
-                } catch {
-                  // Ignore malformed SSE lines
-                }
-              }
-            }
-            // Flush any remaining content
-            if (!assistantAdded && fullContent) {
-              messages = [...messages, {
-                role: "assistant",
-                content: fullContent,
-                agent: activeAgent,
-              }];
-            }
-          }
-        } else {
-          // Fallback: non-streaming JSON response
-          const data = await res.json();
-          messages = [
-            ...messages,
-            {
-              role: "assistant",
-              content: data.reply,
-              agent: data.agent_id,
-            },
-          ];
+        // Track delegation if FloorManager was invoked
+        if (data.delegation) {
+          activeDelegatedTasks = [...activeDelegatedTasks, {
+            taskId: `delegated-${Date.now()}`,
+            timestamp: Date.now()
+          }];
         }
+
+        // Add assistant response
+        messages = [
+          ...messages,
+          {
+            role: "assistant",
+            content: data.reply || "Copilot is processing your request...",
+            agent: "copilot",
+          },
+        ];
       }
     } catch (e) {
       console.error("Chat error:", e);
@@ -447,12 +384,26 @@
   }
 
   function switchAgent(agentId: string) {
-    activeAgent = agentId;
+    // Always use Copilot - FloorManager is never called directly from UI
+    // Copilot internally delegates to FloorManager when needed
+    if (agentId !== "copilot") {
+      // Show message that we're always using Copilot
+      messages = [
+        ...messages,
+        {
+          role: "assistant",
+          content: "I'm always here as your Copilot! I can help with everything directly, and will coordinate with other departments when needed.",
+          agent: "copilot",
+        },
+      ];
+      return;
+    }
+    // Reset to copilot welcome
     messages = [
       {
         role: "assistant",
-        content: getWelcomeMessage(agentId),
-        agent: agentId,
+        content: getWelcomeMessage("copilot"),
+        agent: "copilot",
       },
     ];
   }
@@ -607,6 +558,13 @@
         </button>
       {/each}
     </div>
+
+    {#if isCoordinatingDepartments}
+      <div class="coordinating-badge">
+        <Loader size={12} class="spinning" />
+        <span>Coordinating departments...</span>
+      </div>
+    {/if}
 
     <div class="header-actions">
       <button class="icon-btn" title="AI Settings" onclick={toggleSettings}>
@@ -805,7 +763,7 @@
 
     <div class="input-footer">
       <div class="input-actions">
-        <button class="action-btn" title="Attach Context">
+        <button class="action-btn" title="Attach Context" onclick={() => dispatch('attachContext')}>
           <Paperclip size={14} />
           <span>Context</span>
         </button>
@@ -831,14 +789,6 @@
             {/each}
           </select>
         </div>
-        <button
-          class="action-btn"
-          title="Model Config"
-          onclick={toggleSettings}
-        >
-          <Settings size={14} />
-          <span>Config</span>
-        </button>
       </div>
 
       <div class="input-actions">
@@ -982,6 +932,21 @@
     display: flex;
     gap: 4px;
     align-items: center;
+  }
+
+  .coordinating-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: rgba(249, 115, 22, 0.15);
+    border: 1px solid rgba(249, 115, 22, 0.3);
+    border-radius: 12px;
+    color: #f97316;
+    font-size: 10px;
+    font-weight: 500;
+    margin-left: auto;
+    margin-right: 8px;
   }
 
   .icon-btn {

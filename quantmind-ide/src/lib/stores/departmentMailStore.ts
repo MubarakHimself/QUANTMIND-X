@@ -7,7 +7,7 @@
 
 import { writable, derived, get } from 'svelte/store';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = '/api/departments/mail';
 
 // Types
 export type MessageType = 'dispatch' | 'result' | 'question' | 'status' | 'error' | 'approval_request' | 'approval_approved' | 'approval_rejected';
@@ -176,7 +176,7 @@ export async function fetchDepartmentMail(department: Department): Promise<void>
   error.set(null);
 
   try {
-    const response = await fetch(`${API_BASE}/trading-floor/mail/${department}`);
+    const response = await fetch(`${API_BASE}/inbox/${department}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch mail: ${response.statusText}`);
     }
@@ -208,7 +208,7 @@ export async function fetchDepartmentMail(department: Department): Promise<void>
 
 export async function markMessageRead(messageId: string): Promise<void> {
   try {
-    const response = await fetch(`${API_BASE}/trading-floor/mail/${messageId}/read`, {
+    const response = await fetch(`${API_BASE}/${messageId}/read`, {
       method: 'POST',
     });
 
@@ -252,7 +252,7 @@ export async function delegateToFloor(
   error.set(null);
 
   try {
-    const response = await fetch(`${API_BASE}/trading-floor/delegate`, {
+    const response = await fetch(`http://localhost:8000/api/trading-floor/delegate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
