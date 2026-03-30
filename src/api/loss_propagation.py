@@ -87,23 +87,10 @@ class LossPropagationService:
 
         In production, this would query src/risk/physics/correlation_sensor.py
         """
-        # Mock correlation matrix for demo
-        # In production: query correlation_sensor or portfolio correlation API
-
-        strategies = ["STRAT_A", "STRAT_B", "STRAT_C", "STRAT_D", "STRAT_E"]
-        n = len(strategies)
-
-        # Create mock correlation matrix
-        # Higher correlation between similar strategies
-        corr_matrix = np.array([
-            [1.0, 0.7, 0.3, 0.2, 0.1],
-            [0.7, 1.0, 0.6, 0.3, 0.2],
-            [0.3, 0.6, 1.0, 0.8, 0.4],
-            [0.2, 0.3, 0.8, 1.0, 0.5],
-            [0.1, 0.2, 0.4, 0.5, 1.0],
-        ])
-
-        return {s: corr_matrix[i] for i, s in enumerate(strategies)}
+        raise NotImplementedError(
+            "Loss propagation requires real correlation data from correlation sensor. "
+            "Not wired to production data."
+        )
 
     async def get_correlated_strategies(
         self,
@@ -301,7 +288,10 @@ async def trigger_loss_propagation(
     Returns: List of affected strategies with adjusted Kelly fractions.
     """
     logger.info(f"Loss propagation triggered for {breach.strategy_id}")
-    return await _loss_propagation_service.trigger_loss_propagation(breach)
+    try:
+        return await _loss_propagation_service.trigger_loss_propagation(breach)
+    except NotImplementedError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 @router.get("/loss-propagation/history")

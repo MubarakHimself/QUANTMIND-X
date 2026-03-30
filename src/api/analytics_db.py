@@ -21,14 +21,12 @@ DATA_DIR = os.path.join(os.getcwd(), "data", "backtests")
 DB_PATH = os.path.join(os.getcwd(), "data", "analytics.duckdb")
 
 def init_db():
-    """Initialize DuckDB and mock data if needed."""
+    """Initialize DuckDB connection."""
     os.makedirs(DATA_DIR, exist_ok=True)
-    
-    # Check if we have data, if not generate some
+
     if not os.listdir(DATA_DIR):
-        logger.info("No backtest data found. Generating mock parquet files...")
-        generate_mock_data()
-        
+        logger.warning(f"No backtest data found in {DATA_DIR}. Analytics will return empty results.")
+
     logger.info(f"Analytics DB initialized. Watching {DATA_DIR}")
 
 def get_connection():

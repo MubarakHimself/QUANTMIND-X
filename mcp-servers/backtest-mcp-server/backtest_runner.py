@@ -113,12 +113,10 @@ class BacktestRunner:
             # OPTIMIZED: Try to get cached data first (Task Group 6.2)
             df = self._get_cached_data(config)
             if df is None:
-                # Generate mock market data for backtesting
-                df = self._generate_mock_data(config)
-                self._cache_data(config, df)
-                logs.append(f"Generated {len(df)} data points for backtesting")
-            else:
-                logs.append(f"Using cached data ({len(df)} points)")
+                raise BacktestDataError(
+                    "No market data available. "
+                    "Wire to data/ directory or AssetHub for production use."
+                )
 
             if len(df) < 50:
                 raise BacktestDataError(

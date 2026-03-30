@@ -43,15 +43,10 @@ async def run_backtest(request: BacktestRunRequest):
         from src.backtesting.mt5_engine import MQL5Timeframe
         from src.api.ws_logger import setup_backtest_logging
     except ImportError as e:
-        logger.warning(f"Backtest modules not available, using mock: {e}")
-        # Return mock response for development
-        import uuid
-        backtest_id = str(uuid.uuid4())
-        return {
-            "backtest_id": backtest_id,
-            "status": "running",
-            "message": f"Backtest {backtest_id} started (mock mode)"
-        }
+        raise ImportError(
+            f"Backtest modules not available: {e}. "
+            "Cannot run backtest without backtesting infrastructure."
+        ) from e
 
     # Generate unique backtest ID
     backtest_id = str(uuid.uuid4())

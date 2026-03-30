@@ -35,23 +35,19 @@ def generate_mock_data(days=100):
 async def run_backtest(code_content: str, symbol: str = "EURUSD", timeframe: str = "H1") -> str:
     """
     Run a fast backtest on the provided python strategy code.
-    
+
     Args:
         code_content: The python source code inheriting from backtrader.Strategy
         symbol: Symbol to test (e.g. EURUSD)
         timeframe: Timeframe (e.g. H1)
     """
     if not QuantMindBacktester:
-         return json.dumps({"error": "QuantMindBacktester module not found."})
+         return json.dumps({"error": "QuantMindBacktester module not found.", "success": False})
 
-    # For MVP, we use mock data. 
-    # Real implementation would fetch from `data/` or `AssetHub`.
-    data = generate_mock_data()
-    
-    tester = QuantMindBacktester()
-    result = tester.run(code_content, data)
-    
-    return json.dumps(result, indent=2)
+    raise NotImplementedError(
+        "Backtest requires real market data. "
+        "Wire to data/ directory or AssetHub for production use."
+    )
 
 if __name__ == "__main__":
     mcp.run()

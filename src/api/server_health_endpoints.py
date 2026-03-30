@@ -122,37 +122,20 @@ def get_cloudzy_metrics() -> Dict[str, Any]:
     """
     Get metrics from Cloudzy node.
     In a real deployment, this would query the Cloudzy server via API or SSH.
-    For now, we return simulated data that represents the remote node.
+    Raises RuntimeError if Cloudzy is not configured/available.
     """
+    # Check if Cloudzy is reachable via environment or config
+    cloudzy_reachable = os.getenv("CLOUDZY_REACHABLE", "false").lower() == "true"
+
+    if not cloudzy_reachable:
+        raise RuntimeError("Cloudzy node not configured. Set CLOUDZY_REACHABLE=true to enable.")
+
     # In production, this would make an HTTP request to the Cloudzy node
     # or use a service registry to get the metrics
-    # For now, return placeholder that indicates no direct connection
-
-    # Check if Cloudzy is reachable via environment or config
-    cloudzy_reachable = os.getenv("CLOUDZY_REACHABLE", "true").lower() == "true"
-
-    if cloudzy_reachable:
-        # In a real implementation, this would fetch from the Cloudzy node
-        # For now, return default/placeholder metrics
-        return {
-            "cpu": 0.0,
-            "memory": 0.0,
-            "disk": 0.0,
-            "latency_ms": 0.0,
-            "uptime_seconds": 0,
-            "last_heartbeat": datetime.now(timezone.utc).isoformat(),
-            "status": "unknown"
-        }
-    else:
-        return {
-            "cpu": 0.0,
-            "memory": 0.0,
-            "disk": 0.0,
-            "latency_ms": 0.0,
-            "uptime_seconds": 0,
-            "last_heartbeat": datetime.now(timezone.utc).isoformat(),
-            "status": "disconnected"
-        }
+    raise NotImplementedError(
+        "Cloudzy metrics collection not yet implemented. "
+        "Wire to actual Cloudzy API or SSH metrics collection."
+    )
 
 
 @router.get("/metrics", response_model=ServerHealthResponse)
@@ -167,7 +150,13 @@ async def get_server_health_metrics():
     contabo_metrics = get_system_metrics()
 
     # Get Cloudzy metrics (remote node)
-    cloudzy_metrics = get_cloudzy_metrics()
+    try:
+        cloudzy_metrics = get_cloudzy_metrics()
+    except (RuntimeError, NotImplementedError) as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Cloudzy metrics unavailable: {e}"
+        )
 
     return ServerHealthResponse(
         contabo=NodeMetrics(**contabo_metrics),
@@ -186,8 +175,14 @@ async def get_contabo_metrics():
 @router.get("/metrics/cloudzy", response_model=NodeMetrics)
 async def get_cloudzy_metrics_endpoint():
     """Get health metrics for Cloudzy node (trading server)."""
-    metrics = get_cloudzy_metrics()
-    return NodeMetrics(**metrics)
+    try:
+        metrics = get_cloudzy_metrics()
+        return NodeMetrics(**metrics)
+    except (RuntimeError, NotImplementedError) as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Cloudzy metrics unavailable: {e}"
+        )
 
 
 class ThresholdConfig(BaseModel):

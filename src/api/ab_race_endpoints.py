@@ -85,34 +85,9 @@ class VariantMetricsService:
         - Backtest results
         - Live trading stats
         """
-        # Mock implementation - returns simulated data
-        # In production: query paper_trading_positions, backtest_results tables
-        import random
-
-        trade_count = random.randint(20, 200)
-        pnl = random.uniform(-500, 2000)
-        drawdown = random.uniform(0, 25)
-        sharpe = random.uniform(-0.5, 3.5)
-        win_rate = random.uniform(30, 70)
-
-        wins = int(trade_count * win_rate / 100)
-        losses = trade_count - wins
-
-        avg_profit = abs(pnl * 0.7 / max(wins, 1)) if wins > 0 else 0
-        avg_loss = abs(pnl * 0.3 / max(losses, 1)) if losses > 0 else 0
-        profit_factor = (avg_profit * wins) / max(avg_loss * losses, 0.001)
-
-        return VariantMetrics(
-            pnl=round(pnl, 2),
-            trade_count=trade_count,
-            drawdown=round(drawdown, 2),
-            sharpe=round(sharpe, 2),
-            win_rate=round(win_rate, 2),
-            avg_profit=round(avg_profit, 2),
-            avg_loss=round(avg_loss, 2),
-            profit_factor=round(profit_factor, 2),
-            max_consecutive_wins=random.randint(2, 10),
-            max_consecutive_losses=random.randint(1, 8),
+        raise NotImplementedError(
+            "Variant metrics must be queried from real trading database. "
+            "This endpoint is not wired to production data."
         )
 
     async def get_trade_history(
@@ -125,16 +100,10 @@ class VariantMetricsService:
 
         Returns list of trade P&L values.
         """
-        # Mock: return simulated trade history
-        import random
-        trades = []
-        for _ in range(random.randint(50, 200)):
-            # Random trade outcome with bias towards profit
-            if random.random() < 0.55:
-                trades.append(random.uniform(10, 200))
-            else:
-                trades.append(random.uniform(-200, -10))
-        return trades
+        raise NotImplementedError(
+            "Trade history must be queried from real trading database. "
+            "This endpoint is not wired to production data."
+        )
 
 
 # Singleton instance
@@ -205,26 +174,29 @@ async def compare_variants(
     """
     logger.info(f"Comparing variants {variant_a} vs {variant_b} for strategy {strategy_id}")
 
-    # Get metrics for both variants
-    metrics_a = await _metrics_service.get_variant_metrics(strategy_id, variant_a)
-    metrics_b = await _metrics_service.get_variant_metrics(strategy_id, variant_b)
+    try:
+        # Get metrics for both variants
+        metrics_a = await _metrics_service.get_variant_metrics(strategy_id, variant_a)
+        metrics_b = await _metrics_service.get_variant_metrics(strategy_id, variant_b)
 
-    # Get trade history for statistical significance
-    trades_a = await _metrics_service.get_trade_history(strategy_id, variant_a)
-    trades_b = await _metrics_service.get_trade_history(strategy_id, variant_b)
+        # Get trade history for statistical significance
+        trades_a = await _metrics_service.get_trade_history(strategy_id, variant_a)
+        trades_b = await _metrics_service.get_trade_history(strategy_id, variant_b)
 
-    # Calculate statistical significance
-    stat_sig = calculate_statistical_significance(trades_a, trades_b)
+        # Calculate statistical significance
+        stat_sig = calculate_statistical_significance(trades_a, trades_b)
 
-    return ABComparisonResponse(
-        strategy_id=strategy_id,
-        variant_a=variant_a,
-        variant_b=variant_b,
-        metrics_a=metrics_a,
-        metrics_b=metrics_b,
-        statistical_significance=stat_sig,
-        timestamp=datetime.utcnow().isoformat(),
-    )
+        return ABComparisonResponse(
+            strategy_id=strategy_id,
+            variant_a=variant_a,
+            variant_b=variant_b,
+            metrics_a=metrics_a,
+            metrics_b=metrics_b,
+            statistical_significance=stat_sig,
+            timestamp=datetime.utcnow().isoformat(),
+        )
+    except NotImplementedError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 @router.get("/variants/{strategy_id}/metrics")
@@ -239,7 +211,10 @@ async def get_variant_metrics(
 
     Returns: P&L, trade count, drawdown, Sharpe ratio.
     """
-    return await _metrics_service.get_variant_metrics(strategy_id, variant_id)
+    try:
+        return await _metrics_service.get_variant_metrics(strategy_id, variant_id)
+    except NotImplementedError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 # ============================================================================

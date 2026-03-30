@@ -339,19 +339,8 @@ class TradingControlAPIHandler:
                 return result
 
             except ImportError as ie:
-                logger.warning(f"MT5 bridge not available: {ie}, returning simulated response")
-                # Fallback: Return simulated response if MT5 bridge unavailable
-                result = ClosePositionResponse(
-                    success=True,
-                    filled_price=1.0850,
-                    slippage=0.5,
-                    final_pnl=request.position_ticket % 100 - 50,
-                    message="Position close simulated (MT5 bridge not available)"
-                )
-                audit_entry["status"] = "simulated"
-                audit_entry["note"] = "MT5 bridge not available"
-                logger.info(f"[AUDIT] Manual close simulated: {audit_entry}")
-                return result
+                logger.error(f"MT5 bridge not available: {ie}")
+                raise RuntimeError(f"MT5 bridge not available: {ie}") from ie
 
         except Exception as e:
             logger.error(f"Error closing position {request.position_ticket}: {e}")

@@ -14,7 +14,6 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-import random
 
 from src.api.pagination import PaginatedResponse, DEFAULT_LIMIT, DEFAULT_OFFSET, MAX_LIMIT
 
@@ -73,131 +72,52 @@ class HouseMoneyState(BaseModel):
     houseMoneyAmount: float
     mode: str  # 'conservative', 'normal', 'aggressive'
 
-# Mock data for development
-def get_mock_router_state() -> Dict[str, Any]:
-    """Get mock router state for development."""
-    return {
-        "active": True,
-        "mode": "auction",
-        "auctionInterval": 5000,
-        "lastAuction": datetime.utcnow().isoformat(),
-        "queuedSignals": 0,
-        "activeAuctions": 1
-    }
-
-def get_mock_market_state() -> Dict[str, Any]:
-    """Get mock market state."""
-    return {
-        "regime": {
-            "quality": 0.82,
-            "trend": "bullish",
-            "chaos": 18.5,
-            "volatility": "medium"
-        },
-        "symbols": [
-            {"symbol": "EURUSD", "price": 1.0876, "change": 0.12, "spread": 1.2},
-            {"symbol": "GBPUSD", "price": 1.2654, "change": -0.08, "spread": 1.5},
-            {"symbol": "USDJPY", "price": 149.85, "change": 0.25, "spread": 0.8}
-        ]
-    }
-
-def get_mock_bots() -> List[Dict[str, Any]]:
-    """Get mock bot signals."""
-    return [
-        {
-            "id": "ict-eur",
-            "name": "ICT Scalper",
-            "symbol": "EURUSD",
-            "status": "ready",
-            "signalStrength": 0.85,
-            "conditions": ["fvg", "order_block", "london_session"],
-            "score": 8.5,
-            "lastSignal": datetime.utcnow().isoformat()
-        },
-        {
-            "id": "smc-gbp",
-            "name": "SMC Reversal",
-            "symbol": "GBPUSD",
-            "status": "ready",
-            "signalStrength": 0.72,
-            "conditions": ["choch", "bos", "session_filter"],
-            "score": 7.2,
-            "lastSignal": datetime.utcnow().isoformat()
-        }
-    ]
-
-def get_mock_auctions() -> List[Dict[str, Any]]:
-    """Get mock auction queue."""
-    return [
-        {
-            "id": "auction-1",
-            "timestamp": datetime.utcnow().isoformat(),
-            "participants": ["ict-eur", "smc-gbp"],
-            "winner": "ict-eur",
-            "winningScore": 8.5,
-            "status": "completed"
-        }
-    ]
-
-def get_mock_rankings() -> Dict[str, List[Dict[str, Any]]]:
-    """Get mock bot rankings."""
-    return {
-        "daily": [
-            {"botId": "ict-eur", "name": "ICT Scalper", "profit": 245.80, "trades": 12, "winRate": 75.0},
-            {"botId": "smc-gbp", "name": "SMC Reversal", "profit": 128.50, "trades": 8, "winRate": 62.5},
-            {"botId": "breakthrough-eur", "name": "Breakthrough", "profit": 0.0, "trades": 0, "winRate": 0.0}
-        ],
-        "weekly": [
-            {"botId": "ict-eur", "name": "ICT Scalper", "profit": 1245.60, "trades": 58, "winRate": 70.7},
-            {"botId": "smc-gbp", "name": "SMC Reversal", "profit": 678.30, "trades": 42, "winRate": 64.3}
-        ]
-    }
-
-def get_mock_correlations() -> List[Dict[str, Any]]:
-    """Get mock correlation data."""
-    return [
-        {"pair": "EURUSD/GBPUSD", "value": 0.72, "status": "warning"},
-        {"pair": "EURUSD/USDJPY", "value": -0.45, "status": "ok"},
-        {"pair": "GBPUSD/USDJPY", "value": -0.38, "status": "ok"}
-    ]
-
-def get_mock_house_money() -> Dict[str, Any]:
-    """Get mock house money state."""
-    return {
-        "dailyProfit": 374.30,
-        "threshold": 0.5,
-        "houseMoneyAmount": 187.15,
-        "mode": "aggressive"
-    }
 
 # Endpoints
 
 @router.get("/state")
 async def get_router_state() -> RouterState:
     """Get current router state."""
-    # Get real router mode from settings
-    from src.api.settings_endpoints import load_risk_settings
-    risk_settings = load_risk_settings()
-    router_mode = getattr(risk_settings, 'routerMode', 'auction')
+    if _strategy_router is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Router not configured. Set global StrategyRouter via set_strategy_router()."
+        )
 
-    # Get other state from mock (or real implementation if available)
-    mock_state = get_mock_router_state()
-    mock_state["mode"] = router_mode
-
-    return RouterState(**mock_state)
+    status = _strategy_router.get_status()
+    return RouterState(
+        active=status.get("router", {}).get("active", False),
+        mode=status.get("router", {}).get("mode", "auction"),
+        auctionInterval=status.get("router", {}).get("auction_interval_ms", 5000),
+        lastAuction=status.get("router", {}).get("last_auction"),
+        queuedSignals=status.get("router", {}).get("queued_signals", 0),
+        activeAuctions=status.get("router", {}).get("active_auctions", 0),
+    )
 
 @router.post("/toggle")
 async def toggle_router(active: bool = None) -> Dict[str, Any]:
     """Toggle router on/off."""
-    state = get_mock_router_state()
+    if _strategy_router is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Router not configured"
+        )
+
     if active is not None:
-        state["active"] = active
-    return {"success": True, "active": state["active"]}
+        _strategy_router.set_active(active)
+    return {"success": True, "active": _strategy_router.is_active()}
 
 @router.post("/settings")
 async def save_router_settings(settings: RouterState) -> Dict[str, Any]:
     """Save router settings."""
-    # For now, just return success - in production this would persist
+    if _strategy_router is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Router not configured"
+        )
+
+    _strategy_router.set_mode(settings.mode)
+    _strategy_router.set_auction_interval(settings.auctionInterval)
     return {
         "success": True,
         "mode": settings.mode,
@@ -207,7 +127,51 @@ async def save_router_settings(settings: RouterState) -> Dict[str, Any]:
 @router.get("/market")
 async def get_market_state() -> Dict[str, Any]:
     """Get current market state including regime and symbols."""
-    return get_mock_market_state()
+    if _strategy_router is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Router not configured"
+        )
+
+    status = _strategy_router.get_status()
+    sentinel = status.get("sentinel", {})
+
+    # Get symbol data from MT5 bridge if available
+    symbols = []
+    try:
+        from src.data.brokers.mt5_socket_adapter import get_mt5_adapter
+        adapter = get_mt5_adapter()
+        if adapter:
+            for symbol in ["EURUSD", "GBPUSD", "USDJPY"]:
+                try:
+                    tick = adapter.get_tick(symbol)
+                    if tick:
+                        symbols.append({
+                            "symbol": symbol,
+                            "price": tick.bid,
+                            "change": 0.0,
+                            "spread": tick.spread
+                        })
+                except Exception:
+                    pass
+    except ImportError:
+        pass
+
+    if not symbols:
+        raise HTTPException(
+            status_code=503,
+            detail="Market data not available. MT5 adapter not connected."
+        )
+
+    return {
+        "regime": {
+            "quality": sentinel.get("regime_quality", 0.0),
+            "trend": sentinel.get("current_regime", "UNKNOWN"),
+            "chaos": sentinel.get("chaos", 0.0),
+            "volatility": sentinel.get("volatility", "UNKNOWN")
+        },
+        "symbols": symbols
+    }
 
 @router.get("/bots", response_model=PaginatedResponse[BotSignal])
 async def get_bot_signals(
@@ -215,7 +179,29 @@ async def get_bot_signals(
     offset: int = Query(DEFAULT_OFFSET, ge=0, description="Number of items to skip")
 ) -> PaginatedResponse[BotSignal]:
     """Get current bot signals with pagination."""
-    all_bots = [BotSignal(**bot) for bot in get_mock_bots()]
+    if _strategy_router is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Router not configured"
+        )
+
+    commander = _strategy_router.commander
+    all_bots = []
+
+    # Get bots from BotRegistry if available
+    if commander.bot_registry:
+        for manifest in commander.bot_registry.list_all():
+            all_bots.append(BotSignal(
+                id=manifest.bot_id,
+                name=manifest.name,
+                symbol=manifest.symbols[0] if manifest.symbols else "UNKNOWN",
+                status="ready",
+                signalStrength=0.0,
+                conditions=[],
+                score=0.0,
+                lastSignal=None
+            ))
+
     total = len(all_bots)
     paginated = all_bots[offset:offset + limit]
 
@@ -232,7 +218,17 @@ async def get_auction_queue(
     offset: int = Query(DEFAULT_OFFSET, ge=0, description="Number of items to skip")
 ) -> PaginatedResponse[Auction]:
     """Get current auction queue with pagination."""
-    all_auctions = [Auction(**auction) for auction in get_mock_auctions()]
+    if _strategy_router is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Router not configured"
+        )
+
+    # Get real auctions from router
+    status = _strategy_router.get_status()
+    auctions_data = status.get("auctions", [])
+
+    all_auctions = [Auction(**a) for a in auctions_data]
     total = len(all_auctions)
     paginated = all_auctions[offset:offset + limit]
 
@@ -246,44 +242,88 @@ async def get_auction_queue(
 @router.post("/auction")
 async def run_auction() -> Dict[str, Any]:
     """Run a new auction round."""
-    # Mock auction result
-    bots = get_mock_bots()
-    ready_bots = [b for b in bots if b["status"] == "ready"]
+    if _strategy_router is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Router not configured"
+        )
 
-    if not ready_bots:
-        raise HTTPException(status_code=400, detail="No bots ready for auction")
-
-    # Select winner based on score
-    winner = max(ready_bots, key=lambda x: x["score"])
-
-    auction = {
-        "id": f"auction-{datetime.utcnow().timestamp()}",
-        "timestamp": datetime.utcnow().isoformat(),
-        "participants": [b["id"] for b in ready_bots],
-        "winner": winner["id"],
-        "winningScore": winner["score"],
-        "status": "completed"
-    }
-
-    return {"success": True, "auction": auction}
+    try:
+        winner_id, winning_score = _strategy_router.run_auction()
+        return {
+            "success": True,
+            "auction": {
+                "id": f"auction-{datetime.utcnow().timestamp()}",
+                "timestamp": datetime.utcnow().isoformat(),
+                "winner": winner_id,
+                "winningScore": winning_score,
+                "status": "completed"
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/rankings")
 async def get_rankings(period: str = "daily") -> List[Dict[str, Any]]:
     """Get bot rankings for specified period."""
-    rankings = get_mock_rankings()
-    if period not in rankings:
+    if _strategy_router is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Router not configured"
+        )
+
+    if period not in ("daily", "weekly"):
         raise HTTPException(status_code=400, detail="Invalid period. Use 'daily' or 'weekly'")
-    return rankings[period]
+
+    # Get rankings from router's commander
+    commander = _strategy_router.commander
+    if hasattr(commander, 'get_bot_rankings'):
+        return commander.get_bot_rankings(period)
+
+    raise HTTPException(
+        status_code=503,
+        detail="Rankings not available from router"
+    )
 
 @router.get("/correlations")
 async def get_correlations() -> List[Dict[str, Any]]:
     """Get current symbol correlations."""
-    return get_mock_correlations()
+    if _strategy_router is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Router not configured"
+        )
+
+    # Get correlation data from correlation sensor
+    try:
+        from src.risk.physics.correlation_sensor import get_correlation_sensor
+        sensor = get_correlation_sensor()
+        return sensor.get_current_correlations()
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail="Correlation sensor not available"
+        )
 
 @router.get("/house-money")
 async def get_house_money_state() -> HouseMoneyState:
     """Get current house money state."""
-    return HouseMoneyState(**get_mock_house_money())
+    if _strategy_router is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Router not configured"
+        )
+
+    # Get house money state from progressive kill switch
+    pks = _strategy_router.progressive_kill_switch
+    if pks and hasattr(pks, 'get_house_money_state'):
+        state = pks.get_house_money_state()
+        return HouseMoneyState(**state)
+
+    raise HTTPException(
+        status_code=503,
+        detail="House money state not available"
+    )
 
 @router.post("/settings")
 async def update_router_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
@@ -304,13 +344,10 @@ async def get_system_status() -> Dict[str, Any]:
     - Commander for active bot count
     """
     if _strategy_router is None:
-        # Fallback to mock data if router not initialized
-        return {
-            "active_bots": 0,
-            "pnl_today": 0.0,
-            "regime": "UNKNOWN",
-            "kelly": 0.0
-        }
+        raise HTTPException(
+            status_code=503,
+            detail="Router not configured"
+        )
 
     status = _strategy_router.get_status()
 
@@ -348,7 +385,10 @@ async def get_system_status() -> Dict[str, Any]:
 async def get_active_bots() -> List[Dict[str, Any]]:
     """Get list of active bots from Commander."""
     if _strategy_router is None:
-        return []
+        raise HTTPException(
+            status_code=503,
+            detail="Router not configured"
+        )
 
     bots = []
     commander = _strategy_router.commander
@@ -387,6 +427,12 @@ async def get_fee_monitor_data() -> Dict[str, Any]:
     - kill_switch_active: Whether fee kill switch is active
     - fee_breakdown: Per-bot fee breakdown
     """
+    if _strategy_router is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Router not configured"
+        )
+
     from datetime import date
     from src.router.fee_monitor import FeeMonitor
 
@@ -394,19 +440,18 @@ async def get_fee_monitor_data() -> Dict[str, Any]:
     account_id = "default"
     account_balance = 10000.0
 
-    if _strategy_router is not None:
-        # Try to get account info from AccountMonitor
-        pks = _strategy_router.progressive_kill_switch
-        if pks and hasattr(pks, 'account_monitor') and pks.account_monitor:
-            account_states = pks.account_monitor.get_all_states()
-            if account_states:
-                # Get first account's info
-                first_account_id = list(account_states.keys())[0]
-                account_id = first_account_id
-                # Get balance from state if available
-                state = account_states[first_account_id]
-                if 'balance' in state:
-                    account_balance = state['balance']
+    # Try to get account info from AccountMonitor
+    pks = _strategy_router.progressive_kill_switch
+    if pks and hasattr(pks, 'account_monitor') and pks.account_monitor:
+        account_states = pks.account_monitor.get_all_states()
+        if account_states:
+            # Get first account's info
+            first_account_id = list(account_states.keys())[0]
+            account_id = first_account_id
+            # Get balance from state if available
+            state = account_states[first_account_id]
+            if 'balance' in state:
+                account_balance = state['balance']
 
     # Get fee monitoring data
     fee_monitor = FeeMonitor(account_id, account_balance=account_balance)
@@ -698,13 +743,10 @@ async def trigger_market_scan() -> Dict[str, Any]:
             "alerts_found": len(alerts),
             "alerts": alerts,
         }
-    except ImportError:
-        # MarketScanner not yet implemented
-        return {
-            "success": False,
-            "error": "MarketScanner not available",
-            "alerts_found": 0,
-            "alerts": [],
-        }
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"MarketScanner not available: {e}"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Market scan failed: {e}")

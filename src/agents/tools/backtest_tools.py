@@ -69,10 +69,14 @@ class BacktestTools:
 
         Returns:
             BacktestResult with backtest metrics
+
+        Raises:
+            NotImplementedError: This method must be wired to a real backtest service
         """
-        # In real implementation, this would run actual backtest
-        # For now, return simulated results
-        return self._generate_simulated_result(config)
+        raise NotImplementedError(
+            "Backtest execution must be wired to POST /api/v1/backtest/run. "
+            "Use src.api.ide_backtest.run_backtest_endpoint() or a backtest service."
+        )
 
     def _generate_simulated_result(self, config: BacktestConfig) -> BacktestResult:
         """Generate simulated backtest result."""

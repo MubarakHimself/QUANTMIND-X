@@ -77,20 +77,14 @@ class VariantDetailResponse(BaseModel):
 
 
 def _get_mock_backtest_summary(variant_type: str, strategy_id: str) -> BacktestSummary:
-    """Generate mock backtest summary for demo purposes."""
-    # In production, this would query backtest results from database
-    import random
-    random.seed(hash(strategy_id + variant_type) % 1000)
-
-    return BacktestSummary(
-        total_pnl=round(random.uniform(-500, 5000), 2),
-        sharpe_ratio=round(random.uniform(0.5, 3.5), 2),
-        max_drawdown=round(random.uniform(2, 25), 2),
-        trade_count=random.randint(50, 500),
-        win_rate=round(random.uniform(35, 75), 1),
-        profit_factor=round(random.uniform(1.0, 3.0), 2),
-        period="2024-Q4",
-        last_updated=datetime.now().isoformat(),
+    """
+    DEPRECATED: Mock data removed from production.
+    This function now raises NotImplementedError.
+    Wire to real backtest database for production use.
+    """
+    raise NotImplementedError(
+        "Backtest summaries must be queried from real backtest database. "
+        "This endpoint is not wired to production data."
     )
 
 
@@ -110,29 +104,23 @@ def _load_variants_from_storage() -> List[StrategyVariants]:
     """Load variants from version storage."""
     from src.mql5.versions.storage import get_ea_version_storage
 
-    storage = get_ea_version_storage()
+    try:
+        storage = get_ea_version_storage()
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="EA version storage not available"
+        )
 
-    # Get all strategies (from demo data or storage)
-    # In production, would scan the storage directory
+    try:
+        strategies_list = storage.list_strategies()
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to load strategies from storage"
+        )
+
     strategies = []
-
-    # Demo strategies for the UI
-    demo_strategies = [
-        "news-event-breakout",
-        "trend-follower-pro",
-        "mean-reversion-ai",
-        "grid-hedger",
-        "scalper-micro",
-    ]
-
-    strategy_names = {
-        "news-event-breakout": "News Event Breakout",
-        "trend-follower-pro": "Trend Follower Pro",
-        "mean-reversion-ai": "Mean Reversion AI",
-        "grid-hedger": "Grid Hedger",
-        "scalper-micro": "Scalper Micro",
-    }
-
     variant_types = [
         VariantType.VANILLA,
         VariantType.SPICED,
@@ -140,58 +128,40 @@ def _load_variants_from_storage() -> List[StrategyVariants]:
         VariantType.MODE_C,
     ]
 
-    for strategy_id in demo_strategies:
+    for strategy_id in strategies_list:
         variants = []
         variant_counts = {"vanilla": 0, "spiced": 0, "mode_b": 0, "mode_c": 0}
 
         for variant_type in variant_types:
-            # Get versions for this strategy and variant type
             try:
                 versions = storage.list_versions(strategy_id)
             except Exception:
                 versions = []
 
-            # Filter by variant type or create demo versions
             filtered = [v for v in versions if v.variant_type == variant_type]
 
-            if not filtered:
-                # Create demo version for UI
-                cycle = list(variant_types).index(variant_type)
-                variant_info = VariantInfo(
-                    variant_type=variant_type.value,
-                    version_tag=f"1.{cycle}.0",
-                    improvement_cycle=cycle,
-                    author="system",
-                    created_at=datetime.now().isoformat(),
-                    is_active=(variant_type == VariantType.VANILLA),
-                    backtest=_get_mock_backtest_summary(variant_type.value, strategy_id),
-                    promotion_status=_get_promotion_status(cycle),
-                )
-            else:
-                # Use actual version
+            if filtered:
                 v = filtered[0]
-                # Get backtest from artifacts
-                bt_ids = v.artifacts.backtest_result_ids
                 variant_info = VariantInfo(
                     variant_type=v.variant_type.value,
                     version_tag=v.version_tag,
                     improvement_cycle=v.improvement_cycle,
                     author=v.author,
                     created_at=v.created_at.isoformat() if v.created_at else "",
-                    is_active=True,  # Simplified
-                    backtest=_get_mock_backtest_summary(v.variant_type.value, strategy_id),
+                    is_active=True,
+                    backtest=None,  # Real backtest data not wired yet
                     promotion_status=_get_promotion_status(v.improvement_cycle),
                 )
+                variants.append(variant_info)
+                variant_counts[variant_type.value] = 1
 
-            variants.append(variant_info)
-            variant_counts[variant_type.value] = 1
-
-        strategies.append(StrategyVariants(
-            strategy_id=strategy_id,
-            strategy_name=strategy_names.get(strategy_id, strategy_id),
-            variants=variants,
-            variant_counts=variant_counts,
-        ))
+        if variants:
+            strategies.append(StrategyVariants(
+                strategy_id=strategy_id,
+                strategy_name=strategy_id.replace("-", " ").title(),
+                variants=variants,
+                variant_counts=variant_counts,
+            ))
 
     return strategies
 
@@ -372,64 +342,10 @@ async def get_variant_code(
             detail=f"Invalid variant type: {variant_type}"
         )
 
-    # In production, would load from file storage
-    # For now, return demo code
-    demo_code = f"""// QUANTMINDX EA - {variant_type.upper()} variant
-// Strategy: {strategy_id}
-// Generated by Alpha Forge
-
-#property copyright "QuantMindX"
-#property version   "1.0.0"
-#property strict
-
-#include <Trade/Trade.mqh>
-
-input group "=== Risk Management ==="
-input double LotSize = 0.1;           // Lot size
-input double RiskPercent = 1.0;       // Risk per trade %
-input int MaxSpread = 30;            // Max spread in points
-
-input group "=== Strategy Parameters ==="
-input int FastMA = 9;                 // Fast MA period
-input int SlowMA = 21;               // Slow MA period
-input int MagicNumber = 12345;        // Magic number
-
-CTrade trade;
-
-int OnInit() {{
-    // Initialize expert advisor
-    Print("EA Initialized: {strategy_id} ({variant_type})");
-    return(INIT_SUCCEEDED);
-}}
-
-void OnTick() {{
-    // Main trading logic here
-    // Strategy: {strategy_id}
-    // Variant: {variant_type}
-
-    double maFast = iMA(_Symbol, PERIOD_H1, FastMA, 0, MODE_SMA, PRICE_CLOSE);
-    double maSlow = iMA(_Symbol, PERIOD_H1, SlowMA, 0, MODE_SMA, PRICE_CLOSE);
-
-    // Signal processing
-    if (maFast > maSlow) {{
-        // Buy signal
-    }} else if (maFast < maSlow) {{
-        // Sell signal
-    }}
-}}
-
-void OnDeinit(const int reason) {{
-    Print("EA Deinitialized");
-}}
-"""
-
-    return {
-        "strategy_id": strategy_id,
-        "variant_type": variant_type,
-        "version": version or "1.0.0",
-        "language": "mql5",
-        "code": demo_code,
-    }
+    raise HTTPException(
+        status_code=503,
+        detail="Variant code not available. Code storage not wired to production."
+    )
 
 
 @router.get("/{strategy_id}/{variant_type}/compare")
@@ -455,21 +371,7 @@ async def compare_variant_versions(
             detail=f"Invalid variant type: {variant_type}"
         )
 
-    # In production, would load actual versions and compute diff
-    # For demo, return a comparison structure
-    return {
-        "strategy_id": strategy_id,
-        "variant_type": variant_type,
-        "version_a": version_a,
-        "version_b": version_b,
-        "changes": [
-            {"type": "modified", "line": 15, "old": "input int FastMA = 9;", "new": "input int FastMA = 12;"},
-            {"type": "added", "line": 25, "new": "// Added trailing stop logic"},
-            {"type": "removed", "line": 30, "old": "// Removed old parameter"},
-        ],
-        "summary": {
-            "additions": 5,
-            "deletions": 2,
-            "modifications": 3,
-        }
-    }
+    raise HTTPException(
+        status_code=503,
+        detail="Version comparison not available. Version storage not wired to production."
+    )

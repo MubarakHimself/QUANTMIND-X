@@ -165,8 +165,8 @@ class KanbanBoard(Widget):
 
         try:
             if not HTTPX_AVAILABLE:
-                self.error = "httpx not installed - using mock data"
-                self._use_mock_data()
+                self.error = "httpx not installed"
+                self.strategies = []
                 return
 
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -193,8 +193,7 @@ class KanbanBoard(Widget):
         except Exception as e:
             log(f"Failed to fetch strategies: {e}")
             self.error = str(e)
-            # Use mock data on error
-            self._use_mock_data()
+            self.strategies = []
         finally:
             self.is_loading = False
 
