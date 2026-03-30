@@ -277,17 +277,17 @@ class DataSplitConfig:
 
 **For the implementing agent — do in this order:**
 
-1. **Remove NewsFeedPoller** from `src/api/server.py` (lines 739–751 startup, 805–811 shutdown)
-2. **Replace mock data** in `quantmind-ide/src/api/economic_calendar_endpoints.py` with Finnhub live call
-3. **Create `src/market/news_blackout.py`** — `NewsBlackoutService` with Finnhub feed + session-currency mapping + scheduler
-4. **Wire `NewsBlackoutService`** into `ProgressiveKillSwitch` initialization (replace direct `news_sensor` param with service)
+1. ~~Remove NewsFeedPoller from `src/api/server.py`~~ ✅ DONE (commit 94717bb)
+2. ~~Replace mock data in `quantmind-ide/src/api/economic_calendar_endpoints.py` with Finnhub live call~~ ✅ DONE (commit 94717bb)
+3. ~~Create `src/market/news_blackout.py`~~ ✅ DONE (commit 94717bb)
+4. ~~Wire `NewsBlackoutService` into `ProgressiveKillSwitch`~~ ✅ DONE (commit 94717bb)
 5. **Create `src/session/session_gateway.py`** — consolidate session enforcement
-6. **Add WebSocket events** for news state transitions (KILL_ZONE / SAFE)
+6. **Add WebSocket events** for news state transitions (KILL_ZONE / SAFE) — verify WS topic exists in kill-switch store
 7. **Update UI** — kill zone status in kill switch panel, Trading Floor banner, EconomicCalendarPanel live data
-8. **Fix C4** — SQS weekend session guard
-9. **Fix C5** — bot circuit breaker scalping threshold (2 not 3)
-10. **Fix backtest agent tools** — unwire from mock, connect to real pipeline
-11. **Add DataSplitConfig** to FullBacktestPipeline
+8. **Fix C4** — SQS weekend session guard (`src/risk/sqs_engine.py` missing `is_active_session()`)
+9. **Fix C5** — bot circuit breaker scalping threshold = 2 not 3 (`src/router/bot_circuit_breaker.py`)
+10. **Fix backtest agent tools** — unwire mock (`src/agents/tools/backtest_tools.py`), connect to real `/api/v1/backtest/run`
+11. **Add DataSplitConfig** to `FullBacktestPipeline`
 
 **Do NOT tackle yet (separate sprint):**
 - C1 (EA template) — large scope, separate spec needed
