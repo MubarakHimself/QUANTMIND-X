@@ -15,6 +15,14 @@
     timestamp: string;
     content: string;
     tags?: string[];
+    // OPINION node fields (from graph memory)
+    node_type?: string;
+    action?: string;
+    reasoning?: string;
+    confidence?: number;
+    alternatives_considered?: string[];
+    constraints_applied?: string[];
+    agent_role?: string;
   }
 
   interface DailyLog {
@@ -349,6 +357,60 @@
               {#if expandedMemory === `${memory.timestamp}-${index}`}
                 <div class="memory-body">
                   <p class="memory-text">{memory.content}</p>
+
+                  <!-- OPINION node fields -->
+                  {#if memory.node_type === 'OPINION'}
+                    <div class="opinion-fields">
+                      {#if memory.action}
+                        <div class="opinion-row">
+                          <span class="opinion-label">Action</span>
+                          <span class="opinion-value">{memory.action}</span>
+                        </div>
+                      {/if}
+                      {#if memory.reasoning}
+                        <div class="opinion-row">
+                          <span class="opinion-label">Reasoning</span>
+                          <span class="opinion-value">{memory.reasoning}</span>
+                        </div>
+                      {/if}
+                      {#if memory.confidence != null}
+                        <div class="opinion-row">
+                          <span class="opinion-label">Confidence</span>
+                          <div class="confidence-bar">
+                            <div class="confidence-fill" style:width="{Math.round((memory.confidence ?? 0) * 100)}%"></div>
+                            <span class="confidence-text">{Math.round((memory.confidence ?? 0) * 100)}%</span>
+                          </div>
+                        </div>
+                      {/if}
+                      {#if memory.alternatives_considered && memory.alternatives_considered.length > 0}
+                        <div class="opinion-row">
+                          <span class="opinion-label">Alternatives</span>
+                          <div class="opinion-chips">
+                            {#each memory.alternatives_considered as alt}
+                              <span class="opinion-chip">{alt}</span>
+                            {/each}
+                          </div>
+                        </div>
+                      {/if}
+                      {#if memory.constraints_applied && memory.constraints_applied.length > 0}
+                        <div class="opinion-row">
+                          <span class="opinion-label">Constraints</span>
+                          <div class="opinion-chips">
+                            {#each memory.constraints_applied as c}
+                              <span class="opinion-chip constraint">{c}</span>
+                            {/each}
+                          </div>
+                        </div>
+                      {/if}
+                      {#if memory.agent_role}
+                        <div class="opinion-row">
+                          <span class="opinion-label">Agent</span>
+                          <span class="opinion-value agent-badge">{memory.agent_role}</span>
+                        </div>
+                      {/if}
+                    </div>
+                  {/if}
+
                   {#if memory.tags && memory.tags.length > 0}
                     <div class="memory-tags">
                       {#each memory.tags as tag}
@@ -820,6 +882,95 @@
     border-radius: 6px;
     font-size: 11px;
     color: var(--color-accent-cyan);
+  }
+
+  /* OPINION node fields */
+  .opinion-fields {
+    margin-top: 10px;
+    padding: 10px;
+    background: rgba(139, 92, 246, 0.06);
+    border: 1px solid rgba(139, 92, 246, 0.15);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .opinion-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 12px;
+  }
+
+  .opinion-label {
+    flex-shrink: 0;
+    width: 90px;
+    font-weight: 600;
+    color: rgba(139, 92, 246, 0.8);
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    padding-top: 2px;
+  }
+
+  .opinion-value {
+    color: var(--color-text-secondary, #94a3b8);
+    line-height: 1.4;
+  }
+
+  .confidence-bar {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 18px;
+  }
+
+  .confidence-bar .confidence-fill {
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #8b5cf6, #06b6d4);
+    transition: width 0.3s ease;
+    min-width: 4px;
+    max-width: 100%;
+  }
+
+  .confidence-bar .confidence-text {
+    font-size: 11px;
+    color: #8b5cf6;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .opinion-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .opinion-chip {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    background: rgba(139, 92, 246, 0.1);
+    color: rgba(139, 92, 246, 0.8);
+    border: 1px solid rgba(139, 92, 246, 0.15);
+  }
+
+  .opinion-chip.constraint {
+    background: rgba(239, 68, 68, 0.08);
+    color: rgba(239, 68, 68, 0.7);
+    border-color: rgba(239, 68, 68, 0.15);
+  }
+
+  .agent-badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(6, 182, 212, 0.1);
+    color: #06b6d4;
+    font-size: 11px;
+    font-weight: 500;
   }
 
   /* Logs List */

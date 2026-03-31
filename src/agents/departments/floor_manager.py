@@ -926,13 +926,66 @@ Starting system restore from backup (FR69: machine portability)...
                 "error": str(e),
             }
 
+    async def _batch_dispatch(self, tasks: List[dict]) -> List[dict]:
+        """
+        Fires multiple department dispatches concurrently.
+
+        Args:
+            tasks: List of task definitions with keys:
+                - department: Target department
+                - message_type: Type of message
+                - payload: Task payload
+
+        Returns:
+            List of dispatch results with task, run_id, and error
+        """
+        import asyncio
+        dispatch_coroutines = [
+            self._dispatch_to_department(t["department"], t["message_type"], t["payload"])
+            for t in tasks
+        ]
+        results = await asyncio.gather(*dispatch_coroutines, return_exceptions=True)
+        return [
+            {
+                "task": tasks[i],
+                "run_id": results[i] if not isinstance(results[i], Exception) else None,
+                "error": str(results[i]) if isinstance(results[i], Exception) else None
+            }
+            for i in range(len(tasks))
+        ]
+
+    async def _dispatch_to_department(
+        self,
+        department: str,
+        message_type: str,
+        payload: dict,
+    ) -> Optional[str]:
+        """
+        Internal helper to dispatch to a department and return run ID.
+
+        Args:
+            department: Target department name
+            message_type: Type of dispatch message
+            payload: Task payload
+
+        Returns:
+            Run ID or None on failure
+        """
+        try:
+            dept = Department(department)
+            result = await self.dispatch_task(dept, payload.get("task", ""), payload.get("context"))
+            return result.get("message_id") if isinstance(result, dict) else None
+        except Exception as e:
+            logger.error(f"Batch dispatch to {department} failed: {e}")
+            return None
+
     async def route_and_dispatch(
         self,
         task: str,
         context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Use Opus LLM to classify intent then route to the correct department(s).
+        Use LLM to classify intent then route to the correct department(s).
 
         Falls back to keyword routing if the LLM call fails.
 
@@ -943,9 +996,6 @@ Starting system restore from backup (FR69: machine portability)...
         Returns:
             Dict with routing info and list of per-department results
         """
-        import os
-        import anthropic as _anthropic
-
         self._check_kill_switch()
 
         # Emit routing thought to SSE stream
@@ -959,7 +1009,6 @@ Starting system restore from backup (FR69: machine portability)...
         except Exception:
             pass
 
-        client = _anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
         routing_prompt = (
             "You are the Floor Manager of QUANTMINDX, an AI-driven algorithmic trading platform.\n"
             "Your job is to classify incoming tasks and route them to the right department(s).\n\n"
@@ -982,6 +1031,11 @@ Starting system restore from backup (FR69: machine portability)...
             "- 'How is my portfolio doing?' → portfolio\n"
             "- Multi-step workflows (e.g. research→develop→risk→trade) → list all departments in order\n"
             "- Urgent = live trading impact or account risk; High = time-sensitive; Normal = routine\n\n"
+            "BATCH DISPATCHING:\n"
+            "When a user message contains multiple parallel task requests (numbered lists like '(1)...(2)...(3)...' or 'do these in parallel'), you MUST:\n"
+            "1. Parse each task as a separate dispatch\n"
+            "2. Fire all dispatches concurrently using asyncio.gather()\n"
+            "3. Return a consolidated status list showing all active workflow run IDs\n\n"
             f"TASK: {task}\n\n"
             "Respond ONLY with valid JSON (no markdown):\n"
             '{"departments": ["dept1"], "reasoning": "one sentence", "priority": "normal|high|urgent", '
@@ -989,15 +1043,11 @@ Starting system restore from backup (FR69: machine portability)...
         )
 
         try:
-            resp = await client.messages.create(
-                model=os.getenv("ANTHROPIC_MODEL_OPUS", "claude-opus-4-6"),
-                max_tokens=256,
-                messages=[{"role": "user", "content": routing_prompt}],
-            )
+            # Use ProviderRouter for LLM call
+            response_text = await self._invoke_llm(routing_prompt)
             import re as _re
-            text = resp.content[0].text
-            match = _re.search(r'\{.*\}', text, _re.DOTALL)
-            routing = json.loads(match.group()) if match else {"departments": [], "reasoning": text}
+            match = _re.search(r'\{.*\}', response_text, _re.DOTALL)
+            routing = json.loads(match.group()) if match else {"departments": [], "reasoning": response_text}
         except Exception as e:
             logger.warning(f"LLM routing failed, falling back to keyword: {e}")
             routing = {
@@ -1140,6 +1190,126 @@ Starting system restore from backup (FR69: machine portability)...
             "classified_dept": dept.value,
             "dispatch": dispatch_result,
         }
+
+    # -----------------------------------------------------------------------
+    # Canonical Workflow Dispatch — WF1-WF4 (architecture §20)
+    # -----------------------------------------------------------------------
+
+    async def dispatch_canonical_workflow(
+        self,
+        workflow_type: str,
+        payload: Optional[Dict[str, Any]] = None,
+        strategy_id: Optional[str] = None,
+        priority: str = "medium",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Dispatch a canonical workflow (WF1-WF4) via the DepartmentWorkflowCoordinator.
+
+        This is the primary method for starting multi-department workflows from
+        the FloorManager. The coordinator handles:
+        - Department mail dispatch for inter-department coordination
+        - Prefect flow triggering for durable execution
+        - Graph memory persistence for agent recall
+        - Kanban board updates for visual pipeline tracking
+
+        Args:
+            workflow_type: One of wf1_creation, wf2_enhancement,
+                          wf3_performance_intel, wf4_weekend_update
+            payload: Initial data for the workflow
+            strategy_id: Strategy ID (required for WF2)
+            priority: Task priority (high, medium, low)
+            metadata: Additional metadata
+
+        Returns:
+            Dict with workflow_id, status, and routing info
+        """
+        self._check_kill_switch()
+
+        from src.agents.departments.workflow_coordinator import get_workflow_coordinator
+        from src.agents.departments.workflow_models import WorkflowType, TaskPriority
+
+        # Map strings to enums
+        type_map = {
+            "wf1_creation": WorkflowType.WF1_CREATION,
+            "wf2_enhancement": WorkflowType.WF2_ENHANCEMENT,
+            "wf3_performance_intel": WorkflowType.WF3_PERFORMANCE_INTEL,
+            "wf4_weekend_update": WorkflowType.WF4_WEEKEND_UPDATE,
+        }
+        priority_map = {
+            "high": TaskPriority.HIGH,
+            "medium": TaskPriority.MEDIUM,
+            "low": TaskPriority.LOW,
+        }
+
+        wf_type = type_map.get(workflow_type)
+        if not wf_type:
+            return {
+                "status": "error",
+                "message": f"Unknown workflow type: {workflow_type}. "
+                           f"Valid: {', '.join(type_map.keys())}",
+            }
+
+        task_priority = priority_map.get(priority.lower(), TaskPriority.MEDIUM)
+
+        # Emit routing thought to SSE stream
+        try:
+            from src.api.agent_thought_stream_endpoints import get_thought_publisher
+            get_thought_publisher().publish(
+                department="floor-manager",
+                thought=f"Starting canonical workflow: {workflow_type}",
+                thought_type="workflow_dispatch",
+            )
+        except Exception:
+            pass
+
+        coordinator = get_workflow_coordinator()
+        workflow_id = coordinator.start_workflow(
+            workflow_type=wf_type,
+            initial_payload=payload or {},
+            strategy_id=strategy_id,
+            priority=task_priority,
+            metadata=metadata,
+        )
+
+        # Trigger Prefect flow in background for durable execution
+        try:
+            prefect_run_id = await coordinator._trigger_prefect_flow(
+                wf_type, workflow_id, payload or {},
+            )
+        except Exception as e:
+            logger.warning(f"Prefect flow trigger failed: {e}")
+            prefect_run_id = None
+
+        logger.info(
+            f"FloorManager dispatched {workflow_type} workflow: {workflow_id}"
+        )
+
+        return {
+            "status": "dispatched",
+            "workflow_id": workflow_id,
+            "workflow_type": workflow_type,
+            "priority": priority,
+            "prefect_run_id": prefect_run_id,
+        }
+
+    async def advance_canonical_workflow(
+        self, workflow_id: str,
+    ) -> Dict[str, Any]:
+        """Advance a canonical workflow to its next stage."""
+        self._check_kill_switch()
+
+        from src.agents.departments.workflow_coordinator import get_workflow_coordinator
+        coordinator = get_workflow_coordinator()
+        return coordinator.advance_workflow(workflow_id)
+
+    async def handle_department_workflow_response(
+        self, workflow_id: str, from_dept: str, result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Handle a department's completion of a workflow stage."""
+        from src.agents.departments.workflow_coordinator import get_workflow_coordinator
+        coordinator = get_workflow_coordinator()
+        return coordinator.handle_department_response(workflow_id, from_dept, result)
 
     def handle_dispatch(
         self,
@@ -1327,6 +1497,268 @@ Starting system restore from backup (FR69: machine portability)...
             "timestamp": datetime.now().isoformat(),
         }
 
+    def _get_system_prompt(self) -> str:
+        """
+        Get the Floor Manager system prompt.
+
+        Checks for user-saved override in settings first, then falls back
+        to the canonical prompt defined in types.py.
+        """
+        try:
+            from src.api.settings_endpoints import load_settings
+            saved_prompts = load_settings().get("agents", {}).get("system_prompts", {})
+            saved = saved_prompts.get("floor_manager", "") or saved_prompts.get("floor_manager_head", "")
+            if saved and saved.strip():
+                return saved
+        except Exception:
+            pass
+        try:
+            from src.agents.departments.types import _FLOOR_MANAGER_SYSTEM_PROMPT
+            return _FLOOR_MANAGER_SYSTEM_PROMPT
+        except ImportError:
+            return "You are the Floor Manager at QUANTMINDX, the senior orchestrator of a multi-department algorithmic trading operation."
+
+    async def _invoke_llm(
+        self,
+        message: str,
+        history: Optional[List[Dict[str, str]]] = None,
+        model_name: Optional[str] = None,
+    ) -> str:
+        """
+        Call the LLM via ProviderRouter using Anthropic-compatible API.
+
+        Args:
+            message: User message
+            history: Conversation history
+            model_name: Override model name (e.g. 'MiniMax-M2.7', 'GLM-5.1')
+
+        Returns:
+            LLM response text
+        """
+        import os
+        import httpx
+
+        try:
+            from src.agents.providers.router import get_router
+            router = get_router()
+            provider = router.primary
+
+            if not provider:
+                # Fallback: try environment variables directly
+                api_key = os.getenv("ANTHROPIC_API_KEY")
+                base_url = os.getenv("ANTHROPIC_BASE_URL")
+                model = model_name or os.getenv("ANTHROPIC_MODEL_SONNET", "claude-sonnet-4-6")
+            else:
+                api_key = provider.api_key
+                base_url = provider.base_url
+                # Use first available model from the provider's model list
+                if model_name:
+                    model = model_name
+                elif provider.model_list:
+                    model = provider.model_list[0].get("id") or provider.model_list[0].get("model_id", "claude-sonnet-4-6")
+                else:
+                    model = "claude-sonnet-4-6"
+
+            if not api_key:
+                return "No LLM provider configured. Please set ANTHROPIC_API_KEY or configure a provider in Settings."
+
+            # Build messages array for Anthropic format
+            messages = []
+            if history:
+                for h in history[:-1]:
+                    role = h.get("role", "user")
+                    if role not in ("user", "assistant"):
+                        role = "user"
+                    messages.append({"role": role, "content": h.get("content", "")})
+            messages.append({"role": "user", "content": message})
+
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{base_url}/v1/messages",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                        "Anthropic-Version": "2023-06-01",
+                    },
+                    json={
+                        "model": model,
+                        "messages": messages,
+                        "max_tokens": 1024,
+                        "system": self._get_system_prompt(),
+                    },
+                )
+
+                if response.status_code == 401:
+                    return "LLM provider authentication failed. Please check your API key in Settings → Providers."
+                if response.status_code != 200:
+                    return f"LLM provider error ({response.status_code}): {response.text[:200]}"
+
+                data = response.json()
+                # Extract text content from response
+                content = data.get("content", [])
+                if isinstance(content, list):
+                    for block in content:
+                        if block.get("type") == "text":
+                            return block["text"]
+                return str(data.get("content", "No response content"))
+
+        except httpx.ConnectError:
+            return f"Could not connect to LLM provider at {base_url}. Please check your internet connection and provider settings."
+        except Exception as e:
+            logger.error(f"LLM call failed: {e}")
+            return f"LLM call failed: {str(e)[:100]}"
+
+    async def _invoke_llm_stream(
+        self,
+        message: str,
+        history: Optional[List[Dict[str, str]]] = None,
+        model_name: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+    ):
+        """
+        Stream the LLM response with thinking support via SSE.
+
+        Yields dicts with:
+        - type: "thinking_start" | "thinking_chunk" | "content" | "done" | "error"
+        - content: text chunk (for content type)
+        - thinking: thinking text (for thinking types)
+
+        Args:
+            message: User message
+            history: Conversation history
+            model_name: Override model name
+
+        Yields:
+            Stream events
+        """
+        import os
+        import httpx
+
+        try:
+            from src.agents.providers.router import get_router
+            router = get_router()
+            provider = router.primary
+
+            if not provider:
+                api_key = os.getenv("ANTHROPIC_API_KEY")
+                base_url = os.getenv("ANTHROPIC_BASE_URL")
+                model = model_name or os.getenv("ANTHROPIC_MODEL_SONNET", "claude-sonnet-4-6")
+            else:
+                api_key = provider.api_key
+                base_url = provider.base_url
+                if model_name:
+                    model = model_name
+                elif provider.model_list:
+                    model = provider.model_list[0].get("id") or provider.model_list[0].get("model_id", "claude-sonnet-4-6")
+                else:
+                    model = "claude-sonnet-4-6"
+
+            if not api_key:
+                yield {"type": "error", "content": "No LLM provider configured. Please set ANTHROPIC_API_KEY or configure a provider in Settings."}
+                return
+
+            # Build messages array
+            messages = []
+            if history:
+                for h in history[:-1]:
+                    role = h.get("role", "user")
+                    if role not in ("user", "assistant"):
+                        role = "user"
+                    messages.append({"role": role, "content": h.get("content", "")})
+            messages.append({"role": "user", "content": message})
+
+            # Resolve the messages endpoint URL — avoid double /v1 if base_url already ends with /v1
+            base_stripped = base_url.rstrip("/")
+            if base_stripped.endswith("/v1"):
+                messages_url = f"{base_stripped}/messages"
+            else:
+                messages_url = f"{base_stripped}/v1/messages"
+
+            # Claude models support extended thinking; other providers (GLM, MiniMax) do not
+            is_claude = model.lower().startswith("claude")
+            thinking_budget = 8000  # tokens allocated to reasoning
+
+            # Auth header: Anthropic direct uses x-api-key; Anthropic-compatible providers use Bearer
+            is_anthropic_direct = "api.anthropic.com" in base_url
+            if is_anthropic_direct:
+                auth_headers = {"x-api-key": api_key}
+            else:
+                auth_headers = {"Authorization": f"Bearer {api_key}"}
+
+            request_body: dict = {
+                "model": model,
+                "messages": messages,
+                "max_tokens": 16000,
+                "stream": True,
+            }
+            if system_prompt:
+                request_body["system"] = system_prompt
+            if is_claude:
+                request_body["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
+
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                async with client.stream(
+                    "POST",
+                    messages_url,
+                    headers={
+                        **auth_headers,
+                        "Content-Type": "application/json",
+                        "anthropic-version": "2023-06-01",
+                    },
+                    json=request_body,
+                ) as response:
+                    if response.status_code == 401:
+                        yield {"type": "error", "content": "LLM provider authentication failed. Please check your API key in Settings → Providers."}
+                        return
+                    if response.status_code != 200:
+                        text = await response.aread()
+                        yield {"type": "error", "content": f"LLM provider error ({response.status_code}): {text[:200]}"}
+                        return
+
+                    # Parse SSE stream — delta field names per Anthropic spec:
+                    # thinking_delta -> delta["thinking"], text_delta -> delta["text"]
+                    thinking_buffer = ""
+                    content_buffer = ""
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        data_str = line[6:].strip()
+                        if not data_str or data_str == "[DONE]":
+                            continue
+
+                        try:
+                            event = json.loads(data_str)
+                            event_type = event.get("type", "")
+
+                            if event_type == "content_block_start":
+                                block = event.get("content_block", {})
+                                if block.get("type") == "thinking":
+                                    yield {"type": "thinking_start"}
+                            elif event_type == "content_block_delta":
+                                delta = event.get("delta", {})
+                                delta_type = delta.get("type", "")
+                                if delta_type == "thinking_delta":
+                                    thinking_chunk = delta.get("thinking", "")
+                                    thinking_buffer += thinking_chunk
+                                    yield {"type": "thinking_chunk", "content": thinking_chunk}
+                                elif delta_type == "signature_delta":
+                                    pass  # encrypted signature — not streamed to UI
+                                elif delta_type == "text_delta":
+                                    text_chunk = delta.get("text", "")
+                                    content_buffer += text_chunk
+                                    yield {"type": "content", "content": text_chunk}
+                            elif event_type == "message_delta":
+                                yield {"type": "done"}
+                        except Exception:
+                            continue
+
+        except httpx.ConnectError:
+            yield {"type": "error", "content": f"Could not connect to LLM provider at {base_url}. Please check your internet connection."}
+        except Exception as e:
+            logger.error(f"LLM streaming failed: {e}")
+            yield {"type": "error", "content": f"LLM streaming failed: {str(e)[:100]}"}
+
+
     async def chat(
         self,
         message: str,
@@ -1343,11 +1775,6 @@ Starting system restore from backup (FR69: machine portability)...
             message: User message
             context: Optional context (canvas_context, session_id, etc.)
             history: Conversation history for context (list of {role, content})
-            stream: Whether to stream response (not implemented yet)
-
-        Args:
-            message: User message
-            context: Optional context (canvas_context, session_id, etc.)
             stream: Whether to stream response (not implemented yet)
 
         Returns:
@@ -1423,16 +1850,8 @@ Starting system restore from backup (FR69: machine portability)...
                     "model": f"claude-opus-{self.model_tier}",
                 }
         else:
-            # Direct response (simple response for now - can be enhanced with LLM)
-            response_content = (
-                f"I understand: {message[:100]}...\n\n"
-                "I can help with:\n"
-                "- Market analysis and research\n"
-                "- Trading operations and execution\n"
-                "- Risk management queries\n"
-                "- Portfolio status checks\n\n"
-                "Try asking me to 'run research on GBPUSD' or 'check risk levels' to see department delegation in action."
-            )
+            # Direct response via LLM
+            response_content = await self._invoke_llm(message, history)
 
             return {
                 "status": "success",
@@ -1488,67 +1907,22 @@ Starting system restore from backup (FR69: machine portability)...
         # Yield tool usage notification
         yield {"type": "tool", "tool": "thinking", "status": "started"}
 
-        # Classify the task to determine department
-        yield {"type": "thought", "department": "floor_manager", "content": "Classifying task intent..."}
-        department = self.classify_task(message)
-        yield {"type": "thought", "department": "floor_manager", "content": f"Routing to {department.value} department"}
+        # Floor Manager always responds via LLM for streaming chat.
+        # Delegation to departments happens via the mail system only — never as the stream response.
+        yield {"type": "thought", "department": "floor_manager", "content": "Generating response via LLM..."}
+        async for event in self._invoke_llm_stream(message, history, system_prompt=self._get_system_prompt()):
+            event_type = event.get("type", "")
+            if event_type == "thinking_start":
+                yield {"type": "thinking", "content": ""}
+            elif event_type == "thinking_chunk":
+                yield {"type": "thinking", "content": event.get("content", "")}
+            elif event_type == "content":
+                yield {"type": "content", "delta": event.get("content", "")}
+            elif event_type == "error":
+                yield {"type": "error", "error": event.get("content", str(event))}
+            elif event_type == "done":
+                pass  # Completion signalled below
 
-        # Check if task should be delegated based on keywords
-        delegation_keywords = ["run", "research", "analyze", "execute", "trade", "check", "get", "fetch"]
-        should_delegate = any(kw in message.lower() for kw in delegation_keywords)
-
-        if should_delegate:
-            # Delegate to the classified department
-            yield {"type": "thought", "department": "floor_manager", "content": f"Delegating task to {department.value} head..."}
-            try:
-                msg = self.delegate_to_department(
-                    from_dept="floor",
-                    to_dept=department.value,
-                    task=message,
-                    priority="normal",
-                    context=context,
-                )
-                yield {"type": "thought", "department": department.value, "content": f"Processing: {message[:80]}..."}
-
-                # Stream the delegation message
-                response_text = f"Delegating to {department.value.title()} Department: {message[:100]}..."
-
-                # Token-by-token yield
-                words = response_text.split()
-                for i, word in enumerate(words):
-                    yield {"type": "content", "delta": word + (" " if i < len(words) - 1 else "")}
-                    await asyncio.sleep(0.02)  # Simulate token streaming
-
-                yield {"type": "thought", "department": "floor_manager", "content": "Task dispatched, awaiting response..."}
-                yield {
-                    "type": "delegation",
-                    "department": department.value,
-                    "task_id": str(msg.id),
-                    "status": "pending",
-                }
-            except Exception as e:
-                logger.error(f"FloorManager streaming delegation failed: {e}")
-                yield {"type": "error", "error": str(e)}
-        else:
-            yield {"type": "thought", "department": "floor_manager", "content": "Generating response..."}
-            # Direct response (simple response for now - can be enhanced with LLM)
-            response_content = (
-                f"I understand: {message[:100]}...\n\n"
-                "I can help with:\n"
-                "- Market analysis and research\n"
-                "- Trading operations and execution\n"
-                "- Risk management queries\n"
-                "- Portfolio status checks\n\n"
-                "Try asking me to 'run research on GBPUSD' or 'check risk levels' to see department delegation in action."
-            )
-
-            # Token-by-token yield
-            words = response_content.split()
-            for i, word in enumerate(words):
-                yield {"type": "content", "delta": word + (" " if i < len(words) - 1 else "")}
-                await asyncio.sleep(0.02)  # Simulate token streaming
-
-        # Yield completion
         yield {"type": "tool", "tool": "thinking", "status": "completed"}
         yield {"type": "done"}
 

@@ -1205,11 +1205,14 @@ async def get_department_memory(department: str) -> Dict[str, Any]:
     """
     Get all memories for a department.
 
+    Merges markdown-based memories with graph memory OPINION nodes so the
+    UI can display opinion fields (action, reasoning, confidence, etc.).
+
     Args:
         department: Department name (development, research, risk, trading, portfolio, floor_manager)
 
     Returns:
-        Department memories and metadata
+        Department memories (with opinion fields where applicable) and metadata
     """
     try:
         # Validate department
@@ -1227,10 +1230,42 @@ async def get_department_memory(department: str) -> Dict[str, Any]:
         # Parse memories (basic parsing of markdown format)
         memories = _parse_memory_content(content)
 
+        # --- Merge graph memory OPINION nodes ---
+        opinion_nodes: List[Dict[str, Any]] = []
+        try:
+            from src.memory.graph.facade import GraphMemoryFacade
+            gm = GraphMemoryFacade()
+            results = gm.recall(
+                query=f"department:{department}",
+                node_types=["OPINION"],
+                top_k=20,
+            )
+            for node in (results if isinstance(results, list) else []):
+                opinion_nodes.append({
+                    "category": "opinion",
+                    "timestamp": node.get("timestamp", node.get("created_at", "")),
+                    "content": node.get("content", ""),
+                    "tags": node.get("tags", []),
+                    # OPINION-specific fields
+                    "node_type": "OPINION",
+                    "action": node.get("action"),
+                    "reasoning": node.get("reasoning"),
+                    "confidence": node.get("confidence"),
+                    "alternatives_considered": node.get("alternatives_considered"),
+                    "constraints_applied": node.get("constraints_applied"),
+                    "agent_role": node.get("agent_role"),
+                })
+        except Exception as e:
+            logger.debug(f"Graph memory OPINION merge skipped: {e}")
+
+        # Combine: markdown memories + opinion nodes
+        all_memories = memories + opinion_nodes
+
         return {
             "department": department,
-            "memories": memories,
-            "stats": memory_manager.get_stats()
+            "memories": all_memories,
+            "stats": memory_manager.get_stats(),
+            "opinion_count": len(opinion_nodes),
         }
 
     except Exception as e:

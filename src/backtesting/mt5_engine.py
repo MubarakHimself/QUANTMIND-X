@@ -1035,16 +1035,27 @@ class PythonStrategyTester:
         # Build trade history
         trade_history = [t.__dict__ for t in self.trades]
 
+        # Compute win_rate and profit_factor from trade history
+        winning_trades = [t for t in trade_history if t.get('profit', 0) > 0]
+        losing_trades = [t for t in trade_history if t.get('profit', 0) <= 0]
+        num_trades = len(trade_history)
+        win_rate = (len(winning_trades) / num_trades * 100) if num_trades > 0 else 0.0
+        gross_profit = sum(t.get('profit', 0) for t in winning_trades)
+        gross_loss = abs(sum(t.get('profit', 0) for t in losing_trades))
+        profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0.0
+
         return MT5BacktestResult(
             sharpe=sharpe,
             return_pct=total_return,
             drawdown=max_dd,
-            trades=len(self.trades),
+            trades=num_trades,
             log="\n".join(self._logs),
             initial_cash=self.initial_cash,
             final_cash=self.equity[-1] if self.equity else self.cash,
             equity_curve=self.equity.copy(),
-            trade_history=trade_history
+            trade_history=trade_history,
+            win_rate=win_rate,
+            profit_factor=profit_factor
         )
 
     def _calculate_sharpe(self, returns: np.ndarray, risk_free_rate: float = 0.0) -> float:

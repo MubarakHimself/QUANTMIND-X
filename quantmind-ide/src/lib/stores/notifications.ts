@@ -9,12 +9,14 @@ import { writable, derived } from 'svelte/store';
 
 export interface AppNotification {
   id: string;
-  type: 'info' | 'success' | 'warning' | 'error' | 'trade' | 'agent';
+  type: 'info' | 'success' | 'warning' | 'error' | 'trade' | 'agent' | 'approval';
   title: string;
   body?: string;
   timestamp: Date;
   read: boolean;
   canvasLink?: string;
+  /** Optional approval ID for click-through to approval panel */
+  approvalId?: string;
 }
 
 // Seed demo notifications so the tray isn't empty on first load

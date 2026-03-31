@@ -262,7 +262,18 @@ async def update_agent_settings(settings: AgentSettings):
 
 
 # Department system prompt endpoints — direct read/write, no markdown parsing
-_DEPARTMENT_AGENTS = ["research", "development", "trading", "risk", "portfolio", "floor_manager"]
+_DEPARTMENT_AGENTS = [
+    "research", "development", "trading", "risk", "portfolio", "floor_manager",
+    # UI uses _head suffix — accept both forms
+    "research_head", "development_head", "trading_head", "risk_head", "portfolio_head",
+    # Sub-agents
+    "strategy_researcher", "market_analyst", "backtester",
+    "python_dev", "pinescript_dev", "mql5_dev",
+    "order_executor", "fill_tracker", "trade_monitor",
+    "position_sizer", "drawdown_monitor", "var_calculator",
+    "allocation_manager", "rebalancer", "performance_tracker",
+    "copilot",
+]
 
 
 @router.get("/agents/{agent_id}/system-prompt")
@@ -292,17 +303,148 @@ async def save_agent_system_prompt(agent_id: str, body: dict[str, str]):
     return {"agent_id": agent_id, "system_prompt": prompt}
 
 
+@router.get("/agents/all-prompts")
+async def get_all_agent_prompts():
+    """
+    Get all department agent system prompts — saved overrides + defaults from types.py.
+
+    Returns a dict keyed by agent_id with:
+    - system_prompt: the effective prompt (override if saved, else default)
+    - is_override: whether the user has saved a custom prompt
+    - default_prompt: the built-in prompt from types.py (for reset functionality)
+    """
+    current = load_settings()
+    saved_prompts = current.get("agents", {}).get("system_prompts", {})
+
+    # Load default prompts from types.py
+    defaults = {}
+    try:
+        from src.agents.departments.types import (
+            _RESEARCH_SYSTEM_PROMPT,
+            _DEVELOPMENT_SYSTEM_PROMPT,
+            _TRADING_SYSTEM_PROMPT,
+            _RISK_SYSTEM_PROMPT,
+            _PORTFOLIO_SYSTEM_PROMPT,
+            _FLOOR_MANAGER_SYSTEM_PROMPT,
+        )
+        defaults = {
+            "research": _RESEARCH_SYSTEM_PROMPT,
+            "research_head": _RESEARCH_SYSTEM_PROMPT,
+            "development": _DEVELOPMENT_SYSTEM_PROMPT,
+            "development_head": _DEVELOPMENT_SYSTEM_PROMPT,
+            "trading": _TRADING_SYSTEM_PROMPT,
+            "trading_head": _TRADING_SYSTEM_PROMPT,
+            "risk": _RISK_SYSTEM_PROMPT,
+            "risk_head": _RISK_SYSTEM_PROMPT,
+            "portfolio": _PORTFOLIO_SYSTEM_PROMPT,
+            "portfolio_head": _PORTFOLIO_SYSTEM_PROMPT,
+            "floor_manager": _FLOOR_MANAGER_SYSTEM_PROMPT,
+        }
+    except ImportError:
+        pass
+
+    # Load sub-agent prompts
+    _SUBAGENT_PROMPT_MAP = {
+        "strategy_researcher": "src.agents.departments.subagents.research_subagent:RESEARCH_SYSTEM_PROMPT",
+        "market_analyst": "src.agents.departments.subagents.research_subagent:RESEARCH_SYSTEM_PROMPT",
+        "backtester": "src.agents.departments.subagents.backtest_report_subagent:BACKTEST_REPORT_SYSTEM_PROMPT",
+        "python_dev": "src.agents.departments.subagents.pinescript_subagent:PINESCRIPT_SYSTEM_PROMPT",
+        "pinescript_dev": "src.agents.departments.subagents.pinescript_subagent:PINESCRIPT_SYSTEM_PROMPT",
+        "mql5_dev": "src.agents.departments.subagents.pinescript_subagent:PINESCRIPT_SYSTEM_PROMPT",
+        "order_executor": "src.agents.departments.subagents.trading_subagent:TRADING_SYSTEM_PROMPT",
+        "fill_tracker": "src.agents.departments.subagents.trading_subagent:TRADING_SYSTEM_PROMPT",
+        "trade_monitor": "src.agents.departments.subagents.trading_subagent:TRADING_SYSTEM_PROMPT",
+        "position_sizer": "src.agents.departments.subagents.risk_subagent:RISK_ASSESSMENT_SYSTEM_PROMPT",
+        "drawdown_monitor": "src.agents.departments.subagents.risk_subagent:RISK_ASSESSMENT_SYSTEM_PROMPT",
+        "var_calculator": "src.agents.departments.subagents.risk_subagent:RISK_ASSESSMENT_SYSTEM_PROMPT",
+        "allocation_manager": "src.agents.departments.subagents.portfolio_subagent:PORTFOLIO_SYSTEM_PROMPT",
+        "rebalancer": "src.agents.departments.subagents.portfolio_subagent:PORTFOLIO_SYSTEM_PROMPT",
+        "performance_tracker": "src.agents.departments.subagents.portfolio_subagent:PORTFOLIO_SYSTEM_PROMPT",
+    }
+    for agent_id, mod_attr in _SUBAGENT_PROMPT_MAP.items():
+        if agent_id not in defaults:
+            try:
+                mod_path, attr_name = mod_attr.rsplit(":", 1)
+                import importlib
+                mod = importlib.import_module(mod_path)
+                defaults[agent_id] = getattr(mod, attr_name, "")
+            except Exception:
+                defaults[agent_id] = ""
+
+    result = {}
+    for agent_id in _DEPARTMENT_AGENTS:
+        saved = saved_prompts.get(agent_id, "")
+        default = defaults.get(agent_id, "")
+        result[agent_id] = {
+            "system_prompt": saved if saved.strip() else default,
+            "is_override": bool(saved and saved.strip()),
+            "default_prompt": default,
+        }
+
+    return result
+
+
+@router.post("/agents/{agent_id}/system-prompt/reset")
+async def reset_agent_system_prompt(agent_id: str):
+    """Reset an agent's system prompt to the built-in default (remove override)."""
+    if agent_id not in _DEPARTMENT_AGENTS:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+    current = load_settings()
+    prompts = current.get("agents", {}).get("system_prompts", {})
+    if agent_id in prompts:
+        del prompts[agent_id]
+        current["agents"]["system_prompts"] = prompts
+        save_settings(current)
+    return {"agent_id": agent_id, "reset": True}
+
+
+@router.get("/departments/config")
+async def get_department_configs():
+    """
+    Get full department configuration including skills and MCP servers.
+
+    Returns config for all 5 departments + floor_manager with:
+    - skills: list of available skills with descriptions and slash commands
+    - mcp_servers: list of assigned MCP server IDs
+    - mcp_config_file: the MCP JSON config file used
+    """
+    try:
+        from src.agents.skills.department_skills import (
+            get_department_skills,
+            get_department_mcp_servers,
+            get_department_mcp_config,
+        )
+    except ImportError:
+        return {"error": "Department skills module not available"}
+
+    departments = ["research", "development", "trading", "risk", "portfolio", "floor_manager"]
+    result = {}
+    for dept in departments:
+        result[dept] = {
+            "skills": get_department_skills(dept),
+            "mcp_servers": get_department_mcp_servers(dept),
+            "mcp_config_file": get_department_mcp_config(dept),
+        }
+    return result
+
+
 # Skills
 @router.get("/skills")
 async def get_agent_skills(department: Optional[str] = None):
     """Get all agent skills, optionally filtered by department."""
-    # Import and initialize skill manager with built-in skills
+    # Import and initialize skill manager with built-in + department skills
     try:
         from src.agents.skills import get_skill_manager, register_builtin_skills
         skill_manager = get_skill_manager()
         # Register built-in skills if not already registered
         if not skill_manager.list_skills():
             register_builtin_skills(skill_manager)
+            # Also register department-specific skills
+            try:
+                from src.agents.skills.department_skills import register_all_skills
+                register_all_skills()
+            except Exception as e:
+                logger.debug(f"Department skill registration: {e}")
 
         # Get all registered skills, optionally filtered by department
         if department:

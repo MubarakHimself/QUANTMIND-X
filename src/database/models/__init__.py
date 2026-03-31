@@ -27,6 +27,9 @@ from .trading import (
     TradeJournal,
 )
 
+# Trade record model (Story 14.1: Layer 1 EA Hard Safety SL/TP)
+from .trade_record import TradeRecord
+
 # Performance models
 from .performance import (
     StrategyPerformance,
@@ -49,6 +52,9 @@ from .bots import (
 from .agents import AgentTasks
 from .agent_session import AgentSession
 from .session_checkpoint import SessionCheckpoint
+
+# Approval request model (HITL persistence + resume)
+from .approval_request import ApprovalRequestModel, init_approval_requests_table
 
 # HMM models
 from .hmm import (
@@ -133,6 +139,9 @@ __all__ = [
     'CryptoTrade',
     'TradeJournal',
 
+    # Trade record (Story 14.1)
+    'TradeRecord',
+
     # Performance
     'StrategyPerformance',
     'PaperTradingPerformance',
@@ -151,6 +160,10 @@ __all__ = [
     'AgentTasks',
     'AgentSession',
     'SessionCheckpoint',
+
+    # Approval requests (HITL)
+    'ApprovalRequestModel',
+    'init_approval_requests_table',
 
     # HMM
     'HMMModel',

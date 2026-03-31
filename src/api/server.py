@@ -187,6 +187,7 @@ try:
     from src.api.flowforge_workflow_proxy import router as flowforge_workflow_proxy_router  # Story 11.8: FlowForge ↔ Prefect API Contract
     from src.api.weekend_cycle_endpoints import router as weekend_cycle_router  # Weekend Update Cycle (Story 8.13)
     from src.api.approval_gate import router as approval_gate_router
+    from src.api.approval_endpoints import router as hitl_approval_router
     from src.api.kill_switch_endpoints import router as kill_switch_router
     from src.api.hmm_endpoints import router as hmm_router
     from src.api.dpr_endpoints import router as dpr_router  # DPR Queue Tier Remix (Story 17.2)
@@ -540,6 +541,7 @@ app.include_router(trading_tilt_router)     # Tilt phase status (Story 16.1)
 app.include_router(cooldown_router)         # Inter-Session Cooldown (Story 16.3)
 app.include_router(mcp_router)         # MCP endpoints
 app.include_router(approval_gate_router) # Approval gate
+app.include_router(hitl_approval_router) # Human-in-the-loop approvals
 app.include_router(deployment_router)  # EA deployment pipeline (FR79)
 app.include_router(github_router)      # GitHub sync
 app.include_router(demo_mode_router)   # Demo mode
@@ -638,6 +640,26 @@ async def startup_event():
         logger.info(f"Graph memory DB migrations applied: {graph_db}")
     except Exception as e:
         logger.warning(f"Graph memory migration warning: {e}")
+
+    # Resume pending HITL approvals and paused workflows from DB
+    try:
+        from src.agents.approval_manager import get_approval_manager
+        resumed_approvals = get_approval_manager().resume_pending()
+        if resumed_approvals > 0:
+            logger.info(f"Resumed {resumed_approvals} pending HITL approvals from DB")
+
+            # Also resume workflows paused at HITL gates
+            try:
+                from src.agents.departments.workflow_coordinator import get_workflow_coordinator
+                resumed_wf = get_workflow_coordinator().resume_waiting_workflows()
+                if resumed_wf > 0:
+                    logger.info(f"Resumed {resumed_wf} workflows paused at HITL gates")
+            except Exception as e:
+                logger.warning(f"Workflow resume warning: {e}")
+        else:
+            logger.info("No pending HITL approvals to resume")
+    except Exception as e:
+        logger.warning(f"HITL resume warning: {e}")
 
     # Start Prometheus metrics server
     # Note: Grafana Cloud push is disabled - using Prometheus agent for remote_write

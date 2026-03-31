@@ -46,10 +46,12 @@ class ThoughtPublisher:
         """
         event = {
             "id": str(uuid.uuid4()),
+            "type": "thought",
             "department": department,
-            "thought": thought,
-            "type": thought_type,
+            "content": thought,
+            "thought_type": thought_type,
             "timestamp": datetime.utcnow().isoformat(),
+            "session_id": session_id or "",
         }
 
         # Store in ring buffer regardless of connected clients
@@ -124,4 +126,4 @@ async def get_thought_history(limit: int = 50):
     Query Parameters:
         limit: Number of recent thoughts to return (default 50, max 200).
     """
-    return {"thoughts": list(_recent_thoughts)[-limit:]}
+    return list(_recent_thoughts)[-limit:]

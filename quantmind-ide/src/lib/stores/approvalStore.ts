@@ -1,33 +1,66 @@
 /**
- * Approval Gate Store
+ * Unified Approval Store
  *
- * Manages approval gate state for workflow approvals.
+ * Merges two approval sources into a single unified stream:
+ *   1. Legacy approval gates  → /api/approval-gates/pending  (SQLAlchemy DB)
+ *   2. New HITL approvals     → /api/approvals/pending       (ApprovalManager in-memory)
+ *
+ * Also routes every new/resolved approval through the notification system
+ * so the NotificationTray stays in sync.
  */
 
 import { writable, derived, get } from 'svelte/store';
-import type { Readable, Writable } from 'svelte/store';
+import type { Readable } from 'svelte/store';
+import { addNotification } from '$lib/stores/notifications';
 
+// ---------------------------------------------------------------------------
 // Types
-export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
-export type GateType = 'stage_transition' | 'deployment' | 'risk_check' | 'manual_review';
+// ---------------------------------------------------------------------------
 
-export interface ApprovalGate {
-  gate_id: string;
-  workflow_id: string;
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'expired' | 'cancelled';
+export type GateType =
+  | 'stage_transition'
+  | 'deployment'
+  | 'risk_check'
+  | 'manual_review'
+  | 'workflow_gate'
+  | 'tool_execution'
+  | 'agent_action'
+  | 'ea_promotion'
+  | 'trade_execution';
+
+/** Source system that originated the approval */
+export type ApprovalSource = 'gate' | 'hitl';
+
+/**
+ * Unified approval item — normalises both legacy gate rows and new HITL
+ * approval requests into a single shape the UI can render.
+ */
+export interface UnifiedApproval {
+  /** Canonical ID used for approve/reject calls */
+  id: string;
+  source: ApprovalSource;
+  workflow_id?: string;
   workflow_type?: string;
-  from_stage: string;
-  to_stage: string;
-  gate_type: GateType;
+  title: string;
+  description: string;
+  from_stage?: string;
+  to_stage?: string;
+  gate_type: string;
   status: ApprovalStatus;
+  urgency?: string;
+  department?: string;
+  agent_id?: string;
   requester?: string;
   approver?: string;
   reason?: string;
   notes?: string;
   extra_data?: Record<string, any>;
+  strategy_id?: string;
   created_at: string;
-  updated_at: string;
-  approved_at?: string;
-  rejected_at?: string;
+  updated_at?: string;
+  resolved_at?: string;
+  rejection_reason?: string;
 }
 
 export interface ApprovalActionRequest {
@@ -37,129 +70,345 @@ export interface ApprovalActionRequest {
 
 export interface ApprovalActionResponse {
   success: boolean;
-  gate_id: string;
+  gate_id?: string;
+  approval_id?: string;
   status: ApprovalStatus;
   message: string;
-  approver: string;
-  timestamp: string;
+  approver?: string;
+  timestamp?: string;
 }
 
-// State
+// ---------------------------------------------------------------------------
+// Internal state
+// ---------------------------------------------------------------------------
+
 interface ApprovalState {
-  pendingGates: ApprovalGate[];
-  gateHistory: ApprovalGate[];
-  selectedGate: ApprovalGate | null;
+  pendingItems: UnifiedApproval[];
+  historyItems: UnifiedApproval[];
+  selectedItem: UnifiedApproval | null;
   loading: boolean;
   error: string | null;
   pollingEnabled: boolean;
 }
 
 const initialState: ApprovalState = {
-  pendingGates: [],
-  gateHistory: [],
-  selectedGate: null,
+  pendingItems: [],
+  historyItems: [],
+  selectedItem: null,
   loading: false,
   error: null,
   pollingEnabled: true,
 };
 
-// Create stores
 const approvalState = writable<ApprovalState>(initialState);
 
-// Derived stores
-export const pendingApprovals: Readable<ApprovalGate[]> = derived(
+/** Set of IDs we already pushed a "new approval" notification for */
+let _notifiedNewIds = new Set<string>();
+
+/** Set of IDs we already pushed a "resolved" notification for */
+let _notifiedResolvedIds = new Set<string>();
+
+// ---------------------------------------------------------------------------
+// Derived stores (public)
+// ---------------------------------------------------------------------------
+
+export const pendingApprovals: Readable<UnifiedApproval[]> = derived(
   approvalState,
-  ($state) => $state.pendingGates
+  ($s) => $s.pendingItems,
 );
 
-export const approvalHistory: Readable<ApprovalGate[]> = derived(
+export const approvalHistory: Readable<UnifiedApproval[]> = derived(
   approvalState,
-  ($state) => $state.gateHistory
+  ($s) => $s.historyItems,
 );
 
-export const selectedApproval: Readable<ApprovalGate | null> = derived(
+export const selectedApproval: Readable<UnifiedApproval | null> = derived(
   approvalState,
-  ($state) => $state.selectedGate
+  ($s) => $s.selectedItem,
 );
 
 export const hasPendingApprovals: Readable<boolean> = derived(
   approvalState,
-  ($state) => $state.pendingGates.length > 0
+  ($s) => $s.pendingItems.length > 0,
 );
 
 export const pendingCount: Readable<number> = derived(
   approvalState,
-  ($state) => $state.pendingGates.length
+  ($s) => $s.pendingItems.length,
 );
 
 export const approvalLoading: Readable<boolean> = derived(
   approvalState,
-  ($state) => $state.loading
+  ($s) => $s.loading,
 );
 
 export const approvalError: Readable<string | null> = derived(
   approvalState,
-  ($state) => $state.error
+  ($s) => $s.error,
 );
 
-// Polling interval reference
+// ---------------------------------------------------------------------------
+// Normalisation helpers
+// ---------------------------------------------------------------------------
+
+/** Convert a legacy gate row to UnifiedApproval */
+function normaliseGate(g: any): UnifiedApproval {
+  return {
+    id: g.gate_id,
+    source: 'gate',
+    workflow_id: g.workflow_id,
+    workflow_type: g.workflow_type,
+    title: `${g.gate_type?.replace(/_/g, ' ') ?? 'Gate'}: ${g.from_stage} → ${g.to_stage}`,
+    description: g.reason || `Stage transition from ${g.from_stage} to ${g.to_stage}`,
+    from_stage: g.from_stage,
+    to_stage: g.to_stage,
+    gate_type: g.gate_type ?? 'stage_transition',
+    status: g.status ?? 'pending',
+    department: g.assigned_to,
+    requester: g.requester,
+    approver: g.approver,
+    reason: g.reason,
+    notes: g.notes,
+    extra_data: g.extra_data,
+    strategy_id: g.strategy_id,
+    created_at: g.created_at,
+    updated_at: g.updated_at,
+    resolved_at: g.approved_at || g.rejected_at,
+  };
+}
+
+/** Convert a new HITL approval to UnifiedApproval */
+function normaliseHitl(a: any): UnifiedApproval {
+  return {
+    id: a.id,
+    source: 'hitl',
+    workflow_id: a.workflow_id,
+    title: a.title,
+    description: a.description,
+    gate_type: a.approval_type ?? 'agent_action',
+    status: a.status ?? 'pending',
+    urgency: a.urgency,
+    department: a.department,
+    agent_id: a.agent_id,
+    strategy_id: a.strategy_id,
+    workflow_type: a.workflow_stage,
+    from_stage: a.workflow_stage,
+    to_stage: a.context?.to_stage,
+    extra_data: a.context,
+    created_at: a.created_at,
+    resolved_at: a.resolved_at,
+    approver: a.resolved_by,
+    rejection_reason: a.rejection_reason,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Notification bridge
+// ---------------------------------------------------------------------------
+
+function _urgencyToNotificationType(urgency?: string): 'info' | 'warning' | 'error' | 'agent' {
+  switch (urgency) {
+    case 'critical':
+      return 'error';
+    case 'high':
+      return 'warning';
+    default:
+      return 'agent';
+  }
+}
+
+/** Push a notification for every genuinely new approval */
+function _pushNewApprovalNotifications(items: UnifiedApproval[]) {
+  for (const item of items) {
+    if (_notifiedNewIds.has(item.id)) continue;
+    _notifiedNewIds.add(item.id);
+
+    addNotification({
+      type: _urgencyToNotificationType(item.urgency),
+      title: 'Approval Required',
+      body: item.title,
+      canvasLink: item.department ?? undefined,
+    });
+  }
+}
+
+/** Push a notification when an approval gets resolved */
+function _pushResolvedNotification(item: UnifiedApproval) {
+  if (_notifiedResolvedIds.has(item.id)) return;
+  _notifiedResolvedIds.add(item.id);
+
+  const action = item.status === 'approved' ? 'Approved' : 'Rejected';
+  addNotification({
+    type: item.status === 'approved' ? 'success' : 'warning',
+    title: `Approval ${action}`,
+    body: item.title,
+    canvasLink: item.department ?? undefined,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// SSE connection for real-time HITL events
+// ---------------------------------------------------------------------------
+
+let _eventSource: EventSource | null = null;
+
+function _connectSSE() {
+  if (_eventSource) return;
+
+  try {
+    _eventSource = new EventSource('/api/approvals/stream');
+
+    _eventSource.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+
+        if (payload.type === 'approval_event' && payload.approval) {
+          const item = normaliseHitl(payload.approval);
+
+          if (item.status === 'pending') {
+            // New pending approval — merge into state + notify
+            approvalState.update((s) => {
+              const exists = s.pendingItems.some((p) => p.id === item.id);
+              if (exists) return s;
+              const newPending = [item, ...s.pendingItems];
+              _pushNewApprovalNotifications([item]);
+              return { ...s, pendingItems: newPending };
+            });
+          } else {
+            // Resolved — remove from pending, add to history, notify
+            approvalState.update((s) => ({
+              ...s,
+              pendingItems: s.pendingItems.filter((p) => p.id !== item.id),
+              historyItems: [item, ...s.historyItems].slice(0, 100),
+            }));
+            _pushResolvedNotification(item);
+          }
+        }
+
+        if (payload.type === 'init' && Array.isArray(payload.pending)) {
+          const hitlItems = payload.pending.map(normaliseHitl);
+          approvalState.update((s) => {
+            // Merge HITL items that aren't already present
+            const existingIds = new Set(s.pendingItems.map((p) => p.id));
+            const newItems = hitlItems.filter((i: UnifiedApproval) => !existingIds.has(i.id));
+            if (newItems.length === 0) return s;
+            _pushNewApprovalNotifications(newItems);
+            return { ...s, pendingItems: [...newItems, ...s.pendingItems] };
+          });
+        }
+      } catch {
+        // Ignore parse errors on heartbeat etc
+      }
+    };
+
+    _eventSource.onerror = () => {
+      // Auto-reconnect is handled by EventSource; just log
+      console.debug('[approvalStore] SSE connection error, will reconnect');
+    };
+  } catch {
+    // SSE not available — fall back to polling only
+  }
+}
+
+function _disconnectSSE() {
+  if (_eventSource) {
+    _eventSource.close();
+    _eventSource = null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Polling
+// ---------------------------------------------------------------------------
+
 let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
-// Actions
+// ---------------------------------------------------------------------------
+// Public store actions
+// ---------------------------------------------------------------------------
+
 export const approvalStore = {
   subscribe: approvalState.subscribe,
 
   /**
-   * Start polling for pending approvals
+   * Start polling + SSE for pending approvals from both sources
    */
   startPolling(intervalMs: number = 10000): void {
-    if (pollingInterval) {
-      clearInterval(pollingInterval);
-    }
+    if (pollingInterval) clearInterval(pollingInterval);
 
     approvalState.update((s) => ({ ...s, pollingEnabled: true }));
 
-    // Fetch immediately
-    this.fetchPendingGates();
+    // Connect SSE for real-time HITL events
+    _connectSSE();
 
-    // Set up polling
+    // Initial fetch
+    this.fetchAllPending();
+
+    // Set up polling for both sources
     pollingInterval = setInterval(() => {
       const state = get(approvalState);
       if (state.pollingEnabled) {
-        this.fetchPendingGates();
+        this.fetchAllPending();
       }
     }, intervalMs);
   },
 
   /**
-   * Stop polling for pending approvals
+   * Stop polling and disconnect SSE
    */
   stopPolling(): void {
     if (pollingInterval) {
       clearInterval(pollingInterval);
       pollingInterval = null;
     }
+    _disconnectSSE();
     approvalState.update((s) => ({ ...s, pollingEnabled: false }));
   },
 
   /**
-   * Fetch pending approval gates
+   * Fetch pending approvals from BOTH sources and merge
    */
-  async fetchPendingGates(workflowId?: string): Promise<void> {
+  async fetchAllPending(): Promise<void> {
     try {
-      const params = new URLSearchParams();
-      if (workflowId) params.set('workflow_id', workflowId);
-      params.set('limit', '50');
+      // Fetch both sources in parallel
+      const [gatesRes, hitlRes] = await Promise.allSettled([
+        fetch('/api/approval-gates/pending?limit=50'),
+        fetch('/api/approvals/pending'),
+      ]);
 
-      const response = await fetch(`/api/approval-gates/pending?${params}`);
-      if (!response.ok) throw new Error('Failed to fetch pending approvals');
+      let gateItems: UnifiedApproval[] = [];
+      let hitlItems: UnifiedApproval[] = [];
 
-      const data = await response.json();
-      const gates: ApprovalGate[] = data.gates || [];
+      if (gatesRes.status === 'fulfilled' && gatesRes.value.ok) {
+        const data = await gatesRes.value.json();
+        const gates = data.gates || data || [];
+        gateItems = (Array.isArray(gates) ? gates : []).map(normaliseGate);
+      }
+
+      if (hitlRes.status === 'fulfilled' && hitlRes.value.ok) {
+        const data = await hitlRes.value.json();
+        hitlItems = (Array.isArray(data) ? data : []).map(normaliseHitl);
+      }
+
+      // Merge (deduplicate by id)
+      const seen = new Set<string>();
+      const merged: UnifiedApproval[] = [];
+      for (const item of [...hitlItems, ...gateItems]) {
+        if (!seen.has(item.id)) {
+          seen.add(item.id);
+          merged.push(item);
+        }
+      }
+
+      // Sort newest-first
+      merged.sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+
+      // Push notifications for any new items
+      _pushNewApprovalNotifications(merged);
 
       approvalState.update((s) => ({
         ...s,
-        pendingGates: gates,
+        pendingItems: merged,
         loading: false,
       }));
     } catch (err) {
@@ -171,22 +420,27 @@ export const approvalStore = {
     }
   },
 
+  // -- Legacy convenience aliases (kept for ApprovalPanel backward compat) --
+
+  async fetchPendingGates(workflowId?: string): Promise<void> {
+    return this.fetchAllPending();
+  },
+
   /**
    * Fetch all gates for a specific workflow
    */
-  async fetchWorkflowGates(workflowId: string): Promise<ApprovalGate[]> {
+  async fetchWorkflowGates(workflowId: string): Promise<UnifiedApproval[]> {
     approvalState.update((s) => ({ ...s, loading: true }));
-
     try {
       const response = await fetch(`/api/approval-gates/workflow/${workflowId}`);
       if (!response.ok) throw new Error('Failed to fetch workflow approvals');
 
       const data = await response.json();
-      const gates: ApprovalGate[] = data.gates || [];
+      const gates = (data.gates || []).map(normaliseGate);
 
       approvalState.update((s) => ({
         ...s,
-        gateHistory: gates,
+        historyItems: gates,
         loading: false,
       }));
 
@@ -202,133 +456,182 @@ export const approvalStore = {
   },
 
   /**
-   * Fetch a specific gate by ID
+   * Approve a unified approval item — routes to correct backend
    */
-  async fetchGate(gateId: string): Promise<ApprovalGate | null> {
-    try {
-      const response = await fetch(`/api/approval-gates/${gateId}`);
-      if (!response.ok) throw new Error('Failed to fetch approval gate');
-
-      const gate: ApprovalGate = await response.json();
-
-      approvalState.update((s) => ({
-        ...s,
-        selectedGate: gate,
-      }));
-
-      return gate;
-    } catch (err) {
-      approvalState.update((s) => ({
-        ...s,
-        error: err instanceof Error ? err.message : 'Failed to fetch approval gate',
-      }));
-      return null;
-    }
-  },
-
-  /**
-   * Approve an approval gate
-   */
-  async approveGate(gateId: string, request: ApprovalActionRequest): Promise<ApprovalActionResponse | null> {
+  async approveItem(
+    item: UnifiedApproval,
+    request: ApprovalActionRequest,
+  ): Promise<ApprovalActionResponse | null> {
     approvalState.update((s) => ({ ...s, loading: true }));
 
     try {
-      const response = await fetch(`/api/approval-gates/${gateId}/approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(request),
-      });
+      let response: Response;
+
+      if (item.source === 'hitl') {
+        // New ApprovalManager endpoint
+        response = await fetch(`/api/approvals/${item.id}/approve`, {
+          method: 'POST',
+        });
+      } else {
+        // Legacy gate endpoint
+        response = await fetch(`/api/approval-gates/${item.id}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(request),
+        });
+      }
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || 'Failed to approve gate');
+        throw new Error(error.detail || 'Failed to approve');
       }
 
-      const result: ApprovalActionResponse = await response.json();
+      const result = await response.json();
 
-      // Update local state
+      // Remove from pending, add to history
       approvalState.update((s) => ({
         ...s,
         loading: false,
-        pendingGates: s.pendingGates.filter((g) => g.gate_id !== gateId),
-        gateHistory: [
-          ...s.gateHistory,
-          { ...s.selectedGate, status: 'approved' } as ApprovalGate,
-        ].filter(Boolean),
+        pendingItems: s.pendingItems.filter((p) => p.id !== item.id),
+        historyItems: [
+          { ...item, status: 'approved' as ApprovalStatus, approver: request.approver },
+          ...s.historyItems,
+        ].slice(0, 100),
       }));
 
-      return result;
+      // Push resolved notification
+      _pushResolvedNotification({ ...item, status: 'approved' });
+
+      return {
+        success: true,
+        gate_id: item.source === 'gate' ? item.id : undefined,
+        approval_id: item.source === 'hitl' ? item.id : undefined,
+        status: 'approved',
+        message: result.message || 'Approved',
+        approver: request.approver,
+        timestamp: new Date().toISOString(),
+      };
     } catch (err) {
       approvalState.update((s) => ({
         ...s,
         loading: false,
-        error: err instanceof Error ? err.message : 'Failed to approve gate',
+        error: err instanceof Error ? err.message : 'Failed to approve',
       }));
       return null;
     }
   },
 
   /**
-   * Reject an approval gate
+   * Reject a unified approval item — routes to correct backend
    */
-  async rejectGate(gateId: string, request: ApprovalActionRequest): Promise<ApprovalActionResponse | null> {
+  async rejectItem(
+    item: UnifiedApproval,
+    request: ApprovalActionRequest,
+  ): Promise<ApprovalActionResponse | null> {
     approvalState.update((s) => ({ ...s, loading: true }));
 
     try {
-      const response = await fetch(`/api/approval-gates/${gateId}/reject`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(request),
-      });
+      let response: Response;
+
+      if (item.source === 'hitl') {
+        // New ApprovalManager endpoint
+        response = await fetch(`/api/approvals/${item.id}/reject`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason: request.notes || '' }),
+        });
+      } else {
+        // Legacy gate endpoint
+        response = await fetch(`/api/approval-gates/${item.id}/reject`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(request),
+        });
+      }
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || 'Failed to reject gate');
+        throw new Error(error.detail || 'Failed to reject');
       }
 
-      const result: ApprovalActionResponse = await response.json();
+      const result = await response.json();
 
-      // Update local state
+      // Remove from pending, add to history
       approvalState.update((s) => ({
         ...s,
         loading: false,
-        pendingGates: s.pendingGates.filter((g) => g.gate_id !== gateId),
-        gateHistory: [
-          ...s.gateHistory,
-          { ...s.selectedGate, status: 'rejected' } as ApprovalGate,
-        ].filter(Boolean),
+        pendingItems: s.pendingItems.filter((p) => p.id !== item.id),
+        historyItems: [
+          { ...item, status: 'rejected' as ApprovalStatus, approver: request.approver },
+          ...s.historyItems,
+        ].slice(0, 100),
       }));
 
-      return result;
+      // Push resolved notification
+      _pushResolvedNotification({ ...item, status: 'rejected' });
+
+      return {
+        success: true,
+        gate_id: item.source === 'gate' ? item.id : undefined,
+        approval_id: item.source === 'hitl' ? item.id : undefined,
+        status: 'rejected',
+        message: result.message || 'Rejected',
+        approver: request.approver,
+        timestamp: new Date().toISOString(),
+      };
     } catch (err) {
       approvalState.update((s) => ({
         ...s,
         loading: false,
-        error: err instanceof Error ? err.message : 'Failed to reject gate',
+        error: err instanceof Error ? err.message : 'Failed to reject',
       }));
       return null;
     }
   },
 
-  /**
-   * Select an approval gate
-   */
-  selectGate(gate: ApprovalGate | null): void {
-    approvalState.update((s) => ({ ...s, selectedGate: gate }));
+  // -- Legacy gate actions (delegate to unified methods) --
+
+  async approveGate(
+    gateId: string,
+    request: ApprovalActionRequest,
+  ): Promise<ApprovalActionResponse | null> {
+    const state = get(approvalState);
+    const item = state.pendingItems.find((p) => p.id === gateId);
+    if (!item) return null;
+    return this.approveItem(item, request);
+  },
+
+  async rejectGate(
+    gateId: string,
+    request: ApprovalActionRequest,
+  ): Promise<ApprovalActionResponse | null> {
+    const state = get(approvalState);
+    const item = state.pendingItems.find((p) => p.id === gateId);
+    if (!item) return null;
+    return this.rejectItem(item, request);
   },
 
   /**
-   * Clear error
+   * Select an approval item for detail view
    */
+  selectItem(item: UnifiedApproval | null): void {
+    approvalState.update((s) => ({ ...s, selectedItem: item }));
+  },
+
+  /** Legacy alias */
+  selectGate(gate: any | null): void {
+    if (!gate) return this.selectItem(null);
+    this.selectItem(normaliseGate(gate));
+  },
+
   clearError(): void {
     approvalState.update((s) => ({ ...s, error: null }));
   },
 
-  /**
-   * Reset store
-   */
   reset(): void {
     this.stopPolling();
+    _notifiedNewIds.clear();
+    _notifiedResolvedIds.clear();
     approvalState.set(initialState);
   },
 };

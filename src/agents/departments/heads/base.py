@@ -20,6 +20,7 @@ from typing import Dict, List, Optional, Any
 
 import anthropic
 
+from src.agents.providers.router import get_router
 from src.agents.departments.types import (
     Department,
     DepartmentHeadConfig,
@@ -56,6 +57,58 @@ class DepartmentHead:
         spawner: Agent spawner for worker creation
         model_tier: Always "sonnet" for department heads
     """
+
+    STANDARD_TOOLS = [
+        {
+            "name": "send_mail",
+            "description": "Send a message to another department head or the floor manager",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "to": {
+                        "type": "string",
+                        "description": "Department name: research, development, trading, or floor_manager",
+                    },
+                    "subject": {"type": "string"},
+                    "body": {"type": "string"},
+                },
+                "required": ["to", "body"],
+            },
+        },
+        {
+            "name": "read_memory",
+            "description": "Read relevant memory nodes for a given query",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "What to search for in memory",
+                    }
+                },
+                "required": ["query"],
+            },
+        },
+        {
+            "name": "write_opinion",
+            "description": "Write an opinion or insight to long-term memory",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "The opinion or insight to save",
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "description": "Confidence 0.0-1.0",
+                        "default": 0.7,
+                    },
+                },
+                "required": ["content"],
+            },
+        },
+    ]
 
     def __init__(
         self,
@@ -101,7 +154,69 @@ class DepartmentHead:
             self.mail_service = DepartmentMailService(db_path=mail_db_path)
         self._init_spawner()
 
+        # Hooks system — mirrors BaseAgent hook lifecycle
+        self._hooks: List[Dict[str, Any]] = []
+
         logger.info(f"DepartmentHead initialized: {self.department.value} with {len(self._tools)} tools")
+
+    # ── Hook system (Agent SDK compliance) ────────────────────────────────────
+
+    def register_hook(
+        self,
+        event: str,
+        handler,
+        tool_name_pattern: Optional[str] = None,
+    ) -> None:
+        """Register a lifecycle hook.
+
+        Args:
+            event: PRE_TOOL_USE | POST_TOOL_USE | POST_TOOL_USE_FAILURE | STOP
+            handler: Callable or async callable
+            tool_name_pattern: Optional regex pattern to match tool names
+        """
+        import re
+        self._hooks.append({
+            "event": event,
+            "handler": handler,
+            "pattern": re.compile(tool_name_pattern) if tool_name_pattern else None,
+        })
+
+    async def _fire_hook(self, event: str, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Fire all hooks matching the event. Returns first non-None result."""
+        import asyncio
+        tool_name = context.get("tool_name", "")
+        for hook in self._hooks:
+            if hook["event"] != event:
+                continue
+            if hook["pattern"] and not hook["pattern"].match(tool_name):
+                continue
+            try:
+                result = hook["handler"](context)
+                if asyncio.iscoroutine(result):
+                    result = await result
+                if result is not None:
+                    return result
+            except Exception as e:
+                logger.debug(f"Hook {event} error: {e}")
+        return None
+
+    def _publish_thought(self, thought: str, thought_type: str = "reasoning") -> None:
+        """Publish to SSE thought stream for UI display (Agent SDK §6.2)."""
+        # Map internal types to UI-recognized types
+        _map = {
+            "reasoning": "reasoning", "tool_call": "action",
+            "action": "action", "observation": "observation",
+            "decision": "decision", "error": "observation",
+        }
+        try:
+            from src.api.agent_thought_stream_endpoints import get_thought_publisher
+            get_thought_publisher().publish(
+                department=self.department.value,
+                thought=thought,
+                thought_type=_map.get(thought_type, "reasoning"),
+            )
+        except Exception:
+            pass
 
     def get_available_tools(self) -> Dict[str, Any]:
         """
@@ -365,7 +480,19 @@ class DepartmentHead:
         Returns:
             Assembled system prompt string.
         """
-        parts = [self.system_prompt]
+        # Load user-saved system prompt override from settings (if any)
+        try:
+            from src.api.settings_endpoints import load_settings
+            saved_prompts = load_settings().get("agents", {}).get("system_prompts", {})
+            # Check both "research" and "research_head" key formats (UI saves as "_head")
+            saved = (
+                saved_prompts.get(f"{self.department.value}_head", "")
+                or saved_prompts.get(self.department.value, "")
+            )
+            base_prompt = saved if saved.strip() else self.system_prompt
+        except Exception:
+            base_prompt = self.system_prompt
+        parts = [base_prompt]
 
         if memory_nodes:
             memory_section = "## Relevant Memory\n"
@@ -419,6 +546,115 @@ class DepartmentHead:
         except Exception:
             return []
 
+    async def send_mail(self, to: str, subject: str, body: str) -> str:
+        """
+        Send mail to another department or the floor manager.
+
+        Args:
+            to: Destination department name string.
+            subject: Message subject.
+            body: Message body.
+
+        Returns:
+            Confirmation string.
+        """
+        try:
+            message = self.mail_service.send(
+                from_dept=self.department.value,
+                to_dept=to,
+                type=MessageType.RESULT,
+                subject=subject,
+                body=body,
+            )
+            logger.info(f"Mail sent to {to}: {message.id}")
+            return f"Mail sent to {to} (id={message.id})"
+        except Exception as e:
+            logger.error(f"send_mail failed: {e}")
+            return f"Mail send failed: {e}"
+
+    async def _execute_tool(self, tool_name: str, tool_input: dict) -> str:
+        """
+        Dispatch a tool call to the appropriate handler.
+
+        Args:
+            tool_name: Name of the tool to invoke.
+            tool_input: Parsed input dict from the model's tool_use block.
+
+        Returns:
+            String result to feed back as a tool_result message.
+        """
+        if tool_name == "send_mail":
+            return await self.send_mail(
+                to=tool_input["to"],
+                subject=tool_input.get("subject", "(no subject)"),
+                body=tool_input.get("body", ""),
+            )
+
+        if tool_name == "read_memory":
+            nodes = await self._read_relevant_memory(
+                query=tool_input.get("query", "")
+            )
+            if not nodes:
+                return "No relevant memory found."
+            lines = []
+            for n in nodes:
+                lines.append(f"[{n.get('type', 'UNKNOWN')}] {n.get('content', '')}")
+            return "\n".join(lines)
+
+        if tool_name in ("write_memory", "write_opinion"):
+            await self._write_opinion_node(
+                content=tool_input["content"],
+                confidence=float(tool_input.get("confidence", 0.7)),
+            )
+            return "Memory saved"
+
+        # Check tool registry for non-standard tools
+        registry_tool = self._tools.get(tool_name)
+        if registry_tool:
+            # If the registry tool requires approval, request HITL
+            if getattr(registry_tool, "requires_approval", False):
+                try:
+                    from src.agents.approval_manager import (
+                        get_approval_manager, ApprovalType, ApprovalUrgency,
+                    )
+                    self._publish_thought(
+                        f"Tool {tool_name} requires human approval — waiting...",
+                        thought_type="observation",
+                    )
+                    req = get_approval_manager().request_approval(
+                        approval_type=ApprovalType.TOOL_EXECUTION,
+                        title=f"Tool: {tool_name}",
+                        description=(
+                            f"Department {self.department.value} wants to execute "
+                            f"'{tool_name}': {json.dumps(tool_input)[:300]}"
+                        ),
+                        department=self.department.value,
+                        agent_id=f"dept_head_{self.department.value}",
+                        tool_name=tool_name,
+                        tool_input=tool_input,
+                        urgency=ApprovalUrgency.HIGH,
+                    )
+                    import asyncio
+                    resolved = await get_approval_manager().wait_for_approval(
+                        req.id, timeout=600,
+                    )
+                    if resolved.status.value != "approved":
+                        reason = resolved.rejection_reason or "Rejected"
+                        return f"Tool {tool_name} denied by human: {reason}"
+                except Exception as e:
+                    logger.warning(f"HITL tool approval failed: {e}")
+
+            # Execute the registry tool
+            if callable(getattr(registry_tool, "execute", None)):
+                import asyncio
+                if asyncio.iscoroutinefunction(registry_tool.execute):
+                    result = await registry_tool.execute(tool_input)
+                else:
+                    result = registry_tool.execute(tool_input)
+                return str(result)
+
+        return f"Tool {tool_name} not found"
+
     async def _invoke_claude(
         self,
         task: str,
@@ -426,68 +662,225 @@ class DepartmentHead:
         tools: Optional[list] = None,
     ) -> dict:
         """
-        Make an Anthropic SDK call with the assembled system prompt.
+        Make an Anthropic SDK call with an agentic loop that handles tool use.
+
+        Runs up to 10 iterations.  Each iteration:
+        1. Calls client.messages.create().
+        2. If stop_reason == "tool_use", executes every tool_use block and
+           appends the results as a user tool_result turn, then loops.
+        3. Stops when stop_reason != "tool_use" (i.e. "end_turn").
+
+        When ``tools`` is not provided the loop defaults to STANDARD_TOOLS so
+        all department heads always have mail + memory tools available.
 
         Args:
             task: The user-facing task string sent as the human turn.
             canvas_context: Optional canvas context to embed in the prompt.
             tools: Optional list of Anthropic tool definitions to pass.
+                   Defaults to STANDARD_TOOLS.
 
         Returns:
             Dict with keys: content, tool_calls, model, usage, stop_reason.
             On error includes an "error" key.
         """
+        if tools is None:
+            tools = self.STANDARD_TOOLS
+
         memory_nodes = await self._read_relevant_memory(task)
         system = self._build_system_prompt(
             canvas_context=canvas_context,
             memory_nodes=memory_nodes,
         )
 
-        model = os.getenv("ANTHROPIC_MODEL_SONNET", "claude-sonnet-4-6")
-        if self.model_tier == "opus":
-            model = os.getenv("ANTHROPIC_MODEL_OPUS", "claude-opus-4-6")
+        # Resolve provider via ProviderRouter; fall back to env vars if none configured
+        provider = get_router().primary
+        if provider:
+            client = anthropic.AsyncAnthropic(
+                api_key=provider.api_key,
+                base_url=provider.base_url,
+            )
+            # Pick model by tier from provider's model list
+            ml = provider.model_list
+            if ml:
+                model = ml[0].get("id") or ml[0].get("model_id", "claude-sonnet-4-6")
+            else:
+                model = "claude-sonnet-4-6"
+        else:
+            client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+            model = os.getenv("ANTHROPIC_MODEL_SONNET", "claude-sonnet-4-6")
+            if self.model_tier == "opus":
+                model = os.getenv("ANTHROPIC_MODEL_OPUS", "claude-opus-4-6")
 
-        client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        messages: list = [{"role": "user", "content": task}]
 
-        kwargs: dict = {
+        base_kwargs: dict = {
             "model": model,
             "max_tokens": 4096,
             "system": system,
-            "messages": [{"role": "user", "content": task}],
+            "tools": tools,
         }
-        if tools:
-            kwargs["tools"] = tools
+
+        MAX_ITERATIONS = 10
+        total_input_tokens = 0
+        total_output_tokens = 0
+        final_text = ""
+        all_tool_calls: list = []
+        response = None
+
+        self._publish_thought(
+            f"Starting task: {task[:100]}...",
+            thought_type="reasoning",
+        )
 
         try:
-            response = await client.messages.create(**kwargs)
+            for iteration in range(MAX_ITERATIONS):
+                response = await client.messages.create(
+                    **base_kwargs,
+                    messages=messages,
+                )
 
-            text_content = ""
-            tool_calls = []
-            for block in response.content:
-                if block.type == "text":
-                    text_content += block.text
-                elif block.type == "tool_use":
-                    tool_calls.append(
+                total_input_tokens += response.usage.input_tokens
+                total_output_tokens += response.usage.output_tokens
+
+                # Publish thinking blocks if present (extended thinking)
+                for block in response.content:
+                    if hasattr(block, "type") and block.type == "thinking":
+                        self._publish_thought(
+                            getattr(block, "thinking", "")[:500],
+                            thought_type="reasoning",
+                        )
+
+                if response.stop_reason != "tool_use":
+                    # Collect any final text blocks and exit the loop
+                    for block in response.content:
+                        if block.type == "text":
+                            final_text += block.text
+                    # Fire STOP hook (Agent SDK lifecycle)
+                    await self._fire_hook("STOP", {
+                        "department": self.department.value,
+                        "iterations": iteration + 1,
+                        "stop_reason": response.stop_reason,
+                    })
+                    self._publish_thought(
+                        f"Turn {iteration + 1}: Final response ({len(final_text)} chars)",
+                        thought_type="decision",
+                    )
+                    break
+
+                # --- tool_use turn ---
+                tool_use_blocks = [
+                    b for b in response.content if b.type == "tool_use"
+                ]
+
+                # Also capture any text emitted alongside tool calls
+                for block in response.content:
+                    if block.type == "text":
+                        final_text += block.text
+
+                # Append the assistant message (with tool_use blocks) to history
+                messages.append({"role": "assistant", "content": response.content})
+
+                # Execute each tool and build the tool_result user message
+                tool_result_content = []
+                for block in tool_use_blocks:
+                    all_tool_calls.append(
                         {"name": block.name, "input": block.input, "id": block.id}
                     )
 
+                    # Fire PRE_TOOL_USE hook (Agent SDK lifecycle)
+                    pre_result = await self._fire_hook("PRE_TOOL_USE", {
+                        "tool_name": block.name,
+                        "tool_input": block.input,
+                        "tool_use_id": block.id,
+                        "department": self.department.value,
+                    })
+                    # If hook returns a decision to deny, skip tool execution
+                    if isinstance(pre_result, dict) and pre_result.get("deny"):
+                        tool_result_content.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": pre_result.get("reason", "Tool denied by hook"),
+                            "is_error": True,
+                        })
+                        continue
+
+                    self._publish_thought(
+                        f"Turn {iteration + 1}: Calling {block.name}",
+                        thought_type="tool_call",
+                    )
+
+                    logger.info(
+                        f"Executing tool '{block.name}' (id={block.id}) "
+                        f"for {self.department.value}"
+                    )
+
+                    try:
+                        result_str = await self._execute_tool(block.name, block.input)
+                        # Fire POST_TOOL_USE hook
+                        await self._fire_hook("POST_TOOL_USE", {
+                            "tool_name": block.name,
+                            "tool_input": block.input,
+                            "tool_use_id": block.id,
+                            "result": result_str,
+                            "department": self.department.value,
+                        })
+                    except Exception as tool_err:
+                        # Fire POST_TOOL_USE_FAILURE hook
+                        await self._fire_hook("POST_TOOL_USE_FAILURE", {
+                            "tool_name": block.name,
+                            "tool_input": block.input,
+                            "tool_use_id": block.id,
+                            "error": str(tool_err),
+                            "department": self.department.value,
+                        })
+                        self._publish_thought(
+                            f"Tool {block.name} failed: {str(tool_err)[:100]}",
+                            thought_type="error",
+                        )
+                        result_str = f"Error: {tool_err}"
+
+                    tool_result_content.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": result_str,
+                        }
+                    )
+
+                messages.append({"role": "user", "content": tool_result_content})
+
+                if iteration == MAX_ITERATIONS - 1:
+                    logger.warning(
+                        f"Agentic loop hit max iterations ({MAX_ITERATIONS}) "
+                        f"for {self.department.value}"
+                    )
+
+            self._publish_thought(
+                f"Task complete: {iteration + 1} turns, "
+                f"{total_input_tokens + total_output_tokens} tokens",
+                thought_type="decision",
+            )
+
             return {
-                "content": text_content,
-                "tool_calls": tool_calls,
-                "model": response.model,
+                "content": final_text,
+                "tool_calls": all_tool_calls,
+                "model": response.model if response else model,
                 "usage": {
-                    "input_tokens": response.usage.input_tokens,
-                    "output_tokens": response.usage.output_tokens,
+                    "input_tokens": total_input_tokens,
+                    "output_tokens": total_output_tokens,
                 },
-                "stop_reason": response.stop_reason,
+                "stop_reason": response.stop_reason if response else "unknown",
             }
+
         except anthropic.AuthenticationError:
             logger.error(
                 "Anthropic authentication failed — check ANTHROPIC_API_KEY"
             )
+            self._publish_thought("Authentication failed", thought_type="error")
             return {"content": "", "tool_calls": [], "error": "auth_failed"}
         except Exception as e:
             logger.error(f"Claude invocation failed: {e}")
+            self._publish_thought(f"Error: {str(e)[:100]}", thought_type="error")
             return {"content": "", "tool_calls": [], "error": str(e)}
 
     async def _write_opinion_node(

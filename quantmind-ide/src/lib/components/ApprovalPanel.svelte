@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { Check, X, Clock, AlertCircle, Workflow, ChevronDown, ChevronUp } from 'lucide-svelte';
+  import { Check, X, Clock, AlertCircle, Workflow, ChevronDown, ChevronUp, Shield, Zap } from 'lucide-svelte';
   import {
     pendingApprovals,
     approvalHistory,
@@ -10,7 +10,7 @@
     approvalLoading,
     approvalError,
     approvalStore,
-    type ApprovalGate,
+    type UnifiedApproval,
     type ApprovalActionRequest,
   } from '$lib/stores/approvalStore';
 
@@ -20,7 +20,7 @@
   let approverName = $state('User');
   let notes = $state('');
   let actionInProgress = $state(false);
-  let expandedGates: Set<string> = $state(new Set());
+  let expandedItems: Set<string> = $state(new Set());
 
   // Initialize
   onMount(() => {
@@ -42,30 +42,30 @@
     showHistory = !showHistory;
   }
 
-  function toggleGateExpand(gateId: string) {
-    if (expandedGates.has(gateId)) {
-      expandedGates.delete(gateId);
+  function toggleExpand(id: string) {
+    if (expandedItems.has(id)) {
+      expandedItems.delete(id);
     } else {
-      expandedGates.add(gateId);
+      expandedItems.add(id);
     }
-    expandedGates = expandedGates;
+    expandedItems = expandedItems;
   }
 
-  async function handleApprove(gate: ApprovalGate) {
+  async function handleApprove(item: UnifiedApproval) {
     actionInProgress = true;
     const request: ApprovalActionRequest = {
       approver: approverName,
       notes: notes || 'Approved',
     };
 
-    const result = await approvalStore.approveGate(gate.gate_id, request);
+    const result = await approvalStore.approveItem(item, request);
     if (result) {
       notes = '';
     }
     actionInProgress = false;
   }
 
-  async function handleReject(gate: ApprovalGate) {
+  async function handleReject(item: UnifiedApproval) {
     if (!notes.trim()) {
       alert('Please provide a reason for rejection');
       return;
@@ -77,7 +77,7 @@
       notes: notes,
     };
 
-    const result = await approvalStore.rejectGate(gate.gate_id, request);
+    const result = await approvalStore.rejectItem(item, request);
     if (result) {
       notes = '';
     }
@@ -89,14 +89,29 @@
     return date.toLocaleString();
   }
 
-  function getGateTypeLabel(gateType: string): string {
+  function getTypeLabel(item: UnifiedApproval): string {
     const labels: Record<string, string> = {
       stage_transition: 'Stage Transition',
       deployment: 'Deployment',
       risk_check: 'Risk Check',
       manual_review: 'Manual Review',
+      workflow_gate: 'Workflow Gate',
+      tool_execution: 'Tool Approval',
+      agent_action: 'Agent Action',
+      ea_promotion: 'EA Promotion',
+      trade_execution: 'Trade Execution',
     };
-    return labels[gateType] || gateType;
+    return labels[item.gate_type] || item.gate_type?.replace(/_/g, ' ') || 'Approval';
+  }
+
+  function getUrgencyClass(item: UnifiedApproval): string {
+    if (item.urgency === 'critical') return 'urgency-critical';
+    if (item.urgency === 'high') return 'urgency-high';
+    return '';
+  }
+
+  function getSourceIcon(source: string): typeof Shield | typeof Zap {
+    return source === 'hitl' ? Zap : Shield;
   }
 
   function getStatusColor(status: string): string {
@@ -107,6 +122,9 @@
         return 'text-green-500';
       case 'rejected':
         return 'text-red-500';
+      case 'expired':
+      case 'cancelled':
+        return 'text-gray-500';
       default:
         return 'text-gray-500';
     }
@@ -131,7 +149,7 @@
   {#if showPanel}
     <div class="panel">
       <div class="panel-header">
-        <h3>Approval Gates</h3>
+        <h3>Approvals</h3>
         <button class="close-btn" onclick={togglePanel}>
           <X size={16} />
         </button>
@@ -165,57 +183,70 @@
           </h4>
 
           <div class="gates-list">
-            {#each $pendingApprovals as gate (gate.gate_id)}
-              <div class="gate-card pending">
+            {#each $pendingApprovals as item (item.id)}
+              <div class="gate-card pending {getUrgencyClass(item)}">
                 <button
                   class="gate-header"
-                  onclick={() => toggleGateExpand(gate.gate_id)}
+                  onclick={() => toggleExpand(item.id)}
                 >
                   <div class="gate-info">
-                    <span class="gate-type">{getGateTypeLabel(gate.gate_type)}</span>
-                    <span class="gate-stages">
-                      {gate.from_stage} → {gate.to_stage}
-                    </span>
+                    <div class="gate-type-row">
+                      <svelte:component this={getSourceIcon(item.source)} size={12} />
+                      <span class="gate-type">{getTypeLabel(item)}</span>
+                      {#if item.urgency === 'critical' || item.urgency === 'high'}
+                        <span class="urgency-badge {item.urgency}">{item.urgency}</span>
+                      {/if}
+                    </div>
+                    <span class="gate-title">{item.title}</span>
+                    {#if item.department}
+                      <span class="gate-dept">{item.department}</span>
+                    {/if}
                   </div>
-                  {#if expandedGates.has(gate.gate_id)}
+                  {#if expandedItems.has(item.id)}
                     <ChevronUp size={16} />
                   {:else}
                     <ChevronDown size={16} />
                   {/if}
                 </button>
 
-                {#if expandedGates.has(gate.gate_id)}
+                {#if expandedItems.has(item.id)}
                   <div class="gate-details">
                     <div class="detail-row">
-                      <span class="label">Workflow ID:</span>
-                      <span class="value code">{gate.workflow_id}</span>
+                      <span class="label">Description:</span>
+                      <span class="value">{item.description}</span>
                     </div>
+                    {#if item.workflow_id}
+                      <div class="detail-row">
+                        <span class="label">Workflow ID:</span>
+                        <span class="value code">{item.workflow_id}</span>
+                      </div>
+                    {/if}
+                    {#if item.from_stage}
+                      <div class="detail-row">
+                        <span class="label">Stage:</span>
+                        <span class="value">{item.from_stage}{item.to_stage ? ` → ${item.to_stage}` : ''}</span>
+                      </div>
+                    {/if}
                     <div class="detail-row">
                       <span class="label">Requested:</span>
-                      <span class="value">{formatDate(gate.created_at)}</span>
+                      <span class="value">{formatDate(item.created_at)}</span>
                     </div>
+                    {#if item.agent_id}
+                      <div class="detail-row">
+                        <span class="label">Agent:</span>
+                        <span class="value code">{item.agent_id}</span>
+                      </div>
+                    {/if}
                     <div class="detail-row">
-                      <span class="label">Requester:</span>
-                      <span class="value">{gate.requester || 'System'}</span>
+                      <span class="label">Source:</span>
+                      <span class="value">{item.source === 'hitl' ? 'Agent HITL' : 'Workflow Gate'}</span>
                     </div>
-                    {#if gate.reason}
-                      <div class="detail-row">
-                        <span class="label">Reason:</span>
-                        <span class="value">{gate.reason}</span>
-                      </div>
-                    {/if}
-                    {#if gate.extra_data}
-                      <div class="detail-row">
-                        <span class="label">Input File:</span>
-                        <span class="value code">{gate.extra_data?.input_file || 'N/A'}</span>
-                      </div>
-                    {/if}
 
                     <!-- Notes Input -->
                     <div class="notes-input">
-                      <label for="notes-{gate.gate_id}">Notes:</label>
+                      <label for="notes-{item.id}">Notes:</label>
                       <textarea
-                        id="notes-{gate.gate_id}"
+                        id="notes-{item.id}"
                         bind:value={notes}
                         placeholder="Add approval notes (required for rejection)"
                         rows="2"
@@ -226,7 +257,7 @@
                     <div class="action-buttons">
                       <button
                         class="btn approve"
-                        onclick={() => handleApprove(gate)}
+                        onclick={() => handleApprove(item)}
                         disabled={actionInProgress}
                       >
                         <Check size={14} />
@@ -234,7 +265,7 @@
                       </button>
                       <button
                         class="btn reject"
-                        onclick={() => handleReject(gate)}
+                        onclick={() => handleReject(item)}
                         disabled={actionInProgress || !notes.trim()}
                       >
                         <X size={14} />
@@ -272,20 +303,21 @@
         <div class="section history">
           <h4 class="section-title">Approval History</h4>
           <div class="gates-list">
-            {#each $approvalHistory as gate (gate.gate_id)}
-              <div class="gate-card {gate.status}">
-                <div class="gate-info">
-                  <span class="gate-type">{getGateTypeLabel(gate.gate_type)}</span>
-                  <span class="gate-stages">
-                    {gate.from_stage} → {gate.to_stage}
-                  </span>
-                  <span class="gate-status {getStatusColor(gate.status)}">
-                    {gate.status}
-                  </span>
+            {#each $approvalHistory as item (item.id)}
+              <div class="gate-card {item.status}">
+                <div class="gate-info" style="padding: 10px 12px;">
+                  <div class="gate-type-row">
+                    <svelte:component this={getSourceIcon(item.source)} size={12} />
+                    <span class="gate-type">{getTypeLabel(item)}</span>
+                    <span class="gate-status {getStatusColor(item.status)}">
+                      {item.status}
+                    </span>
+                  </div>
+                  <span class="gate-title">{item.title}</span>
                 </div>
                 <div class="gate-meta">
-                  <span>{formatDate(gate.updated_at)}</span>
-                  <span>by {gate.approver || 'Unknown'}</span>
+                  <span>{formatDate(item.resolved_at || item.updated_at || item.created_at)}</span>
+                  <span>by {item.approver || 'Unknown'}</span>
                 </div>
               </div>
             {/each}
@@ -339,7 +371,7 @@
     top: 100%;
     right: 0;
     margin-top: 8px;
-    width: 380px;
+    width: 400px;
     max-height: 70vh;
     overflow-y: auto;
     background: #0f172a;
@@ -450,6 +482,15 @@
     border-color: #f59e0b;
   }
 
+  .gate-card.urgency-critical {
+    border-color: #ef4444;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
+  }
+
+  .gate-card.urgency-high {
+    border-color: #f97316;
+  }
+
   .gate-card.approved {
     border-color: #22c55e;
   }
@@ -481,15 +522,47 @@
     gap: 2px;
   }
 
+  .gate-type-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
   .gate-type {
     font-size: 12px;
     font-weight: 600;
     color: #e2e8f0;
   }
 
-  .gate-stages {
+  .gate-title {
+    font-size: 13px;
+    color: #cbd5e1;
+    line-height: 1.3;
+  }
+
+  .gate-dept {
     font-size: 11px;
-    color: #94a3b8;
+    color: #64748b;
+    text-transform: capitalize;
+  }
+
+  .urgency-badge {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 1px 5px;
+    border-radius: 3px;
+    letter-spacing: 0.5px;
+  }
+
+  .urgency-badge.critical {
+    background: #ef4444;
+    color: #fff;
+  }
+
+  .urgency-badge.high {
+    background: #f97316;
+    color: #fff;
   }
 
   .gate-status {
@@ -513,17 +586,20 @@
 
   .detail-row .label {
     color: #94a3b8;
+    flex-shrink: 0;
+    margin-right: 8px;
   }
 
   .detail-row .value {
     color: #e2e8f0;
+    text-align: right;
   }
 
   .detail-row .value.code {
     font-family: monospace;
     font-size: 11px;
     color: #a5b4fc;
-    max-width: 180px;
+    max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -661,13 +737,13 @@
   }
 
   .history .gate-card {
-    padding: 10px 12px;
+    padding: 0;
   }
 
   .gate-meta {
     display: flex;
     justify-content: space-between;
-    margin-top: 6px;
+    padding: 0 12px 10px 12px;
     font-size: 11px;
     color: #64748b;
   }

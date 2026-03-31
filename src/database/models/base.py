@@ -4,6 +4,7 @@ Base models and utilities.
 Contains the SQLAlchemy Base, enums, and session utilities.
 """
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from enum import Enum as PyEnum
 
@@ -17,17 +18,21 @@ from ..engine import get_session
 Base = declarative_base()
 
 
-def get_db_session() -> Generator[Session, None, None]:
+def get_db_session():
     """
     FastAPI dependency for database session management.
 
-    Yields a database session and ensures cleanup after request.
+    Compatible with FastAPI Depends() and also works as a context manager.
 
-    Usage:
+    Usage (FastAPI dependency — RECOMMENDED):
         @router.get("/items")
         async def get_items(db: Session = Depends(get_db_session)):
             items = db.query(Item).all()
             return items
+
+    Usage (context manager):
+        with get_db_session() as db:
+            items = db.query(Item).all()
     """
     session = get_session()
     try:

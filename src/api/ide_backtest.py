@@ -26,6 +26,72 @@ _backtest_sessions: Dict[str, Dict[str, Any]] = {}
 _backtest_results: Dict[str, Dict[str, Any]] = {}
 
 
+def _build_backtest_result_dict(comparison) -> dict:
+    """Map BacktestComparison → backtest_result dict for generate_report()."""
+    # in_sample_summary → spiced_result (IS with regime)
+    # oos_summary → spiced_full_result (OOS walk-forward)
+    spiced = comparison.spiced_result
+    spiced_full = comparison.spiced_full_result
+
+    # Monte Carlo — prefer spiced_mc_result, fallback to vanilla
+    mc = comparison.spiced_mc_result
+    if mc is None:
+        mc = comparison.vanilla_mc_result
+
+    # Walk-forward efficiency from robustness_score
+    wf_efficiency = comparison.robustness_score
+    wf_passed = 1 if (spiced_full and spiced_full.return_pct > 0) else 0
+
+    return {
+        "in_sample_summary": {
+            "win_rate": spiced.win_rate if spiced else 0.0,
+            "profit_factor": getattr(spiced, 'profit_factor', 0.0),
+            "max_drawdown": spiced.drawdown if spiced else 0.0,
+            "sharpe": spiced.sharpe if spiced else 0.0,
+        },
+        "oos_summary": {
+            "win_rate": spiced_full.sharpe if spiced_full else 0.0,  # use sharpe as OOS proxy
+            "profit_factor": getattr(spiced_full, 'profit_factor', 0.0),
+            "max_drawdown": spiced_full.drawdown if spiced_full else 0.0,
+            "sharpe": spiced_full.sharpe if spiced_full else 0.0,
+        },
+        "monte_carlo": {
+            "p95": mc.confidence_interval_95th if mc else 0.0,
+            "p5": mc.confidence_interval_5th if mc else 0.0,
+            "prob_profit": mc.probability_profitable if mc else 0.0,
+        },
+        "walk_forward": {
+            "efficiency": wf_efficiency,
+            "windows_passed": wf_passed,
+            "windows_total": 1,
+        },
+        "pbo": {
+            "score": comparison.pbo,
+            "flag": comparison.pbo_recommendation or "UNKNOWN",
+        },
+    }
+
+
+def _derive_sit_result(comparison, backtest_result: dict) -> dict:
+    """SIT pass = OOS degradation < 15% (win_rate or return degradation)."""
+    is_summary = backtest_result.get("in_sample_summary", {})
+    oos_summary = backtest_result.get("oos_summary", {})
+
+    is_wr = is_summary.get("win_rate", 0)
+    oos_wr = oos_summary.get("win_rate", 0)
+
+    if not is_wr:
+        # Fallback to return_pct degradation
+        is_ret = getattr(comparison.spiced_result, 'return_pct', 0) if comparison.spiced_result else 0
+        oos_ret = getattr(comparison.spiced_full_result, 'return_pct', 0) if comparison.spiced_full_result else 0
+        degradation = abs(is_ret - oos_ret) / abs(is_ret) if is_ret else 0
+    else:
+        degradation = abs(is_wr - oos_wr) / is_wr if is_wr else 0
+
+    return {"passed": degradation < 0.15}
+
+
+
 @router.post("/run")
 async def run_backtest(request: BacktestRunRequest):
     """
@@ -197,6 +263,26 @@ def on_bar(tester):
             profit_factor = getattr(requested_result, 'profit_factor', 0.0) or 0.0
             kelly_score = (win_rate / 100.0 * profit_factor) - 1.0 if profit_factor > 0 else 0.0
 
+            # Generate structured report via BacktestReportSubAgent
+            try:
+                from src.agents.departments.subagents.backtest_report_subagent import BacktestReportSubAgent
+                agent = BacktestReportSubAgent()
+                trd_data = {
+                    "strategy_name": request.strategy_name or f"{request.symbol}_{request.variant}",
+                    "strategy_id": backtest_id,
+                    "date": datetime.now().date().isoformat(),
+                    "bot_tag": "@primal",
+                    "strategy_type": "unknown",
+                    "symbol": request.symbol,
+                    "timeframe": request.timeframe,
+                }
+                backtest_result_dict = _build_backtest_result_dict(comparison)
+                sit_result = _derive_sit_result(comparison, backtest_result_dict)
+                report_text = agent.generate_report(backtest_id, trd_data, backtest_result_dict, sit_result)
+            except Exception as report_err:
+                logger.warning(f"Report generation failed: {report_err}")
+                report_text = None
+
             # Build full backtest_results JSON with all variant data
             backtest_results_json = {
                 "backtest_id": backtest_id,
@@ -260,7 +346,8 @@ def on_bar(tester):
                     "recommendation": comparison.recommendation,
                     "risk_level": comparison.risk_level
                 },
-                "all_variants": comparison.to_dict()
+                "all_variants": comparison.to_dict(),
+                "report": report_text
             }
 
             _backtest_sessions[backtest_id]["status"] = "completed"

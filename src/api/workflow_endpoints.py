@@ -11,6 +11,7 @@ Endpoints match the expected shapes from workflowStore.ts:
 - workflow_id, workflow_type, status, progress_percent, steps, final_result, timestamps
 """
 
+import json
 import logging
 import uuid
 import asyncio
@@ -561,6 +562,86 @@ async def get_workflow_approvals(workflow_id: str):
         return {"gates": [], "total": 0, "error": str(e)}
 
 
+class WorkflowApprovalRequest(BaseModel):
+    approved: bool
+    notes: Optional[str] = None
+
+
+@router.post("/{workflow_id}/approve", response_model=Dict[str, Any])
+async def approve_workflow(
+    workflow_id: str,
+    request: WorkflowApprovalRequest,
+):
+    """
+    Approve or reject a workflow pending review.
+
+    This endpoint:
+    1. Updates the workflow record in the database with the approval decision
+    2. If approved, resumes the suspended Prefect flow via resume_flow_run()
+
+    The suspended flow will only resume if approval was granted.
+    """
+    from flows.database import get_workflow_database
+
+    db = get_workflow_database()
+    workflow = db.get_workflow_run(workflow_id)
+
+    if not workflow:
+        raise HTTPException(status_code=404, detail=f"Workflow {workflow_id} not found")
+
+    if workflow.get("status") != "pending_review":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Workflow is not pending review. Current status: {workflow.get('status')}"
+        )
+
+    new_status = "approved" if request.approved else "rejected"
+
+    # Parse existing output_data to preserve prefect_flow_run_id
+    existing_output = {}
+    if workflow.get("output_data"):
+        try:
+            existing_output = json.loads(workflow["output_data"])
+        except json.JSONDecodeError:
+            pass
+
+    # Merge new approval data with existing output_data
+    approval_data = {
+        **existing_output,
+        "approved": request.approved,
+        "notes": request.notes,
+        "decided_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    db.update_workflow_status(
+        workflow_id=workflow_id,
+        status=new_status,
+        output_data=json.dumps(approval_data),
+    )
+
+    logger.info(f"Workflow {workflow_id} {new_status} by user")
+
+    # If approved, resume the suspended Prefect flow
+    if request.approved:
+        prefect_flow_run_id = existing_output.get("prefect_flow_run_id")
+        if prefect_flow_run_id:
+            try:
+                from prefect import resume_flow_run
+                resume_flow_run(flow_run_id=prefect_flow_run_id)
+                logger.info(f"Resumed Prefect flow run {prefect_flow_run_id} for workflow {workflow_id}")
+            except Exception as e:
+                logger.error(f"Failed to resume Prefect flow {prefect_flow_run_id}: {e}")
+                # Don't fail the request - the flow might not be suspended or already resumed
+        else:
+            logger.warning(f"No prefect_flow_run_id found for workflow {workflow_id} - flow may not be suspended")
+
+    return {
+        "status": new_status,
+        "workflow_id": workflow_id,
+        "notes": request.notes,
+    }
+
+
 @router.get("/{workflow_id}/approvals/pending", response_model=Dict[str, Any])
 async def get_workflow_pending_approval(workflow_id: str):
     """
@@ -585,3 +666,217 @@ async def get_workflow_pending_approval(workflow_id: str):
                     return {"has_pending": False, "gates": [], "total": 0}
     except Exception as e:
         return {"has_pending": False, "gates": [], "total": 0, "error": str(e)}
+
+
+# ============================================================================
+# Canonical Workflow Endpoints — WF1-WF4 (architecture §20)
+# ============================================================================
+
+class CanonicalWorkflowRequest(BaseModel):
+    """Request body for starting a canonical workflow (WF1-WF4)."""
+    workflow_type: str = Field(
+        ..., description="Workflow type: wf1_creation, wf2_enhancement, wf3_performance_intel, wf4_weekend_update"
+    )
+    strategy_id: Optional[str] = Field(None, description="Strategy ID (required for WF2)")
+    priority: str = Field("medium", description="Task priority: high, medium, low")
+    payload: Dict[str, Any] = Field(default_factory=dict, description="Initial workflow payload")
+    metadata: Optional[Dict[str, Any]] = None
+
+
+def _get_dept_coordinator():
+    """Get the department workflow coordinator instance."""
+    from src.agents.departments.workflow_coordinator import get_workflow_coordinator
+    return get_workflow_coordinator()
+
+
+def _map_workflow_type(wf_type_str: str):
+    """Map string workflow type to WorkflowType enum."""
+    from src.agents.departments.workflow_models import WorkflowType
+    type_map = {
+        "wf1_creation": WorkflowType.WF1_CREATION,
+        "wf2_enhancement": WorkflowType.WF2_ENHANCEMENT,
+        "wf3_performance_intel": WorkflowType.WF3_PERFORMANCE_INTEL,
+        "wf4_weekend_update": WorkflowType.WF4_WEEKEND_UPDATE,
+    }
+    wf_type = type_map.get(wf_type_str.lower())
+    if not wf_type:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown workflow type '{wf_type_str}'. "
+                   f"Valid types: {', '.join(type_map.keys())}"
+        )
+    return wf_type
+
+
+@router.post("/canonical/start", response_model=Dict[str, Any])
+async def start_canonical_workflow(
+    request: CanonicalWorkflowRequest,
+    background_tasks: BackgroundTasks,
+):
+    """
+    Start a canonical workflow (WF1-WF4).
+
+    This endpoint triggers the department workflow coordinator which:
+    1. Creates the workflow with proper EA lifecycle state
+    2. Dispatches the first task via department mail
+    3. Persists state to Prefect database for durability
+    4. Records the decision in graph memory
+    5. Updates Kanban board status
+
+    Workflow Types:
+    - wf1_creation: AlphaForge Creation Pipeline (YouTube → EA in library)
+    - wf2_enhancement: AlphaForge Enhancement Loop (EA library → improved EA → live)
+    - wf3_performance_intel: Daily Performance Intelligence (Dead Zone 16:15-18:00 GMT)
+    - wf4_weekend_update: Weekend Update Cycle (Friday→Monday)
+    """
+    from src.agents.departments.workflow_models import TaskPriority
+
+    coordinator = _get_dept_coordinator()
+    wf_type = _map_workflow_type(request.workflow_type)
+
+    priority_map = {
+        "high": TaskPriority.HIGH,
+        "medium": TaskPriority.MEDIUM,
+        "low": TaskPriority.LOW,
+    }
+    priority = priority_map.get(request.priority.lower(), TaskPriority.MEDIUM)
+
+    workflow_id = coordinator.start_workflow(
+        workflow_type=wf_type,
+        initial_payload=request.payload,
+        strategy_id=request.strategy_id,
+        priority=priority,
+        metadata=request.metadata,
+    )
+
+    # Optionally trigger Prefect flow in background for durable execution
+    async def _trigger_prefect():
+        try:
+            await coordinator._trigger_prefect_flow(
+                wf_type, workflow_id, request.payload,
+            )
+        except Exception as e:
+            logger.warning(f"Background Prefect trigger failed: {e}")
+
+    background_tasks.add_task(_trigger_prefect)
+
+    logger.info(f"Started canonical workflow: {request.workflow_type} → {workflow_id}")
+
+    return {
+        "workflow_id": workflow_id,
+        "workflow_type": request.workflow_type,
+        "status": "pending",
+        "message": f"Canonical workflow {request.workflow_type} started",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.post("/canonical/{workflow_id}/advance", response_model=Dict[str, Any])
+async def advance_canonical_workflow(workflow_id: str):
+    """
+    Advance a canonical workflow to its next stage.
+
+    Uses the routing tables defined in workflow_models.py to determine
+    the next stage and target department.
+    """
+    coordinator = _get_dept_coordinator()
+    result = coordinator.advance_workflow(workflow_id)
+
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    return result
+
+
+@router.post("/canonical/{workflow_id}/respond", response_model=Dict[str, Any])
+async def handle_department_response(
+    workflow_id: str,
+    from_dept: str = Query(..., description="Department that completed the task"),
+    result: Dict[str, Any] = {},
+):
+    """
+    Handle a department's response to a workflow task.
+
+    Called when a department head completes its assigned stage. Updates
+    EA lifecycle state, persists to Prefect DB, and records in memory.
+    """
+    coordinator = _get_dept_coordinator()
+    response = coordinator.handle_department_response(
+        workflow_id=workflow_id,
+        from_dept=from_dept,
+        result=result,
+    )
+
+    if "error" in response:
+        raise HTTPException(status_code=400, detail=response["error"])
+
+    return response
+
+
+@router.get("/canonical/active", response_model=Dict[str, Any])
+async def list_active_canonical_workflows():
+    """List all active canonical workflows (WF1-WF4)."""
+    coordinator = _get_dept_coordinator()
+    active = coordinator.get_active_workflows()
+    return {"workflows": active, "count": len(active)}
+
+
+@router.get("/canonical/by-type/{workflow_type}", response_model=Dict[str, Any])
+async def list_workflows_by_type(workflow_type: str):
+    """List all canonical workflows of a specific type."""
+    wf_type = _map_workflow_type(workflow_type)
+    coordinator = _get_dept_coordinator()
+    workflows = coordinator.get_workflows_by_type(wf_type)
+    return {"workflows": workflows, "count": len(workflows)}
+
+
+@router.get("/canonical/{workflow_id}/status", response_model=Dict[str, Any])
+async def get_canonical_workflow_status(workflow_id: str):
+    """Get detailed status of a canonical workflow including EA lifecycle state."""
+    coordinator = _get_dept_coordinator()
+    status = coordinator.get_workflow_status(workflow_id)
+    if not status:
+        raise HTTPException(status_code=404, detail=f"Workflow {workflow_id} not found")
+    return status
+
+
+@router.post("/canonical/{workflow_id}/cancel", response_model=Dict[str, Any])
+async def cancel_canonical_workflow(workflow_id: str):
+    """Cancel a running canonical workflow."""
+    coordinator = _get_dept_coordinator()
+    success = coordinator.cancel_workflow(workflow_id)
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel workflow {workflow_id}"
+        )
+    return {"success": True, "workflow_id": workflow_id, "status": "cancelled"}
+
+
+@router.post("/canonical/{workflow_id}/wf2-loop", response_model=Dict[str, Any])
+async def check_and_restart_wf2_loop(workflow_id: str):
+    """
+    Check if WF2 Enhancement Loop should iterate and restart if needed.
+
+    WF2 is a continuous improvement loop. After each round, this endpoint
+    checks if further improvement is warranted and restarts from
+    RESEARCH_IMPROVEMENT if so.
+    """
+    coordinator = _get_dept_coordinator()
+
+    if not coordinator.should_loop_wf2(workflow_id):
+        return {
+            "workflow_id": workflow_id,
+            "should_loop": False,
+            "message": "No further improvement needed",
+        }
+
+    result = coordinator.restart_wf2_round(workflow_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    return {
+        "workflow_id": workflow_id,
+        "should_loop": True,
+        "restart_result": result,
+    }
