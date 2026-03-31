@@ -191,3 +191,9 @@ class BacktestRunRequest(BaseModel):
     commission: Optional[float] = Field(0.001, description="Commission per trade")
     broker_id: Optional[str] = Field("icmarkets_raw", description="Broker ID for fee-aware Kelly")
     enable_ws_streaming: Optional[bool] = Field(True, description="Enable WebSocket streaming for real-time updates")
+    # Pipeline control fields
+    run_monte_carlo: Optional[bool] = Field(True, description="Run Monte Carlo simulations")
+    mc_simulations: Optional[int] = Field(1000, description="Number of Monte Carlo simulations")
+    run_pbo: Optional[bool] = Field(True, description="Run PBO (Probability of Backtest Overfitting) calculation")
+    pbo_blocks: Optional[int] = Field(5, description="Number of CSCV blocks for PBO")
+    pbo_simulations: Optional[int] = Field(100, description="Number of bootstrap simulations for PBO")

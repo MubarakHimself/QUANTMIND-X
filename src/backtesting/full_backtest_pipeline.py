@@ -131,6 +131,7 @@ class FullBacktestPipeline:
         initial_cash: float = 10000.0,
         commission: float = 0.001,
         slippage: float = 0.0,
+        broker_id: str = "icmarkets_raw",
         run_monte_carlo: bool = True,
         mc_simulations: int = 1000,
         run_pbo: bool = True,
@@ -144,6 +145,7 @@ class FullBacktestPipeline:
             initial_cash: Starting account balance
             commission: Commission per trade
             slippage: Slippage in price points
+            broker_id: Broker identifier for fee-aware Kelly
             run_monte_carlo: Whether to run Monte Carlo simulations
             mc_simulations: Number of Monte Carlo simulations
             run_pbo: Whether to run PBO calculation
@@ -154,6 +156,7 @@ class FullBacktestPipeline:
         self.initial_cash = initial_cash
         self.commission = commission
         self.slippage = slippage
+        self.broker_id = broker_id
         self.run_monte_carlo = run_monte_carlo
         self.mc_simulations = mc_simulations
         self.run_pbo = run_pbo
@@ -238,7 +241,8 @@ class FullBacktestPipeline:
                 timeframe=timeframe,
                 initial_cash=self.initial_cash,
                 commission=self.commission,
-                slippage=self.slippage
+                slippage=self.slippage,
+                broker_id=self.broker_id
             )
 
             # Run Monte Carlo on Vanilla result
@@ -259,7 +263,8 @@ class FullBacktestPipeline:
                 timeframe=timeframe,
                 initial_cash=self.initial_cash,
                 commission=self.commission,
-                slippage=self.slippage
+                slippage=self.slippage,
+                broker_id=self.broker_id
             )
 
             # Run Monte Carlo on Spiced result
@@ -282,7 +287,8 @@ class FullBacktestPipeline:
                 strategy_code=strategy_code,
                 initial_cash=self.initial_cash,
                 commission=self.commission,
-                slippage=self.slippage
+                slippage=self.slippage,
+                broker_id=self.broker_id
             )
 
             # Convert to MT5BacktestResult format
@@ -314,7 +320,8 @@ class FullBacktestPipeline:
                 initial_cash=self.initial_cash,
                 commission=self.commission,
                 slippage=self.slippage,
-                use_regime_filter=True
+                use_regime_filter=True,
+                broker_id=self.broker_id
             )
 
             # Convert to SpicedBacktestResult format

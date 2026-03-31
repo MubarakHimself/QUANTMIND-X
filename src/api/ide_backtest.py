@@ -40,7 +40,7 @@ async def run_backtest(request: BacktestRunRequest):
     Uses fee-aware Kelly position sizing when broker_id is provided.
     """
     try:
-        from src.backtesting.mode_runner import run_full_system_backtest, BacktestMode
+        from src.backtesting.full_backtest_pipeline import FullBacktestPipeline
         from src.backtesting.mt5_engine import MQL5Timeframe
         from src.api.ws_logger import setup_backtest_logging
     except ImportError as e:
@@ -148,73 +148,82 @@ def on_bar(tester):
 
     async def run_backtest_task():
         try:
-            # Offload sync CPU-heavy backtest to thread pool
-            result = await loop.run_in_executor(
+            # Create pipeline with all options
+            pipeline = FullBacktestPipeline(
+                initial_cash=request.initial_cash if request.initial_cash is not None else 10000.0,
+                commission=request.commission if request.commission is not None else 0.001,
+                broker_id=request.broker_id if request.broker_id is not None else "icmarkets_raw",
+                run_monte_carlo=request.run_monte_carlo if request.run_monte_carlo is not None else True,
+                mc_simulations=request.mc_simulations if request.mc_simulations is not None else 1000,
+                run_pbo=request.run_pbo if request.run_pbo is not None else True,
+                pbo_blocks=request.pbo_blocks if request.pbo_blocks is not None else 5,
+                pbo_simulations=request.pbo_simulations if request.pbo_simulations is not None else 100,
+            )
+
+            # Run all 4 variants (sync, off event loop via run_in_executor)
+            comparison = await loop.run_in_executor(
                 None,
-                lambda: run_full_system_backtest(
-                    mode=request.variant,
+                lambda: pipeline.run_all_variants(
                     data=data,
                     symbol=request.symbol,
                     timeframe=timeframe_int,
-                    strategy_code=request.strategy_code or "",
-                    initial_cash=request.initial_cash if request.initial_cash is not None else 10000.0,
-                    commission=request.commission if request.commission is not None else 0.001,
-                    broker_id=request.broker_id if request.broker_id is not None else "icmarkets_raw",
-                    backtest_id=backtest_id,
-                    progress_streamer=progress_streamer,
-                    ws_logger=ws_logger,
-                    enable_ws_streaming=request.enable_ws_streaming or False,
-                    loop=loop
+                    strategy_code=request.strategy_code or ""
                 )
             )
 
-            # Handle result
-            if isinstance(result, dict):
-                first_key = next(iter(result))
-                backtest_result = result[first_key]
-            else:
-                backtest_result = result
+            # Extract requested variant's metrics for scalar DB fields
+            variant_map = {
+                'vanilla': comparison.vanilla_result,
+                'spiced': comparison.spiced_result,
+                'vanilla_full': comparison.vanilla_full_result,
+                'spiced_full': comparison.spiced_full_result
+            }
+            requested_result = variant_map.get(request.variant, comparison.vanilla_result)
 
-            # Extract metrics from backtest result
-            final_balance = getattr(backtest_result, 'final_cash', 0.0) or 0.0
+            if requested_result is None:
+                requested_result = comparison.vanilla_result  # fallback
+
+            # Extract scalar metrics from requested variant
+            final_balance = getattr(requested_result, 'final_cash', 0.0) or 0.0
             initial_cash = request.initial_cash if request.initial_cash is not None else 10000.0
             net_profit = final_balance - initial_cash
-            total_trades = getattr(backtest_result, 'trades', 0) or 0
-            win_rate = getattr(backtest_result, 'win_rate', 0.0) or 0.0
-            sharpe_ratio = getattr(backtest_result, 'sharpe', 0.0) or 0.0
-            drawdown = getattr(backtest_result, 'drawdown', 0.0) or 0.0
-            return_pct = getattr(backtest_result, 'return_pct', 0.0) or 0.0
+            total_trades = getattr(requested_result, 'trades', 0) or 0
+            win_rate = getattr(requested_result, 'win_rate', 0.0) or 0.0
+            sharpe_ratio = getattr(requested_result, 'sharpe', 0.0) or 0.0
+            drawdown = getattr(requested_result, 'drawdown', 0.0) or 0.0
+            return_pct = getattr(requested_result, 'return_pct', 0.0) or 0.0
 
             # Calculate Kelly score (simplified: win_rate * profit_factor - 1)
-            profit_factor = getattr(backtest_result, 'profit_factor', 0.0) or 0.0
+            profit_factor = getattr(requested_result, 'profit_factor', 0.0) or 0.0
             kelly_score = (win_rate / 100.0 * profit_factor) - 1.0 if profit_factor > 0 else 0.0
 
-            # Build backtest_results JSON with full detail
+            # Build full backtest_results JSON with all variant data
             backtest_results_json = {
                 "backtest_id": backtest_id,
-                "final_balance": final_balance,
-                "initial_cash": initial_cash,
-                "net_profit": net_profit,
-                "total_trades": total_trades,
-                "win_rate": win_rate,
-                "sharpe_ratio": sharpe_ratio,
-                "max_drawdown": drawdown,
-                "return_pct": return_pct,
-                "profit_factor": profit_factor,
-                "variant": request.variant,
+                "all_variants": comparison.to_dict(),
+                "comparison_summary": {
+                    "robustness_score": comparison.robustness_score,
+                    "recommendation": comparison.recommendation,
+                    "risk_level": comparison.risk_level,
+                    "pbo": comparison.pbo,
+                    "pbo_recommendation": comparison.pbo_recommendation,
+                    "regime_impact": comparison.regime_impact,
+                    "walk_forward_validation": comparison.walk_forward_validation
+                },
+                "requested_variant": request.variant,
                 "symbol": request.symbol,
                 "timeframe": request.timeframe,
                 "start_date": request.start_date,
                 "end_date": request.end_date,
                 "strategy_code": request.strategy_code,
-                "full_result": backtest_result.to_dict() if hasattr(backtest_result, 'to_dict') else {}
+                "final_result": requested_result.to_dict() if hasattr(requested_result, 'to_dict') else {}
             }
 
             # Persist to database
             try:
                 session = get_session()
                 perf_record = StrategyPerformance(
-                    strategy_name=request.strategy_name if hasattr(request, 'strategy_name') and request.strategy_name else f"{request.symbol}_{request.variant}",
+                    strategy_name=request.strategy_name if request.strategy_name else f"{request.symbol}_{request.variant}",
                     backtest_results=backtest_results_json,
                     kelly_score=round(kelly_score, 4),
                     sharpe_ratio=round(sharpe_ratio, 4),
@@ -239,14 +248,19 @@ def on_bar(tester):
             # Store results in memory
             _backtest_results[backtest_id] = {
                 "backtest_id": backtest_id,
+                "status": "completed",
                 "final_balance": final_balance,
                 "total_trades": total_trades,
                 "win_rate": win_rate,
                 "sharpe_ratio": sharpe_ratio,
-                "drawdown": drawdown,
+                "max_drawdown": drawdown,
                 "return_pct": return_pct,
-                "duration_seconds": None,
-                "results": backtest_result.to_dict() if hasattr(backtest_result, 'to_dict') else {}
+                "comparison_summary": {
+                    "robustness_score": comparison.robustness_score,
+                    "recommendation": comparison.recommendation,
+                    "risk_level": comparison.risk_level
+                },
+                "all_variants": comparison.to_dict()
             }
 
             _backtest_sessions[backtest_id]["status"] = "completed"
