@@ -22,6 +22,8 @@ export interface ChatSession {
 export interface ChatMessageRequest {
   message: string;
   session_id?: string;
+  context?: Record<string, unknown>;
+  history?: Array<{ role: string; content: string }>;
   stream?: boolean;
 }
 
@@ -112,7 +114,9 @@ export const chatApi = {
     message: string,
     sessionId?: string,
     stream = false,
-    dept?: string
+    dept?: string,
+    context?: Record<string, unknown>,
+    history?: Array<{ role: string; content: string }>
   ): Promise<ChatMessageResponse> {
     // Department messages route to /api/chat/departments/{dept}/message
     // All other endpoints route to /api/chat/{endpoint}/message
@@ -123,7 +127,7 @@ export const chatApi = {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, session_id: sessionId, stream })
+      body: JSON.stringify({ message, session_id: sessionId, context, history, stream })
     });
     if (!response.ok) {
       throw new Error(`Failed to send message: ${response.statusText}`);

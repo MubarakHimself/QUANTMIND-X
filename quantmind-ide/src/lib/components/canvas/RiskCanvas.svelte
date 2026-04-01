@@ -20,7 +20,8 @@
     AlertTriangle,
     Clock,
     Lightbulb,
-    ChevronDown
+    ChevronDown,
+    Trophy
   } from 'lucide-svelte';
   import { apiFetch } from '$lib/api';
   import PhysicsSensorGrid from '$lib/components/risk/PhysicsSensorGrid.svelte';
@@ -28,16 +29,17 @@
   import PropFirmConfigPanel from '$lib/components/risk/PropFirmConfigPanel.svelte';
   import CalendarGateTile from '$lib/components/risk/CalendarGateTile.svelte';
   import BacktestResultsPanel from '$lib/components/risk/BacktestResultsPanel.svelte';
+  import DprLeaderboard from '$lib/components/risk/DprLeaderboard.svelte';
   import DepartmentKanban from '$lib/components/department-kanban/DepartmentKanban.svelte';
   import AgentTilePanel from '$lib/components/AgentTilePanel.svelte';
   import { canvasContextService } from '$lib/services/canvasContextService';
-  import { physicsSensorStore, physicsLastUpdated } from '$lib/stores/risk';
+  import { physicsSensorStore, physicsLastUpdated, type PhysicsSensorState } from '$lib/stores/risk';
 
   // =============================================================================
   // Types
   // =============================================================================
 
-  type RiskTab = 'physics' | 'compliance' | 'calendar' | 'backtest' | 'dept-tasks';
+  type RiskTab = 'physics' | 'compliance' | 'calendar' | 'backtest' | 'dept-tasks' | 'dpr';
 
   // =============================================================================
   // State
@@ -47,6 +49,12 @@
 
   // Physics last-updated
   let lastUpdated = $state<Date | null>(null);
+  let physicsState = $state<PhysicsSensorState>({
+    data: null,
+    loading: false,
+    error: null,
+    lastUpdated: null
+  });
 
   // Agent insights strip
   let insightsExpanded = $state(false);
@@ -59,6 +67,7 @@
     { id: 'calendar',  label: 'Calendar',   icon: Calendar  },
     { id: 'backtest',  label: 'Backtest',   icon: BarChart3 },
     { id: 'dept-tasks', label: 'Dept Tasks', icon: Kanban   },
+    { id: 'dpr',       label: 'DPR',        icon: Trophy    },
   ];
 
   // =============================================================================
@@ -66,6 +75,7 @@
   // =============================================================================
 
   const unsub = physicsLastUpdated.subscribe(v => { lastUpdated = v; });
+  const unsubPhysics = physicsSensorStore.subscribe(v => { physicsState = v; });
 
   onMount(async () => {
     try {
@@ -77,6 +87,7 @@
 
   onDestroy(() => {
     unsub();
+    unsubPhysics();
   });
 
   // =============================================================================
@@ -92,6 +103,17 @@
       hour12: false
     });
   }
+
+  $effect(() => {
+    canvasContextService.setRuntimeState('risk', {
+      active_tab: activeTab,
+      visible_tabs: tabs.map((tab) => tab.id),
+      last_updated: lastUpdated?.toISOString() ?? null,
+      physics: physicsState.data,
+      physics_loading: physicsState.loading,
+      physics_error: physicsState.error,
+    });
+  });
 
 </script>
 
@@ -180,6 +202,11 @@
     {:else if activeTab === 'dept-tasks'}
       <div class="kanban-wrapper">
         <DepartmentKanban department="risk" />
+      </div>
+
+    {:else if activeTab === 'dpr'}
+      <div class="dpr-grid">
+        <DprLeaderboard />
       </div>
     {/if}
 
@@ -394,6 +421,13 @@
     .calendar-grid {
       grid-template-columns: 1fr;
     }
+  }
+
+  .dpr-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+    height: 100%;
   }
 
   /* Placeholder tiles for future calendar integrations */

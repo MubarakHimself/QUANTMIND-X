@@ -202,6 +202,34 @@
     await loadTab(tab);
   }
 
+  $effect(() => {
+    canvasContextService.setRuntimeState('research', {
+      active_tab: activeTab,
+      visible_tabs: tabs.map((tab) => tab.id),
+      counts: {
+        articles: articles.length,
+        books: books.length,
+        logs: logs.length,
+        personal: personal.length,
+        youtube: videos.length,
+      },
+      samples: {
+        articles: articles.slice(0, 5).map(({ id, title, source, date, tags }) => ({ id, title, source, date, tags })),
+        books: books.slice(0, 5).map(({ id, title, author, topics, year }) => ({ id, title, author, topics, year })),
+        logs: logs.slice(0, 5).map(({ id, title, date, tags }) => ({ id, title, date, tags })),
+        personal: personal.slice(0, 5).map(({ id, title, date }) => ({ id, title, date })),
+        youtube: videos.slice(0, 5).map(({ id, title, channel, duration, date }) => ({ id, title, channel, duration, date })),
+      },
+      selected_item: selectedItem
+        ? {
+            id: selectedItem.id,
+            title: selectedItem.title,
+            type: selectedItemType,
+          }
+        : null,
+    });
+  });
+
   // =============================================================================
   // Detail navigation
   // =============================================================================

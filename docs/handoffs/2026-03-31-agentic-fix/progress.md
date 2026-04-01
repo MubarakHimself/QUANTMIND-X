@@ -23,6 +23,44 @@ This section is the current source of truth and supersedes older notes below whe
 
 ### Newly Confirmed From Live User Audit
 
+- Live browser watch-pass on `2026-04-01` confirmed the current department-agent state more precisely:
+  - transport is healthy for Workshop, Research, Development, and Risk agent chats
+  - per-canvas session isolation is healthy in the `AgentPanel`
+  - the remaining defect is context grounding, not message delivery
+- Workshop/Floor Manager still answers too generically for canvas-aware prompts:
+  - asking `What canvas am I on right now?` in `Workshop` returned a generic Floor Manager description rather than explicitly grounding the answer in the `Workshop` canvas
+- Risk chat now confirms a real grounding failure:
+  - in-browser, the Risk canvas visibly showed live physics tiles (`HMM Regime`, `Kelly Engine`, `Ising`, etc.)
+  - the Risk agent replied that it could not see any live risk state data and asked for external feeds instead of summarizing the visible canvas state
+- Research chat confirms the same issue from a second angle:
+  - without manual attachment, the Research agent said there was no research context on the canvas
+  - with manual `Attach canvas context -> Research context`, the request reached the live provider successfully, but the reply still hallucinated generic capability categories instead of using the actual visible tabs/resources
+- Root cause narrowed by code + browser confirmation:
+  - [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte) currently appends only `template.base_descriptor` text under `Attached canvas context:` during send
+  - the richer `loadCanvasContext()` result loaded at session creation is not sent back on message submit
+  - [canvasContextService.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/canvasContextService.ts) exposes only template + memory identifiers from `/api/canvas-context/load`; it does not capture live UI state
+  - [chat_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/chat_endpoints.py) currently discards incoming department request context on the non-streaming department path and rebuilds `canvas_context = {"history": history, "department": dept}`
+  - backend department heads can consume structured `canvas_context`, but they are currently receiving only minimal scaffolding instead of real canvas state
+- Context-grounding patch is now in place:
+  - [canvasContextService.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/canvasContextService.ts) now retains per-canvas runtime state and returns enriched canvas context objects
+  - [ResearchCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/ResearchCanvas.svelte) now publishes runtime tab/count/sample state into the shared canvas-context service
+  - [RiskCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/RiskCanvas.svelte) now publishes live physics/runtime state into the shared canvas-context service
+  - [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte) now sends structured `context` payloads with enriched active/attached canvas context instead of relying on flattened template prose alone
+  - [chatApi.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/api/chatApi.ts) now supports structured `context` and `history` payloads
+  - [WorkshopCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/WorkshopCanvas.svelte) now sends enriched `workshop` canvas context through the canonical floor-manager route
+  - [chat_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/chat_endpoints.py) now preserves incoming structured department context instead of collapsing it to `{history, department}` only
+  - [floor_manager.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/floor_manager.py) now embeds current canvas context into direct Floor Manager LLM calls so non-delegated answers can ground on the active canvas
+- Live API verification after the patch:
+  - `POST /api/chat/floor-manager/message` with `workshop` context now returns `You're currently on the workshop canvas, with the chat section active.` instead of the earlier generic Floor Manager description
+  - `POST /api/chat/departments/risk/message` with live `/api/risk/physics` context now summarizes the actual Ising/HMM/Kelly state instead of claiming no live risk data is visible
+  - `POST /api/chat/departments/research/message` with enriched research runtime context now lists the actual visible tabs and concrete sample article resources instead of generic capability buckets
+- Verification status:
+  - frontend focused tests passed:
+    - `npx vitest run src/lib/components/canvas/WorkshopCanvas.session-parity.test.ts src/lib/components/shell/AgentPanel.test.ts`
+  - backend focused tests passed after fixing the stale test harness:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_chat_per_agent.py -k "department_chat_stream_normalizes_content_chunks or floor_manager_chat_stream_uses_session_backed_sse or forwards_request_context"`
+  - Chrome re-verification is temporarily blocked by a `chrome-devtools` transport failure after clearing an orphaned profile lock; this is now a tooling blocker, not an app-logic blocker
+
 - Resume protocol going forward:
   - after any context compaction, re-read this handoff first before continuing work
   - this file is the durable source of truth for resumed execution order and verified state
@@ -126,6 +164,28 @@ This section is the current source of truth and supersedes older notes below whe
     - compare intended user journeys against live browser navigation
     - fix the highest-leverage backend/UI mismatches
     - keep the handoff updated after each verified slice
+- Live browser verification on 2026-04-01 now confirms the department chat context path is materially improved:
+  - [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte) now sends structured chat `context` containing:
+    - `canvas_context`
+    - `attached_contexts`
+    - `visible_canvas_text`
+  - the same component no longer degrades attachments into a plain `template.base_descriptor` string before send
+  - [AgentPanel.context-attachment.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.context-attachment.test.ts) now locks in the richer attachment path
+  - [chat_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/chat_endpoints.py) now persists request context when auto-creating Floor Manager / department sessions and ensures `canvas` is present on merged department context
+  - focused verification passed:
+    - `cd quantmind-ide && npx vitest run src/lib/components/shell/AgentPanel.context-attachment.test.ts`
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_chat_per_agent.py -k "department_chat_endpoint or forwards_request_context_to_dept_head or floor_manager_chat_endpoint"`
+- Live browser evidence from the same pass:
+  - `Risk` chat now grounds itself in real visible physics values instead of answering with the earlier generic fallback:
+    - `MAGNETIZATION 0.635`
+    - `HMM CHAOS`
+    - `KELLY FRACTION 50.0%`
+    - `PHYSICS MULTIPLIER 0.80x`
+  - `Research` chat now correctly identifies the visible tab strip (`Articles`, `Books`, `Logs`, `Personal`, `YouTube`, `News`, `Dept Tasks`) instead of returning only the generic department-template description
+  - this was verified both in rendered browser UI and in the captured `/api/chat/departments/{dept}/message` request/response payloads
+- New issue discovered during the same watch pass:
+  - `POST /api/canvas-context/load` still returns `400` for `live-trading` on cold reload, which triggers the console warning `Failed to load canvas context for: live-trading`
+  - this did not block the Risk/Research verification after reload, but it is now a real follow-up item for the live-trading context path
 
 - `/api/prefect/workflows` now returns real persisted workflow data from `flows/workflows.db` instead of canned cards or an always-empty placeholder response.
 - `src/api/flowforge_workflow_proxy.py` now preserves the `/api` segment in `PREFECT_API_URL` instead of stripping it with `urljoin(...)`.

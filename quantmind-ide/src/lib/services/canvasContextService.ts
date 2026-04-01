@@ -28,6 +28,7 @@ export interface CanvasContextState {
   memory_identifiers: string[];
   session_id: string | null;
   loaded_at: string;
+  runtime_state?: Record<string, unknown>;
 }
 
 export interface CanvasSuggestionChip {
@@ -41,6 +42,8 @@ export interface CanvasSuggestionChip {
 class CanvasContextService {
   private cache: Map<string, CanvasContextTemplate> = new Map();
   private currentContext: CanvasContextState | null = null;
+  private contextByCanvas: Map<string, CanvasContextState> = new Map();
+  private runtimeStateByCanvas: Map<string, Record<string, unknown>> = new Map();
 
   /**
    * Get the current active canvas from the store
@@ -144,7 +147,12 @@ class CanvasContextService {
       }
 
       const data = await response.json();
-      this.currentContext = data as CanvasContextState;
+      const runtimeState = this.runtimeStateByCanvas.get(canvasId);
+      this.currentContext = {
+        ...(data as CanvasContextState),
+        runtime_state: runtimeState,
+      };
+      this.contextByCanvas.set(canvasId, this.currentContext);
 
       return this.currentContext;
     } catch (error) {
@@ -186,12 +194,55 @@ class CanvasContextService {
     return this.currentContext;
   }
 
+  getCanvasContext(canvasName: string): CanvasContextState | null {
+    const canvasId = this.getCanvasId(canvasName);
+    return this.contextByCanvas.get(canvasId) ?? null;
+  }
+
+  setRuntimeState(canvasName: string, runtimeState: Record<string, unknown>): void {
+    const canvasId = this.getCanvasId(canvasName);
+    this.runtimeStateByCanvas.set(canvasId, runtimeState);
+
+    const existing = this.contextByCanvas.get(canvasId);
+    if (!existing) {
+      return;
+    }
+
+    const updatedContext = {
+      ...existing,
+      runtime_state: runtimeState,
+    };
+    this.contextByCanvas.set(canvasId, updatedContext);
+    if (this.currentContext?.canvas === canvasId) {
+      this.currentContext = updatedContext;
+    }
+  }
+
+  async getEnrichedContext(
+    canvasName: string,
+    sessionId?: string,
+    includeMemory: boolean = true
+  ): Promise<CanvasContextState | null> {
+    const canvasId = this.getCanvasId(canvasName);
+    const cached = this.contextByCanvas.get(canvasId);
+    if (cached) {
+      return {
+        ...cached,
+        runtime_state: this.runtimeStateByCanvas.get(canvasId) ?? cached.runtime_state,
+      };
+    }
+
+    return this.loadCanvasContext(canvasId, sessionId, includeMemory);
+  }
+
   /**
    * Clear the template cache
    */
   clearCache(): void {
     this.cache.clear();
     this.currentContext = null;
+    this.contextByCanvas.clear();
+    this.runtimeStateByCanvas.clear();
   }
 
   /**

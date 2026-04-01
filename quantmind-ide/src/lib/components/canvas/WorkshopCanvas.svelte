@@ -527,11 +527,21 @@
     messagesEnd?.scrollIntoView({ behavior: 'smooth' });
 
     try {
+      const workshopContext = await canvasContextService.getEnrichedContext(
+        'workshop',
+        currentSessionId ?? undefined
+      );
       const result = await chatApi.sendMessage(
         'floor-manager',
         text,
         currentSessionId ?? undefined,
-        false
+        false,
+        undefined,
+        {
+          canvas: 'workshop',
+          active_canvas: 'workshop',
+          canvas_context: workshopContext,
+        }
       );
       if (result.session_id && result.session_id !== currentSessionId) {
         currentSessionId = result.session_id;

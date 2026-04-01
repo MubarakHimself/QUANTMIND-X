@@ -4,6 +4,8 @@
   import { canvasContextService } from '$lib/services/canvasContextService';
   import { API_CONFIG } from '$lib/config/api';
   import RichRenderer from '$lib/components/shared/RichRenderer.svelte';
+  import { listOpinionNodes, type OpinionNode } from '$lib/api/graphMemory';
+  import { getCanvasPanelState } from './agentPanelState';
 
   // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -23,10 +25,11 @@
 
   interface AgentSession {
     id: string;
+    backendSessionId?: string;
     type: 'interactive' | 'autonomous';
     deptHead: string;
     canvasId: string;
-    canvasContext?: unknown;
+    canvasContext?: Record<string, unknown> | null;
     messages: AgentMessage[];
     workflowName?: string;
     workflowStage?: string;
@@ -42,9 +45,44 @@
     canvasId: string;
   }
 
+  interface AttachedCanvasContextPayload {
+    canvas: string;
+    label: string;
+    context: Record<string, unknown> | null;
+  }
+
+  interface MailEntry {
+    id: string;
+    from_dept: string;
+    type: string;
+    subject: string;
+    body: string;
+    priority: string;
+    timestamp: string;
+    read: boolean;
+  }
+
   interface CanvasContextOption {
     id: string;
     label: string;
+  }
+
+  type AgentPanelTab = 'chat' | 'agents' | 'memory' | 'mail';
+
+  interface AgentPanelCanvasState {
+    sessions: AgentSession[];
+    activeSessionId: string | null;
+    showSessionHistory: boolean;
+    inputValue: string;
+    expandedToolLine: string | null;
+    activeTab: AgentPanelTab;
+    attachments: Attachment[];
+    memoryNodes: OpinionNode[];
+    memoryLoading: boolean;
+    memoryError: string | null;
+    mailEntries: MailEntry[];
+    mailLoading: boolean;
+    mailError: string | null;
   }
 
   type AgentStreamEvent =
@@ -86,16 +124,6 @@
     { command: '/memory',   desc: 'Query memory' },
   ];
 
-  // ─── Canvas context attachment options ───────────────────────────────────────
-
-  const canvasContextOptions: CanvasContextOption[] = [
-    { id: 'research',    label: 'Research context' },
-    { id: 'development', label: 'Development context' },
-    { id: 'trading',     label: 'Trading context' },
-    { id: 'risk',        label: 'Risk context' },
-    { id: 'portfolio',   label: 'Portfolio context' },
-  ];
-
   // ─── Props ────────────────────────────────────────────────────────────────────
 
   interface Props {
@@ -108,21 +136,103 @@
 
   // ─── State ────────────────────────────────────────────────────────────────────
 
+  function createAgentPanelCanvasState(): AgentPanelCanvasState {
+    return {
+      sessions: [],
+      activeSessionId: null,
+      showSessionHistory: false,
+      inputValue: '',
+      expandedToolLine: null,
+      activeTab: 'chat',
+      attachments: [],
+      memoryNodes: [],
+      memoryLoading: false,
+      memoryError: null,
+      mailEntries: [],
+      mailLoading: false,
+      mailError: null,
+    };
+  }
+
+  function snapshotPanelState(): AgentPanelCanvasState {
+    return {
+      sessions,
+      activeSessionId,
+      showSessionHistory,
+      inputValue,
+      expandedToolLine,
+      activeTab,
+      attachments,
+      memoryNodes,
+      memoryLoading,
+      memoryError,
+      mailEntries,
+      mailLoading,
+      mailError,
+    };
+  }
+
+  function restorePanelState(state: AgentPanelCanvasState) {
+    sessions = state.sessions;
+    activeSessionId = state.activeSessionId;
+    showSessionHistory = state.showSessionHistory;
+    inputValue = state.inputValue;
+    expandedToolLine = state.expandedToolLine;
+    activeTab = state.activeTab;
+    attachments = state.attachments;
+    memoryNodes = state.memoryNodes;
+    memoryLoading = state.memoryLoading;
+    memoryError = state.memoryError;
+    mailEntries = state.mailEntries;
+    mailLoading = state.mailLoading;
+    mailError = state.mailError;
+  }
+
+  let panelStateByCanvas = $state<Record<string, AgentPanelCanvasState>>({});
   let sessions = $state<AgentSession[]>([]);
   let activeSessionId = $state<string | null>(null);
   let showSessionHistory = $state(false);
   let inputValue = $state('');
   let expandedToolLine = $state<string | null>(null);
-  let activeTab = $state<'chat' | 'agents' | 'memory' | 'mail'>('chat');
+  let activeTab = $state<AgentPanelTab>('chat');
   let attachments = $state<Attachment[]>([]);
   let showAttachMenu = $state(false);
+  let isSending = $state(false);
+  let memoryNodes = $state<OpinionNode[]>([]);
+  let memoryLoading = $state(false);
+  let memoryError = $state<string | null>(null);
+  let mailEntries = $state<MailEntry[]>([]);
+  let mailLoading = $state(false);
+  let mailError = $state<string | null>(null);
+  let activeCanvasStateKey = $state(activeCanvas);
 
   let activeSession = $derived(sessions.find(s => s.id === activeSessionId) ?? null);
   let messages = $derived(activeSession?.messages ?? []);
   let deptHead = $derived(CANVAS_DEPT_HEAD[activeCanvas] ?? CANVAS_DEPT_HEAD['workshop']);
-  let isWorkshop = $derived(activeCanvas === 'workshop' || activeCanvas === 'flowforge');
+  // Workshop canvas has its own built-in copilot UI (WorkshopCanvas); FlowForge uses this panel
+  let isWorkshop = $derived(activeCanvas === 'workshop');
   let deptColor = $derived(COLOR_MAP[deptHead.color]);
   let subAgents = $derived(activeSession?.subAgents ?? []);
+  let departmentId = $derived(resolveDepartmentId(activeCanvas));
+
+  // ─── Canvas context attachment options ───────────────────────────────────────
+
+  // Full list of canvas context options (shown in Workshop/Copilot for full context)
+  const allCanvasContextOptions: CanvasContextOption[] = [
+    { id: 'research',    label: 'Research context' },
+    { id: 'development', label: 'Development context' },
+    { id: 'trading',     label: 'Trading context' },
+    { id: 'risk',        label: 'Risk context' },
+    { id: 'portfolio',   label: 'Portfolio context' },
+  ];
+
+  // Filtered options: show only current department when in a department canvas,
+  // show all departments when in Workshop/FlowForge (Copilot context)
+  let canvasContextOptions = $derived(
+    isWorkshop
+      ? allCanvasContextOptions
+      : allCanvasContextOptions.filter(opt => opt.id === activeCanvas)
+  );
 
   // Filter slash commands based on current input
   let filteredSlashCommands = $derived(
@@ -136,12 +246,17 @@
   // ─── SSE ─────────────────────────────────────────────────────────────────────
 
   let eventSource: EventSource | null = null;
+  let currentStreamSessionId = $state<string | null>(null);
+
+  function getAgentApiBase(): string {
+    return API_CONFIG.API_URL;
+  }
 
   function openSSE(sessionId: string) {
     eventSource?.close();
-    // Use Contabo node for agent SSE — falls back to localhost:8001 (agent dev server)
-    const contaboBase = API_CONFIG.CONTABO_HMM_API || 'http://localhost:8001';
-    eventSource = new EventSource(`${contaboBase}/api/agents/stream?session=${sessionId}`);
+    const apiBase = getAgentApiBase();
+    eventSource = new EventSource(`${apiBase}/api/agents/stream?session=${sessionId}`);
+    currentStreamSessionId = sessionId;
     eventSource.onmessage = (e) => {
       try {
         handleStreamEvent(JSON.parse(e.data) as AgentStreamEvent);
@@ -216,8 +331,42 @@
   }
 
   onDestroy(() => {
+    panelStateByCanvas = {
+      ...panelStateByCanvas,
+      [activeCanvas]: snapshotPanelState(),
+    };
     eventSource?.close();
     eventSource = null;
+    currentStreamSessionId = null;
+  });
+
+  $effect(() => {
+    getCanvasPanelState(panelStateByCanvas, activeCanvas, createAgentPanelCanvasState);
+
+    if (activeCanvasStateKey === activeCanvas) {
+      return;
+    }
+
+    panelStateByCanvas = {
+      ...panelStateByCanvas,
+      [activeCanvasStateKey]: snapshotPanelState(),
+    };
+    restorePanelState(getCanvasPanelState(panelStateByCanvas, activeCanvas, createAgentPanelCanvasState));
+    showAttachMenu = false;
+    activeCanvasStateKey = activeCanvas;
+  });
+
+  $effect(() => {
+    if (hidden || isWorkshop || !activeSessionId) {
+      eventSource?.close();
+      eventSource = null;
+      currentStreamSessionId = null;
+      return;
+    }
+
+    if (currentStreamSessionId !== activeSessionId) {
+      openSSE(activeSessionId);
+    }
   });
 
   // ─── Tool Line Formatting ─────────────────────────────────────────────────────
@@ -275,6 +424,119 @@
     }
   }
 
+  function isVisibleElement(element: Element | null): boolean {
+    let current: Element | null = element;
+    while (current) {
+      if (current.hasAttribute('hidden') || current.getAttribute('aria-hidden') === 'true') {
+        return false;
+      }
+      const style = window.getComputedStyle(current);
+      if (style.display === 'none' || style.visibility === 'hidden') {
+        return false;
+      }
+      current = current.parentElement;
+    }
+    return true;
+  }
+
+  function getVisibleCanvasText(): string {
+    if (typeof document === 'undefined') return '';
+
+    const root = document.querySelector('.main-content');
+    if (!root) return '';
+
+    const chunks: string[] = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        const text = node.textContent?.replace(/\s+/g, ' ').trim();
+        const parent = node.parentElement;
+        if (!text || !parent || !isVisibleElement(parent)) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+
+    while (walker.nextNode()) {
+      const text = walker.currentNode.textContent?.replace(/\s+/g, ' ').trim();
+      if (!text) continue;
+      if (chunks[chunks.length - 1] !== text) {
+        chunks.push(text);
+      }
+      if (chunks.length >= 120) break;
+    }
+
+    return chunks.join(' | ').slice(0, 4000);
+  }
+
+  function resolveDepartmentId(canvasId: string): string | null {
+    const mapping: Record<string, string> = {
+      'live-trading': 'trading',
+      'research': 'research',
+      'development': 'development',
+      'risk': 'risk',
+      'trading': 'trading',
+      'portfolio': 'portfolio',
+      'flowforge': 'floor-manager',
+      'workshop': 'floor-manager',
+    };
+    return mapping[canvasId] ?? null;
+  }
+
+  function captureVisibleCanvasText(canvasId: string): string | null {
+    if (typeof document === 'undefined') return null;
+
+    const selectorId = resolveDepartmentId(canvasId) ?? canvasId;
+    const canvasRoot = document.querySelector<HTMLElement>(`[data-dept="${selectorId}"]`);
+    const text = canvasRoot?.innerText?.trim();
+    if (!text) return null;
+    return text.slice(0, 4000);
+  }
+
+  function getChatEndpointForCanvas(canvasId: string): string | null {
+    const dept = resolveDepartmentId(canvasId);
+    if (!dept) return null;
+    if (dept === 'floor-manager') {
+      return `${API_CONFIG.API_BASE}/chat/floor-manager/message`;
+    }
+    return `${API_CONFIG.API_BASE}/chat/departments/${dept}/message`;
+  }
+
+  async function loadMemoryTab() {
+    memoryLoading = true;
+    memoryError = null;
+    try {
+      memoryNodes = await listOpinionNodes(20);
+    } catch (error) {
+      memoryError = error instanceof Error ? error.message : 'Failed to load memory';
+    } finally {
+      memoryLoading = false;
+    }
+  }
+
+  async function loadMailTab() {
+    if (!departmentId || departmentId === 'floor-manager') {
+      mailEntries = [];
+      mailError = null;
+      return;
+    }
+    mailLoading = true;
+    mailError = null;
+    try {
+      const response = await fetch(`${API_CONFIG.API_BASE}/departments/mail/inbox/${departmentId}`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json() as { messages?: MailEntry[] };
+      mailEntries = data.messages ?? [];
+    } catch (error) {
+      mailError = error instanceof Error ? error.message : 'Failed to load mail';
+      mailEntries = [];
+    } finally {
+      mailLoading = false;
+    }
+  }
+
   function subAgentStatusColor(status: 'running' | 'idle' | 'blocked'): string {
     if (status === 'running')  return 'var(--color-accent-cyan)';
     if (status === 'blocked')  return 'var(--color-accent-amber)';
@@ -285,9 +547,9 @@
 
   async function loadSessionHistory() {
     try {
-      const contaboBase = API_CONFIG.CONTABO_HMM_API || 'http://localhost:8001';
+      const apiBase = getAgentApiBase();
       const response = await fetch(
-        `${contaboBase}/api/agents/sessions?dept_head=${encodeURIComponent(deptHead.label)}`
+        `${apiBase}/api/agents/sessions?dept_head=${encodeURIComponent(deptHead.label)}`
       );
       if (!response.ok) return;
       const data = await response.json() as { sessions?: AgentSession[] };
@@ -311,7 +573,7 @@
   }
 
   async function createNewSession() {
-    const context = await canvasContextService.getTemplate(activeCanvas);
+    const context = await canvasContextService.loadCanvasContext(activeCanvas);
     const session: AgentSession = {
       id: crypto.randomUUID(),
       type: 'interactive',
@@ -325,7 +587,6 @@
     sessions = [...sessions, session];
     activeSessionId = session.id;
     showSessionHistory = false;
-    openSSE(session.id);
   }
 
   function selectSession(id: string) {
@@ -333,20 +594,40 @@
     showSessionHistory = false;
   }
 
-  function submitMessage() {
-    if (!inputValue.trim() || !activeSessionId) return;
+  async function submitMessage() {
+    if (!inputValue.trim() || !activeSessionId || isSending) return;
 
-    // Build content including attachment references
-    let content = inputValue.trim();
-    if (attachments.length > 0) {
-      const attRefs = attachments.map(a => `[${a.label}]`).join(', ');
-      content = `${content}\n\nContext: ${attRefs}`;
+    const rawMessage = inputValue.trim();
+    const sessionRef = activeSession?.backendSessionId ?? activeSessionId ?? undefined;
+
+    let activeCanvasContext = await canvasContextService.getEnrichedContext(
+      activeCanvas,
+      sessionRef,
+    );
+    if (!activeCanvasContext) {
+      activeCanvasContext = canvasContextService.getCanvasContext(activeCanvas) ?? canvasContextService.getCurrentContext();
     }
+
+    const attachedContexts: AttachedCanvasContextPayload[] = attachments.length > 0
+      ? await Promise.all(
+          attachments.map(async (attachment) => {
+            const loadedContext =
+              await canvasContextService.getEnrichedContext(attachment.canvasId, sessionRef);
+
+            return {
+              canvas: attachment.canvasId,
+              label: attachment.label,
+              context: loadedContext,
+            };
+          }),
+        )
+      : [];
+    const visibleCanvasText = captureVisibleCanvasText(activeCanvas);
 
     const msg: AgentMessage = {
       id: crypto.randomUUID(),
       type: 'user',
-      content,
+      content: rawMessage,
       timestamp: new Date().toISOString(),
     };
     sessions = sessions.map(s =>
@@ -356,6 +637,78 @@
     );
     inputValue = '';
     attachments = [];
+
+    const endpoint = getChatEndpointForCanvas(activeCanvas);
+    if (!endpoint) {
+      const errorMessage: AgentMessage = {
+        id: crypto.randomUUID(),
+        type: 'agent',
+        content: 'No connected department endpoint is available for this canvas.',
+        timestamp: new Date().toISOString(),
+      };
+      sessions = sessions.map(s =>
+        s.id === activeSessionId
+          ? { ...s, messages: [...s.messages, errorMessage] }
+          : s
+      );
+      return;
+    }
+
+    isSending = true;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: rawMessage,
+          session_id: activeSession?.backendSessionId ?? null,
+          context: {
+            canvas: activeCanvas,
+            active_canvas: activeCanvas,
+            canvas_context: activeCanvasContext,
+            attached_contexts: attachedContexts,
+            visible_canvas_text: visibleCanvasText,
+          },
+          stream: false,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json() as { reply?: string; session_id?: string };
+      if (data.session_id) {
+        sessions = sessions.map(s =>
+          s.id === activeSessionId
+            ? { ...s, backendSessionId: data.session_id }
+            : s
+        );
+      }
+      const replyMessage: AgentMessage = {
+        id: crypto.randomUUID(),
+        type: 'agent',
+        content: data.reply || 'No response received.',
+        timestamp: new Date().toISOString(),
+      };
+      sessions = sessions.map(s =>
+        s.id === activeSessionId
+          ? { ...s, messages: [...s.messages, replyMessage] }
+          : s
+      );
+    } catch (error) {
+      const errorMessage: AgentMessage = {
+        id: crypto.randomUUID(),
+        type: 'agent',
+        content: `Error: ${error instanceof Error ? error.message : 'Failed to send message'}`,
+        timestamp: new Date().toISOString(),
+      };
+      sessions = sessions.map(s =>
+        s.id === activeSessionId
+          ? { ...s, messages: [...s.messages, errorMessage] }
+          : s
+      );
+    } finally {
+      isSending = false;
+    }
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -406,6 +759,16 @@
   function isOpinionTool(msg: AgentMessage): boolean {
     return msg.tool === 'write_memory' && String(msg.args?.['node_type'] ?? '') === 'OPINION';
   }
+
+  async function setActiveTab(tab: 'chat' | 'agents' | 'memory' | 'mail') {
+    activeTab = tab;
+    if (tab === 'memory') {
+      await loadMemoryTab();
+    }
+    if (tab === 'mail') {
+      await loadMailTab();
+    }
+  }
 </script>
 
 <!-- Agent Panel right rail — hidden for workshop and flowforge canvases -->
@@ -455,7 +818,7 @@
         <button
           class="ap-tab"
           class:active={activeTab === tab}
-          onclick={() => { activeTab = tab; }}
+          onclick={() => { void setActiveTab(tab); }}
           aria-selected={activeTab === tab}
           role="tab"
         >
@@ -610,8 +973,8 @@
               />
               <button
                 class="ap-send"
-                onclick={submitMessage}
-                disabled={!inputValue.trim()}
+                onclick={() => void submitMessage()}
+                disabled={!inputValue.trim() || isSending}
                 aria-label="Send message"
               >
                 <Send size={14} />
@@ -659,18 +1022,42 @@
     {:else if activeTab === 'memory'}
       <div class="ap-body">
         <div class="tab-view-header">Recent Memory</div>
-        <div class="tab-view-note">
-          Memory nodes from the <strong>{activeCanvas}</strong> context will appear here.
-        </div>
+        {#if memoryLoading}
+          <div class="tab-view-note">Loading memory…</div>
+        {:else if memoryError}
+          <div class="tab-view-note">{memoryError}</div>
+        {:else if memoryNodes.length === 0}
+          <div class="tab-view-note">No opinion nodes available.</div>
+        {:else}
+          {#each memoryNodes as node (node.id)}
+            <div class="agent-row">
+              <span class="agent-role">{new Date(node.created_at).toLocaleString()}</span>
+              <span class="agent-status">{node.confidence ?? '—'}</span>
+            </div>
+            <div class="tab-view-note">{node.content}</div>
+          {/each}
+        {/if}
       </div>
 
     <!-- ── Mail tab ── -->
     {:else if activeTab === 'mail'}
       <div class="ap-body">
         <div class="tab-view-header">Department Mail</div>
-        <div class="tab-view-note">
-          Incoming tasks and replies from department agents.
-        </div>
+        {#if mailLoading}
+          <div class="tab-view-note">Loading mail…</div>
+        {:else if mailError}
+          <div class="tab-view-note">{mailError}</div>
+        {:else if mailEntries.length === 0}
+          <div class="tab-view-note">No mail for this department.</div>
+        {:else}
+          {#each mailEntries as entry (entry.id)}
+            <div class="agent-row">
+              <span class="agent-role">{entry.from_dept} · {entry.type}</span>
+              <span class="agent-status">{entry.priority}</span>
+            </div>
+            <div class="tab-view-note">{entry.subject}</div>
+          {/each}
+        {/if}
       </div>
     {/if}
 

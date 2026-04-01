@@ -1595,7 +1595,7 @@ Starting system restore from backup (FR69: machine portability)...
             "timestamp": datetime.now().isoformat(),
         }
 
-    def _get_system_prompt(self) -> str:
+    def _get_system_prompt(self, context: Optional[Dict[str, Any]] = None) -> str:
         """
         Get the Floor Manager system prompt.
 
@@ -1612,15 +1612,27 @@ Starting system restore from backup (FR69: machine portability)...
             pass
         try:
             from src.agents.departments.types import _FLOOR_MANAGER_SYSTEM_PROMPT
-            return _FLOOR_MANAGER_SYSTEM_PROMPT
+            base_prompt = _FLOOR_MANAGER_SYSTEM_PROMPT
         except ImportError:
-            return "You are the Floor Manager at QUANTMINDX, the senior orchestrator of a multi-department algorithmic trading operation."
+            base_prompt = "You are the Floor Manager at QUANTMINDX, the senior orchestrator of a multi-department algorithmic trading operation."
+
+        if context:
+            return (
+                f"{base_prompt}\n\n"
+                "## Current Canvas Context\n"
+                f"{json.dumps(context, indent=2, default=str)}\n\n"
+                "Ground your answer in the current canvas context when it is present. "
+                "If the user asks what canvas they are on or what is visible, answer from this context first."
+            )
+
+        return base_prompt
 
     async def _invoke_llm(
         self,
         message: str,
         history: Optional[List[Dict[str, str]]] = None,
         model_name: Optional[str] = None,
+        system_prompt: Optional[str] = None,
     ) -> str:
         """
         Call the LLM via ProviderRouter using Anthropic-compatible API.
@@ -1682,7 +1694,7 @@ Starting system restore from backup (FR69: machine portability)...
                         "model": model,
                         "messages": messages,
                         "max_tokens": 1024,
-                        "system": self._get_system_prompt(),
+                        "system": system_prompt or self._get_system_prompt(),
                     },
                 )
 
@@ -1932,7 +1944,11 @@ Starting system restore from backup (FR69: machine portability)...
                 return delegated_response
 
         # Direct response via LLM
-        response_content = await self._invoke_llm(message, history)
+        response_content = await self._invoke_llm(
+            message,
+            history,
+            system_prompt=self._get_system_prompt(context),
+        )
 
         return {
             "status": "success",
@@ -2056,7 +2072,11 @@ Starting system restore from backup (FR69: machine portability)...
         # Floor Manager always responds via LLM for streaming chat.
         # Delegation to departments happens via the mail system only — never as the stream response.
         yield {"type": "thought", "department": "floor_manager", "content": "Generating response via LLM..."}
-        async for event in self._invoke_llm_stream(message, history, system_prompt=self._get_system_prompt()):
+        async for event in self._invoke_llm_stream(
+            message,
+            history,
+            system_prompt=self._get_system_prompt(context),
+        ):
             event_type = event.get("type", "")
             if event_type == "thinking_start":
                 yield {"type": "thinking", "content": ""}

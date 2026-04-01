@@ -323,10 +323,12 @@ async def floor_manager_chat(request: ChatMessageRequest):
     """Chat with Floor Manager."""
     session_id = request.session_id
     if not session_id:
+        session_context = dict(request.context or {})
         session = await _session_service.create_session(
             agent_type="floor-manager",
             agent_id="floor-manager",
-            user_id="anonymous"
+            user_id="anonymous",
+            context=session_context,
         )
         session_id = session.id
 
@@ -418,10 +420,13 @@ async def department_chat(dept: str, request: ChatMessageRequest):
 
     session_id = request.session_id
     if not session_id:
+        session_context = dict(request.context or {})
+        session_context.setdefault("canvas", dept)
         session = await _session_service.create_session(
             agent_type="department",
             agent_id=dept,
-            user_id="anonymous"
+            user_id="anonymous",
+            context=session_context,
         )
         session_id = session.id
 
@@ -443,11 +448,20 @@ async def department_chat(dept: str, request: ChatMessageRequest):
         dept_key = None
     dept_head = fm._department_heads.get(dept_key) if dept_key else None
 
+    merged_canvas_context = {
+        **(request.context or {}),
+        "history": history,
+        "department": dept,
+    }
+    merged_canvas_context.setdefault("canvas", dept)
+
     # Get department system prompt for the streaming path
     dept_system_prompt = None
     if dept_head:
         try:
-            dept_system_prompt = dept_head._build_system_prompt()
+            dept_system_prompt = dept_head._build_system_prompt(
+                canvas_context=merged_canvas_context,
+            )
         except Exception:
             dept_system_prompt = dept_head.system_prompt if hasattr(dept_head, 'system_prompt') else None
 
@@ -491,16 +505,16 @@ async def department_chat(dept: str, request: ChatMessageRequest):
 
     # Non-streaming path
     if dept_head:
-        canvas_context = {"history": history, "department": dept}
         result = await dept_head._invoke_claude(
             task=request.message,
-            canvas_context=canvas_context,
+            canvas_context=merged_canvas_context,
             tools=None,
         )
         reply = result.get("content", f"{dept.title()} Department response")
     else:
         result = await fm.chat(
             message=f"[{dept.upper()}] {request.message}",
+            context=merged_canvas_context,
             history=history,
             stream=False,
         )
