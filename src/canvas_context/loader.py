@@ -4,13 +4,11 @@ Loads CanvasContextTemplate YAML files and assembles canvas context.
 """
 import logging
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
 from src.canvas_context.types import (
     CanvasContextTemplate,
-    CanvasSuggestionChip,
     SkillIndexEntry,
 )
 
@@ -18,6 +16,9 @@ logger = logging.getLogger(__name__)
 
 # Template directory - relative to project root
 TEMPLATE_DIR = Path(__file__).parent / "templates"
+
+# Allowed templates directory - absolute path for path traversal validation
+ALLOWED_TEMPLATES_DIR = TEMPLATE_DIR.resolve()
 
 # Known canvas identifiers
 SUPPORTED_CANVASES = {
@@ -34,6 +35,11 @@ SUPPORTED_CANVASES = {
 
 # Template cache
 _template_cache: dict[str, CanvasContextTemplate] = {}
+
+
+def normalize_canvas_name(canvas_name: str) -> str:
+    """Normalize UI-facing canvas aliases to canonical template identifiers."""
+    return canvas_name.strip().lower().replace("-", "_")
 
 
 def _parse_skill_index(skill_list: list[dict]) -> list[SkillIndexEntry]:
@@ -57,18 +63,28 @@ def load_template(canvas_name: str, use_cache: bool = True) -> CanvasContextTemp
         FileNotFoundError: If template file doesn't exist
         ValueError: If canvas_name is invalid
     """
-    if canvas_name not in SUPPORTED_CANVASES:
+    normalized_canvas = normalize_canvas_name(canvas_name)
+
+    if normalized_canvas not in SUPPORTED_CANVASES:
         raise ValueError(
             f"Unknown canvas: {canvas_name}. "
             f"Supported: {', '.join(sorted(SUPPORTED_CANVASES))}"
         )
 
     # Check cache
-    if use_cache and canvas_name in _template_cache:
-        return _template_cache[canvas_name]
+    if use_cache and normalized_canvas in _template_cache:
+        return _template_cache[normalized_canvas]
 
     # Load from YAML
-    template_path = TEMPLATE_DIR / f"{canvas_name}.yaml"
+    template_path = TEMPLATE_DIR / f"{normalized_canvas}.yaml"
+
+    # Security: Validate resolved path is within allowed templates directory
+    resolved_path = template_path.resolve()
+    if not resolved_path.is_relative_to(ALLOWED_TEMPLATES_DIR):
+        raise ValueError(
+            f"Template path '{resolved_path}' is outside allowed directory. "
+            f"Path traversal attempt detected."
+        )
 
     if not template_path.exists():
         raise FileNotFoundError(
@@ -89,9 +105,9 @@ def load_template(canvas_name: str, use_cache: bool = True) -> CanvasContextTemp
         template = CanvasContextTemplate(**data)
 
         # Cache it
-        _template_cache[canvas_name] = template
+        _template_cache[normalized_canvas] = template
 
-        logger.info(f"Loaded CanvasContextTemplate for: {canvas_name}")
+        logger.info(f"Loaded CanvasContextTemplate for: {normalized_canvas}")
         return template
 
     except yaml.YAMLError as e:
@@ -172,7 +188,9 @@ def get_template_for_department(department: str) -> CanvasContextTemplate:
         "development": "development",
     }
 
-    canvas_name = dept_to_canvas.get(department.lower(), department.lower())
+    canvas_name = normalize_canvas_name(
+        dept_to_canvas.get(department.lower(), department.lower())
+    )
 
     try:
         return load_template(canvas_name)

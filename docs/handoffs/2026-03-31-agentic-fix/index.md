@@ -69,6 +69,16 @@ Current high-signal state:
 - Floor Manager approval queries are now grounded in live `ApprovalManager` data instead of freeform LLM summaries
 - local approval persistence was cleaned through the real approval API; the same Workshop quick action now returns `No pending approvals.`
 - Research now exposes a first-class `News` tab backed by the live news store/component instead of leaving that planning-doc surface absent
+- department chat grounding is now improved and browser-verified on `Risk` and `Research`:
+  - `AgentPanel` sends structured `context` with `canvas_context`, `attached_contexts`, and `visible_canvas_text`
+  - `Risk` replies now reference real on-screen values instead of generic “no live data” fallbacks
+  - `Research` replies now enumerate the visible tab strip instead of only restating the department template
+- kebab-case canvas ids from the Svelte shell now resolve correctly through the backend canvas-context loader:
+  - `POST /api/canvas-context/load` returns `200` again for `live-trading` and `shared-assets`
+  - browser/devtools cold-reload re-check is still pending because the current `chrome-devtools` transport died after clearing a stale profile lock
+- the long 2026-04-01 live UI audit has now been condensed into the handoff set so it survives compaction:
+  - source summary added in [original-user-prompts.md](/home/mubarkahimself/Desktop/QUANTMINDX/docs/handoffs/2026-03-31-agentic-fix/original-user-prompts.md)
+  - actionable backlog added in [progress.md](/home/mubarkahimself/Desktop/QUANTMINDX/docs/handoffs/2026-03-31-agentic-fix/progress.md)
 - next frontend slice is richer mail/task detail views, followed by portfolio/shared-assets alignment and stale test-data cleanup
 
 ## Deferred Context Reads

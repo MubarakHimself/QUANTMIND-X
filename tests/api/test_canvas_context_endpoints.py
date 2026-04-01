@@ -116,6 +116,17 @@ class TestCanvasContextEndpoints:
 
         assert response.status_code == 400
 
+    def test_get_template_accepts_frontend_live_trading_alias(self):
+        with patch("src.api.canvas_context_endpoints.load_template") as mock_load:
+            mock_template = MagicMock()
+            mock_template.model_dump.return_value = {"canvas": "live_trading"}
+            mock_load.return_value = mock_template
+
+            response = self.client.get("/api/canvas-context/template/live-trading")
+
+        assert response.status_code == 200
+        mock_load.assert_called_once_with("live-trading")
+
     def test_load_canvas_context_not_found_returns_404(self):
         with patch("src.api.canvas_context_endpoints.load_template") as mock_load:
             mock_load.side_effect = FileNotFoundError("Not found")
@@ -124,3 +135,19 @@ class TestCanvasContextEndpoints:
                 json={"canvas": "nonexistent_canvas"},
             )
         assert response.status_code == 404
+
+    def test_load_canvas_context_accepts_frontend_shared_assets_alias(self):
+        with patch("src.api.canvas_context_endpoints.load_template") as mock_load:
+            mock_template = MagicMock()
+            mock_template.max_identifiers = 50
+            mock_template.model_dump.return_value = {"canvas": "shared_assets"}
+            mock_load.return_value = mock_template
+
+            response = self.client.post(
+                "/api/canvas-context/load",
+                json={"canvas": "shared-assets", "include_memory_identifiers": False},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["canvas"] == "shared-assets"
+        mock_load.assert_called_once_with("shared-assets")

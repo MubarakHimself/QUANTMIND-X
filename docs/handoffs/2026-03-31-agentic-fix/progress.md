@@ -186,6 +186,35 @@ This section is the current source of truth and supersedes older notes below whe
 - New issue discovered during the same watch pass:
   - `POST /api/canvas-context/load` still returns `400` for `live-trading` on cold reload, which triggers the console warning `Failed to load canvas context for: live-trading`
   - this did not block the Risk/Research verification after reload, but it is now a real follow-up item for the live-trading context path
+- The live-trading/shared-assets canvas-context alias bug is now fixed in code:
+  - [loader.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/canvas_context/loader.py) now normalizes UI-facing kebab-case ids like `live-trading` and `shared-assets` to the canonical template ids `live_trading` and `shared_assets`
+  - focused regression coverage now exists in:
+    - [test_template_loader.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/canvas_context/test_template_loader.py)
+    - [test_canvas_context_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_canvas_context_endpoints.py)
+  - verification passed:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/canvas_context/test_template_loader.py tests/api/test_canvas_context_endpoints.py`
+    - `POST /api/canvas-context/load` now returns `200` for both `live-trading` and `shared-assets`
+  - Chrome/DevTools cold-reload re-check is temporarily blocked by a `chrome-devtools` transport failure after forcibly clearing a stale browser/profile lock, so the browser-side disappearance of the old console warning still needs one fresh pass once the tool reconnects
+
+### User Audit Backlog Captured On 2026-04-01
+
+These items came from the long live user audit and should be treated as durable follow-up work, not discarded prompt text.
+
+- Highest-leverage next UI backlog:
+  - department mail and task surfaces need more usable detail panes, better viewport usage, and clearer message/task history
+  - department chat shell should become resizable/wider and provide better send/loading/streaming feedback
+  - Workshop/Copilot still needs session/new-chat/history parity cleanup and information-architecture cleanup
+- Content/indexing follow-ups:
+  - Research should surface scraped articles more explicitly
+  - Research still needs a real books upload/index path
+  - memory/opinion nodes remain visibly sparse and need a real connected path
+- Cross-department agent behavior:
+  - agents still need stronger cross-department awareness for mail/routing prompts
+  - agent prompts/skills/system-config visibility in Settings remain incomplete for power-user operations
+- Canvas-specific follow-ups still called out by the user:
+  - Risk/Trading/Portfolio/FlowForge cards still need semantic cleanup and better space usage
+  - FlowForge should better express main workflow cards versus department-level child work
+  - Shared Assets should more cleanly own skills and MCP configuration surfaces
 
 - `/api/prefect/workflows` now returns real persisted workflow data from `flows/workflows.db` instead of canned cards or an always-empty placeholder response.
 - `src/api/flowforge_workflow_proxy.py` now preserves the `/api` segment in `PREFECT_API_URL` instead of stripping it with `urljoin(...)`.

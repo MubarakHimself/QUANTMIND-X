@@ -7,6 +7,7 @@ from src.canvas_context.loader import (
     get_all_templates,
     get_canvas_list,
     clear_cache,
+    normalize_canvas_name,
     SUPPORTED_CANVASES,
 )
 from src.canvas_context.types import CanvasContextTemplate, SkillIndexEntry
@@ -39,6 +40,20 @@ class TestTemplateLoader:
         assert template.canvas == "live_trading"
         assert template.canvas_display_name == "Live Trading"
         assert "trading.*" in template.memory_scope
+
+    def test_load_template_accepts_live_trading_alias(self):
+        """Test loading live-trading alias resolves to live_trading template."""
+        template = load_template("live-trading")
+
+        assert isinstance(template, CanvasContextTemplate)
+        assert template.canvas == "live_trading"
+
+    def test_load_template_accepts_shared_assets_alias(self):
+        """Test loading shared-assets alias resolves to shared_assets template."""
+        template = load_template("shared-assets")
+
+        assert isinstance(template, CanvasContextTemplate)
+        assert template.canvas == "shared_assets"
 
     def test_load_template_workshop(self):
         """Test loading workshop canvas template (default)."""
@@ -155,3 +170,9 @@ class TestSupportedCanvases:
         for canvas in SUPPORTED_CANVASES:
             template = load_template(canvas)
             assert template.canvas == canvas
+
+    def test_normalize_canvas_name_maps_frontend_aliases(self):
+        """Test frontend kebab-case ids normalize to canonical template ids."""
+        assert normalize_canvas_name("live-trading") == "live_trading"
+        assert normalize_canvas_name("shared-assets") == "shared_assets"
+        assert normalize_canvas_name("risk") == "risk"
