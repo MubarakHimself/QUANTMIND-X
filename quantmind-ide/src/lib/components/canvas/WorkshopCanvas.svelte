@@ -8,6 +8,7 @@
    * Each section fills the main content area (no separate right panel).
    */
   import { onMount, tick } from 'svelte';
+  import { settingsTrigger } from '$lib/stores/navigationStore';
   import {
     Plus,
     MessageSquare,
@@ -22,15 +23,24 @@
     Bot,
     Loader,
     User,
-    Trash2
+    Trash2,
+    Wrench
   } from 'lucide-svelte';
-  import { chatApi, type ChatSession } from '$lib/api/chatApi';
+  import { chatApi, type ChatSession, type StoredChatMessage } from '$lib/api/chatApi';
   import { listSkills, type Skill } from '$lib/api/skillsApi';
-  import { getHotNodes, getWarmNodes, type GraphMemoryNode } from '$lib/api/graphMemory';
+  import { getHotNodes, getWarmNodes, type GraphMemoryNode, listOpinionNodes, createOpinionNode, type OpinionNode } from '$lib/api/graphMemory';
   import { canvasContextService } from '$lib/services/canvasContextService';
+  import { navigationStore } from '$lib/stores/navigationStore';
   import { copilotKillSwitchService } from '$lib/services/copilotKillSwitchService';
-  import { API_CONFIG } from '$lib/config/api';
-  import AgentThoughtsPanel from '$lib/components/AgentThoughtsPanel.svelte';
+  import { getBaseUrl } from '$lib/config/api';
+  import { marked } from 'marked';
+  import DOMPurify from 'dompurify';
+
+  function renderMarkdown(text: string): string {
+    if (!text) return '';
+    const html = marked.parse(text, { breaks: true, gfm: true }) as string;
+    return DOMPurify.sanitize(html);
+  }
 
   // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,6 +52,7 @@
     isStreaming?: boolean;
     messageType?: 'text' | 'audit_timeline' | 'audit_reasoning' | 'morning_digest';
     metadata?: Record<string, unknown>;
+    toolCalls?: Array<{ name: string; input: Record<string, unknown>; result?: string }>;
   }
 
   interface WorkflowItem {
@@ -60,7 +71,7 @@
 
   // ── State ────────────────────────────────────────────────────────────────────
 
-  let activeSection = $state<'chat' | 'projects' | 'memory' | 'skills' | 'workflows' | 'agent-thoughts'>('chat');
+  let activeSection = $state<'chat' | 'projects' | 'memory' | 'skills' | 'workflows' | 'subagents'>('chat');
 
   // Chat
   let messages = $state<Message[]>([]);
@@ -83,13 +94,70 @@
   let memoryFilter = $state<'all' | 'hot' | 'warm'>('all');
   let expandedNodeId = $state<string | null>(null);
 
+  // Memory sub-tab
+  let memoryTab = $state<'nodes' | 'opinions'>('nodes');
+
+  // Opinion nodes
+  let opinionNodes = $state<OpinionNode[]>([]);
+  let opinionsLoading = $state(false);
+  let opinionContent = $state('');
+  let opinionConfidence = $state(0.7);
+  let opinionSaving = $state(false);
+
+  // Auto-compaction threshold
+  const TOKEN_COMPACT_THRESHOLD = 160000;
+
   // Workflows
   let workflows = $state<WorkflowItem[]>([]);
   let workflowsLoading = $state(false);
 
+  // Sub-agents
+  interface SubAgent { id: string; type: string; task: string; department: string | null; status: string; created_at: string }
+  const SUBAGENT_TYPES = [
+    { id: 'strategy_researcher', label: 'Strategy Researcher' },
+    { id: 'market_analyst',       label: 'Market Analyst' },
+    { id: 'backtester',           label: 'Backtester' },
+    { id: 'mql5_dev',             label: 'MQL5 Dev' },
+  ];
+  let runningAgents = $state<SubAgent[]>([]);
+  let agentsLoading = $state(false);
+  let spawnAgentType = $state('strategy_researcher');
+  let spawnTask = $state('');
+  let spawnModel = $state('');
+  let spawnProvider = $state('');
+  let spawnDropdownOpen = $state<string | null>(null); // agent type id with open dropdown
+  let spawning = $state(false);
+
   // Projects
   let projects = $state<ProjectItem[]>([]);
   let projectsLoading = $state(false);
+
+  // Token counter
+  let totalTokens = $state(0);
+
+  // Slash command menu
+  interface SlashCommand { name: string; description: string; action: () => void }
+  let slashMenuOpen = $state(false);
+  let slashMenuIndex = $state(0);
+  let slashMenuFilter = $state('');
+
+  // Tool call tile expand state — keyed by `${msgId}:${toolIndex}`
+  let expandedToolCalls = $state<Set<string>>(new Set());
+
+  // Model selector
+  interface ProviderOption { id: string; display_name: string; models: Array<{ id: string; name: string }> }
+  let availableProviders = $state<ProviderOption[]>([]);
+  let selectedProvider = $state('');
+  let selectedModel = $state('');
+  let modelDropdownOpen = $state(false);
+
+  const selectedModelLabel = $derived(() => {
+    for (const p of availableProviders) {
+      const m = p.models.find(m => m.id === selectedModel);
+      if (m) return m.name;
+    }
+    return selectedModel || 'Select model';
+  });
 
   // ── Derived ──────────────────────────────────────────────────────────────────
 
@@ -109,7 +177,7 @@
 
   // ── Constants ────────────────────────────────────────────────────────────────
 
-  const API_BASE = API_CONFIG.API_BASE;
+  const API_BASE = getBaseUrl('');
 
   const SUGGESTION_CHIPS = [
     'What happened overnight?',
@@ -122,7 +190,7 @@
   // ── Lifecycle ────────────────────────────────────────────────────────────────
 
   onMount(async () => {
-    await Promise.all([loadSessions(), loadSkills()]);
+    await Promise.all([loadSessions(), loadSkills(), loadProviders()]);
     loadCanvasContext();
   });
 
@@ -136,11 +204,58 @@
     }
   }
 
+  async function loadProviders() {
+    try {
+      const res = await fetch('/api/providers/available');
+      if (!res.ok) return;
+      const data = await res.json();
+      // Also fetch models
+      let modelsMap: Record<string, Array<{ id: string; name: string }>> = {};
+      try {
+        const mres = await fetch('/api/agent-config/available-models');
+        if (mres.ok) {
+          const mdata = await mres.json();
+          if (mdata.providers) {
+            for (const [pname, info] of Object.entries(mdata.providers)) {
+              const pi = info as { available: boolean; models: Array<{ id: string; name: string }> };
+              if (pi.available && pi.models) modelsMap[pname] = pi.models;
+            }
+          }
+        }
+      } catch { /* ignore */ }
+
+      const providers: ProviderOption[] = (data.providers || [])
+        .filter((p: { has_api_key: boolean }) => p.has_api_key)
+        .map((p: { id: string; name: string; display_name: string }) => ({
+          id: p.name,
+          display_name: p.display_name,
+          models: modelsMap[p.name] || []
+        }));
+
+      availableProviders = providers;
+      // Default to first provider+model
+      if (providers.length > 0) {
+        selectedProvider = providers[0].id;
+        if (providers[0].models.length > 0) {
+          selectedModel = providers[0].models[0].id;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load providers for model selector:', e);
+    }
+  }
+
   async function loadSessions() {
     sessionsLoading = true;
     try {
-      const result = await chatApi.listSessions();
-      sessions = result.slice(0, 20);
+      const [floorManagerSessions, legacyWorkshopSessions] = await Promise.all([
+        chatApi.listSessions(undefined, 'floor-manager'),
+        chatApi.listSessions(undefined, 'workshop')
+      ]);
+      const merged = [...floorManagerSessions, ...legacyWorkshopSessions]
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+        .filter((session, index, all) => all.findIndex(candidate => candidate.id === session.id) === index);
+      sessions = merged.slice(0, 20);
     } catch (e) {
       console.error('Failed to load sessions:', e);
     } finally {
@@ -177,12 +292,73 @@
     }
   }
 
+  async function loadOpinionNodes() {
+    opinionsLoading = true;
+    try {
+      opinionNodes = await listOpinionNodes(50);
+    } catch (e) {
+      console.error('Failed to load opinion nodes:', e);
+    } finally {
+      opinionsLoading = false;
+    }
+  }
+
+  async function saveOpinion() {
+    if (!opinionContent.trim() || opinionSaving) return;
+    opinionSaving = true;
+    try {
+      await createOpinionNode(opinionContent.trim(), opinionConfidence);
+      opinionContent = '';
+      opinionConfidence = 0.7;
+      await loadOpinionNodes();
+    } catch (e) {
+      console.error('Failed to save opinion:', e);
+    } finally {
+      opinionSaving = false;
+    }
+  }
+
+  async function compactSession() {
+    if (!currentSessionId) return;
+    try {
+      const res = await fetch(`${API_BASE}/chat/sessions/${currentSessionId}/compact`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.compacted) {
+        messages = [...messages, {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `[Context compacted \u2014 summary saved to memory]`,
+          timestamp: new Date(),
+          messageType: 'text'
+        }];
+        totalTokens = 0;
+        await tick();
+        messagesEnd?.scrollIntoView({ behavior: 'smooth' });
+      }
+    } catch (e) {
+      console.error('Compact session failed:', e);
+    }
+  }
+
   async function loadWorkflows() {
     workflowsLoading = true;
     try {
       const res = await fetch(`${API_BASE}/prefect/workflows`);
       if (res.ok) {
-        workflows = await res.json();
+        const data = await res.json();
+        // Endpoint returns { workflows: [...], by_state: {...}, total: N }
+        // Normalize to WorkflowItem[] — map state → status
+        const raw: Array<{ id: string; name: string; state?: string; status?: string; started_at?: string | null }> =
+          Array.isArray(data) ? data : (data.workflows ?? []);
+        workflows = raw.map(wf => ({
+          id: wf.id,
+          name: wf.name,
+          status: (wf.status ?? wf.state ?? 'unknown').toLowerCase(),
+          last_run: wf.started_at ?? undefined
+        }));
       }
     } catch (e) {
       console.error('Failed to load workflows:', e);
@@ -205,54 +381,127 @@
     }
   }
 
+  async function loadRunningAgents() {
+    agentsLoading = true;
+    try {
+      const res = await fetch(`${API_BASE}/floor-manager/subagents/list`);
+      if (res.ok) {
+        const data = await res.json();
+        runningAgents = data.agents ?? [];
+      }
+    } catch (e) {
+      console.error('Failed to load sub-agents:', e);
+    } finally {
+      agentsLoading = false;
+    }
+  }
+
+  async function spawnAgent(agentType: string, taskText: string, modelOverride: string, providerOverride: string) {
+    if (!taskText.trim()) return;
+    spawning = true;
+    try {
+      const body: Record<string, string> = { agent_type: agentType, task: taskText };
+      if (modelOverride) body.model = modelOverride;
+      if (providerOverride) body.provider = providerOverride;
+      const res = await fetch(`${API_BASE}/floor-manager/subagents/spawn`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        spawnTask = '';
+        await loadRunningAgents();
+      }
+    } catch (e) {
+      console.error('Failed to spawn sub-agent:', e);
+    } finally {
+      spawning = false;
+    }
+  }
+
   // ── Navigation ───────────────────────────────────────────────────────────────
 
   function navigateTo(section: typeof activeSection) {
     activeSection = section;
-    if (section === 'memory' && memoryNodes.length === 0) {
-      loadMemoryNodes();
+    if (section === 'memory') {
+      if (memoryNodes.length === 0) loadMemoryNodes();
+      if (opinionNodes.length === 0) loadOpinionNodes();
     } else if (section === 'workflows' && workflows.length === 0) {
       loadWorkflows();
     } else if (section === 'projects' && projects.length === 0) {
       loadProjects();
+    } else if (section === 'subagents') {
+      loadRunningAgents();
     }
   }
 
   // ── Chat actions ─────────────────────────────────────────────────────────────
 
-  function startNewChat() {
+  async function startNewChat() {
     messages = [];
     currentSessionId = null;
     activeSection = 'chat';
     inputMessage = '';
   }
 
-  function selectSession(session: ChatSession) {
+  async function selectSession(session: ChatSession) {
     currentSessionId = session.id;
     activeSection = 'chat';
     messages = [];
+    try {
+      const stored: StoredChatMessage[] = await chatApi.getSessionMessages(session.id);
+      messages = stored.map(m => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        timestamp: new Date(m.created_at),
+        metadata: m.metadata
+      }));
+      await tick();
+      messagesEnd?.scrollIntoView({ behavior: 'smooth' });
+    } catch (e) {
+      console.error('Failed to load session messages:', e);
+    }
   }
 
-  function deleteSession(sessionId: string, e: MouseEvent) {
+  async function deleteSession(sessionId: string, e: MouseEvent) {
     e.stopPropagation();
     sessions = sessions.filter(s => s.id !== sessionId);
+    if (currentSessionId === sessionId) {
+      currentSessionId = null;
+      messages = [];
+    }
+    try {
+      await chatApi.deleteSession(sessionId);
+    } catch (err) {
+      console.error('Failed to delete session:', err);
+      // Re-load to restore state if delete failed
+      await loadSessions();
+    }
   }
 
   async function sendMessage(content?: string) {
     const text = content ?? inputMessage;
     if (!text.trim() || isLoading) return;
 
-    // Kill switch check
-    const ks = await copilotKillSwitchService.getStatus();
-    if (ks.active) {
-      messages = [...messages, {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: `Copilot is currently disabled. ${ks.reason || 'Please try again later.'}`,
-        timestamp: new Date()
-      }];
-      return;
+    // Kill switch check — default to inactive if endpoint unavailable
+    let ksActive = false;
+    try {
+      const ks = await copilotKillSwitchService.getStatus();
+      if (ks.active) {
+        messages = [...messages, {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `Copilot is currently disabled. Please try again later.`,
+          timestamp: new Date()
+        }];
+        return;
+      }
+    } catch {
+      // Kill switch endpoint unavailable — proceed normally
+      ksActive = false;
     }
+    void ksActive;
 
     activeSection = 'chat';
 
@@ -278,28 +527,42 @@
     messagesEnd?.scrollIntoView({ behavior: 'smooth' });
 
     try {
-      const res = await fetch(`${API_BASE}/floor-manager/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          canvas: 'workshop',
-          canvas_context: 'workshop',
-          session_id: currentSessionId,
-          stream: false
-        })
-      });
+      const result = await chatApi.sendMessage(
+        'floor-manager',
+        text,
+        currentSessionId ?? undefined,
+        false
+      );
+      if (result.session_id && result.session_id !== currentSessionId) {
+        currentSessionId = result.session_id;
+      }
+      await loadSessions();
 
-      const result = await res.json();
+      // Update token counter from usage if present
+      if (result.usage) {
+        const inp = result.usage.input_tokens ?? 0;
+        const out = result.usage.output_tokens ?? 0;
+        totalTokens = totalTokens + inp + out;
+      } else {
+        // Rough fallback estimate: ~4 chars per token
+        const charCount = messages.reduce((s, m) => s + (m.content?.length ?? 0), 0);
+        totalTokens = Math.floor(charCount / 4);
+      }
+
+      // Auto-compact when context exceeds threshold
+      if (totalTokens > TOKEN_COMPACT_THRESHOLD && currentSessionId) {
+        await compactSession();
+      }
 
       messages = messages.map(m =>
         m.id === assistantId
           ? {
               ...m,
-              content: result.content ?? result.reply ?? '',
+              content: result.reply ?? '',
               isStreaming: false,
-              messageType: result.type ?? 'text',
-              metadata: result
+              messageType: 'text',
+              metadata: result,
+              toolCalls: Array.isArray(result.tool_calls) ? result.tool_calls : undefined
             }
           : m
       );
@@ -317,10 +580,154 @@
     }
   }
 
+  // ── Slash commands ───────────────────────────────────────────────────────
+
+  const SLASH_COMMANDS: SlashCommand[] = [
+    {
+      name: '/clear',
+      description: 'Clear all messages and reset context',
+      action: () => {
+        messages = [];
+        totalTokens = 0;
+        currentSessionId = null;
+        inputMessage = '';
+        slashMenuOpen = false;
+      }
+    },
+    {
+      name: '/compact',
+      description: 'Compact context — trim to last 10 messages',
+      action: async () => {
+        inputMessage = '';
+        slashMenuOpen = false;
+        if (currentSessionId) {
+          try {
+            await fetch(`${API_BASE}/chat/sessions/${currentSessionId}/compact`, { method: 'POST' });
+          } catch { /* endpoint may not exist */ }
+        }
+        if (messages.length > 10) {
+          const summary: Message = {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: `[Context compacted — showing last ${Math.min(messages.length, 10)} messages]`,
+            timestamp: new Date()
+          };
+          messages = [summary, ...messages.slice(-10)];
+        }
+        totalTokens = 0;
+      }
+    },
+    {
+      name: '/model',
+      description: 'Open model selector',
+      action: () => {
+        inputMessage = '';
+        slashMenuOpen = false;
+        modelDropdownOpen = true;
+      }
+    },
+    {
+      name: '/help',
+      description: 'Show available slash commands',
+      action: () => {
+        inputMessage = '';
+        slashMenuOpen = false;
+        const helpLines = SLASH_COMMANDS.map(c => `${c.name} — ${c.description}`).join('\n');
+        messages = [...messages, {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `Available commands:\n${helpLines}`,
+          timestamp: new Date()
+        }];
+        activeSection = 'chat';
+      }
+    }
+  ];
+
+  const filteredSlashCommands = $derived(() => {
+    if (!slashMenuFilter) return SLASH_COMMANDS;
+    const q = slashMenuFilter.toLowerCase();
+    return SLASH_COMMANDS.filter(c => c.name.toLowerCase().includes(q));
+  });
+
+  function handleInput() {
+    const val = inputMessage;
+    if (val.startsWith('/')) {
+      const fragment = val.slice(1);
+      // Only show menu if user is still typing a command (no space yet — means mid-command)
+      if (!val.includes(' ')) {
+        slashMenuFilter = fragment;
+        slashMenuOpen = true;
+        slashMenuIndex = 0;
+      } else {
+        slashMenuOpen = false;
+      }
+    } else {
+      slashMenuOpen = false;
+    }
+  }
+
+  function executeSlashCommand(cmd: SlashCommand) {
+    cmd.action();
+    slashMenuOpen = false;
+  }
+
+  function toggleToolCall(msgId: string, toolIndex: number) {
+    const key = `${msgId}:${toolIndex}`;
+    const next = new Set(expandedToolCalls);
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    expandedToolCalls = next;
+  }
+
   function handleKeyDown(e: KeyboardEvent) {
+    // Slash menu navigation
+    if (slashMenuOpen) {
+      const cmds = filteredSlashCommands();
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        slashMenuIndex = (slashMenuIndex + 1) % Math.max(cmds.length, 1);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        slashMenuIndex = (slashMenuIndex - 1 + Math.max(cmds.length, 1)) % Math.max(cmds.length, 1);
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (cmds[slashMenuIndex]) {
+          executeSlashCommand(cmds[slashMenuIndex]);
+        }
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        slashMenuOpen = false;
+        return;
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
+    }
+  }
+
+  function selectModelOption(providerId: string, modelId: string) {
+    selectedProvider = providerId;
+    selectedModel = modelId;
+    modelDropdownOpen = false;
+  }
+
+  function closeModelDropdown(e: MouseEvent) {
+    const target = e.target as Element;
+    if (!target.closest('.model-selector-wrap')) {
+      modelDropdownOpen = false;
+      spawnDropdownOpen = null;
     }
   }
 
@@ -333,6 +740,8 @@
     expandedNodeId = expandedNodeId === nodeId ? null : nodeId;
   }
 </script>
+
+<svelte:window onclick={closeModelDropdown} />
 
 <div class="workshop-canvas" data-dept="workshop">
   <!-- ── Left Sidebar ─────────────────────────────────────────────────────── -->
@@ -433,23 +842,24 @@
         <ChevronRight size={12} class="nav-arrow" />
       </button>
 
-      <!-- AGENT THOUGHTS -->
+      <!-- SUB-AGENTS -->
       <div class="nav-section-label">Agents</div>
       <button
         class="nav-item"
-        class:active={activeSection === 'agent-thoughts'}
-        onclick={() => navigateTo('agent-thoughts')}
+        class:active={activeSection === 'subagents'}
+        onclick={() => navigateTo('subagents')}
       >
-        <Brain size={15} />
-        <span class="nav-label">Agent Thoughts</span>
+        <Bot size={15} />
+        <span class="nav-label">Sub-agents</span>
         <ChevronRight size={12} class="nav-arrow" />
       </button>
-    </nav>
+
+          </nav>
 
     <!-- Settings at bottom -->
     <div class="sidebar-bottom">
       <div class="sidebar-divider"></div>
-      <button class="nav-item settings-item" onclick={() => {}}>
+      <button class="nav-item settings-item" onclick={() => settingsTrigger.update(n => n + 1)}>
         <Settings size={15} />
         <span class="nav-label">Settings</span>
       </button>
@@ -491,11 +901,43 @@
                   <div class="msg-body" class:streaming={msg.isStreaming}>
                     {#if msg.messageType === 'audit_timeline' || msg.messageType === 'audit_reasoning'}
                       <div class="audit-block">
-                        {@html msg.content.replace(/\n/g, '<br>')}
+                        {@html renderMarkdown(msg.content)}
                       </div>
+                    {:else if msg.role === 'user'}
+                      {msg.content}
                     {:else}
-                      {@html msg.content.replace(/\n/g, '<br>')}
+                      {@html renderMarkdown(msg.content)}
                     {/if}
+
+                    {#if msg.toolCalls && msg.toolCalls.length > 0}
+                      <div class="tool-calls">
+                        {#each msg.toolCalls as tc, i}
+                          {@const tileKey = `${msg.id}:${i}`}
+                          {@const isExpanded = expandedToolCalls.has(tileKey)}
+                          <button
+                            class="tool-call-tile"
+                            onclick={() => toggleToolCall(msg.id, i)}
+                          >
+                            <div class="tool-call-header">
+                              <Wrench size={12} class="tool-icon" />
+                              <span class="tool-call-name">{tc.name}</span>
+                              <span class="tool-call-chevron" class:rotated={isExpanded}>▾</span>
+                            </div>
+                            {#if isExpanded}
+                              <div class="tool-call-body">
+                                <div class="tool-call-section-label">Input</div>
+                                <pre class="tool-call-json">{JSON.stringify(tc.input, null, 2)}</pre>
+                                {#if tc.result}
+                                  <div class="tool-call-section-label">Result</div>
+                                  <pre class="tool-call-json tool-call-result">{tc.result}</pre>
+                                {/if}
+                              </div>
+                            {/if}
+                          </button>
+                        {/each}
+                      </div>
+                    {/if}
+
                     {#if msg.isStreaming}
                       <span class="cursor">▊</span>
                     {/if}
@@ -509,10 +951,28 @@
 
         <!-- Input bar — centered, max 600px -->
         <div class="input-area">
+
+          <!-- Slash command menu -->
+          {#if slashMenuOpen && filteredSlashCommands().length > 0}
+            <div class="slash-menu">
+              {#each filteredSlashCommands() as cmd, i}
+                <button
+                  class="slash-menu-item"
+                  class:active={slashMenuIndex === i}
+                  onclick={() => executeSlashCommand(cmd)}
+                >
+                  <span class="slash-cmd-name">{cmd.name}</span>
+                  <span class="slash-cmd-desc">{cmd.description}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+
           <div class="input-bar">
             <textarea
               bind:value={inputMessage}
               onkeydown={handleKeyDown}
+              oninput={handleInput}
               placeholder="Ask anything… type / for commands"
               rows="1"
               disabled={isLoading}
@@ -521,6 +981,38 @@
               <button class="action-btn" title="Attach file" disabled={isLoading}>
                 <Paperclip size={16} />
               </button>
+              {#if availableProviders.length > 0}
+                <div class="model-selector-wrap">
+                  <button
+                    class="model-selector-btn"
+                    onclick={(e) => { e.stopPropagation(); modelDropdownOpen = !modelDropdownOpen; }}
+                    title="Select model"
+                  >
+                    {selectedModelLabel()}
+                    <ChevronRight size={10} style="transform: rotate(90deg); opacity: 0.6;" />
+                  </button>
+                  {#if modelDropdownOpen}
+                    <div class="model-dropdown">
+                      {#each availableProviders as provider}
+                        {#if provider.models.length > 0}
+                          <div class="model-dropdown-group">
+                            <span class="model-dropdown-provider">{provider.display_name}</span>
+                            {#each provider.models as model}
+                              <button
+                                class="model-dropdown-item"
+                                class:active={selectedModel === model.id}
+                                onclick={() => selectModelOption(provider.id, model.id)}
+                              >
+                                {model.name}
+                              </button>
+                            {/each}
+                          </div>
+                        {/if}
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+              {/if}
               <button
                 class="send-btn"
                 onclick={() => sendMessage()}
@@ -535,7 +1027,22 @@
               </button>
             </div>
           </div>
-          <p class="input-hint">Enter to send · Shift+Enter for new line · / for slash commands</p>
+          <div class="input-footer">
+            <span
+              class="token-counter"
+              class:token-warn={totalTokens > 150000 && totalTokens <= 190000}
+              class:token-danger={totalTokens > 190000}
+            >
+              {#if totalTokens > 190000}
+                Near limit — {totalTokens > 999 ? (totalTokens / 1000).toFixed(1) + 'k' : totalTokens} tokens
+              {:else if totalTokens > 150000}
+                ~{(totalTokens / 1000).toFixed(1)}k tokens — consider /compact
+              {:else if totalTokens > 0}
+                ~{totalTokens > 999 ? (totalTokens / 1000).toFixed(1) + 'k' : totalTokens} tokens
+              {/if}
+            </span>
+            <p class="input-hint">Enter to send · Shift+Enter for new line · / for commands</p>
+          </div>
         </div>
       </div>
 
@@ -576,7 +1083,25 @@
         <div class="section-header">
           <Brain size={20} />
           <h2>Graph Memory</h2>
-          <div class="filter-pills">
+        </div>
+
+        <!-- Sub-tabs -->
+        <div class="memory-tabs">
+          <button
+            class="memory-tab"
+            class:active={memoryTab === 'nodes'}
+            onclick={() => { memoryTab = 'nodes'; }}
+          >Hot Nodes</button>
+          <button
+            class="memory-tab"
+            class:active={memoryTab === 'opinions'}
+            onclick={() => { memoryTab = 'opinions'; if (opinionNodes.length === 0) loadOpinionNodes(); }}
+          >Opinion Nodes</button>
+        </div>
+
+        {#if memoryTab === 'nodes'}
+          <!-- Hot / Warm nodes with filter pills -->
+          <div class="filter-pills" style="margin-bottom:12px;">
             {#each (['all', 'hot', 'warm'] as const) as f}
               <button
                 class="pill"
@@ -585,28 +1110,87 @@
               >{f}</button>
             {/each}
           </div>
-        </div>
-        {#if memoryLoading}
-          <div class="loading-state"><Loader size={24} class="spin" /></div>
-        {:else if memoryNodes.length === 0}
-          <div class="empty-state">
-            <Brain size={40} />
-            <p>No memory nodes found.</p>
-          </div>
+          {#if memoryLoading}
+            <div class="loading-state"><Loader size={24} class="spin" /></div>
+          {:else if memoryNodes.length === 0}
+            <div class="empty-state">
+              <Brain size={40} />
+              <p>No memory nodes found.</p>
+            </div>
+          {:else}
+            <div class="memory-list">
+              {#each memoryNodes as node}
+                <button class="memory-card" onclick={() => toggleNodeExpansion(node.id)}>
+                  <div class="memory-card-header">
+                    <span class="type-badge">{node.node_type}</span>
+                    <span class="memory-preview">{node.content.substring(0, 60)}&hellip;</span>
+                    <ChevronRight size={14} />
+                  </div>
+                  {#if expandedNodeId === node.id}
+                    <div class="memory-detail">{node.content}</div>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
+
         {:else}
-          <div class="memory-list">
-            {#each memoryNodes as node}
-              <button class="memory-card" onclick={() => toggleNodeExpansion(node.id)}>
-                <div class="memory-card-header">
-                  <span class="type-badge">{node.node_type}</span>
-                  <span class="memory-preview">{node.content.substring(0, 60)}…</span>
-                  <ChevronRight size={14} />
+          <!-- Opinion nodes list -->
+          {#if opinionsLoading}
+            <div class="loading-state"><Loader size={24} class="spin" /></div>
+          {:else if opinionNodes.length === 0}
+            <div class="empty-state">
+              <Brain size={36} />
+              <p>No opinion nodes yet. Write one below.</p>
+            </div>
+          {:else}
+            <div class="memory-list" style="margin-bottom:16px;">
+              {#each opinionNodes as op}
+                <div class="opinion-card">
+                  <p class="opinion-content">{op.content}</p>
+                  <div class="opinion-meta">
+                    {#if op.confidence !== null && op.confidence !== undefined}
+                      <span class="confidence-badge">
+                        {Math.round(op.confidence * 100)}% confidence
+                      </span>
+                    {/if}
+                    <span class="opinion-date">{new Date(op.created_at).toLocaleDateString()}</span>
+                  </div>
                 </div>
-                {#if expandedNodeId === node.id}
-                  <div class="memory-detail">{node.content}</div>
-                {/if}
-              </button>
-            {/each}
+              {/each}
+            </div>
+          {/if}
+
+          <!-- Write opinion form -->
+          <div class="opinion-form">
+            <div class="opinion-form-label">Write Opinion</div>
+            <textarea
+              class="opinion-textarea"
+              placeholder="Record your market view, strategy opinion, or observation&hellip;"
+              bind:value={opinionContent}
+              rows={4}
+            ></textarea>
+            <div class="opinion-slider-row">
+              <label class="slider-label">Confidence: {Math.round(opinionConfidence * 100)}%</label>
+              <input
+                type="range"
+                min="0" max="1" step="0.05"
+                bind:value={opinionConfidence}
+                class="opinion-slider"
+              />
+            </div>
+            <button
+              class="save-opinion-btn"
+              onclick={saveOpinion}
+              disabled={opinionSaving || !opinionContent.trim()}
+            >
+              {#if opinionSaving}
+                <Loader size={14} class="spin" />
+                Saving&hellip;
+              {:else}
+                Save Opinion
+              {/if}
+            </button>
           </div>
         {/if}
       </div>
@@ -671,15 +1255,101 @@
         {/if}
       </div>
 
-    <!-- AGENT THOUGHTS VIEW -->
-    {:else if activeSection === 'agent-thoughts'}
-      <div class="section-view agent-thoughts-view">
-        <AgentThoughtsPanel
-          sessionId={currentSessionId ?? ''}
-          maxHeight="100%"
-          showHeader={true}
-        />
+    <!-- SUB-AGENTS VIEW -->
+    {:else if activeSection === 'subagents'}
+      <div class="section-view">
+        <div class="section-header">
+          <Bot size={20} />
+          <h2>Sub-agents</h2>
+          <button class="refresh-btn" onclick={loadRunningAgents} title="Refresh" disabled={agentsLoading}>
+            <Loader size={14} class={agentsLoading ? 'spin' : ''} />
+          </button>
+        </div>
+
+        <!-- Spawn panel -->
+        <div class="subagent-spawn-panel">
+          <div class="spawn-row">
+            <select class="spawn-select" bind:value={spawnAgentType}>
+              {#each SUBAGENT_TYPES as t}
+                <option value={t.id}>{t.label}</option>
+              {/each}
+            </select>
+            {#if availableProviders.length > 0}
+              <div class="model-selector-wrap">
+                <button
+                  class="model-selector-btn"
+                  onclick={(e) => { e.stopPropagation(); spawnDropdownOpen = spawnDropdownOpen ? null : 'spawn'; }}
+                  title="Select model for sub-agent"
+                >
+                  {spawnModel ? (availableProviders.flatMap(p => p.models).find(m => m.id === spawnModel)?.name ?? spawnModel) : 'Default model'}
+                  <ChevronRight size={10} style="transform: rotate(90deg); opacity: 0.6;" />
+                </button>
+                {#if spawnDropdownOpen === 'spawn'}
+                  <div class="model-dropdown">
+                    <button
+                      class="model-dropdown-item"
+                      class:active={!spawnModel}
+                      onclick={() => { spawnModel = ''; spawnProvider = ''; spawnDropdownOpen = null; }}
+                    >Default model</button>
+                    {#each availableProviders as provider}
+                      {#if provider.models.length > 0}
+                        <div class="model-dropdown-group">
+                          <span class="model-dropdown-provider">{provider.display_name}</span>
+                          {#each provider.models as model}
+                            <button
+                              class="model-dropdown-item"
+                              class:active={spawnModel === model.id}
+                              onclick={() => { spawnModel = model.id; spawnProvider = provider.id; spawnDropdownOpen = null; }}
+                            >{model.name}</button>
+                          {/each}
+                        </div>
+                      {/if}
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
+          <div class="spawn-task-row">
+            <input
+              class="spawn-task-input"
+              type="text"
+              bind:value={spawnTask}
+              placeholder="Task description…"
+              onkeydown={(e) => e.key === 'Enter' && spawnAgent(spawnAgentType, spawnTask, spawnModel, spawnProvider)}
+            />
+            <button
+              class="spawn-btn"
+              onclick={() => spawnAgent(spawnAgentType, spawnTask, spawnModel, spawnProvider)}
+              disabled={!spawnTask.trim() || spawning}
+            >
+              {spawning ? 'Spawning…' : 'Spawn'}
+            </button>
+          </div>
+        </div>
+
+        <!-- Running agents list -->
+        {#if agentsLoading}
+          <div class="loading-state"><Loader size={24} class="spin" /></div>
+        {:else if runningAgents.length === 0}
+          <div class="empty-state">
+            <Bot size={40} />
+            <p>No sub-agents running.</p>
+          </div>
+        {:else}
+          <div class="agent-list">
+            {#each runningAgents as agent}
+              <div class="agent-row" class:completed={agent.status === 'completed'} class:failed={agent.status === 'failed'}>
+                <Bot size={13} />
+                <span class="agent-type">{agent.type}</span>
+                <span class="agent-task">{agent.task.slice(0, 60)}{agent.task.length > 60 ? '…' : ''}</span>
+                <span class="agent-status" class:running={agent.status === 'running'}>{agent.status}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
       </div>
+
     {/if}
 
   </main>
@@ -1097,11 +1767,101 @@
 
   .send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
+  /* ── Model selector ─────────────────────────────────────────────────────── */
+  .model-selector-wrap {
+    position: relative;
+  }
+
+  .model-selector-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: transparent;
+    border: 1px solid rgba(0, 212, 255, 0.12);
+    border-radius: 6px;
+    color: #475569;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 0.12s, border-color 0.12s, background 0.12s;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .model-selector-btn:hover {
+    color: #94a3b8;
+    border-color: rgba(0, 212, 255, 0.25);
+    background: rgba(0, 212, 255, 0.05);
+  }
+
+  .model-dropdown {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    right: 0;
+    min-width: 180px;
+    background: rgba(12, 18, 28, 0.97);
+    border: 1px solid rgba(0, 212, 255, 0.18);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    overflow: hidden;
+    backdrop-filter: blur(16px);
+  }
+
+  .model-dropdown-group {
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.06);
+  }
+
+  .model-dropdown-group:last-child {
+    border-bottom: none;
+  }
+
+  .model-dropdown-provider {
+    display: block;
+    padding: 6px 12px 2px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(0, 212, 255, 0.45);
+    user-select: none;
+  }
+
+  .model-dropdown-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 12px;
+    background: transparent;
+    border: none;
+    color: #64748b;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+  }
+
+  .model-dropdown-item:hover {
+    background: rgba(0, 212, 255, 0.07);
+    color: #94a3b8;
+  }
+
+  .model-dropdown-item.active {
+    color: #00d4ff;
+    background: rgba(0, 212, 255, 0.1);
+  }
+
   .input-hint {
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
     color: #334155;
     margin: 0;
+    flex: 1;
     text-align: center;
   }
 
@@ -1120,16 +1880,6 @@
   .section-view::-webkit-scrollbar-thumb {
     background: rgba(0, 212, 255, 0.12);
     border-radius: 3px;
-  }
-
-  /* Agent thoughts view — no extra padding, panel fills container */
-  .agent-thoughts-view {
-    padding: 16px;
-    overflow: hidden;
-  }
-
-  .agent-thoughts-view > :global(.thoughts-panel) {
-    height: 100%;
   }
 
   .section-header {
@@ -1302,6 +2052,152 @@
     overflow-y: auto;
   }
 
+  /* Memory sub-tabs */
+  .memory-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 14px;
+  }
+
+  .memory-tab {
+    padding: 5px 14px;
+    background: rgba(17, 24, 39, 0.4);
+    border: 1px solid rgba(0, 212, 255, 0.08);
+    border-radius: 6px;
+    font-size: 12px;
+    color: #64748b;
+    cursor: pointer;
+    transition: border-color 0.12s, color 0.12s;
+  }
+
+  .memory-tab.active {
+    border-color: rgba(0, 212, 255, 0.35);
+    color: #00d4ff;
+    background: rgba(0, 212, 255, 0.07);
+  }
+
+  /* Opinion cards */
+  .opinion-card {
+    padding: 12px;
+    background: rgba(17, 24, 39, 0.45);
+    border: 1px solid rgba(139, 92, 246, 0.15);
+    border-radius: 8px;
+  }
+
+  .opinion-content {
+    font-size: 13px;
+    color: #cbd5e1;
+    line-height: 1.5;
+    margin: 0 0 8px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .opinion-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .confidence-badge {
+    padding: 2px 7px;
+    background: rgba(139, 92, 246, 0.15);
+    border-radius: 4px;
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    color: #a78bfa;
+  }
+
+  .opinion-date {
+    font-size: 11px;
+    color: #475569;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* Opinion form */
+  .opinion-form {
+    padding: 14px;
+    background: rgba(17, 24, 39, 0.5);
+    border: 1px solid rgba(139, 92, 246, 0.12);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .opinion-form-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #a78bfa;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .opinion-textarea {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(139, 92, 246, 0.15);
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-size: 13px;
+    padding: 10px;
+    resize: vertical;
+    font-family: inherit;
+    line-height: 1.5;
+    box-sizing: border-box;
+  }
+
+  .opinion-textarea:focus {
+    outline: none;
+    border-color: rgba(139, 92, 246, 0.4);
+  }
+
+  .opinion-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .slider-label {
+    font-size: 12px;
+    color: #94a3b8;
+    white-space: nowrap;
+    min-width: 140px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .opinion-slider {
+    flex: 1;
+    accent-color: #a78bfa;
+  }
+
+  .save-opinion-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 18px;
+    background: rgba(139, 92, 246, 0.2);
+    border: 1px solid rgba(139, 92, 246, 0.35);
+    border-radius: 6px;
+    color: #a78bfa;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.12s;
+    align-self: flex-end;
+  }
+
+  .save-opinion-btn:hover:not(:disabled) {
+    background: rgba(139, 92, 246, 0.3);
+  }
+
+  .save-opinion-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
   /* Skills grid */
   .skills-grid {
     display: grid;
@@ -1409,5 +2305,300 @@
 
   @keyframes spin {
     to { transform: rotate(360deg); }
+  }
+
+  /* ── Sub-agents ─────────────────────────────────────────────────────────── */
+  .subagent-spawn-panel {
+    margin-bottom: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .spawn-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .spawn-select {
+    background: rgba(17, 24, 39, 0.7);
+    border: 1px solid rgba(0, 212, 255, 0.18);
+    border-radius: 6px;
+    color: #94a3b8;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+
+  .spawn-task-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .spawn-task-input {
+    flex: 1;
+    background: rgba(17, 24, 39, 0.6);
+    border: 1px solid rgba(0, 212, 255, 0.12);
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    padding: 7px 12px;
+    outline: none;
+  }
+
+  .spawn-task-input:focus {
+    border-color: rgba(0, 212, 255, 0.35);
+  }
+
+  .spawn-btn {
+    padding: 7px 16px;
+    background: rgba(0, 212, 255, 0.12);
+    border: 1px solid rgba(0, 212, 255, 0.25);
+    border-radius: 6px;
+    color: #00d4ff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .spawn-btn:hover:not(:disabled) {
+    background: rgba(0, 212, 255, 0.2);
+  }
+
+  .spawn-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .refresh-btn {
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    color: #475569;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+  }
+
+  .refresh-btn:hover { color: #00d4ff; }
+
+  .agent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .agent-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: rgba(17, 24, 39, 0.45);
+    border: 1px solid rgba(0, 212, 255, 0.08);
+    border-radius: 8px;
+    color: #94a3b8;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+
+  .agent-row.failed { border-color: rgba(239, 68, 68, 0.2); }
+
+  .agent-type {
+    color: #00d4ff;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .agent-task {
+    flex: 1;
+    color: #e2e8f0;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .agent-status {
+    font-size: 11px;
+    color: #475569;
+    text-transform: capitalize;
+  }
+
+  .agent-status.running { color: #00c896; }
+
+  /* ── Input footer (token counter + hint row) ────────────────────────────── */
+  .input-footer {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    max-width: 600px;
+    gap: 10px;
+  }
+
+  .token-counter {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #334155;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .token-counter.token-warn {
+    color: #f59e0b;
+  }
+
+  .token-counter.token-danger {
+    color: #f87171;
+  }
+
+  /* ── Slash command menu ─────────────────────────────────────────────────── */
+  .slash-menu {
+    width: 100%;
+    max-width: 600px;
+    background: rgba(10, 16, 26, 0.97);
+    border: 1px solid rgba(0, 212, 255, 0.18);
+    border-radius: 10px;
+    overflow: hidden;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .slash-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 14px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.1s;
+    width: 100%;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.05);
+  }
+
+  .slash-menu-item:last-child {
+    border-bottom: none;
+  }
+
+  .slash-menu-item:hover,
+  .slash-menu-item.active {
+    background: rgba(0, 212, 255, 0.08);
+  }
+
+  .slash-cmd-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: #00d4ff;
+    min-width: 80px;
+    flex-shrink: 0;
+  }
+
+  .slash-cmd-desc {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #475569;
+  }
+
+  /* ── Tool call tiles ────────────────────────────────────────────────────── */
+  .tool-calls {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-top: 10px;
+  }
+
+  .tool-call-tile {
+    display: flex;
+    flex-direction: column;
+    background: rgba(5, 10, 18, 0.65);
+    border: none;
+    border-radius: 7px;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    padding: 0;
+    transition: background 0.12s;
+    overflow: hidden;
+  }
+
+  .tool-call-tile:hover {
+    background: rgba(5, 10, 18, 0.85);
+  }
+
+  .tool-call-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 10px;
+  }
+
+  :global(.tool-icon) {
+    color: #475569;
+    flex-shrink: 0;
+  }
+
+  .tool-call-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    flex: 1;
+  }
+
+  .tool-call-chevron {
+    font-size: 13px;
+    color: #334155;
+    transition: transform 0.15s;
+    line-height: 1;
+  }
+
+  .tool-call-chevron.rotated {
+    transform: rotate(180deg);
+  }
+
+  .tool-call-body {
+    padding: 0 10px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .tool-call-section-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #334155;
+    margin-top: 4px;
+  }
+
+  .tool-call-json {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #94a3b8;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 5px;
+    padding: 8px 10px;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .tool-call-result {
+    color: #6ee7b7;
   }
 </style>

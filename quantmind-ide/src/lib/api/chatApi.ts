@@ -31,7 +31,22 @@ export interface ChatMessageResponse {
   reply: string;
   artifacts: unknown[];
   action_taken?: string;
-  delegation?: string;
+  delegation?: string | Record<string, unknown>;
+  type?: string;
+  tool_calls?: Array<{ name: string; input: Record<string, unknown>; result?: string }>;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+  };
+}
+
+export interface StoredChatMessage {
+  id: string;
+  session_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+  metadata?: Record<string, unknown>;
 }
 
 export const chatApi = {
@@ -68,6 +83,16 @@ export const chatApi = {
     });
     if (!response.ok) {
       throw new Error(`Failed to list sessions: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async getSessionMessages(sessionId: string): Promise<StoredChatMessage[]> {
+    const response = await fetch(`${API_BASE}/sessions/${sessionId}/messages`, {
+      credentials: 'include'
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to get session messages: ${response.statusText}`);
     }
     return response.json();
   },

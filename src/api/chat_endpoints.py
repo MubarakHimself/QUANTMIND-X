@@ -10,14 +10,17 @@ Use /api/workshop/copilot/* for Copilot queries
 Use /api/floor-manager/* for Floor Manager queries
 """
 
+import json
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.api.services.chat_session_service import ChatSessionService
+from src.agents.departments.types import Department
 
 logger = logging.getLogger(__name__)
 
@@ -51,12 +54,25 @@ class SessionResponse(BaseModel):
     user_id: str
     created_at: str
     updated_at: str
+    context: Dict[str, Any] = {}  # includes prior_session_memory, canvas_context
+
+
+class StoredChatMessageResponse(BaseModel):
+    """Stored chat message payload for session history hydration."""
+    id: str
+    session_id: str
+    role: str
+    content: str
+    created_at: str
+    metadata: Dict[str, Any] = {}
 
 
 class ChatMessageRequest(BaseModel):
     """Request model for per-agent chat messages."""
     message: str
     session_id: Optional[str] = None
+    context: Optional[Dict[str, Any]] = None
+    history: Optional[List[Dict[str, str]]] = None
     stream: bool = False
 
 
@@ -67,7 +83,7 @@ class ChatMessageResponse(BaseModel):
     reply: str
     artifacts: List[dict] = []
     action_taken: Optional[str] = None
-    delegation: Optional[str] = None
+    delegation: Optional[Dict[str, Any] | str] = None
 
 
 # =============================================================================
@@ -93,7 +109,8 @@ async def create_session(request: CreateSessionRequest):
         title=session.title,
         user_id=session.user_id,
         created_at=session.created_at.isoformat() if session.created_at else datetime.now(timezone.utc).isoformat(),
-        updated_at=session.updated_at.isoformat() if session.updated_at else datetime.now(timezone.utc).isoformat()
+        updated_at=session.updated_at.isoformat() if session.updated_at else datetime.now(timezone.utc).isoformat(),
+        context=getattr(session, "context", {}) or {},
     )
 
 
@@ -132,6 +149,34 @@ async def list_sessions(user_id: Optional[str] = None, agent_type: Optional[str]
     ]
 
 
+@router.get("/sessions/{session_id}/messages", response_model=List[StoredChatMessageResponse])
+async def get_session_messages(session_id: str, limit: int = 100):
+    """Get stored messages for a chat session in chronological order."""
+    session = await _session_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    messages = await _session_service.get_messages(session_id=session_id, limit=limit)
+    return [
+        StoredChatMessageResponse(
+            id=msg.id,
+            session_id=msg.session_id,
+            role=msg.role,
+            content=msg.content,
+            created_at=msg.created_at.isoformat()
+            if msg.created_at else datetime.now(timezone.utc).isoformat(),
+            metadata={
+                key: value for key, value in {
+                    "artifacts": msg.artifacts or [],
+                    "tool_calls": msg.tool_calls or [],
+                    "token_count": msg.token_count,
+                }.items() if value not in (None, [], {})
+            },
+        )
+        for msg in messages
+    ]
+
+
 @router.delete("/sessions/{session_id}")
 async def delete_session(session_id: str):
     """Delete a chat session."""
@@ -139,6 +184,76 @@ async def delete_session(session_id: str):
     if not success:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"status": "deleted", "session_id": session_id}
+
+
+@router.post("/sessions/{session_id}/compact")
+async def compact_session(session_id: str):
+    """
+    POST /api/chat/sessions/{session_id}/compact
+
+    Compact session context by summarising older messages and saving a summary
+    to graph memory as an OPINION node.  Returns the number of messages kept
+    and a short summary string so the frontend can display a system notice.
+    """
+    session = await _session_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Fetch all messages for this session
+    try:
+        all_messages = await _session_service.get_messages(session_id=session_id, limit=500)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not fetch messages: {e}")
+
+    KEEP_RECENT = 20
+    if len(all_messages) <= KEEP_RECENT:
+        return {
+            "compacted": False,
+            "messages_kept": len(all_messages),
+            "summary": "Context is already compact — no action taken.",
+        }
+
+    older = all_messages[:-KEEP_RECENT]
+
+    # Build a brief summary from the older messages
+    lines: List[str] = []
+    for msg in older[-40:]:  # cap summary source at 40 msgs to keep it readable
+        prefix = "User" if msg.role == "user" else "Assistant"
+        snippet = (msg.content or "")[:120].replace("\n", " ")
+        lines.append(f"{prefix}: {snippet}")
+    summary_text = "Context compaction summary:\n" + "\n".join(lines)
+
+    # Save to graph memory as an OPINION node
+    try:
+        import os
+        from src.memory.graph.facade import get_graph_memory
+        from src.memory.graph.types import MemoryNodeType, MemoryCategory, MemoryNode
+
+        db_path = os.environ.get("GRAPH_MEMORY_DB", "data/graph_memory.db")
+        facade = get_graph_memory(db_path=db_path)
+
+        node = MemoryNode(
+            node_type=MemoryNodeType.OPINION,
+            category=MemoryCategory.EXPERIENTIAL,
+            title=f"Session compaction — {session_id[:8]}",
+            content=summary_text,
+            confidence=0.9,
+            importance=0.7,
+            agent_id="system",
+            session_id=session_id,
+            tags=["compaction", "session-summary"],
+        )
+        facade.store.create_node(node)
+    except Exception as e:
+        logger.warning(f"Could not save compaction summary to graph memory: {e}")
+
+    short_summary = f"Summarised {len(older)} older messages and saved to memory."
+    return {
+        "compacted": True,
+        "messages_kept": KEEP_RECENT,
+        "total_before": len(all_messages),
+        "summary": short_summary,
+    }
 
 
 # =============================================================================
@@ -149,6 +264,11 @@ async def delete_session(session_id: str):
 @router.post("/workshop/message", response_model=ChatMessageResponse)
 async def workshop_chat(request: ChatMessageRequest):
     """Chat with Workshop Copilot."""
+    from src.api.services.workshop_copilot_service import (
+        WorkshopCopilotRequest,
+        get_workshop_copilot_service,
+    )
+
     session_id = request.session_id
     if not session_id:
         session = await _session_service.create_session(
@@ -165,8 +285,22 @@ async def workshop_chat(request: ChatMessageRequest):
         content=request.message
     )
 
-    # TODO: Process with Workshop Copilot service (placeholder)
-    reply = "Workshop Copilot: I received your message."
+    history = []
+    try:
+        messages = await _session_service.get_messages(session_id=session_id, limit=20)
+        history = [{"role": msg.role, "content": msg.content} for msg in messages]
+    except Exception:
+        pass
+
+    service = get_workshop_copilot_service()
+    result = await service.handle_message(
+        WorkshopCopilotRequest(
+            message=request.message,
+            history=history,
+            session_id=session_id,
+        )
+    )
+    reply = result.reply
 
     # Add assistant message
     assistant_msg = await _session_service.add_message(
@@ -178,7 +312,9 @@ async def workshop_chat(request: ChatMessageRequest):
     return ChatMessageResponse(
         session_id=session_id,
         message_id=assistant_msg.id,
-        reply=reply
+        reply=reply,
+        action_taken=result.action_taken,
+        delegation=result.delegation,
     )
 
 
@@ -194,10 +330,72 @@ async def floor_manager_chat(request: ChatMessageRequest):
         )
         session_id = session.id
 
+    # Add user message to session
     await _session_service.add_message(session_id=session_id, role="user", content=request.message)
 
-    # TODO: Delegate to Floor Manager service (placeholder)
-    reply = "Floor Manager: Message received."
+    # Get conversation history for context
+    history = request.history or []
+    try:
+        messages = await _session_service.get_messages(session_id=session_id, limit=20)
+        history = [{"role": msg.role, "content": msg.content} for msg in messages]
+    except Exception:
+        pass
+
+    if request.stream:
+        async def event_generator():
+            full_content = ""
+            try:
+                async for event in fm.chat_stream(
+                    message=request.message,
+                    context=request.context,
+                    history=history,
+                ):
+                    if event.get("type") == "content" and "delta" not in event:
+                        event = {
+                            **event,
+                            "delta": event.get("content", ""),
+                        }
+                    yield f"data: {json.dumps(event)}\n\n"
+                    if event.get("type") == "content":
+                        full_content += event.get("delta", "")
+                yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
+            except Exception as e:
+                logger.error(f"Floor Manager streaming failed: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+            finally:
+                if full_content:
+                    try:
+                        await _session_service.add_message(
+                            session_id=session_id,
+                            role="assistant",
+                            content=full_content,
+                        )
+                    except Exception:
+                        pass
+
+        from src.agents.departments.floor_manager import get_floor_manager
+        fm = get_floor_manager()
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    # Call Floor Manager with LLM
+    from src.agents.departments.floor_manager import get_floor_manager
+    fm = get_floor_manager()
+    result = await fm.chat(
+        message=request.message,
+        context=request.context,
+        history=history,
+        stream=False,
+    )
+
+    reply = result.get("content", "Floor Manager: Message received.")
+    if result.get("delegation"):
+        delegation = result["delegation"]
+    else:
+        delegation = None
 
     assistant_msg = await _session_service.add_message(
         session_id=session_id, role="assistant", content=reply
@@ -206,13 +404,14 @@ async def floor_manager_chat(request: ChatMessageRequest):
     return ChatMessageResponse(
         session_id=session_id,
         message_id=assistant_msg.id,
-        reply=reply
+        reply=reply,
+        delegation=delegation,
     )
 
 
-@router.post("/departments/{dept}/message", response_model=ChatMessageResponse)
+@router.post("/departments/{dept}/message")
 async def department_chat(dept: str, request: ChatMessageRequest):
-    """Chat with a department agent."""
+    """Chat with a department agent - each department has its own LLM-backed endpoint."""
     valid_depts = ["research", "development", "risk", "trading", "portfolio"]
     if dept not in valid_depts:
         raise HTTPException(status_code=400, detail=f"Invalid department: {dept}")
@@ -228,8 +427,84 @@ async def department_chat(dept: str, request: ChatMessageRequest):
 
     await _session_service.add_message(session_id=session_id, role="user", content=request.message)
 
-    # TODO: Delegate to department service (placeholder)
-    reply = f"Department {dept}: Message received."
+    # Get conversation history for context
+    history = []
+    try:
+        messages = await _session_service.get_messages(session_id=session_id, limit=20)
+        history = [{"role": msg.role, "content": msg.content} for msg in messages]
+    except Exception:
+        pass
+
+    from src.agents.departments.floor_manager import get_floor_manager
+    fm = get_floor_manager()
+    try:
+        dept_key = Department(dept)
+    except ValueError:
+        dept_key = None
+    dept_head = fm._department_heads.get(dept_key) if dept_key else None
+
+    # Get department system prompt for the streaming path
+    dept_system_prompt = None
+    if dept_head:
+        try:
+            dept_system_prompt = dept_head._build_system_prompt()
+        except Exception:
+            dept_system_prompt = dept_head.system_prompt if hasattr(dept_head, 'system_prompt') else None
+
+    # SSE streaming path
+    if request.stream:
+        async def event_generator():
+            full_content = ""
+            yield f"data: {json.dumps({'type': 'tool', 'tool': 'thinking', 'status': 'started'})}\n\n"
+            try:
+                async for event in fm._invoke_llm_stream(
+                    message=request.message,
+                    history=history,
+                    system_prompt=dept_system_prompt,
+                ):
+                    if event.get("type") == "content" and "delta" not in event:
+                        event = {
+                            **event,
+                            "delta": event.get("content", ""),
+                        }
+                    yield f"data: {json.dumps(event)}\n\n"
+                    if event.get("type") == "content":
+                        full_content += event.get("delta", "")
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'tool', 'tool': 'thinking', 'status': 'completed'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
+            # Persist assistant message
+            if full_content:
+                try:
+                    await _session_service.add_message(
+                        session_id=session_id, role="assistant", content=full_content
+                    )
+                except Exception:
+                    pass
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    # Non-streaming path
+    if dept_head:
+        canvas_context = {"history": history, "department": dept}
+        result = await dept_head._invoke_claude(
+            task=request.message,
+            canvas_context=canvas_context,
+            tools=None,
+        )
+        reply = result.get("content", f"{dept.title()} Department response")
+    else:
+        result = await fm.chat(
+            message=f"[{dept.upper()}] {request.message}",
+            history=history,
+            stream=False,
+        )
+        reply = result.get("content", f"{dept.title()} Department: Message received.")
 
     assistant_msg = await _session_service.add_message(
         session_id=session_id, role="assistant", content=reply

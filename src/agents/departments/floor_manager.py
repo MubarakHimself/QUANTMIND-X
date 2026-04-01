@@ -8,6 +8,7 @@ Model Tier: Opus (highest reasoning capability)
 """
 import json
 import logging
+import uuid
 from typing import Dict, List, Optional, Any, AsyncIterator
 from pathlib import Path
 from datetime import datetime
@@ -303,6 +304,48 @@ class FloorManager:
             "content": content,
             "model": f"claude-opus-{self.model_tier}",
             "type": "morning_digest",
+        }
+
+    async def _handle_pending_approvals_query(self) -> Dict[str, Any]:
+        """Return a live approval summary from the approval manager."""
+        try:
+            from src.agents.approval_manager import get_approval_manager
+        except Exception as exc:
+            logger.warning(f"Approval manager unavailable: {exc}")
+            return {
+                "status": "error",
+                "content": "Approval system is currently unavailable.",
+                "type": "approval_summary",
+            }
+
+        pending = get_approval_manager().get_pending()
+        if not pending:
+            return {
+                "status": "success",
+                "content": "No pending approvals.",
+                "type": "approval_summary",
+                "approval_count": 0,
+            }
+
+        lines = [f"Pending approvals: {len(pending)}"]
+        for item in pending[:10]:
+            title = item.get("title") or "Untitled"
+            department = item.get("department") or "unknown"
+            urgency = item.get("urgency") or "medium"
+            created_at = item.get("created_at") or ""
+            lines.append(
+                f"- {title} | dept={department} | urgency={urgency} | created_at={created_at}"
+            )
+
+        if len(pending) > 10:
+            lines.append(f"...and {len(pending) - 10} more pending approvals.")
+
+        return {
+            "status": "success",
+            "content": "\n".join(lines),
+            "type": "approval_summary",
+            "approval_count": len(pending),
+            "approvals": pending,
         }
 
     async def _handle_weekend_tasks(
@@ -1093,6 +1136,61 @@ Starting system restore from backup (FR69: machine portability)...
             return max(scores, key=scores.get)
         return Department.RESEARCH
 
+    def delegate(
+        self,
+        department: str,
+        task: str,
+        priority: str = "normal",
+        context: Optional[Dict[str, Any]] = None,
+        spawn_worker: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Delegate a task to a specific department.
+
+        Called by /api/floor-manager/delegate endpoint.
+        Wraps delegate_to_department with department string validation.
+
+        Args:
+            department: Target department name string
+            task: Task description
+            priority: Message priority (low, normal, high, urgent)
+            context: Optional context dictionary
+            spawn_worker: Whether to spawn a worker (unused, kept for API compat)
+
+        Returns:
+            Delegation result with status and message ID
+        """
+        # Validate department
+        try:
+            dept = Department(department.lower())
+        except ValueError:
+            return {
+                "status": "error",
+                "error": f"Invalid department: {department}",
+            }
+
+        # Check kill switch
+        if self._copilot_kill_switch.is_active:
+            return {
+                "status": "suspended",
+                "message": "Agent activity suspended - Copilot kill switch is active",
+            }
+
+        message = self.delegate_to_department(
+            from_dept="floor_manager",
+            to_dept=dept.value,
+            task=task,
+            priority=priority,
+            context=context,
+        )
+
+        return {
+            "status": "delegated",
+            "message_id": message.id,
+            "department": dept.value,
+            "priority": priority,
+        }
+
     def dispatch(
         self,
         to_dept: Department,
@@ -1794,6 +1892,14 @@ Starting system restore from backup (FR69: machine portability)...
         if message.strip().lower().startswith('/morning-digest'):
             return await self._handle_morning_digest(context)
 
+        message_lower = message.strip().lower()
+        if "pending approval" in message_lower or (
+            "approval" in message_lower and any(
+                keyword in message_lower for keyword in ("show", "list", "check", "what", "any")
+            )
+        ):
+            return await self._handle_pending_approvals_query()
+
         # Story 11.2: Handle weekend task queries
         weekend_result = await self._handle_weekend_tasks(message, context)
         if weekend_result:
@@ -1817,47 +1923,87 @@ Starting system restore from backup (FR69: machine portability)...
         should_delegate = any(kw in message.lower() for kw in delegation_keywords)
 
         if should_delegate:
-            # Delegate to the classified department
-            try:
-                msg = self.delegate_to_department(
-                    from_dept="floor",
-                    to_dept=department.value,
-                    task=message,
-                    priority="normal",
-                    context=context,
-                )
+            delegated_response = await self._delegate_to_department_head(
+                department=department,
+                task=message,
+                context=context,
+            )
+            if delegated_response:
+                return delegated_response
 
-                return {
-                    "status": "success",
-                    "content": f"Delegating to {department.value.title()} Department: {message[:100]}...",
-                    "delegation": {
-                        "department": department.value,
-                        "task_id": str(msg.id),
-                        "status": "pending",
-                    },
-                    "model": f"claude-opus-{self.model_tier}",
-                }
-            except Exception as e:
-                # Log error to audit trail
-                logger.error(
-                    f"[AUDIT] FloorManager delegation failed: dept={department.value}, "
-                    f"message={message[:50]}..., error={str(e)}"
-                )
-                return {
-                    "status": "success",
-                    "content": f"I received your message: {message[:100]}... However, I encountered an issue delegating to the {department.value.title()} Department. Please try again or contact support.",
-                    "error": str(e),
-                    "model": f"claude-opus-{self.model_tier}",
-                }
-        else:
-            # Direct response via LLM
-            response_content = await self._invoke_llm(message, history)
+        # Direct response via LLM
+        response_content = await self._invoke_llm(message, history)
 
-            return {
-                "status": "success",
-                "content": response_content,
-                "model": f"claude-opus-{self.model_tier}",
-            }
+        return {
+            "status": "success",
+            "content": response_content,
+            "model": f"claude-opus-{self.model_tier}",
+        }
+
+    async def _delegate_to_department_head(
+        self,
+        department: Department,
+        task: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        head = self._department_heads.get(department)
+        if not head or not hasattr(head, "process_task"):
+            logger.info(f"No department head available for delegation: {department.value}")
+            return None
+
+        task_context = context or {}
+        task_id = str(uuid.uuid4())
+
+        try:
+            result = await head.process_task(task=task, context=task_context)
+        except Exception as exc:
+            logger.error(
+                f"Failed to process task with {department.value} head: {exc}"
+            )
+            return None
+
+        status = result.get("status", "success")
+        content = result.get("content") or result.get("error")
+        if not content:
+            content = f"{department.value.title()} task completed with status {status}."
+
+        model_name = self._resolve_department_model(head)
+
+        delegation_payload = {
+            "department": department.value,
+            "departmentId": department.value,
+            "status": status,
+            "task_id": task_id,
+            "result": result,
+        }
+
+        response = {
+            "status": "success",
+            "content": content,
+            "model": model_name,
+            "delegation": delegation_payload,
+            "delegated_department": department.value,
+            "task_id": task_id,
+        }
+
+        tool_calls = result.get("tool_calls")
+        if tool_calls is not None:
+            response["tool_calls"] = tool_calls
+
+        error = result.get("error")
+        if error:
+            response["error"] = error
+
+        return response
+
+    def _resolve_department_model(self, head: Any) -> str:
+        config = getattr(head, "config", None)
+        if config and getattr(config, "model", None):
+            return config.model
+        tier = getattr(head, "model_tier", None)
+        if isinstance(tier, str) and tier:
+            return f"claude-{tier}"
+        return "claude-sonnet"
 
     async def chat_stream(
         self,

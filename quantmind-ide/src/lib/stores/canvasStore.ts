@@ -37,7 +37,7 @@ export const CANVAS_SHORTCUTS: Record<string, string> = {
 
 // Canvas store using Svelte writable store
 function createCanvasStore() {
-  const { subscribe, set, update } = writable<string>('workshop'); // Default to workshop
+  const { subscribe, set, update } = writable<string>('live-trading'); // Default to live trading
 
   return {
     subscribe,

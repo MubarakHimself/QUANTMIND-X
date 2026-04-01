@@ -1,0 +1,376 @@
+# Progress
+
+Updated: 2026-04-01
+
+## Session Summary
+
+- Deployment review subagent completed successfully.
+- Backend subagent delivered a partial Floor Manager/chat patch that landed in the workspace.
+- Frontend subagent stalled and returned no usable patch, so frontend work continued inline.
+- User explicitly required `no mock data` and deployment-ready behavior.
+- User later confirmed that existing scraped articles can be used as real seeded test data if needed.
+- User delegated an extended autonomous pass with permission to continue coding, keep the handoff current, commit locally, and avoid pushing until later confirmation.
+- The two long March 2026 planning `.docx` files are now being actively processed for doc-to-code alignment:
+  - `/home/mubarkahimself/Desktop/QUANTMINDX/claude-desktop-workfolder/QuantMindX_Planning_Document_March2026.docx`
+  - `/home/mubarkahimself/Desktop/QUANTMINDX/claude-desktop-workfolder/QuantMindX_Planning_Addendum_Session2_March2026.docx`
+- Extracted working copies were created for the audit to reduce repeated `.docx` parsing:
+  - `/home/mubarkahimself/Desktop/QUANTMINDX/claude-desktop-workfolder/QuantMindX_Planning_Document_March2026.extracted.txt`
+  - `/home/mubarkahimself/Desktop/QUANTMINDX/claude-desktop-workfolder/QuantMindX_Planning_Addendum_Session2_March2026.extracted.txt`
+
+## Latest Verified State
+
+This section is the current source of truth and supersedes older notes below when they conflict.
+
+### Newly Confirmed From Live User Audit
+
+- Resume protocol going forward:
+  - after any context compaction, re-read this handoff first before continuing work
+  - this file is the durable source of truth for resumed execution order and verified state
+- AgentPanel canvas isolation is now fixed in code and browser-verified:
+  - [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte) now snapshots and restores panel state per canvas instead of keeping one global session bucket
+  - [agentPanelState.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/agentPanelState.ts) now provides reusable canvas-keyed state helpers for panel/collapse handling
+  - browser verification on `http://127.0.0.1:4173/` confirmed:
+    - create a session in Research
+    - switch to Development
+    - Development still shows the empty `Click "+" to start a new session...` state instead of leaking the Research session
+- AgentPanel collapse state is now actually per-canvas after a follow-up runtime fix:
+  - [+page.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/routes/+page.svelte) now guards the collapse-state sync effect so it does not overwrite the next canvas during a canvas transition
+  - first attempt introduced a real Svelte runtime regression (`effect_update_depth_exceeded`); this was reproduced in Chrome console and then fixed
+  - browser verification confirmed:
+    - collapse Development panel
+    - switch to Research and panel restores expanded (`320px` width, no expand trigger)
+    - switch back to Development and panel restores collapsed (`0px` grid column, expand trigger present)
+- StatusBand routing/ticker cleanup is now fixed and live-browser verified:
+  - [StatusBand.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/StatusBand.svelte) now routes chips independently instead of treating them as one generic navigation target
+  - [canvasStore.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/canvasStore.ts) now defaults the shell to `live-trading` on reload
+  - [StatusBand.navigation.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/StatusBand.navigation.test.ts) covers:
+    - `Bots -> Trading`
+    - `Workflows -> FlowForge`
+    - two-track ticker structure
+  - browser verification on `http://127.0.0.1:4173/` confirmed:
+    - hard reload lands on `Live Trading`
+    - clicking `Bots` changes the top bar and main canvas to `Trading`
+    - clicking `Workflows` changes the top bar and main canvas to `FlowForge`
+- Workshop/Copilot follow-up is now partially closed:
+  - [WorkshopCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/WorkshopCanvas.svelte) now loads both canonical `floor-manager` sessions and legacy `workshop` sessions into `Recent`, sorted together by `updated_at`
+  - the same file now sends new Workshop messages through the canonical session-backed `POST /api/chat/floor-manager/message` route instead of the legacy workshop endpoint
+  - [WorkshopCanvas.session-parity.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/WorkshopCanvas.session-parity.test.ts) was updated to lock that routing in place
+  - [chat_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/chat_endpoints.py) now allows `delegation` to be either a string or a structured object, matching real Floor Manager payloads
+  - browser verification confirmed:
+    - Workshop still opens and sends normally
+    - the `Recent` sidebar shows the new session title created after the route swap
+    - a direct `GET /api/chat/sessions?agent_type=floor-manager` check shows the new Workshop-created sessions are now persisted under `floor-manager`
+- Floor Manager approval summaries are now grounded in live backend state instead of LLM-invented rows:
+  - [floor_manager.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/floor_manager.py) now intercepts approval-summary prompts and formats the output from `ApprovalManager.get_pending()`
+  - [test_floor_manager_chat.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/agents/departments/test_floor_manager_chat.py) now covers the live approval-summary path
+  - live browser verification after restarting the backend confirmed `Show pending approvals` now renders:
+    - `Pending approvals: 2`
+    - `Test DB persist | dept=research | urgency=medium | created_at=2026-03-31T11:28:20.941943`
+    - `Test tool approval | dept=trading | urgency=medium | created_at=2026-03-31T11:28:21.190363`
+  - this is real backend data, not UI mock data, but the two visible approval rows are stale persisted test artifacts that now need explicit cleanup
+- Workshop session history hydration is now fixed end-to-end:
+  - [chat_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/chat_endpoints.py) now exposes `GET /api/chat/sessions/{session_id}/messages` backed by `ChatSessionService.get_messages()`
+  - [test_chat_per_agent.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_chat_per_agent.py) now covers the new history endpoint success and `404` paths
+  - browser verification on `http://127.0.0.1:4173/` confirmed:
+    - click a saved Workshop session in `Recent`
+    - prior `hello` / `Hello! How can I help you today?` messages hydrate back into the main chat pane
+  - this resolves the concrete `GET /api/chat/sessions/{id}/messages -> 404` failure that was blocking Workshop recent-chat restore
+- Workshop session parity status after the fix:
+  - `New Chat` still lazily creates no empty phantom session until the first sent message
+  - first send still persists a real session into the sidebar
+  - the next remaining parity gap was the separate trading-floor Copilot/Floor-Manager panel, which mixed `/api/copilot/chat` with `/api/chat/sessions`
+- Trading-floor Copilot/Floor-Manager session parity is now patched in code:
+  - [chat_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/chat_endpoints.py) now accepts optional `context` and `history` on `ChatMessageRequest`
+  - the same file now supports SSE streaming on `POST /api/chat/floor-manager/message` while still persisting the assistant reply into the shared chat-session store
+  - [CopilotPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/trading-floor/CopilotPanel.svelte) now:
+    - streams against `/api/chat/floor-manager/message` instead of `/api/copilot/chat`
+    - sends top-level `session_id` instead of nesting it under `context`
+    - hydrates saved sessions via `chatApi.getSessionMessages(sessionId)`
+    - normalizes assistant history messages back into `floor_manager` UI messages
+    - clears session-bound UI state on `clearChat()`
+  - focused regression coverage now exists for both sides:
+    - [test_chat_per_agent.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_chat_per_agent.py) covers the session-backed floor-manager SSE path
+    - [CopilotPanel.session-parity.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/trading-floor/CopilotPanel.session-parity.test.ts) guards the component route/history parity wiring
+  - current verification state:
+    - backend focused tests passed
+    - frontend focused parity tests passed
+    - live browser verification for this specific panel is still pending because the current shell path does not visibly mount `TradingFloorPanel/CopilotPanel` for direct interaction
+- Department mail / task visibility is still functionally too thin for the intended workflow:
+  - mail exists, but the viewport use is poor and users cannot inspect enough detail/history per message/task
+  - department kanban/task cards need a richer detail surface showing origin, history, and live state rather than just compact summary tiles
+- StatusBand still has one intentionally-open slice only:
+  - market/workflow counters remain unavailable until live MT5 / market integrations and Prefect are connected
+  - route behavior and ticker looping are no longer the blocker
+- Additional user-audited UI backlog to prioritize after the session-isolation fix:
+  - Research assets/books/upload flow and scraped-article surfacing
+  - better use of viewport width/height across department canvases
+  - chat panel resizing / wider message area
+  - workshop skills/workflows/sub-agents information architecture cleanup
+  - shared-assets canvas tab cleanup and working MCP configuration UX
+  - FlowForge/department kanban relationship and richer workflow-card design
+- Deferred context work explicitly queued by user:
+  - this queue item is now active: the long March 2026 planning docs are being audited against the live codebase and UI
+  - current long-pass order:
+    - compare authoritative architecture/PRD/addendum docs against the current codebase
+    - compare intended user journeys against live browser navigation
+    - fix the highest-leverage backend/UI mismatches
+    - keep the handoff updated after each verified slice
+
+- `/api/prefect/workflows` now returns real persisted workflow data from `flows/workflows.db` instead of canned cards or an always-empty placeholder response.
+- `src/api/flowforge_workflow_proxy.py` now preserves the `/api` segment in `PREFECT_API_URL` instead of stripping it with `urljoin(...)`.
+- `quantmind-ide/src/lib/components/canvas/FlowForgeCanvas.svelte` no longer throws `ReferenceError: loading is not defined`; the canvas now renders again instead of leaving the shell in a mixed FlowForge/Workshop state.
+- FlowForge browser verification now shows the real workflow board with persisted cards:
+  - `PENDING: 5`
+  - `RUNNING: 2`
+  - `DONE: 12`
+  - `Provider ready` is visible
+  - scheduler controls render live again
+- `src/api/websocket_endpoints.py` now exports a backward-compatible `ws_manager` alias, so `NewsBlackoutService` no longer fails at startup on that import.
+- `src/database/engine.py` now exports `SessionLocal = session_factory`, fixing the legacy import path used by strategy-monitor startup code.
+- `scripts/schedule_lifecycle_check.py` no longer hardcodes `/data/...`; it now uses a writable local data root, so the lifecycle scheduler no longer fails on permission errors during local startup.
+- `src/video_ingest/processor.py` now uses authenticated Gemini CLI OAuth when available, even without an explicit `GEMINI_API_KEY`, and no longer falls back to unauthenticated OpenRouter construction as a fake last resort.
+- FlowForge browser verification shows the launcher now reaches the real ingest backend and reports `Provider ready` in the current environment rather than collapsing everything into `provider not configured`.
+- Provider/settings backend session handling is fixed for live runtime paths:
+  - `src/api/provider_config_endpoints.py` now bridges the FastAPI yield dependency and the existing context-manager-style callers/tests
+  - `src/api/server_config_endpoints.py` does the same
+  - `src/agents/providers/router.py` and `src/integrations/github_ea_scheduler.py` now use a real sync DB session scope instead of `with get_db_session()`
+- Browser verification now shows the Settings `Providers` tab rendering live provider rows again instead of tripping the previous `'generator' object does not support the context manager protocol` backend error.
+- `src/database/db_manager.py` now degrades gracefully when `HOT_DB_URL` points at PostgreSQL but `psycopg2` is unavailable locally: it logs a warning and falls back to SQLite instead of preventing the market scanner scheduler from starting.
+- Current remaining backend startup/runtime blockers are real and not yet fully resolved:
+  - Finnhub integration warning because `finnhub-python` is not installed
+  - `/api/router/market` still returns `503` when MT5 is not connected; user explicitly asked to leave the StatusBand/MT5 integration slice alone for now
+  - Prefect proxy still logs connection failures to `127.0.0.1:4200` when a live Prefect API is not running, even though the FlowForge board now has persisted workflow data from `flows/workflows.db`
+  - startup still includes deployment-default placeholders such as the GitHub EA scheduler repo URL
+- Reused subagents were dispatched again for the current phase:
+  - `Einstein` for FlowForge frontend state/routing diagnosis
+  - `Dewey` for backend startup/runtime blocker review
+  - neither returned a usable completed payload during this phase, so work continued inline
+
+## Files Under Active Work
+
+Backend:
+
+- `/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/floor_manager.py`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/base.py`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/research_head.py`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/src/api/chat_endpoints.py`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/src/api/agent_thought_stream_endpoints.py`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/src/api/graph_memory_endpoints.py`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/src/api/task_sse_endpoints.py`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/src/api/services/workshop_copilot_service.py`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/src/router/workflow_orchestrator.py`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/src/memory/graph/config.py`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/src/memory/graph/facade.py`
+
+Frontend:
+
+- `/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/agentPanelState.ts`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/departmentChatStore.ts`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/SettingsView.svelte`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/AgentThoughtsPanel.svelte`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/MainContent.svelte`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/StatusBand.svelte`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/config/api.ts`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/department-kanban/DepartmentKanban.svelte`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/department-kanban/types.ts`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shared/DeptKanbanTile.svelte`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shared/DeptKanbanTile.test.ts`
+
+Tests added/updated:
+
+- `/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/agentPanelState.test.ts`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/tests/agents/departments/test_floor_manager_chat.py`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/tests/agents/departments/test_floor_manager_delegation.py`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_chat_per_agent.py`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_agent_thought_stream_endpoints.py`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/tests/unit/memory/graph/test_shared_graph_memory_path.py`
+- `/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.test.ts`
+
+## Fixes Already Applied In Workspace
+
+- Floor Manager `chat()` now attempts real department-head processing for delegatable tasks instead of returning only a canned delegation placeholder.
+- Department-head hook events now normalize to Anthropic Agent SDK names (`PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`) while still accepting legacy internal aliases.
+- Department-head pre-tool hooks now accept SDK-style `hookSpecificOutput.permissionDecision` and `updatedInput`, not only the older local `{deny, reason}` shape.
+- Department chat endpoint now resolves department heads via the `Department` enum rather than string lookup.
+- Department chat SSE events are being normalized toward a `delta` payload contract.
+- Thought history endpoint now has a session filter planned/applied path for cleaner UI history loading.
+- Department chat store now accepts either `delta` or `content` chunks from SSE.
+- Settings overlay has been changed toward non-blocking behavior by removing full-screen pointer capture while preserving interaction on the settings panel.
+- Settings overlay is now also truly hidden from the accessibility tree when closed, so it no longer leaves a ghost dialog/focus target behind.
+- Browser re-check now shows settings tab switching working on live clicks for `Appearance` and `Providers`; the earlier failure appears to have been stale HMR / stale scripted state rather than a still-live regression.
+- Agent thoughts filtering has been normalized for names like `floor_manager` vs `floormanager`.
+- Shell `AgentPanel` is being wired away from placeholders toward live chat, memory, and mail data.
+- Shell `AgentPanel` SSE/session-history transport now targets the main API base instead of hardcoded `localhost:8001`.
+- `MainContent` settings trigger handling was adjusted so the modal no longer immediately reopens after close.
+- `StatusBand` no longer fabricates workflow counts, challenge progress, or backend degradation with `Math.random()`; unavailable data now renders as explicit `--` / `unavailable`.
+- Graph memory now uses a shared database-path resolver instead of mixing `:memory:`, `data/graph_memory.db`, and `.quantmind/memory/graph.db`.
+- `ResearchHead._write_research_opinion()` now writes into the shared graph memory store rather than a research-only hardcoded path.
+- `GraphMemoryFacade` now exposes `delete_node()`, which fixes the graph-memory delete API route.
+- Legacy `/api/chat/workshop/message` now routes through `WorkshopCopilotService` instead of returning the canned placeholder string.
+- `WorkshopCopilotService` now resolves the Floor Manager base URL from `API_BASE_URL` before falling back to `http://localhost:8000`.
+- Task SSE/REST routes now live under `/api`, accept aggregate frontend canvas names like `flowforge`, and return real task-manager data instead of sample tasks.
+- Task status updates now persist back into the real mail-consumer task manager rather than acknowledging without mutation.
+- Local frontend API resolution now follows the current browser hostname instead of hardcoding `localhost`, and shared `apiFetch` no longer falls back to the Vite dev proxy for local backend calls.
+- Department kanban now hydrates from the SSE `initial` payload and refreshes once the SSE stream opens, removing the startup race where real tasks existed in the backend but the board stayed empty.
+- Dept task summary tile now performs a fresh fetch on SSE open so counts recover after backend/mail-consumer startup instead of staying pinned at an empty state.
+- Task SSE no longer blocks the whole FastAPI event loop after FlowForge opens `/api/sse/tasks/flowforge`; the Redis pub/sub path in [`src/api/task_sse_endpoints.py`](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/task_sse_endpoints.py) now polls via `asyncio.to_thread(pubsub.get_message, ...)` instead of calling synchronous `pubsub.listen()` inside an async generator.
+- Added regression coverage for the SSE deadlock fix in [`tests/api/test_task_sse_endpoints.py`](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_task_sse_endpoints.py). Verified with `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_task_sse_endpoints.py`.
+- Backend CORS handling is now hardened in [`src/api/ide_endpoints.py`](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_endpoints.py) and [`src/api/phase5_endpoints.py`](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/phase5_endpoints.py): if `.env` sets `CORS_ALLOWED_ORIGINS=*`, the server now falls back to an explicit origin allowlist instead of emitting `Access-Control-Allow-Origin: *` together with `allow_credentials=True`. Missing dev origins `http://127.0.0.1:4173` and `:4174` were added.
+- IDE video-ingest endpoints now also exist under `/api/video-ingest/*` via router registration in [`src/api/server.py`](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/server.py), which fixes the FlowForge auth-status contract mismatch. Verified `GET /api/video-ingest/auth-status` now returns `200 {"gemini":false,"qwen":false}`.
+- Prefect workflow board mock data was removed from [`src/api/prefect_workflow_endpoints.py`](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/prefect_workflow_endpoints.py). `/api/prefect/workflows` now returns real Prefect deployment data from the FlowForge proxy client, or an honest empty result when none exist. `/cancel` and `/resume` now return `501` instead of mutating fake in-memory workflow state.
+- FlowForge video ingest is no longer backed by the placeholder handler in [`src/api/ide_handlers_video_ingest.py`](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_video_ingest.py). The IDE route now uses the real `VideoIngestProcessor` + `JobQueueManager`, persists job state, exposes `current_stage`, and returns real playlist child job IDs instead of fabricating a UUID and instant `"completed"` status.
+- Video-ingest auth reporting is now production-honest. [`src/api/ide_handlers_video_ingest.py`](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_video_ingest.py) now reports `openrouter`, `gemini`, and `qwen` from actual keys or credential files rather than treating an installed CLI binary as a configured provider.
+- FlowForge now routes video-ingest calls through the split-aware shared API client in [`quantmind-ide/src/lib/api/videoIngestApi.ts`](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/api/videoIngestApi.ts) instead of hardcoding `API_CONFIG.API_BASE`. This removes the frontend/backend split mismatch that previously broke auth checks, submit, and polling together.
+- [`quantmind-ide/src/lib/components/canvas/FlowForgeCanvas.svelte`](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/FlowForgeCanvas.svelte) now distinguishes `ready`, `unconfigured`, and `unreachable` ingest states. Transport failures no longer masquerade as “provider not configured,” and playlist submissions now fan out into multiple tracked jobs when the backend returns multiple job IDs.
+- The secondary Workshop video-ingest surface in [`quantmind-ide/src/lib/components/VideoIngestWorkflow.svelte`](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/VideoIngestWorkflow.svelte) no longer assumes provider availability on fetch failure, and it now normalizes real uppercase queue states instead of expecting placeholder lowercase statuses.
+- Backtest completion in [`src/api/ide_backtest.py`](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_backtest.py) now creates a real `ApprovalManager` workflow gate for human review before paper trading. The same path also stores parameter-sweep results when the strategy exposes known `{{parameter}}` placeholders.
+- Added focused regression coverage for the new real paths:
+  - [`tests/api/test_ide_handlers_video_ingest.py`](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_ide_handlers_video_ingest.py)
+  - [`tests/api/test_ide_backtest_helpers.py`](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_ide_backtest_helpers.py)
+- Monitoring startup no longer crashes on optional Grafana/requests import failures. [`src/monitoring/__init__.py`](/home/mubarkahimself/Desktop/QUANTMINDX/src/monitoring/__init__.py) now treats Grafana Cloud, tracing, and tracing instrumentation as optional imports, and [`src/monitoring/json_logging.py`](/home/mubarkahimself/Desktop/QUANTMINDX/src/monitoring/json_logging.py) now falls back from `/app/logs` to a writable local `data/logs` directory.
+- The stuck local uvicorn listener on `127.0.0.1:8000` was force-cleared and a healthy backend instance was restarted; `/health`, `/api/tasks/flowforge`, and `/api/sse/tasks/flowforge` then returned successfully again.
+- Browser verification confirmed:
+  - settings opens and hides again
+  - settings no longer blocks underlying canvas navigation
+  - settings sidebar tab switching works on live clicks
+  - settings close restores focus to the opener button without the prior ghost-dialog behavior
+  - department `AgentPanel` chat shows backend replies in the UI
+  - `AgentPanel` memory tab loads
+  - `AgentPanel` mail tab loads real inbox data
+  - FlowForge / Floor Manager chat shows backend replies in the UI
+  - FlowForge creates a real interactive session without the earlier `localhost:8001` connection-refused noise
+  - FlowForge `/api/tasks/flowforge` returns real aggregated tasks from the mail-consumer task manager
+  - FlowForge now renders a live scheduler card and real dept-task counts in a clean browser tab; the earlier `Checking auth…` / `Scheduler offline — backend not connected` state is gone
+  - after the real video-ingest runtime + frontend routing fix, FlowForge now shows `Provider ready` on a cold reload instead of the earlier false `Video ingest provider not configured` banner
+  - CORS browser failures for credentialed requests to `127.0.0.1:8000` are gone after the wildcard-origin hardening
+  - `/api/prefect/workflows` now returns an honest empty state instead of fake workflow cards
+  - after backend recovery, live server logs again showed `GET /api/tasks/flowforge 200` and `GET /api/sse/tasks/flowforge 200`
+  - StatusBand now shows explicit unavailable workflow/challenge values rather than fake random counts
+  - Workshop `Graph Memory` hot-node view now renders live nodes from the shared backend store
+- Temporary verification opinion data used to confirm the shared graph-memory path was removed immediately afterward; no mock verification record remains in the live graph-memory store.
+
+## Active Production-Readiness Findings
+
+- Pre-existing data cleanup still pending:
+  - graph-memory hot tier still contains one older record with `agent_id=test-agent`
+  - this record was not created in this session and should be reviewed before deletion
+  - approval persistence currently contains two stale test approval rows:
+    - `Test DB persist`
+    - `Test tool approval`
+  - these are now surfaced honestly by the Workshop/Floor Manager path and should be cleaned from the live DB before calling the approval UX production-ready
+
+- Browser/runtime still shows backend availability gaps unrelated to the fixes above:
+  - repeated `503` responses from `/api/router/market`
+  - current backend payload is `{"detail":"Market data not available. MT5 adapter not connected."}`; this is why StatusBand still shows workflow/market data as unavailable
+  - these are real backend integration issues, not mocked UI data
+- Backend startup still emits production-readiness warnings outside the FlowForge slice:
+  - the earlier `urllib3.packages.six.moves` startup crash has been downgraded to optional-feature warnings:
+    - `Grafana Cloud monitoring disabled: No module named 'urllib3.packages.six.moves'`
+    - `Tracing disabled: No module named 'opentelemetry.instrumentation'`
+    - `Tracing instrumentation disabled: No module named 'opentelemetry.instrumentation'`
+  - core API startup, Prometheus metrics startup, and JSON file logging now continue successfully despite those optional-dependency gaps
+- Additional real backend/deployment blockers surfaced during the clean restart:
+  - Prefect proxy still cannot connect to `localhost:4200`, so `/api/prefect/workflows` is honest but empty unless a Prefect server is brought up
+  - `NewsBlackoutService` still fails because `src.api.websocket_endpoints` does not export `ws_manager`
+  - lifecycle scheduler still fails on `[Errno 13] Permission denied: '/data'`
+  - market scanner scheduler still fails because `psycopg2` is missing
+  - `src.router.strategy_monitor` still logs `cannot import name 'SessionLocal' from 'src.database.engine'`
+- Frontend transport audit subagent found additional remaining production-risk hardcodes that still need cleanup outside the FlowForge slice, including:
+  - `quantmind-ide/src/lib/components/EAManagerView.svelte`
+  - `quantmind-ide/src/lib/components/BacktestResultsView.svelte`
+  - `quantmind-ide/src/lib/components/SharedAssetsView.svelte`
+  - `quantmind-ide/src/lib/components/KillSwitchView.svelte`
+  - `quantmind-ide/src/lib/components/FileViewer.svelte`
+  - `quantmind-ide/src/lib/components/MainEditor.svelte`
+  - `quantmind-ide/src/lib/components/PaperTradingPanel.svelte`
+  - `quantmind-ide/src/lib/components/EnhancedPaperTradingPanel.svelte`
+  - `quantmind-ide/src/lib/components/BacktestDashboard.svelte`
+  - `quantmind-ide/src/lib/components/agent-panel/PineScriptPanel.svelte`
+  - plus several stores/services still using raw `/api`, raw `/ws`, `window.location.origin`, or `localhost:8000`
+- Current next-slice frontend items with real evidence:
+  - richer mail/task/detail surfaces still open
+  - visible browser-mounted verification path for the trading-floor Copilot/Floor-Manager panel still needs to be located or restored
+
+## Verification Still Pending
+
+- Anthropic/Claude SDK alignment check against official docs still needs primary-source verification in the main thread
+- Wider workflow / Floor Manager canvas verification
+- Browser verification for trading-floor Copilot/Floor-Manager session parity
+- Browser confirmation that FlowForge task SSE stays healthy end-to-end after the `/api/sse/tasks/flowforge` route fix
+- Browser confirmation on a cold frontend load that FlowForge task tile/board render the recovered non-empty task state after the new workflow-board state fix
+- Broader FlowForge/backend cleanup beyond the fixed agent-panel transport path
+- End-to-end verification of a real video-ingest submission with live provider credentials; current environment has `OPENROUTER_API_KEY` unset, `QWEN_API_KEY` unset, and no Google ADC env vars loaded
+- Cleanup of remaining non-FlowForge localhost/raw-origin transport paths reported by the frontend audit subagent
+- Frontend typecheck/build (`npm run check` in `quantmind-ide` currently fails because `svelte-check` is not installed in the shell path despite local `node_modules`)
+- Dedicated cleanup pass for other pre-existing test/mock records already present in the repository/database (not created in this session)
+- Production hardening pass on remaining deployment findings: market data availability, portfolio demo data, broker defaults, and other demo-mode defaults still visible in backend startup logs
+- Prefect server bring-up / routing verification for `localhost:4200`
+- cleanup of remaining backend startup blockers: missing `finnhub-python`, noisy Prefect proxy connection errors when Prefect is absent, and any other startup warnings that still affect production readiness
+- continued discrepancy-matrix pass against the two long March 2026 planning `.docx` files after the current session/status/approval slice
+
+## Notes
+
+- The canonical issue file lives in the sibling worktree path recorded in [index.md](/home/mubarkahimself/Desktop/QUANTMINDX/docs/handoffs/2026-03-31-agentic-fix/index.md).
+- Deployment findings are recorded separately in [deployment-findings.md](/home/mubarkahimself/Desktop/QUANTMINDX/docs/handoffs/2026-03-31-agentic-fix/deployment-findings.md).
+- Real article corpus discovered and available for seeded UI verification if needed:
+  - `/home/mubarkahimself/Desktop/QUANTMINDX/data/scraped_articles`
+- Official Anthropic docs checked for SDK-alignment review:
+  - `https://platform.claude.com/docs/en/agent-sdk/overview`
+  - `https://platform.claude.com/docs/en/agent-sdk/hooks`
+  - `https://platform.claude.com/docs/en/agent-sdk/permissions`
+  - note: this currently reflects subagent reporting and still needs main-thread primary-source confirmation before claiming full alignment
+- Subagent findings captured in-session:
+  - `Einstein` confirmed FlowForge’s video-ingest frontend was bypassing the split-aware API routing and collapsing backend transport failures into the same “provider not configured” UI state.
+  - `Dewey` confirmed `src/api/ide_backtest.py` had no approval creation on completion and that optimized parameter output was not otherwise persisted anywhere in the real backtest path.
+  - `Godel` later confirmed the next StatusBand issues by code inspection:
+    - `Bots` is mapped to Portfolio instead of Trading
+    - `Workflows` has no navigation handler to FlowForge
+    - the ticker jump is caused by the duplicated animated track layout
+  - `Halley` completed a backend/doc discrepancy audit and found the next major production-alignment gaps:
+    - node-role isolation is still too loose in [server.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/server.py)
+    - mail transport is still split between Redis and SQLite paths
+    - legacy and canonical workflow orchestration models still coexist
+    - paper-trading promotion/gate semantics still diverge from the planning docs
+    - router strategy/broker primitives still reflect the older pre-addendum model
+    - Layer 2 / Layer 3 live risk pipeline modules exist but are not yet wired as the authoritative hot path
+  - `Euler` completed a UI/doc discrepancy audit and found the next highest-leverage UI alignment gaps:
+    - launcher/home model still exposes too many peer canvases relative to the planned department launcher
+    - Copilot is still treated as a canvas destination instead of a persistent shell-level surface
+    - Live Trading is still much thinner than the planned control surface
+    - Research lacks the planned news/macro context surface
+    - Portfolio race loading is effectively dead because active races are never loaded on mount
+    - Shared Assets taxonomy still misses several planning-doc asset categories
+  - Later follow-up dispatches to `Einstein` and `Dewey` were started for the remaining FlowForge state bug and backend startup blockers, but no usable completed payload had returned yet during the first handoff update window.
+- Targeted verification completed:
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest tests/agents/departments/test_floor_manager_chat.py -q`
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest tests/unit/memory/graph/test_shared_graph_memory_path.py -q`
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest tests/api/test_chat_per_agent.py -q -k workshop`
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_ide_handlers_video_ingest.py tests/api/test_ide_backtest_helpers.py tests/api/test_task_sse_endpoints.py`
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -p pytest_asyncio.plugin -q tests/api/test_prefect_workflow_endpoints.py tests/api/test_flowforge_workflow_proxy.py tests/api/test_ide_handlers_video_ingest.py`
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/database/test_db_manager.py tests/api/test_provider_config.py tests/api/test_provider_config_p2.py tests/api/test_server_config.py`
+  - direct API checks for `/api/chat/departments/development/message`, `/api/chat/floor-manager/message`, `/api/graph-memory/stats`, `/api/graph-memory/opinions`, `/api/graph-memory/nodes/hot`, `/api/graph-memory/nodes/{id}` delete
+  - direct API check for `/api/chat/workshop/message` after backend restart now returns the real workshop-service response (`action_taken="no_provider"`) instead of the placeholder string
+  - direct API check for `/api/tasks/flowforge` after backend restart now returns `200 OK` with real aggregated task-manager data
+  - backend logs confirm `/api/sse/tasks/flowforge` now returns `200 OK` instead of `404`
+  - direct header check confirmed credentialed browser routes like `/api/sessions/current`, `/api/sessions/all`, `/api/prefect/workflows`, and `/health` now return `Access-Control-Allow-Origin: http://127.0.0.1:4173` instead of `*`
+  - direct API check confirmed `/api/video-ingest/auth-status` now returns the new schema, e.g. `{"openrouter":false,"gemini":true,"qwen":false}` in the current environment
+  - direct API check confirmed `/api/providers/available` now returns real configured provider rows again instead of collapsing into the fallback error payload
+  - `cd quantmind-ide && npx vitest run src/lib/components/shell/agentPanelState.test.ts src/lib/components/shell/AgentPanel.test.ts`
+  - Chrome browser verification for AgentPanel canvas isolation and per-canvas collapse state:
+    - Research active session does not leak into Development
+    - Research restores expanded panel state while Development restores collapsed panel state
+  - clean backend restart confirmed:
+    - Prometheus metrics server now starts on port `9090`
+    - JSON file logging now initializes into local repo storage instead of failing on `/app/logs`
+    - Grafana/tracing dependency gaps remain warnings instead of aborting startup
+    - market scanner scheduler now starts even without local `psycopg2`; `HOTDBManager` logs a fallback-to-SQLite warning instead of aborting startup
+  - direct API check confirmed `/api/prefect/workflows` now returns real persisted workflow records from `flows/workflows.db`; one verified response reported `total: 19` with non-empty `by_state` counts
+  - after clearing a stale uvicorn listener, `/health` again returns `200 OK`
+  - `npx vitest run src/lib/components/shared/DeptKanbanTile.test.ts src/lib/components/shell/AgentPanel.test.ts` → 68/68 passed
+  - Chrome DevTools browser verification completed for settings, department chat, floor-manager chat, department mail, department memory, and Workshop graph memory
+  - Chrome DevTools browser verification completed for FlowForge after the ingest/runtime fix: canvas opens, scheduler stays live, dept task tile shows real counts, the launcher renders `Provider ready`, and the workflow board now shows the real persisted workflow cards instead of the earlier empty state
+  - Chrome DevTools browser verification completed for Settings → Providers after the DB-session fix: provider rows render again, including the live Anthropic/GLM/MiniMax entries
+  - `npx vitest run src/lib/components/shell/AgentPanel.test.ts` → 42/42 passed
+  - `npx vitest run src/lib/stores/flowforge.test.ts` → 3/3 passed
+  - `npx svelte-check --tsconfig ./tsconfig.json` still reports a large pre-existing repo backlog; one local declaration-order issue in `AgentPanel.svelte` was fixed during this session, but the repo is not globally clean

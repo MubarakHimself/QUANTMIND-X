@@ -7,7 +7,6 @@
     Route,
     Sun,
     Moon,
-    WifiOff,
     TrendingUp,
     Gauge,
     Target,
@@ -23,6 +22,8 @@
     getRouterSettings
   } from '$lib/api';
   import { activeCanvasStore } from '../stores/canvasStore';
+
+  type NodeStatus = 'online' | 'degraded' | 'offline' | 'unknown';
 
   // Svelte 5 Runes
   let loading = $state(true);
@@ -44,15 +45,18 @@
 
   // Node health
   let nodeHealth = $state({
-    cloudzy: { status: 'online', lastSeen: new Date() },
-    contabo: { status: 'online', lastSeen: new Date() },
-    local: { status: 'online', lastSeen: new Date() }
+    cloudzy: { status: 'unknown' as NodeStatus, lastSeen: null as Date | null },
+    contabo: { status: 'unknown' as NodeStatus, lastSeen: null as Date | null },
+    local: { status: 'online' as NodeStatus, lastSeen: new Date() }
   });
-  let contaboDegraded = $state(false);
 
   // Workflow & Challenge
-  let workflowCount = $state(0);
-  let challengeProgress = $state({ phase: 'qualifying', target: 1000, current: 0 });
+  let workflowCount = $state<number | null>(null);
+  let challengeProgress = $state<{ phase: string; target: number | null; current: number | null }>({
+    phase: 'unavailable',
+    target: null,
+    current: null
+  });
 
   // Animation state
   let pnlFlash = $state<'positive' | 'negative' | null>(null);
@@ -212,29 +216,18 @@
         // Router settings may not be available
       }
 
-      // Simulate node health check (in real app, this would be an API call)
-      // For now, simulate node_backend sometimes being unreachable
-      const randomCheck = Math.random();
-      if (randomCheck < 0.1) {
-        contaboDegraded = true;
-        nodeHealth.contabo.status = 'degraded';
-      } else {
-        contaboDegraded = false;
-        nodeHealth.contabo.status = 'online';
-      }
-      nodeHealth.contabo.lastSeen = new Date();
-
-      // Simulate workflow count
-      workflowCount = Math.floor(Math.random() * 5) + 1;
-
-      // Simulate challenge progress
-      challengeProgress = {
-        phase: 'qualifying',
-        target: 1000,
-        current: Math.floor(Math.random() * 500) + 100
-      };
+      // Do not fabricate runtime values. Keep unavailable fields explicit until
+      // real endpoints are wired.
+      nodeHealth.cloudzy = { status: 'unknown', lastSeen: null };
+      nodeHealth.contabo = { status: 'unknown', lastSeen: null };
+      workflowCount = null;
+      challengeProgress = { phase: 'unavailable', target: null, current: null };
     } catch (e) {
       console.error('StatusBand: Failed to fetch data', e);
+      nodeHealth.cloudzy = { status: 'unknown', lastSeen: null };
+      nodeHealth.contabo = { status: 'unknown', lastSeen: null };
+      workflowCount = null;
+      challengeProgress = { phase: 'unavailable', target: null, current: null };
       loading = false;
     }
   }
@@ -313,6 +306,14 @@
     activeCanvasStore.setActiveCanvas('portfolio');
   }
 
+  function navigateToTrading() {
+    activeCanvasStore.setActiveCanvas('trading');
+  }
+
+  function navigateToFlowForge() {
+    activeCanvasStore.setActiveCanvas('flowforge');
+  }
+
   function navigateToRisk() {
     activeCanvasStore.setActiveCanvas('risk');
   }
@@ -337,253 +338,146 @@
       default: return '#4a5568';
     }
   }
+
+  function formatCount(value: number | null): string {
+    return value === null ? '--' : String(value);
+  }
+
+  function getChallengeTargetLabel(target: number | null): string {
+    return target === null ? 'unavailable' : `/ ${target}`;
+  }
+
+  function getNodeTitle(label: string, status: NodeStatus): string {
+    if (status === 'unknown') {
+      return `${label}: Status unavailable`;
+    }
+    if (status === 'degraded') {
+      return `${label}: Degraded`;
+    }
+    if (status === 'offline') {
+      return `${label}: Offline`;
+    }
+    return `${label}: Online`;
+  }
 </script>
 
 <div class="status-band" role="status" aria-live="polite" aria-atomic="false">
   {#if loading}
     <span class="loading">Loading...</span>
   {:else}
-    <div class="ticker-wrapper">
-      <!-- ===== SESSION CLOCKS (Tokyo/London/NY) ===== -->
-      <div class="segment session-clocks clickable" onclick={navigateToLiveTrading} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToLiveTrading()}>
-        <span class="segment-label">Sessions</span>
-        {#each SESSION_ORDER as sessionKey}
-          {@const sessionData = sessions[sessionKey]}
-          {@const isActive = sessionData?.active ?? false}
-          <div class="session-clock" class:active={isActive}>
-            <span class="city">{SESSION_CITIES[sessionKey as keyof typeof SESSION_CITIES]}</span>
-            <span class="time">{getSessionLocalTime(sessionKey)}</span>
-            {#if isActive}
-              <Sun size={10} class="session-icon sun" />
-            {:else}
-              <Moon size={10} class="session-icon moon" />
-            {/if}
+    <div class="ticker-viewport">
+      {#each [0, 1] as tickerLoop (tickerLoop)}
+        <div class="ticker-track" aria-hidden={tickerLoop === 1}>
+          <!-- ===== SESSION CLOCKS (Tokyo/London/NY) ===== -->
+          <div class="segment session-clocks clickable" onclick={navigateToLiveTrading} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToLiveTrading()}>
+            <span class="segment-label">Sessions</span>
+            {#each SESSION_ORDER as sessionKey}
+              {@const sessionData = sessions[sessionKey]}
+              {@const isActive = sessionData?.active ?? false}
+              <div class="session-clock" class:active={isActive}>
+                <span class="city">{SESSION_CITIES[sessionKey as keyof typeof SESSION_CITIES]}</span>
+                <span class="time">{getSessionLocalTime(sessionKey)}</span>
+                {#if isActive}
+                  <Sun size={10} class="session-icon sun" />
+                {:else}
+                  <Moon size={10} class="session-icon moon" />
+                {/if}
+              </div>
+            {/each}
           </div>
-        {/each}
-      </div>
 
-      <div class="divider">|</div>
+          <div class="divider">|</div>
 
-      <!-- ===== ACTIVE BOTS ===== -->
-      <div class="segment bots clickable" onclick={navigateToPortfolio} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToPortfolio()}>
-        <Bot size={12} />
-        <span class="metric-value">{activeBots}</span>
-        <span class="metric-label">Bots</span>
-      </div>
-
-      <div class="divider">|</div>
-
-      <!-- ===== DAILY P&L ===== -->
-      <div class="segment pnl clickable" onclick={navigateToPortfolio} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToPortfolio()}>
-        <DollarSign size={12} />
-        <span
-          class="metric-value"
-          class:profit={dailyPnl >= 0}
-          class:loss={dailyPnl < 0}
-          class:flash-positive={pnlFlash === 'positive'}
-          class:flash-negative={pnlFlash === 'negative'}
-        >
-          {formattedPnl}
-        </span>
-        {#if contaboDegraded}
-          <span class="stale-label">[stale]</span>
-        {/if}
-      </div>
-
-      <div class="divider">|</div>
-
-      <!-- ===== NODE HEALTH DOTS ===== -->
-      <div class="segment nodes clickable" onclick={showNodeStatus} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && showNodeStatus()}>
-        <span class="segment-label">Nodes</span>
-        <div class="node-dots">
-          <!-- node_trading -->
-          <div class="node-dot" title="node_trading: Trading Node">
-            <Circle size={8} fill={getNodeStatusColor(nodeHealth.cloudzy.status)} stroke="none" />
+          <!-- ===== ACTIVE BOTS ===== -->
+          <div class="segment bots clickable" onclick={navigateToTrading} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToTrading()}>
+            <Bot size={12} />
+            <span class="metric-value">{activeBots}</span>
+            <span class="metric-label">Bots</span>
           </div>
-          <span class="node-sep">·</span>
-          <!-- node_backend -->
-          <div class="node-dot" class:degraded={contaboDegraded} title={contaboDegraded ? 'node_backend: Unreachable' : 'node_backend: Agent Node'}>
-            {#if contaboDegraded}
-              <WifiOff size={10} class="node-icon degraded" />
-            {:else}
-              <Circle size={8} fill={getNodeStatusColor(nodeHealth.contabo.status)} stroke="none" />
-            {/if}
+
+          <div class="divider">|</div>
+
+          <!-- ===== DAILY P&L ===== -->
+          <div class="segment pnl clickable" onclick={navigateToPortfolio} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToPortfolio()}>
+            <DollarSign size={12} />
+            <span
+              class="metric-value"
+              class:profit={dailyPnl >= 0}
+              class:loss={dailyPnl < 0}
+              class:flash-positive={pnlFlash === 'positive'}
+              class:flash-negative={pnlFlash === 'negative'}
+            >
+              {formattedPnl}
+            </span>
           </div>
-          <span class="node-sep">·</span>
-          <!-- Local -->
-          <div class="node-dot" title="Local: Development">
-            <Circle size={8} fill={getNodeStatusColor(nodeHealth.local.status)} stroke="none" />
+
+          <div class="divider">|</div>
+
+          <!-- ===== NODE HEALTH DOTS ===== -->
+          <div class="segment nodes clickable" onclick={showNodeStatus} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && showNodeStatus()}>
+            <span class="segment-label">Nodes</span>
+            <div class="node-dots">
+              <div class="node-dot" title={getNodeTitle('node_trading', nodeHealth.cloudzy.status)}>
+                <Circle size={8} fill={getNodeStatusColor(nodeHealth.cloudzy.status)} stroke="none" />
+              </div>
+              <span class="node-sep">·</span>
+              <div class="node-dot" title={getNodeTitle('node_backend', nodeHealth.contabo.status)}>
+                <Circle size={8} fill={getNodeStatusColor(nodeHealth.contabo.status)} stroke="none" />
+              </div>
+              <span class="node-sep">·</span>
+              <div class="node-dot" title={getNodeTitle('Local', nodeHealth.local.status)}>
+                <Circle size={8} fill={getNodeStatusColor(nodeHealth.local.status)} stroke="none" />
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      <div class="divider">|</div>
+          <div class="divider">|</div>
 
-      <!-- ===== WORKFLOW COUNT ===== -->
-      <div class="segment workflow">
-        <Gauge size={12} />
-        <span class="metric-value">{workflowCount}</span>
-        <span class="metric-label">Workflows</span>
-      </div>
-
-      <div class="divider">|</div>
-
-      <!-- ===== CHALLENGE PROGRESS ===== -->
-      <div class="segment challenge">
-        <Target size={12} />
-        <span class="metric-value">{challengeProgress.current}</span>
-        <span class="metric-label">/ {challengeProgress.target}</span>
-        <CheckCircle2 size={10} class="challenge-icon" />
-      </div>
-
-      <div class="divider">|</div>
-
-      <!-- ===== REGIME ===== -->
-      <div class="segment regime clickable" onclick={navigateToLiveTrading} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToLiveTrading()}>
-        <TrendingUp size={12} />
-        <span class="regime-dot" style="background: {getRegimeColor(regime)}"></span>
-        <span class="metric-value">{formatRegime(regime)}</span>
-      </div>
-
-      <div class="divider">|</div>
-
-      <!-- ===== RISK MODE ===== -->
-      <div class="segment risk clickable" onclick={navigateToRisk} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToRisk()}>
-        <Shield size={12} />
-        <span class="metric-label">Risk:</span>
-        <span class="metric-value">{formatRiskMode(riskMode)}</span>
-      </div>
-
-      <div class="divider">|</div>
-
-      <!-- ===== ROUTER MODE (AC 12-5-7) ===== -->
-      <div class="segment router clickable" onclick={navigateToRouter} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToRouter()}>
-        <Route size={12} />
-        <span class="metric-label">Router:</span>
-        <span class="metric-value">{routerMode}</span>
-      </div>
-
-      <!-- ===== DUPLICATE FOR SEAMLESS LOOP ===== -->
-      <div class="divider">|</div>
-
-      <!-- ===== SESSION CLOCKS (Tokyo/London/NY) ===== -->
-      <div class="segment session-clocks clickable" onclick={navigateToLiveTrading} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToLiveTrading()}>
-        <span class="segment-label">Sessions</span>
-        {#each SESSION_ORDER as sessionKey}
-          {@const sessionData = sessions[sessionKey]}
-          {@const isActive = sessionData?.active ?? false}
-          <div class="session-clock" class:active={isActive}>
-            <span class="city">{SESSION_CITIES[sessionKey as keyof typeof SESSION_CITIES]}</span>
-            <span class="time">{getSessionLocalTime(sessionKey)}</span>
-            {#if isActive}
-              <Sun size={10} class="session-icon sun" />
-            {:else}
-              <Moon size={10} class="session-icon moon" />
-            {/if}
+          <!-- ===== WORKFLOW COUNT ===== -->
+          <div class="segment workflow clickable" onclick={navigateToFlowForge} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToFlowForge()}>
+            <Gauge size={12} />
+            <span class="metric-value">{formatCount(workflowCount)}</span>
+            <span class="metric-label">Workflows</span>
           </div>
-        {/each}
-      </div>
 
-      <div class="divider">|</div>
+          <div class="divider">|</div>
 
-      <!-- ===== ACTIVE BOTS ===== -->
-      <div class="segment bots clickable" onclick={navigateToPortfolio} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToPortfolio()}>
-        <Bot size={12} />
-        <span class="metric-value">{activeBots}</span>
-        <span class="metric-label">Bots</span>
-      </div>
-
-      <div class="divider">|</div>
-
-      <!-- ===== DAILY P&L ===== -->
-      <div class="segment pnl clickable" onclick={navigateToPortfolio} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToPortfolio()}>
-        <DollarSign size={12} />
-        <span
-          class="metric-value"
-          class:profit={dailyPnl >= 0}
-          class:loss={dailyPnl < 0}
-          class:flash-positive={pnlFlash === 'positive'}
-          class:flash-negative={pnlFlash === 'negative'}
-        >
-          {formattedPnl}
-        </span>
-        {#if contaboDegraded}
-          <span class="stale-label">[stale]</span>
-        {/if}
-      </div>
-
-      <div class="divider">|</div>
-
-      <!-- ===== NODE HEALTH DOTS ===== -->
-      <div class="segment nodes clickable" onclick={showNodeStatus} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && showNodeStatus()}>
-        <span class="segment-label">Nodes</span>
-        <div class="node-dots">
-          <!-- node_trading -->
-          <div class="node-dot" title="node_trading: Trading Node">
-            <Circle size={8} fill={getNodeStatusColor(nodeHealth.cloudzy.status)} stroke="none" />
+          <!-- ===== CHALLENGE PROGRESS ===== -->
+          <div class="segment challenge">
+            <Target size={12} />
+            <span class="metric-value">{formatCount(challengeProgress.current)}</span>
+            <span class="metric-label">{getChallengeTargetLabel(challengeProgress.target)}</span>
+            <CheckCircle2 size={10} class="challenge-icon" />
           </div>
-          <span class="node-sep">·</span>
-          <!-- node_backend -->
-          <div class="node-dot" class:degraded={contaboDegraded} title={contaboDegraded ? 'node_backend: Unreachable' : 'node_backend: Agent Node'}>
-            {#if contaboDegraded}
-              <WifiOff size={10} class="node-icon degraded" />
-            {:else}
-              <Circle size={8} fill={getNodeStatusColor(nodeHealth.contabo.status)} stroke="none" />
-            {/if}
+
+          <div class="divider">|</div>
+
+          <!-- ===== REGIME ===== -->
+          <div class="segment regime clickable" onclick={navigateToLiveTrading} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToLiveTrading()}>
+            <TrendingUp size={12} />
+            <span class="regime-dot" style="background: {getRegimeColor(regime)}"></span>
+            <span class="metric-value">{formatRegime(regime)}</span>
           </div>
-          <span class="node-sep">·</span>
-          <!-- Local -->
-          <div class="node-dot" title="Local: Development">
-            <Circle size={8} fill={getNodeStatusColor(nodeHealth.local.status)} stroke="none" />
+
+          <div class="divider">|</div>
+
+          <!-- ===== RISK MODE ===== -->
+          <div class="segment risk clickable" onclick={navigateToRisk} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToRisk()}>
+            <Shield size={12} />
+            <span class="metric-label">Risk:</span>
+            <span class="metric-value">{formatRiskMode(riskMode)}</span>
+          </div>
+
+          <div class="divider">|</div>
+
+          <!-- ===== ROUTER MODE (AC 12-5-7) ===== -->
+          <div class="segment router clickable" onclick={navigateToRouter} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToRouter()}>
+            <Route size={12} />
+            <span class="metric-label">Router:</span>
+            <span class="metric-value">{routerMode}</span>
           </div>
         </div>
-      </div>
-
-      <div class="divider">|</div>
-
-      <!-- ===== WORKFLOW COUNT ===== -->
-      <div class="segment workflow">
-        <Gauge size={12} />
-        <span class="metric-value">{workflowCount}</span>
-        <span class="metric-label">Workflows</span>
-      </div>
-
-      <div class="divider">|</div>
-
-      <!-- ===== CHALLENGE PROGRESS ===== -->
-      <div class="segment challenge">
-        <Target size={12} />
-        <span class="metric-value">{challengeProgress.current}</span>
-        <span class="metric-label">/ {challengeProgress.target}</span>
-        <CheckCircle2 size={10} class="challenge-icon" />
-      </div>
-
-      <div class="divider">|</div>
-
-      <!-- ===== REGIME ===== -->
-      <div class="segment regime clickable" onclick={navigateToLiveTrading} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToLiveTrading()}>
-        <TrendingUp size={12} />
-        <span class="regime-dot" style="background: {getRegimeColor(regime)}"></span>
-        <span class="metric-value">{formatRegime(regime)}</span>
-      </div>
-
-      <div class="divider">|</div>
-
-      <!-- ===== RISK MODE ===== -->
-      <div class="segment risk clickable" onclick={navigateToRisk} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToRisk()}>
-        <Shield size={12} />
-        <span class="metric-label">Risk:</span>
-        <span class="metric-value">{formatRiskMode(riskMode)}</span>
-      </div>
-
-      <div class="divider">|</div>
-
-      <!-- ===== ROUTER MODE (AC 12-5-7) ===== -->
-      <div class="segment router clickable" onclick={navigateToRouter} role="button" tabindex="0" onkeypress={(e) => e.key === 'Enter' && navigateToRouter()}>
-        <Route size={12} />
-        <span class="metric-label">Router:</span>
-        <span class="metric-value">{routerMode}</span>
-      </div>
+      {/each}
     </div>
   {/if}
 </div>
@@ -607,18 +501,24 @@
     z-index: 90;
   }
 
-  .ticker-wrapper {
+  .ticker-viewport {
     display: flex;
     align-items: center;
-    gap: 12px;
     animation: ticker-scroll 60s linear infinite;
     white-space: nowrap;
     will-change: transform;
-    padding-left: 100%;
   }
 
-  .ticker-wrapper:hover {
+  .ticker-viewport:hover {
     animation-play-state: paused;
+  }
+
+  .ticker-track {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    padding-right: 32px;
   }
 
   @keyframes ticker-scroll {
