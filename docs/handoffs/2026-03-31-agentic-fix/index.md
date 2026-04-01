@@ -67,7 +67,7 @@ Current high-signal state:
   - ticker loop no longer jumps because it now runs as two equal tracks
 - Workshop now uses the canonical session-backed Floor Manager route for new sends while still showing legacy workshop sessions in `Recent`
 - Floor Manager approval queries are now grounded in live `ApprovalManager` data instead of freeform LLM summaries
-- current visible approval rows in Workshop are real backend records, but they are stale test approval artifacts that still need cleanup from persistence
+- local approval persistence was cleaned through the real approval API; the same Workshop quick action now returns `No pending approvals.`
 - Research now exposes a first-class `News` tab backed by the live news store/component instead of leaving that planning-doc surface absent
 - next frontend slice is richer mail/task detail views, followed by portfolio/shared-assets alignment and stale test-data cleanup
 

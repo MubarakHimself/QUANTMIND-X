@@ -63,11 +63,15 @@ This section is the current source of truth and supersedes older notes below whe
 - Floor Manager approval summaries are now grounded in live backend state instead of LLM-invented rows:
   - [floor_manager.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/floor_manager.py) now intercepts approval-summary prompts and formats the output from `ApprovalManager.get_pending()`
   - [test_floor_manager_chat.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/agents/departments/test_floor_manager_chat.py) now covers the live approval-summary path
-  - live browser verification after restarting the backend confirmed `Show pending approvals` now renders:
-    - `Pending approvals: 2`
-    - `Test DB persist | dept=research | urgency=medium | created_at=2026-03-31T11:28:20.941943`
-    - `Test tool approval | dept=trading | urgency=medium | created_at=2026-03-31T11:28:21.190363`
-  - this is real backend data, not UI mock data, but the two visible approval rows are stale persisted test artifacts that now need explicit cleanup
+  - initial browser verification after restarting the backend showed two real persisted test approval rows:
+    - `Test DB persist`
+    - `Test tool approval`
+  - those stale approvals were then cancelled through the real approval API:
+    - `POST /api/approvals/apr_8be24723388f/cancel`
+    - `POST /api/approvals/apr_034ca960169d/cancel`
+  - follow-up verification confirmed:
+    - `GET /api/approvals/count -> {"count":0}`
+    - Workshop quick action now renders `No pending approvals.`
 - Research now has the planned live news surface:
   - [ResearchCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/ResearchCanvas.svelte) now includes a `News` tab and mounts [NewsView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/research/NewsView.svelte)
   - [ResearchCanvas.news-tab.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/ResearchCanvas.news-tab.test.ts) now guards the tab declaration and render path
@@ -262,10 +266,6 @@ Tests added/updated:
 - Pre-existing data cleanup still pending:
   - graph-memory hot tier still contains one older record with `agent_id=test-agent`
   - this record was not created in this session and should be reviewed before deletion
-  - approval persistence currently contains two stale test approval rows:
-    - `Test DB persist`
-    - `Test tool approval`
-  - these are now surfaced honestly by the Workshop/Floor Manager path and should be cleaned from the live DB before calling the approval UX production-ready
 
 - Browser/runtime still shows backend availability gaps unrelated to the fixes above:
   - repeated `503` responses from `/api/router/market`
