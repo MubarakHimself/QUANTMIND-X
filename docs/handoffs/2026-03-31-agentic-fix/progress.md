@@ -68,6 +68,13 @@ This section is the current source of truth and supersedes older notes below whe
     - `Test DB persist | dept=research | urgency=medium | created_at=2026-03-31T11:28:20.941943`
     - `Test tool approval | dept=trading | urgency=medium | created_at=2026-03-31T11:28:21.190363`
   - this is real backend data, not UI mock data, but the two visible approval rows are stale persisted test artifacts that now need explicit cleanup
+- Research now has the planned live news surface:
+  - [ResearchCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/ResearchCanvas.svelte) now includes a `News` tab and mounts [NewsView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/research/NewsView.svelte)
+  - [ResearchCanvas.news-tab.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/ResearchCanvas.news-tab.test.ts) now guards the tab declaration and render path
+  - browser verification on `http://127.0.0.1:4173/` confirmed:
+    - open `Research`
+    - click `News`
+    - the canvas renders the live searchable news list and currently shows `20 news items`
 - Workshop session history hydration is now fixed end-to-end:
   - [chat_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/chat_endpoints.py) now exposes `GET /api/chat/sessions/{session_id}/messages` backed by `ChatSessionService.get_messages()`
   - [test_chat_per_agent.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_chat_per_agent.py) now covers the new history endpoint success and `404` paths
@@ -338,7 +345,6 @@ Tests added/updated:
     - launcher/home model still exposes too many peer canvases relative to the planned department launcher
     - Copilot is still treated as a canvas destination instead of a persistent shell-level surface
     - Live Trading is still much thinner than the planned control surface
-    - Research lacks the planned news/macro context surface
     - Portfolio race loading is effectively dead because active races are never loaded on mount
     - Shared Assets taxonomy still misses several planning-doc asset categories
   - Later follow-up dispatches to `Einstein` and `Dewey` were started for the remaining FlowForge state bug and backend startup blockers, but no usable completed payload had returned yet during the first handoff update window.

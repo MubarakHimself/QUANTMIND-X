@@ -16,6 +16,7 @@
     User,
     Youtube,
     Kanban,
+    Newspaper,
     Tag,
     Calendar,
     Clock,
@@ -30,6 +31,7 @@
   import { apiFetch } from '$lib/api';
   import DepartmentKanban from '$lib/components/department-kanban/DepartmentKanban.svelte';
   import AgentTilePanel from '$lib/components/AgentTilePanel.svelte';
+  import NewsView from '$lib/components/research/NewsView.svelte';
   import { canvasContextService } from '$lib/services/canvasContextService';
   import { pipelineRuns, alphaForgeStore } from '$lib/stores/alpha-forge';
   import type { PipelineRun } from '$lib/stores/alpha-forge';
@@ -38,7 +40,7 @@
   // Types
   // =============================================================================
 
-  type ResearchTab = 'articles' | 'books' | 'logs' | 'personal' | 'youtube' | 'dept-tasks';
+  type ResearchTab = 'articles' | 'books' | 'logs' | 'personal' | 'youtube' | 'news' | 'dept-tasks';
 
   interface ArticleItem {
     id: string;
@@ -126,6 +128,7 @@
     { id: 'logs',       label: 'Logs',        icon: ScrollText    },
     { id: 'personal',  label: 'Personal',    icon: User          },
     { id: 'youtube',   label: 'YouTube',     icon: Youtube       },
+    { id: 'news',      label: 'News',        icon: Newspaper     },
     { id: 'dept-tasks', label: 'Dept Tasks',  icon: Kanban  },
   ];
 
@@ -153,7 +156,7 @@
   // =============================================================================
 
   async function loadTab(tab: ResearchTab) {
-    if (tab === 'dept-tasks') return;
+    if (tab === 'dept-tasks' || tab === 'news') return;
     if (loadingTab === tab) return;
 
     loadingTab = tab;
@@ -402,6 +405,11 @@
       <!-- ---- Dept Tasks: inline kanban ---- -->
       <div class="kanban-wrapper">
         <DepartmentKanban department="research" />
+      </div>
+
+    {:else if activeTab === 'news'}
+      <div class="news-wrapper">
+        <NewsView />
       </div>
 
     {:else}
