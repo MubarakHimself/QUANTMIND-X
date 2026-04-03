@@ -1,6 +1,41 @@
 # Progress
 
-Updated: 2026-04-02
+Updated: 2026-04-03
+
+## 2026-04-03 Incremental Slice (AgentPanel UX + Verification)
+
+- [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte) now has a production-safe right-rail resize implementation:
+  - keyboard + drag resize handle
+  - clamped width bounds
+  - per-canvas width memory during navigation
+  - persisted width map via local storage (`qmx.agentPanel.widths.v1`)
+  - teardown safety for resize listeners on unmount
+- The same file now hardens long-list usability:
+  - explicit overflow constraints for attachment/slash/session/message surfaces
+  - themed custom scrollbar treatment
+- “steps/tool” visuals in the panel no longer use hardcoded blue accents:
+  - step/tool affordances now use theme-correlated CSS variables (`--ap-step-accent`, `--ap-dept-accent`) derived from the active department.
+
+### Live Verification Evidence (Chrome + API)
+
+- Backend/Frontend health:
+  - `GET http://127.0.0.1:8000/health -> 200 {"status":"healthy"}`
+  - `GET http://127.0.0.1:3001 -> 200`
+- Focused frontend tests passed:
+  - `npx vitest run src/lib/components/shell/AgentPanel.test.ts src/lib/components/shell/AgentPanel.session-management.test.ts src/lib/components/shell/AgentPanel.context-attachment.test.ts`
+  - result: `46 passed`
+- Chrome verification on `http://127.0.0.1:3001/`:
+  - resize handle is present as an accessible separator in the right panel
+  - keyboard resize works (`aria-valuenow` moved `380 -> 404 -> 380`)
+  - per-canvas width isolation works:
+    - Research width set to `428`
+    - Development width set to `356`
+    - switching back restored Research at `428` without bleed
+  - cross-canvas chat-session isolation still holds:
+    - Research chat message does not appear in Development panel after canvas switch
+  - real department chat send path still works:
+    - sent `hello from ui verification` in Research
+    - assistant response returned and input cleared
 
 ## Session Summary
 

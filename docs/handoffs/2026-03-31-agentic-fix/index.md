@@ -34,6 +34,11 @@ See [progress.md](/home/mubarkahimself/Desktop/QUANTMINDX/docs/handoffs/2026-03-
 
 Current high-signal state:
 - after any future compaction, resume by re-reading this handoff set first, then continue from `progress.md`
+- 2026-04-03 AgentPanel right-rail resize slice is now shipped and Chrome-verified:
+  - per-canvas width memory + persistence
+  - keyboard-accessible resize handle
+  - no chat/session bleed during canvas switches
+  - step/tool visuals no longer pinned to hardcoded blue
 - 2026-04-03 chat contract hardening is now in place:
   - `POST /api/chat/departments/{department}/message` and `POST /api/chat/floor-manager/message` normalize incoming context into a compact manifest-first contract (heavy context payloads are stripped before agent execution).
   - department-head and floor-manager system prompts now include summarized context only, preventing runaway prompt-size growth.

@@ -10,6 +10,9 @@ Last updated: 2026-04-03
 - [x] P1: Session contract normalization (`interactive_session`, `workflow_session`) at session creation/update boundaries.
 - [x] P1: Standardized mutating tool return envelope with `ui_projection_event` (task/mail/workflow/resource updates).
 - [x] P2: Frontend attachment/natural-search wiring to consume backend resource-contract endpoints.
+- [x] P2: AgentPanel right-rail resize behavior with per-canvas width persistence and keyboard accessibility.
+- [x] P2: AgentPanel visual step/status colors decoupled from hardcoded blue; now uses theme-correlated accent variables.
+- [x] P2: AgentPanel internal scroll/overflow hardening for long attachment/session/message lists.
 - [ ] P2: Structured streaming status events parity across department and floor-manager chat paths.
 - [ ] P2: Full Chrome navigation verification across all canvases for session isolation, attachments, and live update projections.
 

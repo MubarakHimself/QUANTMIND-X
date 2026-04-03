@@ -93,6 +93,7 @@
     mailError: string | null;
     renamingSessionId: string | null;
     renameSessionTitle: string;
+    panelWidth: number;
   }
 
   interface AgentModelPreference {
@@ -126,6 +127,13 @@
     'red':   'var(--color-accent-red)',
     'green': 'var(--color-accent-green)',
     'muted': 'var(--color-text-muted)',
+  };
+  const STEP_ACCENT_MAP: Record<string, string> = {
+    'cyan': 'var(--color-accent-amber)',
+    'amber': 'var(--color-accent-amber)',
+    'red': 'var(--color-accent-red)',
+    'green': 'var(--color-accent-green)',
+    'muted': 'var(--color-text-secondary)',
   };
 
   // ─── Slash commands ───────────────────────────────────────────────────────────
@@ -168,6 +176,7 @@
       mailError: null,
       renamingSessionId: null,
       renameSessionTitle: '',
+      panelWidth: 380,
     };
   }
 
@@ -188,6 +197,7 @@
       mailError,
       renamingSessionId,
       renameSessionTitle,
+      panelWidth,
     };
   }
 
@@ -207,6 +217,7 @@
     mailError = state.mailError;
     renamingSessionId = state.renamingSessionId;
     renameSessionTitle = state.renameSessionTitle;
+    panelWidth = state.panelWidth;
   }
 
   let panelStateByCanvas = $state<Record<string, AgentPanelCanvasState>>({});
@@ -230,6 +241,17 @@
   let renamingSessionId = $state<string | null>(null);
   let renameSessionTitle = $state('');
   let activeCanvasStateKey = $state('');
+  let panelWidth = $state(380);
+  let isResizing = $state(false);
+  let resizeStartX = 0;
+  let resizeStartWidth = 380;
+  let panelWidthsHydrated = false;
+  let panelWidthByCanvas = $state<Record<string, number>>({});
+
+  const PANEL_WIDTH_MIN = 320;
+  const PANEL_WIDTH_DEFAULT = 380;
+  const PANEL_WIDTH_MAX_FALLBACK = 760;
+  const PANEL_WIDTH_STORAGE_KEY = 'qmx.agentPanel.widths.v1';
 
   let activeSession = $derived(sessions.find(s => s.id === activeSessionId) ?? null);
   let messages = $derived(activeSession?.messages ?? []);
@@ -237,6 +259,7 @@
   // Workshop canvas has its own built-in copilot UI (WorkshopCanvas); FlowForge uses this panel
   let isWorkshop = $derived(activeCanvas === 'workshop');
   let deptColor = $derived(COLOR_MAP[deptHead.color]);
+  let stepAccentColor = $derived(STEP_ACCENT_MAP[deptHead.color] ?? 'var(--color-accent-amber)');
   let subAgents = $derived(activeSession?.subAgents ?? []);
   let departmentId = $derived(resolveDepartmentId(activeCanvas));
 
@@ -369,23 +392,160 @@
       ...panelStateByCanvas,
       [activeCanvas]: snapshotPanelState(),
     };
+    panelWidthByCanvas = {
+      ...panelWidthByCanvas,
+      [activeCanvas]: panelWidth,
+    };
+    persistPanelWidths();
+    detachResizeListeners();
     eventSource?.close();
     eventSource = null;
     currentStreamSessionId = null;
   });
 
+  function getPanelWidthMax(): number {
+    if (typeof window === 'undefined') {
+      return PANEL_WIDTH_MAX_FALLBACK;
+    }
+    const viewportCap = Math.floor(window.innerWidth * 0.62);
+    return Math.max(PANEL_WIDTH_MIN + 80, Math.min(PANEL_WIDTH_MAX_FALLBACK, viewportCap));
+  }
+
+  function clampPanelWidth(width: number): number {
+    return Math.max(PANEL_WIDTH_MIN, Math.min(getPanelWidthMax(), Math.round(width)));
+  }
+
+  function hydratePanelWidths() {
+    if (panelWidthsHydrated || typeof localStorage === 'undefined') {
+      return;
+    }
+    panelWidthsHydrated = true;
+    try {
+      const raw = localStorage.getItem(PANEL_WIDTH_STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const next: Record<string, number> = {};
+      for (const [canvasId, value] of Object.entries(parsed)) {
+        if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+        next[canvasId] = clampPanelWidth(value);
+      }
+      panelWidthByCanvas = next;
+    } catch {
+      panelWidthByCanvas = {};
+    }
+  }
+
+  function persistPanelWidths() {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+    try {
+      localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, JSON.stringify(panelWidthByCanvas));
+    } catch {
+      // ignore quota/storage errors
+    }
+  }
+
+  function updatePanelWidth(nextWidth: number) {
+    const clamped = clampPanelWidth(nextWidth);
+    panelWidth = clamped;
+    panelWidthByCanvas = {
+      ...panelWidthByCanvas,
+      [activeCanvas]: clamped,
+    };
+    const canvasState = getCanvasPanelState(panelStateByCanvas, activeCanvas, createAgentPanelCanvasState);
+    panelStateByCanvas = {
+      ...panelStateByCanvas,
+      [activeCanvas]: { ...canvasState, panelWidth: clamped },
+    };
+  }
+
+  function resizeOnMouseMove(event: MouseEvent) {
+    if (!isResizing) return;
+    const delta = resizeStartX - event.clientX;
+    updatePanelWidth(resizeStartWidth + delta);
+  }
+
+  function detachResizeListeners() {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.removeEventListener('mousemove', resizeOnMouseMove);
+    window.removeEventListener('mouseup', stopResize);
+  }
+
+  function stopResize() {
+    if (!isResizing) return;
+    isResizing = false;
+    persistPanelWidths();
+    detachResizeListeners();
+  }
+
+  function startResize(event: MouseEvent) {
+    if (collapsed || hidden || isWorkshop) {
+      return;
+    }
+    isResizing = true;
+    resizeStartX = event.clientX;
+    resizeStartWidth = panelWidth;
+    if (typeof window !== 'undefined') {
+      window.addEventListener('mousemove', resizeOnMouseMove);
+      window.addEventListener('mouseup', stopResize);
+    }
+    event.preventDefault();
+  }
+
+  function handleResizeHandleKeydown(event: KeyboardEvent) {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      updatePanelWidth(panelWidth + 24);
+      persistPanelWidths();
+      return;
+    }
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      updatePanelWidth(panelWidth - 24);
+      persistPanelWidths();
+      return;
+    }
+    if (event.key === 'Home') {
+      event.preventDefault();
+      updatePanelWidth(PANEL_WIDTH_DEFAULT);
+      persistPanelWidths();
+      return;
+    }
+    if (event.key === 'End') {
+      event.preventDefault();
+      updatePanelWidth(getPanelWidthMax());
+      persistPanelWidths();
+    }
+  }
+
   $effect(() => {
+    hydratePanelWidths();
     getCanvasPanelState(panelStateByCanvas, activeCanvas, createAgentPanelCanvasState);
 
     if (activeCanvasStateKey === activeCanvas) {
       return;
     }
 
-    panelStateByCanvas = {
-      ...panelStateByCanvas,
-      [activeCanvasStateKey]: snapshotPanelState(),
-    };
-    restorePanelState(getCanvasPanelState(panelStateByCanvas, activeCanvas, createAgentPanelCanvasState));
+    if (activeCanvasStateKey) {
+      panelStateByCanvas = {
+        ...panelStateByCanvas,
+        [activeCanvasStateKey]: snapshotPanelState(),
+      };
+      panelWidthByCanvas = {
+        ...panelWidthByCanvas,
+        [activeCanvasStateKey]: panelWidth,
+      };
+      persistPanelWidths();
+    }
+
+    const nextCanvasState = getCanvasPanelState(panelStateByCanvas, activeCanvas, createAgentPanelCanvasState);
+    restorePanelState(nextCanvasState);
+    updatePanelWidth(panelWidthByCanvas[activeCanvas] ?? nextCanvasState.panelWidth ?? PANEL_WIDTH_DEFAULT);
     showAttachMenu = false;
     activeCanvasStateKey = activeCanvas;
   });
@@ -1234,10 +1394,26 @@
 <aside
   class="agent-panel"
   class:collapsed
+  class:resizing={isResizing}
   class:hidden
   aria-label="Agent Panel"
+  style="--agent-panel-width: {panelWidth}px; --ap-dept-accent: {deptColor}; --ap-step-accent: {stepAccentColor};"
 >
   {#if !isWorkshop}
+    <div
+      class="ap-resize-handle"
+      role="separator"
+      tabindex="0"
+      aria-label="Resize agent panel"
+      aria-orientation="vertical"
+      aria-valuemin={PANEL_WIDTH_MIN}
+      aria-valuemax={getPanelWidthMax()}
+      aria-valuenow={panelWidth}
+      title="Resize panel"
+      onmousedown={startResize}
+      onkeydown={handleResizeHandleKeydown}
+    ></div>
+
     <!-- Header -->
     <header class="ap-header">
       <span class="ap-dept-badge" style="color: {deptColor};">
@@ -1615,6 +1791,11 @@
     position: relative;
   }
 
+  .agent-panel.resizing {
+    transition: none;
+    user-select: none;
+  }
+
   .agent-panel.collapsed {
     width: 0;
   }
@@ -1623,6 +1804,42 @@
     width: 0;
     border-left: none;
     pointer-events: none;
+  }
+
+  .ap-resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 8px;
+    transform: translateX(-50%);
+    border: none;
+    background: transparent;
+    cursor: col-resize;
+    z-index: 30;
+    padding: 0;
+  }
+
+  .ap-resize-handle::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: transparent;
+    transition: background 150ms ease;
+  }
+
+  .ap-resize-handle:hover::after,
+  .ap-resize-handle:focus-visible::after,
+  .agent-panel.resizing .ap-resize-handle::after {
+    background: var(--ap-dept-accent);
+  }
+
+  .ap-resize-handle:focus-visible {
+    outline: none;
   }
 
   /* ── Header ── */
@@ -1705,7 +1922,7 @@
   }
 
   .ap-tab.active {
-    color: var(--color-accent-cyan);
+    color: var(--ap-dept-accent);
   }
 
   .ap-tab.active::after {
@@ -1715,7 +1932,7 @@
     left: 0;
     right: 0;
     height: 2px;
-    background: var(--color-accent-cyan);
+    background: var(--ap-dept-accent);
     border-radius: 1px 1px 0 0;
   }
 
@@ -1807,7 +2024,7 @@
   }
 
   .ap-session-badge[data-status="active"] {
-    color: var(--color-accent-cyan);
+    color: var(--ap-dept-accent);
   }
 
   .ap-session-badge[data-status="completed"] {
@@ -1871,12 +2088,42 @@
     flex-direction: column;
   }
 
+  .ap-body,
+  .ap-session-history,
+  .attach-menu,
+  .slash-hints {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--ap-dept-accent) 55%, transparent) transparent;
+  }
+
+  .ap-body::-webkit-scrollbar,
+  .ap-session-history::-webkit-scrollbar,
+  .attach-menu::-webkit-scrollbar,
+  .slash-hints::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .ap-body::-webkit-scrollbar-thumb,
+  .ap-session-history::-webkit-scrollbar-thumb,
+  .attach-menu::-webkit-scrollbar-thumb,
+  .slash-hints::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--ap-dept-accent) 50%, transparent);
+    border-radius: 8px;
+  }
+
+  .ap-body::-webkit-scrollbar-track,
+  .ap-session-history::-webkit-scrollbar-track,
+  .attach-menu::-webkit-scrollbar-track,
+  .slash-hints::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
   /* ── Tab views ── */
   .tab-view-header {
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 10px;
     font-weight: 700;
-    color: var(--color-accent-cyan);
+    color: var(--ap-dept-accent);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     padding-bottom: 8px;
@@ -1907,7 +2154,7 @@
   }
 
   .agent-row.running {
-    background: rgba(0, 170, 204, 0.05);
+    background: color-mix(in srgb, var(--ap-dept-accent) 14%, transparent);
   }
 
   .agent-role {
@@ -1925,8 +2172,8 @@
 
   /* ── Autonomous status ── */
   .ap-autonomous-status {
-    background: rgba(0, 170, 204, 0.04);
-    border: 1px solid rgba(0, 170, 204, 0.12);
+    background: color-mix(in srgb, var(--ap-dept-accent) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ap-dept-accent) 32%, transparent);
     border-radius: 4px;
     padding: 8px;
     margin-bottom: 4px;
@@ -1937,7 +2184,7 @@
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 10px;
     font-weight: 700;
-    color: var(--color-accent-cyan);
+    color: var(--ap-dept-accent);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     margin-bottom: 4px;
@@ -1984,8 +2231,8 @@
 
   /* ── Message types ── */
   .ap-agent {
-    background: rgba(0, 170, 204, 0.05);
-    border: 1px solid rgba(0, 170, 204, 0.09);
+    background: color-mix(in srgb, var(--ap-dept-accent) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ap-dept-accent) 26%, transparent);
     border-radius: 4px;
     padding: 8px;
     font-family: var(--font-family, 'Inter', system-ui, sans-serif);
@@ -2015,7 +2262,7 @@
     width: 100%;
     border: none;
     background: transparent;
-    border-left: 2px solid rgba(0, 170, 204, 0.2);
+    border-left: 2px solid var(--ap-step-accent);
     padding: 4px 6px;
     text-align: left;
     cursor: pointer;
@@ -2023,7 +2270,7 @@
   }
 
   .ap-tool:focus-visible {
-    outline: 1px solid var(--color-accent-cyan);
+    outline: 1px solid var(--ap-step-accent);
     outline-offset: -1px;
   }
 
@@ -2039,7 +2286,8 @@
   .ap-tool-detail {
     margin-top: 6px;
     padding: 6px;
-    background: rgba(0, 170, 204, 0.04);
+    background: color-mix(in srgb, var(--ap-step-accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ap-step-accent) 30%, transparent);
     border-radius: 3px;
     display: flex;
     flex-direction: column;
@@ -2055,7 +2303,7 @@
   .ap-detail-key {
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 9px;
-    color: var(--color-accent-cyan);
+    color: var(--ap-step-accent);
     min-width: 80px;
     flex-shrink: 0;
     text-transform: lowercase;
@@ -2090,9 +2338,11 @@
     left: 0;
     right: 0;
     background: rgba(8, 13, 20, 0.95);
-    border: 1px solid rgba(0, 212, 255, 0.2);
+    border: 1px solid color-mix(in srgb, var(--ap-dept-accent) 35%, transparent);
     border-radius: 4px;
     overflow: hidden;
+    max-height: 220px;
+    overflow-y: auto;
     z-index: 50;
     backdrop-filter: blur(8px);
   }
@@ -2111,14 +2361,14 @@
   }
 
   .slash-hint:hover {
-    background: rgba(0, 212, 255, 0.06);
+    background: color-mix(in srgb, var(--ap-dept-accent) 15%, transparent);
   }
 
   .slash-cmd {
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 11px;
     font-weight: 600;
-    color: var(--color-accent-cyan);
+    color: var(--ap-dept-accent);
     min-width: 80px;
   }
 
@@ -2140,12 +2390,12 @@
     align-items: center;
     gap: 4px;
     padding: 2px 7px;
-    background: rgba(0, 212, 255, 0.06);
-    border: 1px solid rgba(0, 212, 255, 0.25);
+    background: color-mix(in srgb, var(--ap-dept-accent) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ap-dept-accent) 40%, transparent);
     border-radius: 10px;
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 10px;
-    color: var(--color-accent-cyan);
+    color: var(--ap-dept-accent);
     white-space: nowrap;
   }
 
@@ -2196,7 +2446,7 @@
   }
 
   .chat-input:focus {
-    border-color: var(--color-accent-cyan);
+    border-color: var(--ap-dept-accent);
   }
 
   .chat-input::placeholder {
@@ -2210,9 +2460,11 @@
     left: 0;
     min-width: 200px;
     background: rgba(8, 13, 20, 0.95);
-    border: 1px solid rgba(0, 212, 255, 0.2);
+    border: 1px solid color-mix(in srgb, var(--ap-dept-accent) 35%, transparent);
     border-radius: 4px;
     overflow: hidden;
+    max-height: 300px;
+    overflow-y: auto;
     z-index: 50;
     backdrop-filter: blur(8px);
   }
@@ -2225,11 +2477,11 @@
     color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.07em;
-    border-bottom: 1px solid rgba(0, 212, 255, 0.1);
+    border-bottom: 1px solid color-mix(in srgb, var(--ap-dept-accent) 22%, transparent);
   }
 
   .attach-subheader {
-    border-top: 1px solid rgba(0, 212, 255, 0.08);
+    border-top: 1px solid color-mix(in srgb, var(--ap-dept-accent) 16%, transparent);
   }
 
   .attach-option {
@@ -2247,7 +2499,7 @@
   }
 
   .attach-option:hover {
-    background: rgba(0, 212, 255, 0.06);
+    background: color-mix(in srgb, var(--ap-dept-accent) 15%, transparent);
   }
 
   .opt-label {
@@ -2270,7 +2522,7 @@
     justify-content: center;
     width: 32px;
     height: 32px;
-    background: var(--color-accent-cyan);
+    background: var(--ap-dept-accent);
     border: none;
     border-radius: 4px;
     color: #080d14;
