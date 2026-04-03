@@ -21,6 +21,7 @@ from typing import Dict, List, Optional, Any
 import anthropic
 
 from src.agents.providers.router import get_router
+from src.agents.core.base_agent import HookEvent
 from src.agents.departments.types import (
     Department,
     DepartmentHeadConfig,
@@ -28,8 +29,7 @@ from src.agents.departments.types import (
 )
 from src.agents.departments.department_mail import (
     DepartmentMailService,
-    RedisDepartmentMailService,
-    get_redis_mail_service,
+    create_mail_service,
     MessageType,
     Priority,
 )
@@ -38,6 +38,16 @@ from src.agents.departments.tool_access import ToolAccessController
 from src.agents.departments.tool_registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
+
+
+LEGACY_HOOK_EVENT_ALIASES = {
+    "PRE_TOOL_USE": HookEvent.PRE_TOOL_USE,
+    "POST_TOOL_USE": HookEvent.POST_TOOL_USE,
+    "POST_TOOL_USE_FAILURE": HookEvent.POST_TOOL_USE_FAILURE,
+    "STOP": HookEvent.STOP,
+    "SUBAGENT_START": HookEvent.SUBAGENT_START,
+    "SUBAGENT_STOP": HookEvent.SUBAGENT_STOP,
+}
 
 
 class DepartmentHead:
@@ -108,7 +118,216 @@ class DepartmentHead:
                 "required": ["content"],
             },
         },
+        {
+            "name": "list_resources",
+            "description": "List workspace resources available to this department",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "canvases": {"type": "array", "items": {"type": "string"}},
+                    "tabs": {"type": "array", "items": {"type": "string"}},
+                    "types": {"type": "array", "items": {"type": "string"}},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 100},
+                },
+            },
+        },
+        {
+            "name": "search_resources",
+            "description": "Search workspace resources naturally by query",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "canvases": {"type": "array", "items": {"type": "string"}},
+                    "tabs": {"type": "array", "items": {"type": "string"}},
+                    "types": {"type": "array", "items": {"type": "string"}},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 20},
+                },
+                "required": ["query"],
+            },
+        },
+        {
+            "name": "read_resource",
+            "description": "Read one workspace resource by resource_id",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "resource_id": {"type": "string"},
+                    "max_chars": {"type": "integer", "minimum": 1024, "maximum": 500000, "default": 120000},
+                },
+                "required": ["resource_id"],
+            },
+        },
+        {
+            "name": "create_task",
+            "description": "Create a department Kanban task",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "department": {"type": "string"},
+                    "title": {"type": "string"},
+                    "description": {"type": "string"},
+                    "priority": {"type": "string", "default": "normal"},
+                    "workflow_id": {"type": "string"},
+                    "strategy_id": {"type": "string"},
+                },
+                "required": ["title"],
+            },
+        },
+        {
+            "name": "update_task",
+            "description": "Update an existing task status",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "status": {"type": "string"},
+                    "result": {"type": "string"},
+                },
+                "required": ["task_id", "status"],
+            },
+        },
+        {
+            "name": "spawn_subagent",
+            "description": "Spawn a department sub-agent worker for a bounded task",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "worker_type": {"type": "string"},
+                    "task": {"type": "string"},
+                    "input_data": {"type": "object"},
+                },
+                "required": ["worker_type", "task"],
+            },
+        },
+        {
+            "name": "update_workflow_state",
+            "description": "Emit a workflow-state update event for UI projection",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "workflow_id": {"type": "string"},
+                    "state": {"type": "string"},
+                    "step": {"type": "string"},
+                    "note": {"type": "string"},
+                },
+                "required": ["workflow_id", "state"],
+            },
+        },
     ]
+
+    _MAX_PROMPT_HINTS = 24
+    _MAX_PROMPT_ATTACHMENTS = 12
+
+    def _summarize_canvas_context_for_prompt(self, canvas_context: dict) -> dict:
+        """
+        Build a bounded prompt-safe summary from canvas context.
+
+        We intentionally avoid injecting raw payloads or large blobs into the
+        system prompt. The model receives references (resource ids/paths) and
+        can fetch details via tools when needed.
+        """
+        if not isinstance(canvas_context, dict):
+            return {}
+
+        summary: Dict[str, Any] = {}
+
+        for key in (
+            "canvas",
+            "department",
+            "session_type",
+            "workflow_id",
+            "workflow_step",
+            "workflow_run_id",
+            "provider",
+            "llm_provider",
+            "model",
+            "llm_model",
+        ):
+            value = canvas_context.get(key)
+            if isinstance(value, str) and value.strip():
+                summary[key] = value.strip()
+
+        workspace_contract = canvas_context.get("workspace_contract")
+        if isinstance(workspace_contract, dict):
+            summary["workspace_contract"] = {
+                "version": str(workspace_contract.get("version") or "manifest-v1"),
+                "strategy": str(workspace_contract.get("strategy") or "manifest-first"),
+                "natural_resource_search": bool(
+                    workspace_contract.get("natural_resource_search", True)
+                ),
+            }
+
+        workspace_hints = canvas_context.get("workspace_resource_hints")
+        if isinstance(workspace_hints, list):
+            hints: List[Dict[str, Any]] = []
+            for item in workspace_hints[: self._MAX_PROMPT_HINTS]:
+                if not isinstance(item, dict):
+                    continue
+                hint = {
+                    "id": str(item.get("id", ""))[:256],
+                    "canvas": str(item.get("canvas", ""))[:64],
+                    "path": str(item.get("path", ""))[:384],
+                    "label": str(item.get("label", ""))[:160],
+                    "type": str(item.get("type", ""))[:48],
+                }
+                hint = {k: v for k, v in hint.items() if v}
+                if hint:
+                    hints.append(hint)
+            if hints:
+                summary["workspace_resource_hints"] = hints
+
+        attached_contexts = canvas_context.get("attached_contexts")
+        if isinstance(attached_contexts, list):
+            attachments: List[Dict[str, Any]] = []
+            for item in attached_contexts[: self._MAX_PROMPT_ATTACHMENTS]:
+                if not isinstance(item, dict):
+                    continue
+                entry = {
+                    "canvas": str(item.get("canvas", ""))[:64],
+                    "strategy": str(item.get("strategy", ""))[:64],
+                }
+                memory_identifiers = item.get("memory_identifiers")
+                if isinstance(memory_identifiers, list):
+                    entry["memory_identifiers"] = [
+                        str(mid)[:256] for mid in memory_identifiers[:32] if mid
+                    ]
+                resources = item.get("resources")
+                if isinstance(resources, list):
+                    resource_refs = []
+                    for resource in resources[:16]:
+                        if not isinstance(resource, dict):
+                            continue
+                        ref = {
+                            "id": str(resource.get("id", ""))[:256],
+                            "path": str(resource.get("path", ""))[:384],
+                        }
+                        ref = {k: v for k, v in ref.items() if v}
+                        if ref:
+                            resource_refs.append(ref)
+                    if resource_refs:
+                        entry["resources"] = resource_refs
+                entry = {k: v for k, v in entry.items() if v not in ("", None, [], {})}
+                if entry:
+                    attachments.append(entry)
+            if attachments:
+                summary["attached_contexts"] = attachments
+
+        # Keep minimal preloaded canvas metadata from session service
+        preloaded = canvas_context.get("canvas_context")
+        if isinstance(preloaded, dict):
+            preloaded_summary = {
+                "canvas": str(preloaded.get("canvas", ""))[:64],
+                "display_name": str(preloaded.get("display_name", ""))[:128],
+                "department_head": str(preloaded.get("department_head", ""))[:96],
+            }
+            preloaded_summary = {
+                k: v for k, v in preloaded_summary.items() if v
+            }
+            if preloaded_summary:
+                summary["canvas_context"] = preloaded_summary
+
+        return summary
 
     def __init__(
         self,
@@ -145,17 +364,19 @@ class DepartmentHead:
         self.tool_registry = ToolRegistry()
         self._tools = self.tool_registry.get_tools_for_department(self.department)
 
-        # Initialize mail service (Redis Streams recommended)
-        if use_redis_mail:
-            self.mail_service = get_redis_mail_service(
-                consumer_name=f"{self.department.value}-{uuid.uuid4().hex[:8]}"
-            )
-        else:
-            self.mail_service = DepartmentMailService(db_path=mail_db_path)
+        # Initialize mail service with Redis preferred and SQLite fallback.
+        self.mail_service = create_mail_service(
+            db_path=mail_db_path,
+            use_redis=use_redis_mail,
+            consumer_name=f"{self.department.value}-{uuid.uuid4().hex[:8]}",
+        )
         self._init_spawner()
 
         # Hooks system — mirrors BaseAgent hook lifecycle
         self._hooks: List[Dict[str, Any]] = []
+
+        # Wire department skills as tools (Issue #17)
+        self._register_skill_tools()
 
         logger.info(f"DepartmentHead initialized: {self.department.value} with {len(self._tools)} tools")
 
@@ -170,13 +391,13 @@ class DepartmentHead:
         """Register a lifecycle hook.
 
         Args:
-            event: PRE_TOOL_USE | POST_TOOL_USE | POST_TOOL_USE_FAILURE | STOP
+            event: PreToolUse | PostToolUse | PostToolUseFailure | Stop
             handler: Callable or async callable
             tool_name_pattern: Optional regex pattern to match tool names
         """
         import re
         self._hooks.append({
-            "event": event,
+            "event": self._normalize_hook_event(event),
             "handler": handler,
             "pattern": re.compile(tool_name_pattern) if tool_name_pattern else None,
         })
@@ -184,6 +405,7 @@ class DepartmentHead:
     async def _fire_hook(self, event: str, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Fire all hooks matching the event. Returns first non-None result."""
         import asyncio
+        event = self._normalize_hook_event(event)
         tool_name = context.get("tool_name", "")
         for hook in self._hooks:
             if hook["event"] != event:
@@ -199,6 +421,72 @@ class DepartmentHead:
             except Exception as e:
                 logger.debug(f"Hook {event} error: {e}")
         return None
+
+    @staticmethod
+    def _normalize_hook_event(event: str) -> str:
+        """Accept both SDK and legacy hook event names."""
+        return LEGACY_HOOK_EVENT_ALIASES.get(event, event)
+
+    @staticmethod
+    def _hook_denied(result: Optional[Dict[str, Any]]) -> tuple[bool, str]:
+        """Interpret SDK-style or legacy pre-tool hook denial responses."""
+        if not isinstance(result, dict):
+            return False, ""
+        if result.get("deny"):
+            return True, str(result.get("reason", "Tool denied by hook"))
+        hook_output = result.get("hookSpecificOutput")
+        if isinstance(hook_output, dict) and hook_output.get("permissionDecision") == "deny":
+            reason = hook_output.get("permissionDecisionReason") or "Tool denied by hook"
+            return True, str(reason)
+        return False, ""
+
+    @staticmethod
+    def _hook_updated_input(result: Optional[Dict[str, Any]], original_input: Dict[str, Any]) -> Dict[str, Any]:
+        """Apply SDK-style updatedInput only when the hook explicitly allows execution."""
+        if not isinstance(result, dict):
+            return original_input
+        hook_output = result.get("hookSpecificOutput")
+        if not isinstance(hook_output, dict):
+            return original_input
+        if hook_output.get("permissionDecision") != "allow":
+            return original_input
+        updated = hook_output.get("updatedInput")
+        return updated if isinstance(updated, dict) else original_input
+
+    def _hook_context(self, event: str, **extra: Any) -> Dict[str, Any]:
+        """Populate a hook context shape closer to the Agent SDK callback contract."""
+        context = {
+            "hook_event_name": self._normalize_hook_event(event),
+            "cwd": os.getcwd(),
+            "session_id": getattr(self, "_current_session_id", None),
+            "agent_id": f"{self.department.value}_head",
+            "agent_type": "department_head",
+            "department": self.department.value,
+        }
+        context.update(extra)
+        return context
+
+    def _register_skill_tools(self) -> None:
+        """
+        Register department skills as callable tools (Issue #17).
+
+        Converts skill definitions from department_skills.py into tool
+        entries in self._tools so agents can invoke them.
+        """
+        try:
+            from src.agents.tools.skill_tools import get_department_skill_tools
+            skill_tools = get_department_skill_tools(self.department.value)
+            for tool_def in skill_tools:
+                tool_name = tool_def.get("name", "")
+                if tool_name and tool_name not in self._tools:
+                    self._tools[tool_name] = tool_def
+            if skill_tools:
+                logger.debug(
+                    f"Registered {len(skill_tools)} skill tools for "
+                    f"{self.department.value}"
+                )
+        except Exception as e:
+            logger.debug(f"Skill tool registration skipped: {e}")
 
     def _publish_thought(self, thought: str, thought_type: str = "reasoning") -> None:
         """Publish to SSE thought stream for UI display (Agent SDK §6.2)."""
@@ -502,10 +790,12 @@ class DepartmentHead:
             parts.append(memory_section)
 
         if canvas_context:
-            parts.append(
-                "## Current Canvas Context\n"
-                + json.dumps(canvas_context, indent=2)
-            )
+            prompt_context = self._summarize_canvas_context_for_prompt(canvas_context)
+            if prompt_context:
+                parts.append(
+                    "## Current Canvas Context (manifest-first summary)\n"
+                    + json.dumps(prompt_context, indent=2)
+                )
 
         parts.append(
             "## Context Guard\n"
@@ -546,6 +836,242 @@ class DepartmentHead:
         except Exception:
             return []
 
+    def _tool_result(
+        self,
+        *,
+        status: str,
+        message: str,
+        payload: Optional[Dict[str, Any]] = None,
+        ui_projection_event: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        envelope: Dict[str, Any] = {
+            "status": status,
+            "message": message,
+            "department": self.department.value,
+        }
+        if payload:
+            envelope["payload"] = payload
+        if ui_projection_event:
+            envelope["ui_projection_event"] = ui_projection_event
+        return json.dumps(envelope, ensure_ascii=False)
+
+    async def _list_workspace_resources(self, tool_input: Dict[str, Any]) -> str:
+        from src.api.services.workspace_resource_service import get_workspace_resource_service
+
+        canvases = tool_input.get("canvases")
+        if not isinstance(canvases, list):
+            canvases = [self.department.value]
+        tabs = tool_input.get("tabs") if isinstance(tool_input.get("tabs"), list) else None
+        types = tool_input.get("types") if isinstance(tool_input.get("types"), list) else None
+        limit = int(tool_input.get("limit", 100))
+        svc = get_workspace_resource_service()
+        resources = svc.list_resources(
+            canvases=[str(canvas) for canvas in canvases if canvas],
+            tabs=[str(tab) for tab in tabs] if tabs else None,
+            types=[str(t) for t in types] if types else None,
+            limit=max(1, min(limit, 500)),
+        )
+        return self._tool_result(
+            status="ok",
+            message=f"Listed {len(resources)} workspace resources",
+            payload={"count": len(resources), "resources": resources},
+        )
+
+    async def _search_workspace_resources(self, tool_input: Dict[str, Any]) -> str:
+        from src.api.services.workspace_resource_service import get_workspace_resource_service
+
+        query = str(tool_input.get("query", "")).strip()
+        if not query:
+            return self._tool_result(status="error", message="query is required")
+        canvases = tool_input.get("canvases")
+        tabs = tool_input.get("tabs")
+        types = tool_input.get("types")
+        limit = int(tool_input.get("limit", 20))
+        svc = get_workspace_resource_service()
+        resources = svc.search_resources(
+            query=query,
+            canvases=[str(canvas) for canvas in canvases] if isinstance(canvases, list) else [self.department.value],
+            tabs=[str(tab) for tab in tabs] if isinstance(tabs, list) else None,
+            types=[str(t) for t in types] if isinstance(types, list) else None,
+            limit=max(1, min(limit, 200)),
+        )
+        return self._tool_result(
+            status="ok",
+            message=f"Found {len(resources)} resources for query",
+            payload={"query": query, "count": len(resources), "resources": resources},
+        )
+
+    async def _read_workspace_resource(self, tool_input: Dict[str, Any]) -> str:
+        from src.api.services.workspace_resource_service import get_workspace_resource_service
+
+        resource_id = str(tool_input.get("resource_id", "")).strip()
+        if not resource_id:
+            return self._tool_result(status="error", message="resource_id is required")
+        max_chars = int(tool_input.get("max_chars", 120000))
+        svc = get_workspace_resource_service()
+        try:
+            payload = svc.read_resource(resource_id, max_chars=max(1024, min(max_chars, 500000)))
+        except Exception as exc:
+            return self._tool_result(status="error", message=f"Failed to read resource: {exc}")
+        return self._tool_result(
+            status="ok",
+            message=f"Read workspace resource {resource_id}",
+            payload=payload,
+        )
+
+    async def _create_task(self, tool_input: Dict[str, Any]) -> str:
+        from src.agents.departments.mail_consumer import get_task_manager
+
+        title = str(tool_input.get("title", "")).strip()
+        if not title:
+            return self._tool_result(status="error", message="title is required")
+        department = str(tool_input.get("department") or self.department.value).strip().lower()
+        mgr = get_task_manager()
+        card = mgr.create_kanban_card(
+            department=department,
+            title=title,
+            description=str(tool_input.get("description", "")).strip(),
+            priority=str(tool_input.get("priority", "normal")).strip().lower() or "normal",
+            workflow_id=str(tool_input.get("workflow_id", "")).strip() or None,
+            strategy_id=str(tool_input.get("strategy_id", "")).strip() or None,
+        )
+        payload = card.to_dict()
+        projection = {
+            "type": "kanban.card.created",
+            "canvas": department,
+            "department": department,
+            "payload": payload,
+        }
+        return self._tool_result(
+            status="ok",
+            message=f"Created task card {payload.get('id')}",
+            payload=payload,
+            ui_projection_event=projection,
+        )
+
+    async def _update_task(self, tool_input: Dict[str, Any]) -> str:
+        from src.agents.departments.mail_consumer import (
+            KanbanStatus,
+            TodoStatus,
+            get_task_manager,
+        )
+
+        task_id = str(tool_input.get("task_id", "")).strip()
+        status = str(tool_input.get("status", "")).strip().lower()
+        if not task_id or not status:
+            return self._tool_result(status="error", message="task_id and status are required")
+
+        mgr = get_task_manager()
+        result_note = str(tool_input.get("result", "")).strip() or None
+
+        card_status_map = {
+            "inbox": KanbanStatus.INBOX,
+            "processing": KanbanStatus.PROCESSING,
+            "review": KanbanStatus.REVIEW,
+            "pending_approval": KanbanStatus.PENDING_APPROVAL,
+            "completed": KanbanStatus.COMPLETED,
+            "failed": KanbanStatus.FAILED,
+        }
+        todo_status_map = {
+            "pending": TodoStatus.PENDING,
+            "in_progress": TodoStatus.IN_PROGRESS,
+            "blocked": TodoStatus.BLOCKED,
+            "completed": TodoStatus.COMPLETED,
+            "cancelled": TodoStatus.CANCELLED,
+        }
+
+        if status in card_status_map:
+            updated = mgr.update_kanban_status(task_id, card_status_map[status], result=result_note)
+            if updated is None:
+                return self._tool_result(status="error", message=f"Kanban card not found: {task_id}")
+            payload = updated.to_dict()
+            projection = {
+                "type": "kanban.card.updated",
+                "canvas": payload.get("department", self.department.value),
+                "department": payload.get("department", self.department.value),
+                "payload": payload,
+            }
+            return self._tool_result(
+                status="ok",
+                message=f"Updated card {task_id} to {status}",
+                payload=payload,
+                ui_projection_event=projection,
+            )
+
+        if status in todo_status_map:
+            updated_todo = mgr.update_todo_status(task_id, todo_status_map[status])
+            if updated_todo is None:
+                return self._tool_result(status="error", message=f"Todo not found: {task_id}")
+            payload = updated_todo.to_dict()
+            projection = {
+                "type": "todo.updated",
+                "canvas": payload.get("department", self.department.value),
+                "department": payload.get("department", self.department.value),
+                "payload": payload,
+            }
+            return self._tool_result(
+                status="ok",
+                message=f"Updated todo {task_id} to {status}",
+                payload=payload,
+                ui_projection_event=projection,
+            )
+
+        return self._tool_result(status="error", message=f"Unsupported task status: {status}")
+
+    async def _spawn_subagent_tool(self, tool_input: Dict[str, Any]) -> str:
+        worker_type = str(tool_input.get("worker_type", "")).strip()
+        task = str(tool_input.get("task", "")).strip()
+        if not worker_type or not task:
+            return self._tool_result(status="error", message="worker_type and task are required")
+        input_data = tool_input.get("input_data") if isinstance(tool_input.get("input_data"), dict) else None
+        result = self.spawn_worker(worker_type=worker_type, task=task, input_data=input_data)
+        projection = {
+            "type": "subagent.spawned",
+            "canvas": self.department.value,
+            "department": self.department.value,
+            "payload": result,
+        }
+        status = "ok" if result.get("status") == "spawned" else "error"
+        message = f"Spawned subagent {result.get('agent_id')}" if status == "ok" else f"Failed to spawn subagent: {result.get('status')}"
+        return self._tool_result(
+            status=status,
+            message=message,
+            payload=result,
+            ui_projection_event=projection if status == "ok" else None,
+        )
+
+    async def _update_workflow_state(self, tool_input: Dict[str, Any]) -> str:
+        workflow_id = str(tool_input.get("workflow_id", "")).strip()
+        state = str(tool_input.get("state", "")).strip()
+        step = str(tool_input.get("step", "")).strip()
+        note = str(tool_input.get("note", "")).strip()
+        if not workflow_id or not state:
+            return self._tool_result(status="error", message="workflow_id and state are required")
+
+        payload = {
+            "workflow_id": workflow_id,
+            "state": state,
+            "step": step or None,
+            "note": note or None,
+            "department": self.department.value,
+        }
+        projection = {
+            "type": "workflow.state.updated",
+            "canvas": "flowforge",
+            "department": self.department.value,
+            "payload": payload,
+        }
+        self._publish_thought(
+            f"Workflow {workflow_id} -> {state}{f' ({step})' if step else ''}",
+            thought_type="decision",
+        )
+        return self._tool_result(
+            status="ok",
+            message=f"Workflow {workflow_id} state updated to {state}",
+            payload=payload,
+            ui_projection_event=projection,
+        )
+
     async def send_mail(self, to: str, subject: str, body: str) -> str:
         """
         Send mail to another department or the floor manager.
@@ -567,10 +1093,25 @@ class DepartmentHead:
                 body=body,
             )
             logger.info(f"Mail sent to {to}: {message.id}")
-            return f"Mail sent to {to} (id={message.id})"
+            projection = {
+                "type": "mail.sent",
+                "canvas": self.department.value,
+                "department": self.department.value,
+                "payload": {
+                    "message_id": message.id,
+                    "to": to,
+                    "subject": subject,
+                },
+            }
+            return self._tool_result(
+                status="ok",
+                message=f"Mail sent to {to}",
+                payload={"message_id": message.id, "to": to},
+                ui_projection_event=projection,
+            )
         except Exception as e:
             logger.error(f"send_mail failed: {e}")
-            return f"Mail send failed: {e}"
+            return self._tool_result(status="error", message=f"Mail send failed: {e}")
 
     async def _execute_tool(self, tool_name: str, tool_input: dict) -> str:
         """
@@ -606,7 +1147,42 @@ class DepartmentHead:
                 content=tool_input["content"],
                 confidence=float(tool_input.get("confidence", 0.7)),
             )
-            return "Memory saved"
+            projection = {
+                "type": "memory.opinion.created",
+                "canvas": self.department.value,
+                "department": self.department.value,
+                "payload": {
+                    "content": str(tool_input.get("content", ""))[:500],
+                    "confidence": float(tool_input.get("confidence", 0.7)),
+                },
+            }
+            return self._tool_result(
+                status="ok",
+                message="Memory saved",
+                payload={"saved": True},
+                ui_projection_event=projection,
+            )
+
+        if tool_name == "list_resources":
+            return await self._list_workspace_resources(tool_input)
+
+        if tool_name == "search_resources":
+            return await self._search_workspace_resources(tool_input)
+
+        if tool_name == "read_resource":
+            return await self._read_workspace_resource(tool_input)
+
+        if tool_name == "create_task":
+            return await self._create_task(tool_input)
+
+        if tool_name == "update_task":
+            return await self._update_task(tool_input)
+
+        if tool_name == "spawn_subagent":
+            return await self._spawn_subagent_tool(tool_input)
+
+        if tool_name == "update_workflow_state":
+            return await self._update_workflow_state(tool_input)
 
         # Check tool registry for non-standard tools
         registry_tool = self._tools.get(tool_name)
@@ -692,24 +1268,46 @@ class DepartmentHead:
             memory_nodes=memory_nodes,
         )
 
-        # Resolve provider via ProviderRouter; fall back to env vars if none configured
-        provider = get_router().primary
+        # Resolve provider via ProviderRouter; allow context override
+        preferred_provider = None
+        preferred_model = None
+        if canvas_context and isinstance(canvas_context, dict):
+            preferred_provider = canvas_context.get("provider") or canvas_context.get("llm_provider")
+            preferred_model = canvas_context.get("model") or canvas_context.get("llm_model")
+
+        router = get_router()
+        provider = router._all_providers.get(preferred_provider) if preferred_provider else None
+        if provider is None and not preferred_provider:
+            # Default deployment preference: MiniMax first when configured.
+            provider = router.get_provider("minimax")
+        if provider is None:
+            provider = router.primary
         if provider:
             client = anthropic.AsyncAnthropic(
                 api_key=provider.api_key,
                 base_url=provider.base_url,
             )
             # Pick model by tier from provider's model list
-            ml = provider.model_list
-            if ml:
-                model = ml[0].get("id") or ml[0].get("model_id", "claude-sonnet-4-6")
+            if preferred_model:
+                model = preferred_model
             else:
-                model = "claude-sonnet-4-6"
+                ml = provider.model_list
+                if ml:
+                    model = ml[0].get("id") or ml[0].get("model_id", "claude-sonnet-4-6")
+                else:
+                    model = "claude-sonnet-4-6"
         else:
-            client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-            model = os.getenv("ANTHROPIC_MODEL_SONNET", "claude-sonnet-4-6")
+            # Env-only fallback: prefer MiniMax deployment config, then legacy Anthropic envs.
+            api_key = os.getenv("MINIMAX_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+            base_url = (
+                os.getenv("MINIMAX_BASE_URL")
+                or os.getenv("ANTHROPIC_BASE_URL")
+                or "https://api.minimax.io/anthropic"
+            )
+            client = anthropic.AsyncAnthropic(api_key=api_key, base_url=base_url)
+            model = preferred_model or os.getenv("MINIMAX_MODEL", "MiniMax-M2.5")
             if self.model_tier == "opus":
-                model = os.getenv("ANTHROPIC_MODEL_OPUS", "claude-opus-4-6")
+                model = os.getenv("MINIMAX_MODEL_OPUS", "MiniMax-M2.7")
 
         messages: list = [{"role": "user", "content": task}]
 
@@ -756,11 +1354,14 @@ class DepartmentHead:
                         if block.type == "text":
                             final_text += block.text
                     # Fire STOP hook (Agent SDK lifecycle)
-                    await self._fire_hook("STOP", {
-                        "department": self.department.value,
-                        "iterations": iteration + 1,
-                        "stop_reason": response.stop_reason,
-                    })
+                    await self._fire_hook(
+                        HookEvent.STOP,
+                        self._hook_context(
+                            HookEvent.STOP,
+                            iterations=iteration + 1,
+                            stop_reason=response.stop_reason,
+                        ),
+                    )
                     self._publish_thought(
                         f"Turn {iteration + 1}: Final response ({len(final_text)} chars)",
                         thought_type="decision",
@@ -788,21 +1389,26 @@ class DepartmentHead:
                     )
 
                     # Fire PRE_TOOL_USE hook (Agent SDK lifecycle)
-                    pre_result = await self._fire_hook("PRE_TOOL_USE", {
-                        "tool_name": block.name,
-                        "tool_input": block.input,
-                        "tool_use_id": block.id,
-                        "department": self.department.value,
-                    })
+                    pre_result = await self._fire_hook(
+                        HookEvent.PRE_TOOL_USE,
+                        self._hook_context(
+                            HookEvent.PRE_TOOL_USE,
+                            tool_name=block.name,
+                            tool_input=block.input,
+                            tool_use_id=block.id,
+                        ),
+                    )
                     # If hook returns a decision to deny, skip tool execution
-                    if isinstance(pre_result, dict) and pre_result.get("deny"):
+                    denied, deny_reason = self._hook_denied(pre_result)
+                    if denied:
                         tool_result_content.append({
                             "type": "tool_result",
                             "tool_use_id": block.id,
-                            "content": pre_result.get("reason", "Tool denied by hook"),
+                            "content": deny_reason,
                             "is_error": True,
                         })
                         continue
+                    tool_input = self._hook_updated_input(pre_result, block.input)
 
                     self._publish_thought(
                         f"Turn {iteration + 1}: Calling {block.name}",
@@ -815,24 +1421,30 @@ class DepartmentHead:
                     )
 
                     try:
-                        result_str = await self._execute_tool(block.name, block.input)
+                        result_str = await self._execute_tool(block.name, tool_input)
                         # Fire POST_TOOL_USE hook
-                        await self._fire_hook("POST_TOOL_USE", {
-                            "tool_name": block.name,
-                            "tool_input": block.input,
-                            "tool_use_id": block.id,
-                            "result": result_str,
-                            "department": self.department.value,
-                        })
+                        await self._fire_hook(
+                            HookEvent.POST_TOOL_USE,
+                            self._hook_context(
+                                HookEvent.POST_TOOL_USE,
+                                tool_name=block.name,
+                                tool_input=tool_input,
+                                tool_use_id=block.id,
+                                result=result_str,
+                            ),
+                        )
                     except Exception as tool_err:
                         # Fire POST_TOOL_USE_FAILURE hook
-                        await self._fire_hook("POST_TOOL_USE_FAILURE", {
-                            "tool_name": block.name,
-                            "tool_input": block.input,
-                            "tool_use_id": block.id,
-                            "error": str(tool_err),
-                            "department": self.department.value,
-                        })
+                        await self._fire_hook(
+                            HookEvent.POST_TOOL_USE_FAILURE,
+                            self._hook_context(
+                                HookEvent.POST_TOOL_USE_FAILURE,
+                                tool_name=block.name,
+                                tool_input=tool_input,
+                                tool_use_id=block.id,
+                                error=str(tool_err),
+                            ),
+                        )
                         self._publish_thought(
                             f"Tool {block.name} failed: {str(tool_err)[:100]}",
                             thought_type="error",

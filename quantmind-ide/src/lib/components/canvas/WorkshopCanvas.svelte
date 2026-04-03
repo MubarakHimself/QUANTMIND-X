@@ -8,7 +8,6 @@
    * Each section fills the main content area (no separate right panel).
    */
   import { onMount, tick } from 'svelte';
-  import { settingsTrigger } from '$lib/stores/navigationStore';
   import {
     Plus,
     MessageSquare,
@@ -16,7 +15,6 @@
     Brain,
     Zap,
     GitBranch,
-    Settings,
     Send,
     Paperclip,
     ChevronRight,
@@ -24,15 +22,20 @@
     Loader,
     User,
     Trash2,
-    Wrench
+    Wrench,
+    Pencil,
+    Check,
+    X
   } from 'lucide-svelte';
   import { chatApi, type ChatSession, type StoredChatMessage } from '$lib/api/chatApi';
   import { listSkills, type Skill } from '$lib/api/skillsApi';
+  import { listAllAssets } from '$lib/api/sharedAssetsApi';
   import { getHotNodes, getWarmNodes, type GraphMemoryNode, listOpinionNodes, createOpinionNode, type OpinionNode } from '$lib/api/graphMemory';
-  import { canvasContextService } from '$lib/services/canvasContextService';
+  import { canvasContextService, type CanvasAttachableResource } from '$lib/services/canvasContextService';
   import { navigationStore } from '$lib/stores/navigationStore';
   import { copilotKillSwitchService } from '$lib/services/copilotKillSwitchService';
   import { getBaseUrl } from '$lib/config/api';
+  import { apiFetch } from '$lib/api';
   import { marked } from 'marked';
   import DOMPurify from 'dompurify';
 
@@ -62,11 +65,24 @@
     last_run?: string;
   }
 
-  interface ProjectItem {
+interface ProjectItem {
+  id: string;
+  name: string;
+  description?: string;
+  status?: string;
+}
+
+  interface WorkshopAttachment {
     id: string;
-    name: string;
-    description?: string;
-    status?: string;
+    label: string;
+    canvasId: string;
+    kind: 'canvas' | 'resource';
+    resource?: CanvasAttachableResource;
+  }
+
+  interface WorkshopCanvasContextOption {
+    id: string;
+    label: string;
   }
 
   // ── State ────────────────────────────────────────────────────────────────────
@@ -79,14 +95,22 @@
   let isLoading = $state(false);
   let currentSessionId = $state<string | null>(null);
   let messagesEnd = $state<HTMLElement | null>(null);
+  let attachments = $state<WorkshopAttachment[]>([]);
+  let showAttachMenu = $state(false);
+  let attachableResources = $state<CanvasAttachableResource[]>([]);
 
   // Sessions (recent history in sidebar)
   let sessions = $state<ChatSession[]>([]);
   let sessionsLoading = $state(false);
+  let sessionActionLoading = $state(false);
+  let renamingSessionId = $state<string | null>(null);
+  let renameSessionTitle = $state('');
 
   // Skills
   let skills = $state<Skill[]>([]);
   let skillsLoading = $state(false);
+  let selectedSkill = $state<Skill | null>(null);
+  let queuedSkillCommand = $state('');
 
   // Memory
   let memoryNodes = $state<GraphMemoryNode[]>([]);
@@ -178,6 +202,15 @@
   // ── Constants ────────────────────────────────────────────────────────────────
 
   const API_BASE = getBaseUrl('');
+  const ATTACH_CANVAS_OPTIONS: WorkshopCanvasContextOption[] = [
+    { id: 'research', label: 'Research context' },
+    { id: 'development', label: 'Development context' },
+    { id: 'risk', label: 'Risk context' },
+    { id: 'trading', label: 'Trading context' },
+    { id: 'portfolio', label: 'Portfolio context' },
+    { id: 'shared-assets', label: 'Shared Assets context' },
+    { id: 'flowforge', label: 'FlowForge context' },
+  ];
 
   const SUGGESTION_CHIPS = [
     'What happened overnight?',
@@ -204,22 +237,70 @@
     }
   }
 
+  async function openAttachMenu() {
+    const nextOpen = !showAttachMenu;
+    showAttachMenu = nextOpen;
+    if (!nextOpen) {
+      return;
+    }
+
+    const resources: CanvasAttachableResource[] = [];
+    for (const option of ATTACH_CANVAS_OPTIONS) {
+      await canvasContextService.getEnrichedContext(option.id);
+      resources.push(
+        ...canvasContextService.getAttachableResources(option.id).map((resource) => ({
+          ...resource,
+          label: `${option.label}: ${resource.label}`,
+        })),
+      );
+    }
+    attachableResources = resources.slice(0, 150);
+  }
+
+  function attachCanvasContext(option: WorkshopCanvasContextOption) {
+    if (attachments.find((attachment) => attachment.kind === 'canvas' && attachment.canvasId === option.id)) {
+      showAttachMenu = false;
+      return;
+    }
+    attachments = [...attachments, {
+      id: crypto.randomUUID(),
+      label: option.label,
+      canvasId: option.id,
+      kind: 'canvas',
+    }];
+    showAttachMenu = false;
+  }
+
+  function attachResource(resource: CanvasAttachableResource) {
+    if (attachments.find((attachment) => attachment.kind === 'resource' && attachment.resource?.id === resource.id)) {
+      showAttachMenu = false;
+      return;
+    }
+    attachments = [...attachments, {
+      id: crypto.randomUUID(),
+      label: resource.label,
+      canvasId: resource.canvas,
+      kind: 'resource',
+      resource,
+    }];
+    showAttachMenu = false;
+  }
+
+  function removeAttachment(id: string) {
+    attachments = attachments.filter((attachment) => attachment.id !== id);
+  }
+
   async function loadProviders() {
     try {
-      const res = await fetch('/api/providers/available');
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await apiFetch<{ providers?: Array<{ has_api_key: boolean; id: string; name: string; display_name: string }> }>('/providers/available');
       // Also fetch models
       let modelsMap: Record<string, Array<{ id: string; name: string }>> = {};
       try {
-        const mres = await fetch('/api/agent-config/available-models');
-        if (mres.ok) {
-          const mdata = await mres.json();
-          if (mdata.providers) {
-            for (const [pname, info] of Object.entries(mdata.providers)) {
-              const pi = info as { available: boolean; models: Array<{ id: string; name: string }> };
-              if (pi.available && pi.models) modelsMap[pname] = pi.models;
-            }
+        const mdata = await apiFetch<{ providers?: Record<string, { available: boolean; models: Array<{ id: string; name: string }> }> }>('/agent-config/available-models');
+        if (mdata.providers) {
+          for (const [pname, info] of Object.entries(mdata.providers)) {
+            const pi = info as { available: boolean; models: Array<{ id: string; name: string }> };
+            if (pi.available && pi.models) modelsMap[pname] = pi.models;
           }
         }
       } catch { /* ignore */ }
@@ -248,19 +329,17 @@
   async function loadSessions() {
     sessionsLoading = true;
     try {
-      const [floorManagerSessions, legacyWorkshopSessions] = await Promise.all([
-        chatApi.listSessions(undefined, 'floor-manager'),
-        chatApi.listSessions(undefined, 'workshop')
-      ]);
-      const merged = [...floorManagerSessions, ...legacyWorkshopSessions]
-        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-        .filter((session, index, all) => all.findIndex(candidate => candidate.id === session.id) === index);
-      sessions = merged.slice(0, 20);
+      sessions = (await listWorkshopSessions()).slice(0, 20);
     } catch (e) {
       console.error('Failed to load sessions:', e);
     } finally {
       sessionsLoading = false;
     }
+  }
+
+  async function listWorkshopSessions() {
+    const floorManagerSessions = await chatApi.listSessions(undefined, 'floor-manager');
+    return floorManagerSessions.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
   }
 
   async function loadSkills() {
@@ -370,10 +449,19 @@
   async function loadProjects() {
     projectsLoading = true;
     try {
-      const res = await fetch(`${API_BASE}/projects`);
-      if (res.ok) {
-        projects = await res.json();
+      const grouped = await listAllAssets();
+      const items: ProjectItem[] = [];
+      for (const [assetType, records] of Object.entries(grouped)) {
+        for (const record of records) {
+          items.push({
+            id: record.id,
+            name: record.name,
+            description: record.source_path || '',
+            status: assetType,
+          });
+        }
       }
+      projects = items.sort((a, b) => a.name.localeCompare(b.name));
     } catch (e) {
       console.error('Failed to load projects:', e);
     } finally {
@@ -439,9 +527,33 @@
 
   async function startNewChat() {
     messages = [];
-    currentSessionId = null;
     activeSection = 'chat';
     inputMessage = '';
+    attachments = [];
+    showAttachMenu = false;
+
+    sessionActionLoading = true;
+    try {
+      const newSession = await chatApi.createSession({
+        agentType: 'floor-manager',
+        agentId: 'floor_manager',
+        userId: 'anonymous',
+        context: {
+          canvas: 'workshop',
+          active_canvas: 'workshop',
+          session_type: 'interactive_session',
+        },
+      });
+      currentSessionId = newSession.id;
+      sessions = [newSession, ...sessions.filter((session) => session.id !== newSession.id)]
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+        .slice(0, 20);
+    } catch (e) {
+      console.error('Failed to create workshop session:', e);
+      currentSessionId = null;
+    } finally {
+      sessionActionLoading = false;
+    }
   }
 
   async function selectSession(session: ChatSession) {
@@ -466,6 +578,10 @@
 
   async function deleteSession(sessionId: string, e: MouseEvent) {
     e.stopPropagation();
+    if (renamingSessionId === sessionId) {
+      renamingSessionId = null;
+      renameSessionTitle = '';
+    }
     sessions = sessions.filter(s => s.id !== sessionId);
     if (currentSessionId === sessionId) {
       currentSessionId = null;
@@ -477,6 +593,68 @@
       console.error('Failed to delete session:', err);
       // Re-load to restore state if delete failed
       await loadSessions();
+    }
+  }
+
+  function startRenameSession(session: ChatSession, e: MouseEvent) {
+    e.stopPropagation();
+    renamingSessionId = session.id;
+    renameSessionTitle = (session.title || '').trim();
+  }
+
+  function cancelRenameSession(e?: Event) {
+    e?.stopPropagation();
+    renamingSessionId = null;
+    renameSessionTitle = '';
+  }
+
+  async function commitRenameSession(sessionId: string, e?: Event) {
+    e?.stopPropagation();
+    const nextTitle = renameSessionTitle.trim();
+    if (!nextTitle) {
+      cancelRenameSession();
+      return;
+    }
+
+    const previous = sessions;
+    sessions = sessions.map((session) =>
+      session.id === sessionId ? { ...session, title: nextTitle } : session
+    );
+    renamingSessionId = null;
+    renameSessionTitle = '';
+
+    try {
+      await chatApi.updateSessionTitle(sessionId, { title: nextTitle });
+    } catch (err) {
+      console.error('Failed to rename session:', err);
+      sessions = previous;
+      await loadSessions();
+    }
+  }
+
+  async function deleteAllSessions() {
+    if (sessions.length === 0 || sessionActionLoading) return;
+
+    const allSessions = await listWorkshopSessions();
+    const sessionIds = allSessions.map((session) => session.id);
+    const previousSessions = sessions;
+    const activeSessionWasDeleted = currentSessionId ? sessionIds.includes(currentSessionId) : false;
+
+    sessions = [];
+    if (activeSessionWasDeleted) {
+      currentSessionId = null;
+      messages = [];
+    }
+
+    sessionActionLoading = true;
+    try {
+      await Promise.all(sessionIds.map((sessionId) => chatApi.deleteSession(sessionId)));
+    } catch (e) {
+      console.error('Failed to delete all workshop sessions:', e);
+      sessions = previousSessions;
+      await loadSessions();
+    } finally {
+      sessionActionLoading = false;
     }
   }
 
@@ -492,7 +670,7 @@
         messages = [...messages, {
           id: crypto.randomUUID(),
           role: 'assistant',
-          content: `Copilot is currently disabled. Please try again later.`,
+          content: `Agent system is currently disabled. Please try again later.`,
           timestamp: new Date()
         }];
         return;
@@ -505,6 +683,33 @@
 
     activeSection = 'chat';
 
+    const attachedContexts = attachments.length > 0
+      ? await Promise.all(
+          attachments.map(async (attachment) => {
+            if (attachment.kind === 'resource' && attachment.resource) {
+              return {
+                canvas: attachment.canvasId,
+                label: attachment.label,
+                context: {
+                  attachment_type: 'resource',
+                  resource: canvasContextService.buildResourceAttachmentContext(attachment.resource),
+                },
+              };
+            }
+
+            const loadedContext = await canvasContextService.getChatContext(
+              attachment.canvasId,
+              currentSessionId ?? undefined,
+            );
+            return {
+              canvas: attachment.canvasId,
+              label: attachment.label,
+              context: loadedContext,
+            };
+          }),
+        )
+      : [];
+
     messages = [...messages, {
       id: crypto.randomUUID(),
       role: 'user',
@@ -512,6 +717,8 @@
       timestamp: new Date()
     }];
     inputMessage = '';
+    attachments = [];
+    showAttachMenu = false;
     isLoading = true;
 
     const assistantId = crypto.randomUUID();
@@ -527,10 +734,13 @@
     messagesEnd?.scrollIntoView({ behavior: 'smooth' });
 
     try {
-      const workshopContext = await canvasContextService.getEnrichedContext(
+      const workshopContext = await canvasContextService.getChatContext(
         'workshop',
         currentSessionId ?? undefined
       );
+      // inject model/provider selection for backend routing
+      workshopContext.model = selectedModel;
+      if (selectedProvider) workshopContext.provider = selectedProvider;
       const result = await chatApi.sendMessage(
         'floor-manager',
         text,
@@ -541,6 +751,13 @@
           canvas: 'workshop',
           active_canvas: 'workshop',
           canvas_context: workshopContext,
+          attached_contexts: attachedContexts,
+          session_type: 'interactive_session',
+          workspace_contract: {
+            version: 'manifest-v1',
+            strategy: 'manifest-first',
+            natural_resource_search: true,
+          },
         }
       );
       if (result.session_id && result.session_id !== currentSessionId) {
@@ -742,8 +959,9 @@
   }
 
   function invokeSkill(skill: Skill) {
-    inputMessage = (skill.slash_command || `/${skill.name}`) + ' ';
-    activeSection = 'chat';
+    selectedSkill = skill;
+    queuedSkillCommand = (skill.slash_command || `/${skill.name}`) + ' ';
+    inputMessage = queuedSkillCommand;
   }
 
   function toggleNodeExpansion(nodeId: string) {
@@ -767,18 +985,25 @@
 
     <nav class="sidebar-nav">
       <!-- RECENT -->
-      <div class="nav-section-label">Recent</div>
+      <div class="nav-section-label-row">
+        <div class="nav-section-label">Recent</div>
+        {#if sessions.length > 0}
+          <button
+            class="clear-history-btn"
+            onclick={deleteAllSessions}
+            disabled={sessionActionLoading}
+            title="Delete all recent workshop sessions"
+          >
+            Clear history
+          </button>
+        {/if}
+      </div>
       {#if sessionsLoading}
         <div class="nav-loading"><Loader size={12} class="spin" /></div>
       {:else if sessions.length === 0}
-        <button
-          class="nav-item"
-          class:active={activeSection === 'chat'}
-          onclick={() => navigateTo('chat')}
-        >
-          <MessageSquare size={15} />
-          <span class="nav-label">Today's session</span>
-        </button>
+        <div class="nav-empty">
+          No recent chats
+        </div>
       {:else}
         {#each sessions.slice(0, 3) as session}
           <div
@@ -790,29 +1015,65 @@
             tabindex="0"
           >
             <MessageSquare size={15} />
-            <span class="nav-label">{session.title || 'Untitled'}</span>
-            <button
-              class="delete-btn"
-              onclick={(e) => deleteSession(session.id, e)}
-              title="Delete"
-            >
-              <Trash2 size={11} />
-            </button>
+            {#if renamingSessionId === session.id}
+              <input
+                class="session-title-input"
+                bind:value={renameSessionTitle}
+                onclick={(e) => e.stopPropagation()}
+                onkeydown={(e) => {
+                  if (e.key === 'Enter') {
+                    void commitRenameSession(session.id, e);
+                  } else if (e.key === 'Escape') {
+                    cancelRenameSession(e);
+                  }
+                }}
+              />
+              <button
+                class="session-action-btn"
+                onclick={(e) => commitRenameSession(session.id, e)}
+                title="Save title"
+              >
+                <Check size={11} />
+              </button>
+              <button
+                class="session-action-btn"
+                onclick={(e) => cancelRenameSession(e)}
+                title="Cancel rename"
+              >
+                <X size={11} />
+              </button>
+            {:else}
+              <span class="nav-label">{session.title || 'Untitled'}</span>
+              <button
+                class="session-action-btn"
+                onclick={(e) => startRenameSession(session, e)}
+                title="Rename"
+              >
+                <Pencil size={11} />
+              </button>
+              <button
+                class="session-action-btn"
+                onclick={(e) => deleteSession(session.id, e)}
+                title="Delete"
+              >
+                <Trash2 size={11} />
+              </button>
+            {/if}
           </div>
         {/each}
       {/if}
 
       <div class="nav-spacer"></div>
 
-      <!-- PROJECTS -->
-      <div class="nav-section-label">Projects</div>
+      <!-- SHARED ASSETS -->
+      <div class="nav-section-label">Assets</div>
       <button
         class="nav-item"
         class:active={activeSection === 'projects'}
         onclick={() => navigateTo('projects')}
       >
         <FolderOpen size={15} />
-        <span class="nav-label">My Projects</span>
+        <span class="nav-label">Shared Assets</span>
         <ChevronRight size={12} class="nav-arrow" />
       </button>
 
@@ -866,14 +1127,6 @@
 
           </nav>
 
-    <!-- Settings at bottom -->
-    <div class="sidebar-bottom">
-      <div class="sidebar-divider"></div>
-      <button class="nav-item settings-item" onclick={() => settingsTrigger.update(n => n + 1)}>
-        <Settings size={15} />
-        <span class="nav-label">Settings</span>
-      </button>
-    </div>
   </aside>
 
   <!-- ── Main Content Area ───────────────────────────────────────────────── -->
@@ -978,6 +1231,37 @@
             </div>
           {/if}
 
+          {#if showAttachMenu}
+            <div class="attach-menu">
+              <div class="attach-header">Attach context from canvas</div>
+              {#each ATTACH_CANVAS_OPTIONS as option}
+                <button class="attach-option" onclick={() => attachCanvasContext(option)}>
+                  <span class="attach-label">{option.label}</span>
+                </button>
+              {/each}
+              {#if attachableResources.length > 0}
+                <div class="attach-header attach-subheader">Attach a visible file or tile</div>
+                {#each attachableResources as resource}
+                  <button class="attach-option" onclick={() => attachResource(resource)}>
+                    <span class="attach-label">{resource.label}</span>
+                    <span class="attach-meta">{resource.resource_type}</span>
+                  </button>
+                {/each}
+              {/if}
+            </div>
+          {/if}
+
+          {#if attachments.length > 0}
+            <div class="attachment-pills">
+              {#each attachments as attachment (attachment.id)}
+                <span class="attachment-pill">
+                  {attachment.label}
+                  <button class="attachment-remove" onclick={() => removeAttachment(attachment.id)}>×</button>
+                </span>
+              {/each}
+            </div>
+          {/if}
+
           <div class="input-bar">
             <textarea
               bind:value={inputMessage}
@@ -988,7 +1272,7 @@
               disabled={isLoading}
             ></textarea>
             <div class="input-actions">
-              <button class="action-btn" title="Attach file" disabled={isLoading}>
+              <button class="action-btn" title="Attach canvas context" disabled={isLoading} onclick={() => openAttachMenu()}>
                 <Paperclip size={16} />
               </button>
               {#if availableProviders.length > 0}
@@ -1056,19 +1340,19 @@
         </div>
       </div>
 
-    <!-- PROJECTS VIEW -->
+    <!-- SHARED ASSETS VIEW -->
     {:else if activeSection === 'projects'}
       <div class="section-view">
         <div class="section-header">
           <FolderOpen size={20} />
-          <h2>My Projects</h2>
+          <h2>Shared Assets</h2>
         </div>
         {#if projectsLoading}
           <div class="loading-state"><Loader size={24} class="spin" /></div>
         {:else if projects.length === 0}
           <div class="empty-state">
             <FolderOpen size={40} />
-            <p>No projects yet. Start a new chat to create a project.</p>
+            <p>No shared assets found.</p>
           </div>
         {:else}
           <div class="tile-grid">
@@ -1212,6 +1496,26 @@
           <Zap size={20} />
           <h2>Skills Catalogue</h2>
         </div>
+        {#if selectedSkill}
+          <div class="skill-preview">
+            <div class="skill-preview-header">
+              <div>
+                <div class="skill-preview-command">{queuedSkillCommand.trim()}</div>
+                <div class="skill-preview-title">{selectedSkill.name}</div>
+              </div>
+              <button class="skill-preview-action" onclick={() => { activeSection = 'chat'; }}>
+                Open Chat
+              </button>
+            </div>
+            <p class="skill-preview-description">{selectedSkill.description}</p>
+            <div class="skill-preview-meta">
+              <span>Queued in chat draft</span>
+              {#if selectedSkill.usage_count}
+                <span>{selectedSkill.usage_count} uses</span>
+              {/if}
+            </div>
+          </div>
+        {/if}
         {#if skillsLoading}
           <div class="loading-state"><Loader size={24} class="spin" /></div>
         {:else if skills.length === 0}
@@ -1448,6 +1752,37 @@
     user-select: none;
   }
 
+  .nav-section-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .clear-history-btn {
+    padding: 4px 8px;
+    background: transparent;
+    border: 1px solid rgba(239, 68, 68, 0.18);
+    border-radius: 999px;
+    color: rgba(248, 113, 113, 0.9);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+    margin-right: 8px;
+  }
+
+  .clear-history-btn:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(248, 113, 113, 0.32);
+    color: #fca5a5;
+  }
+
+  .clear-history-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
   .nav-spacer { height: 6px; }
 
   .nav-item {
@@ -1491,19 +1826,31 @@
 
   .session-row { cursor: pointer; }
 
-  .delete-btn {
-    opacity: 0;
+  .session-action-btn {
     padding: 2px;
     background: transparent;
     border: none;
     color: #64748b;
     cursor: pointer;
-    transition: opacity 0.12s, color 0.12s;
+    transition: color 0.12s;
     flex-shrink: 0;
   }
 
-  .session-row:hover .delete-btn { opacity: 1; }
-  .delete-btn:hover { color: #f87171; }
+  .session-action-btn:hover { color: #cbd5e1; }
+  .session-row:hover .session-action-btn:last-child { color: #f87171; }
+
+  .session-title-input {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: rgba(15, 23, 42, 0.8);
+    color: #e2e8f0;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 2px 6px;
+    height: 22px;
+  }
 
   .nav-loading {
     padding: 6px 12px;
@@ -1511,10 +1858,13 @@
     font-size: 11px;
   }
 
-  .sidebar-bottom { padding-bottom: 12px; }
-  .sidebar-bottom .sidebar-divider { margin-bottom: 6px; }
-  .settings-item { color: #475569; }
-  .settings-item:hover { color: #94a3b8; }
+  .nav-empty {
+    padding: 6px 12px;
+    color: #475569;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
 
   /* ── Main content ───────────────────────────────────────────────────────── */
   .workshop-main {
@@ -1685,6 +2035,7 @@
   }
 
   .input-area {
+    position: relative;
     padding: 12px 24px 20px;
     background: linear-gradient(to top, rgba(8, 13, 20, 0.8) 60%, transparent);
     display: flex;
@@ -1755,6 +2106,102 @@
   }
 
   .action-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  .attach-menu {
+    width: 100%;
+    max-width: 600px;
+    max-height: 280px;
+    overflow: auto;
+    background: rgba(12, 18, 28, 0.96);
+    border: 1px solid rgba(0, 212, 255, 0.16);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(16px);
+  }
+
+  .attach-header {
+    padding: 8px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.08);
+  }
+
+  .attach-subheader {
+    border-top: 1px solid rgba(0, 212, 255, 0.08);
+  }
+
+  .attach-option {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    color: #e2e8f0;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.12s ease;
+  }
+
+  .attach-option:hover {
+    background: rgba(0, 212, 255, 0.06);
+  }
+
+  .attach-label {
+    font-size: 12px;
+    color: #cbd5e1;
+  }
+
+  .attach-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    color: #64748b;
+  }
+
+  .attachment-pills {
+    width: 100%;
+    max-width: 600px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .attachment-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: rgba(0, 212, 255, 0.08);
+    border: 1px solid rgba(0, 212, 255, 0.16);
+    border-radius: 999px;
+    font-size: 11px;
+    color: #cbd5e1;
+  }
+
+  .attachment-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+  }
+
+  .attachment-remove:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #e2e8f0;
+  }
 
   .send-btn {
     width: 32px;
@@ -2213,6 +2660,73 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 12px;
+  }
+
+  .skill-preview {
+    padding: 16px 18px;
+    background: rgba(17, 24, 39, 0.55);
+    border: 1px solid rgba(0, 212, 255, 0.14);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .skill-preview-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .skill-preview-command {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #00d4ff;
+  }
+
+  .skill-preview-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 15px;
+    color: #e2e8f0;
+    margin-top: 4px;
+  }
+
+  .skill-preview-description {
+    margin: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    color: #94a3b8;
+  }
+
+  .skill-preview-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .skill-preview-action {
+    padding: 7px 12px;
+    background: rgba(0, 212, 255, 0.12);
+    border: 1px solid rgba(0, 212, 255, 0.22);
+    border-radius: 8px;
+    color: #00d4ff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+
+  .skill-preview-action:hover {
+    background: rgba(0, 212, 255, 0.18);
+    border-color: rgba(0, 212, 255, 0.34);
   }
 
   .skill-card {

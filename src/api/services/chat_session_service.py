@@ -12,6 +12,31 @@ class ChatSessionService:
     def __init__(self):
         pass
 
+    @staticmethod
+    def _normalize_session_type(
+        raw_value: Optional[str],
+        *,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Normalize to contract session types."""
+        aliases = {
+            "interactive": "interactive_session",
+            "interactive_session": "interactive_session",
+            "chat": "interactive_session",
+            "workflow": "workflow_session",
+            "workflow_session": "workflow_session",
+            "harness": "workflow_session",
+            "autonomous": "workflow_session",
+            "background": "workflow_session",
+        }
+        value = str(raw_value or "").strip().lower()
+        if value in aliases:
+            return aliases[value]
+        ctx = context or {}
+        if any(ctx.get(key) for key in ("workflow_id", "workflow_run_id", "workflow_step")):
+            return "workflow_session"
+        return "interactive_session"
+
     async def create_session(
         self,
         agent_type: str,
@@ -21,9 +46,44 @@ class ChatSessionService:
         context: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> ChatSession:
-        """Create a new chat session."""
+        """
+        Create a new chat session with cross-session memory pre-loading.
+
+        On creation:
+        1. Saves session to SQLite
+        2. Pre-loads committed memory nodes from prior sessions (graph memory)
+        3. Loads canvas context template if canvas specified in context
+        4. Publishes session creation to thought stream for UI awareness
+
+        The committed memory from prior sessions enables continuity —
+        agents can recall decisions, opinions, and observations from
+        earlier sessions without needing to re-discover them.
+        """
         session_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
+
+        # Build session context with memory pre-load
+        session_context = dict(context or {})
+        session_context["session_type"] = self._normalize_session_type(
+            session_context.get("session_type"),
+            context=session_context,
+        )
+
+        # Pre-load committed memory from prior sessions
+        memory_summary = await self._load_cross_session_memory(
+            agent_type=agent_type,
+            agent_id=agent_id,
+            canvas=session_context.get("canvas", ""),
+        )
+        if memory_summary:
+            session_context["prior_session_memory"] = memory_summary
+
+        # Load canvas context template if canvas is specified
+        canvas_name = session_context.get("canvas", "")
+        if canvas_name:
+            canvas_ctx = self._load_canvas_context(canvas_name)
+            if canvas_ctx:
+                session_context["canvas_context"] = canvas_ctx
 
         session = ChatSession(
             id=session_id,
@@ -31,7 +91,7 @@ class ChatSessionService:
             agent_id=agent_id,
             title=title or f"Chat {now.strftime('%Y-%m-%d %H:%M')}",
             user_id=user_id,
-            context=context or {},
+            context=session_context,
             session_metadata=metadata or {},
             last_message_at=now
         )
@@ -41,11 +101,86 @@ class ChatSessionService:
             db.add(session)
             db.commit()
             db.refresh(session)
-            # Expunge to detach from session
             db.expunge(session)
+
+            # Publish session creation to thought stream
+            self._publish_session_created(session_id, agent_type, agent_id, canvas_name)
+
             return session
         finally:
             db.close()
+
+    async def _load_cross_session_memory(
+        self,
+        agent_type: str,
+        agent_id: str,
+        canvas: str = "",
+    ) -> List[Dict[str, Any]]:
+        """
+        Load committed memory nodes from prior sessions.
+
+        Retrieves HOT/WARM tier nodes relevant to this agent/canvas,
+        filtered to committed-only (not draft) so agents see validated knowledge.
+
+        Returns a list of memory node summaries (max 15 for token budget).
+        """
+        try:
+            from src.memory.graph.facade import GraphMemoryFacade
+            facade = GraphMemoryFacade()
+
+            # Load committed state for this department/agent
+            committed = facade.load_committed_state(
+                department=agent_id if agent_id else agent_type,
+            )
+            if not committed:
+                return []
+
+            # Summarize for session context (max 15 nodes)
+            summaries = []
+            for node in committed[:15]:
+                summaries.append({
+                    "id": node.get("id", ""),
+                    "type": node.get("node_type", ""),
+                    "content": str(node.get("content", ""))[:200],
+                    "tier": node.get("tier", ""),
+                    "created_at": node.get("created_at", ""),
+                })
+            return summaries
+        except Exception:
+            return []
+
+    def _load_canvas_context(self, canvas_name: str) -> Optional[Dict[str, Any]]:
+        """Load canvas context template for session initialization."""
+        try:
+            from src.canvas_context.loader import load_template
+            template = load_template(canvas_name)
+            if template:
+                return {
+                    "canvas": template.canvas,
+                    "display_name": template.canvas_display_name,
+                    "department_head": template.department_head,
+                    "memory_scope": template.memory_scope,
+                    "workflow_namespaces": template.workflow_namespaces,
+                    "skills": [s.id for s in (template.skill_index or [])],
+                }
+        except Exception:
+            pass
+        return None
+
+    def _publish_session_created(
+        self, session_id: str, agent_type: str, agent_id: str, canvas: str,
+    ) -> None:
+        """Publish session creation event to thought stream for UI."""
+        try:
+            from src.api.agent_thought_stream_endpoints import get_thought_publisher
+            get_thought_publisher().publish(
+                department=agent_id or agent_type,
+                thought=f"New session created: {session_id} on canvas={canvas or 'workshop'}",
+                thought_type="session",
+                session_id=session_id,
+            )
+        except Exception:
+            pass
 
     async def get_session(self, session_id: str) -> Optional[ChatSession]:
         """Get a session by ID."""
@@ -55,6 +190,25 @@ class ChatSessionService:
             if session:
                 db.expunge(session)
             return session
+        finally:
+            db.close()
+
+    async def update_session_title(self, session_id: str, title: str) -> Optional[ChatSession]:
+        """Update a session title."""
+        db = Session()
+        try:
+            session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+            if not session:
+                return None
+
+            session.title = title
+            db.commit()
+            db.refresh(session)
+            db.expunge(session)
+            return session
+        except Exception:
+            db.rollback()
+            raise
         finally:
             db.close()
 

@@ -151,3 +151,66 @@ class TestCanvasContextEndpoints:
         assert response.status_code == 200
         assert response.json()["canvas"] == "shared-assets"
         mock_load.assert_called_once_with("shared-assets")
+
+    def test_workspace_resource_manifest_endpoint(self):
+        mock_service = MagicMock()
+        mock_service.manifest.return_value = {
+            "version": "manifest-v1",
+            "strategy": "manifest-first",
+            "total_resources": 1,
+            "by_canvas": {"research": 1},
+            "by_tab": {"articles": 1},
+            "by_type": {"file": 1},
+            "resources": [
+                {
+                    "resource_id": "fs:abc",
+                    "canvas": "research",
+                    "tab": "articles",
+                    "type": "file",
+                    "path": "/tmp/sample.md",
+                    "label": "sample.md",
+                    "metadata": {},
+                    "version": "v1",
+                    "updated_at": "2026-04-03T00:00:00+00:00",
+                }
+            ],
+        }
+        with patch("src.api.canvas_context_endpoints.get_workspace_resource_service", return_value=mock_service):
+            response = self.client.post(
+                "/api/canvas-context/resources/manifest",
+                json={"canvases": ["research"], "limit": 20},
+            )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["version"] == "manifest-v1"
+        assert payload["total_resources"] == 1
+        assert payload["resources"][0]["canvas"] == "research"
+
+    def test_workspace_resource_search_endpoint(self):
+        mock_service = MagicMock()
+        mock_service.search_resources.return_value = [
+            {
+                "resource_id": "fs:abc",
+                "canvas": "research",
+                "tab": "articles",
+                "type": "file",
+                "path": "/tmp/sample.md",
+                "label": "sample.md",
+                "metadata": {"category": "articles"},
+                "version": "v1",
+                "updated_at": "2026-04-03T00:00:00+00:00",
+                "relevance": 0.91,
+            }
+        ]
+        with patch("src.api.canvas_context_endpoints.get_workspace_resource_service", return_value=mock_service):
+            response = self.client.post(
+                "/api/canvas-context/resources/search",
+                json={"query": "sample", "canvases": ["research"], "limit": 10},
+            )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["query"] == "sample"
+        assert payload["count"] == 1
+        assert payload["resources"][0]["resource_id"] == "fs:abc"

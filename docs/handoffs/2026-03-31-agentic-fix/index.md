@@ -34,6 +34,12 @@ See [progress.md](/home/mubarkahimself/Desktop/QUANTMINDX/docs/handoffs/2026-03-
 
 Current high-signal state:
 - after any future compaction, resume by re-reading this handoff set first, then continue from `progress.md`
+- 2026-04-03 chat contract hardening is now in place:
+  - `POST /api/chat/departments/{department}/message` and `POST /api/chat/floor-manager/message` normalize incoming context into a compact manifest-first contract (heavy context payloads are stripped before agent execution).
+  - department-head and floor-manager system prompts now include summarized context only, preventing runaway prompt-size growth.
+  - default provider fallback for chat runtime now prefers Minimax when caller context does not specify a provider.
+  - focused test gate passed: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_chat_per_agent.py` (`10 passed`).
+  - production-safety check for the touched chat/agent files is clean for new `localhost`/`127.0.0.1` transport hardcodes.
 - graph-memory path mismatch is fixed and browser-verified
 - temporary verification data was cleaned up again
 - settings modal is non-blocking and tab switching is currently browser-verified
@@ -69,17 +75,343 @@ Current high-signal state:
 - Floor Manager approval queries are now grounded in live `ApprovalManager` data instead of freeform LLM summaries
 - local approval persistence was cleaned through the real approval API; the same Workshop quick action now returns `No pending approvals.`
 - Research now exposes a first-class `News` tab backed by the live news store/component instead of leaving that planning-doc surface absent
+- scraped-article metadata/title recovery is fixed again:
+  - `GET /api/knowledge/articles` now derives readable titles from markdown headings when sidecar metadata is absent
+  - Research browser view now groups articles by visible category sections again instead of flattening them into UUID-like rows
+- Workshop/Copilot session lifecycle is healthier again:
+  - `New Chat` now persists a real `floor-manager` session immediately
+  - Workshop now has a `Clear history` control for bulk session deletion
+  - `chatApi.createSession()` now sends the correct snake_case contract to the backend
+- chat session controls are now extended beyond bulk clear:
+  - Workshop `Recent` supports per-session `Rename` and per-session `Delete`
+  - department `AgentPanel` session history now supports per-session `Rename` and `Delete`
+  - backend now supports session-title updates through `PATCH /api/chat/sessions/{session_id}`
+  - browser verification confirmed rename persistence and individual delete behavior in both surfaces
+- Workshop/Copilot history controls are now aligned with the user’s latest complaint:
+  - `New Chat` now surfaces immediately in `Recent` with timestamped titles
+  - `Clear history` now empties the visible recent list in one action
+  - trading-floor `CopilotPanel` now has matching bulk-clear logic in code and tests
+- Workshop skills no longer bounce users out of `Skills Catalogue` on click:
+  - skill clicks now queue the slash command in the chat draft
+  - the UI stays on the Skills section until the user explicitly chooses `Open Chat`
+- human-to-agent department mail is now browser-verified end to end:
+  - Live Trading compose UI sent a Trading -> Research message
+  - Research agent-panel `MAIL` tab showed the received message
 - department chat grounding is now improved and browser-verified on `Risk` and `Research`:
   - `AgentPanel` sends structured `context` with `canvas_context`, `attached_contexts`, and `visible_canvas_text`
   - `Risk` replies now reference real on-screen values instead of generic “no live data” fallbacks
   - `Research` replies now enumerate the visible tab strip instead of only restating the department template
 - kebab-case canvas ids from the Svelte shell now resolve correctly through the backend canvas-context loader:
   - `POST /api/canvas-context/load` returns `200` again for `live-trading` and `shared-assets`
-  - browser/devtools cold-reload re-check is still pending because the current `chrome-devtools` transport died after clearing a stale profile lock
+  - browser/devtools cold-reload re-check later confirmed `POST /api/canvas-context/load [200]` on `Live Trading` instead of the earlier `400`
+- `MainContent` startup data load no longer hardcodes `http://localhost:8000` for the initial knowledge/strategy/trading requests that fire on shell load; those calls now route through the shared frontend API client
+- backend department mail no longer hard-fails on missing Redis:
+  - the shared mail factory now probes Redis once and falls back to SQLite automatically
+  - department mail endpoints, background consumers, department heads, and Floor Manager now use the same backend-selection path
+  - real API verification confirmed sent mail appears in `/api/departments/mail/inbox/{department}` and produces a real `/api/tasks/{department}` task
+- frontend deployment transport cleanup advanced again:
+  - shared `buildApiUrl()` helper now exists in [quantmind-ide/src/lib/api.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/api.ts)
+  - [EAManagerView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/EAManagerView.svelte), [KillSwitchView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/KillSwitchView.svelte), [SharedAssetsView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/SharedAssetsView.svelte), [departmentMailStore.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/departmentMailStore.ts), and [departmentChatStore.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/departmentChatStore.ts) no longer hardcode `localhost:8000`
+- live API router registration is now corrected for local/dev mode:
+  - `src/api/server.py` now treats missing `NODE_ROLE` as `local` in the dynamic include helpers
+  - the real `/api/ea` router is imported and mounted again
+  - `mcp_mt5` and `ea_lifecycle` import paths were made lazy enough that missing MT5/Desktop-only dependencies no longer prevent backend startup
+  - live OpenAPI now includes `/api/ea/tags`, `/api/kill-switch/status`, `/api/assets`, `/api/departments/mail/inbox/{department}`, and `/api/tasks/{department}`
+- the real `/api/ea/tags` endpoint is no longer broken:
+  - stale `DatabaseManager.get_instance()` calls in [ea_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ea_endpoints.py) were migrated to the current `DatabaseManager()` session API
+  - live API verification now returns `200` with `available_tags`, `bot_tags`, and `prop_firm_tags`
+- compatibility backend routes now exist for the current UI on three more slices:
+  - [kill_switch_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/kill_switch_endpoints.py) now exposes `/api/kill-switch/bots` and `/api/kill-switch/history` using real trading/kill-switch state
+  - [ide_assets.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_assets.py) plus [ide_handlers_assets.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_assets.py) now expose `/api/assets/shared`, create/delete/history/rollback routes, and real filesystem-backed asset operations
+  - [ide_video_ingest.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_video_ingest.py) now exposes `/api/video-ingest/start` as a compatibility alias of the real ingest flow
+  - [ea_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ea_endpoints.py) now exposes `/api/ea/bots` and `/api/ea/reviews` compatibility routes
+  - [EAManagerView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/EAManagerView.svelte) now consumes only live tags and normalizes response dates instead of relying on fallback mock tags
+- real verification completed for the new compatibility routes:
+  - `GET /api/kill-switch/bots -> 200 []`
+  - `GET /api/kill-switch/history -> 200 []`
+  - `GET /api/assets/shared -> 200 []`
+  - `GET /api/ea/bots -> 200 []`
+  - `GET /api/ea/reviews -> 200 []`
+  - `POST /api/video-ingest/start -> 200`
+  - asset CRUD probe:
+    - `POST /api/assets`
+    - `GET /api/assets/{id}/history`
+    - `GET /api/assets/{id}/content`
+    - `POST /api/assets/{id}/rollback`
+    - `DELETE /api/assets/{id}`
+    all succeeded against the real filesystem-backed handler
+- current tooling blocker remains external to app logic:
+  - Chrome devtools MCP transport still fails with `Transport closed` even after local browser/native-host cleanup attempts
+  - do not claim fresh Chrome verification for slices completed after that failure unless the transport is restored
+- VPS/deployment transport cleanup advanced again on active agent and ops paths:
+  - [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/AgentPanel.svelte), [agentManager.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/agents/agentManager.ts), [eaStore.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/eaStore.ts), [commandHandler.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/commandHandler.ts), [mt5Scanner.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/mt5Scanner.ts), [copilotKillSwitchService.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/copilotKillSwitchService.ts), [NewsView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/NewsView.svelte), [MainContent.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/MainContent.svelte), [TRDEditor.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/TRDEditor.svelte), [BrokerConnectModal.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/BrokerConnectModal.svelte), and [BacktestResultsView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/BacktestResultsView.svelte) no longer hardcode `localhost:8000`
+  - agent skill transports now route through the shared base resolver too:
+    - [copilotSkills.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/agents/skills/copilotSkills.ts)
+    - [analystSkills.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/agents/skills/analystSkills.ts)
+    - [quantcodeSkills.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/agents/skills/quantcodeSkills.ts)
+  - [config/api.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/config/api.ts) now resolves T1/T2 base URLs through the normalized config getters, which is required for split-host VPS deployment
+  - [settingsStore.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/settingsStore.ts) now seeds connection defaults from the shared API config instead of pinning both backends to local loopback
+- no-mock compatibility cleanup advanced on live ops routes:
+  - [kill_switch_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/kill_switch_endpoints.py) now returns `None` for unavailable P&L/position fields instead of synthetic zeroes, and history no longer invents `strategy_used` / preserved P&L
+  - [ea_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ea_endpoints.py) now derives EA manager rows from real file inventory plus `BotRegistry` manifests/stats when present, instead of emitting fabricated author/performance data
+  - [KillSwitchView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/KillSwitchView.svelte) and [EAManagerView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/EAManagerView.svelte) now render unavailable/unknown states honestly instead of assuming numeric zeroes
+  - [BacktestResultsView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/BacktestResultsView.svelte) no longer falls back to demo/mock backtest or PBO results when the real backend has no data; it now surfaces honest empty/error state instead
+- no-mock router/trading board cleanup advanced on 2026-04-01:
+  - [risk_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/risk_endpoints.py) no longer fabricates demo strategy rows from `_get_demo_strategy_states()` when `/api/risk/router/state` has no live router data
+  - [StrategyRouterView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/StrategyRouterView.svelte) now hydrates router state, market state, bot inventory, auctions, rankings, correlations, house-money state, and Kelly engine status from live `/api/router/*` and `/api/risk/physics` endpoints instead of booting with seeded fake cards
+  - [MarketOverview.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/MarketOverview.svelte), [RankingsTab.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/RankingsTab.svelte), [CorrelationsTab.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/CorrelationsTab.svelte), and [KellyCriterionTab.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/KellyCriterionTab.svelte) now render honest empty/unavailable states for live-empty and MT5-unavailable conditions instead of assuming synthetic data exists
+  - router toggle and run-auction wiring in [StrategyRouterView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/StrategyRouterView.svelte) now matches the live backend contract:
+    - toggle uses `/api/router/toggle?active=...`
+    - auction consumes `result.auction`
+  - focused verification passed:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_strategy_router_regime.py -k "router_state_returns_empty"`
+    - `npm --prefix quantmind-ide exec vitest run src/lib/components/StrategyRouterView.data-contract.test.ts src/lib/components/KellyCriterionTab.empty-state.test.ts`
+    - `npx --prefix quantmind-ide svelte-check --workspace quantmind-ide/src/lib/components/StrategyRouterView.svelte --no-tsconfig --diagnostic-sources "svelte"`
+    - `npx --prefix quantmind-ide svelte-check --workspace quantmind-ide/src/lib/components/KellyCriterionTab.svelte --no-tsconfig --diagnostic-sources "svelte"`
+    - `npx --prefix quantmind-ide svelte-check --workspace quantmind-ide/src/lib/components/MarketOverview.svelte --no-tsconfig --diagnostic-sources "svelte"`
+  - live API verification after restarting the local backend:
+    - `GET /api/risk/router/state -> 200 {"strategies":[]}`
+    - `GET /api/router/state -> 200`
+    - `GET /api/router/bots?limit=5 -> 200 {"items":[]...}`
+    - `GET /api/router/market -> 503 "MT5 adapter not connected"` which is the expected honest unavailable state for local dev
+- mail/task detail surfaces improved on 2026-04-01 using live data only:
+  - [task_sse_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/task_sse_endpoints.py) now preserves task provenance fields from `TodoItem` into `/api/tasks/{department}` and `/api/sse/tasks/{department}`:
+    - `description`
+    - `source_dept`
+    - `message_type`
+    - `workflow_id`
+    - `kanban_card_id`
+    - `mail_message_id`
+    - `updated_at`
+  - [DepartmentKanban.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/department-kanban/DepartmentKanban.svelte), [DepartmentKanbanColumn.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/department-kanban/DepartmentKanbanColumn.svelte), [DepartmentKanbanCard.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/department-kanban/DepartmentKanbanCard.svelte), and [types.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/department-kanban/types.ts) now render a persistent task detail pane with source department, message type, workflow id, mail id, kanban id, timestamps, and full description instead of tiny opaque cards only
+  - [DepartmentMailPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/trading-floor/DepartmentMailPanel.svelte) now uses a split inbox/detail workspace so the list stays visible while reading a message; list rows also show body previews and selected-state highlighting
+  - focused verification passed:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_task_sse_endpoints.py`
+    - `npm --prefix quantmind-ide exec vitest run src/lib/components/department-kanban/DepartmentKanban.detail-pane.test.ts src/lib/components/trading-floor/DepartmentMailPanel.split-view.test.ts`
+    - `npx --prefix quantmind-ide svelte-check --workspace quantmind-ide/src/lib/components/department-kanban/DepartmentKanban.svelte --no-tsconfig --diagnostic-sources "svelte"`
+    - `npx --prefix quantmind-ide svelte-check --workspace quantmind-ide/src/lib/components/trading-floor/DepartmentMailPanel.svelte --no-tsconfig --diagnostic-sources "svelte"`
+  - live API verification after a fresh runtime dispatch to Research:
+    - `POST /api/trading-floor/delegate -> 200`
+    - after consumer polling, `GET /api/tasks/research -> 200` with task keys including `description`, `source_dept`, `message_type`, `kanban_card_id`, and `mail_message_id`
+- focused verification for the 2026-04-01 VPS pass:
+  - `python3 -m compileall src/api/kill_switch_endpoints.py src/api/ea_endpoints.py`
+  - `npm --prefix quantmind-ide exec vitest run src/lib/components/shell/AgentPanel.context-attachment.test.ts`
+  - live stdlib HTTP probes:
+    - `GET /api/kill-switch/bots -> 200 []`
+    - `GET /api/kill-switch/history -> 200 []`
+    - `GET /api/ea/bots -> 200 []`
+    - `GET /api/ea/reviews -> 200 []`
 - the long 2026-04-01 live UI audit has now been condensed into the handoff set so it survives compaction:
   - source summary added in [original-user-prompts.md](/home/mubarkahimself/Desktop/QUANTMINDX/docs/handoffs/2026-03-31-agentic-fix/original-user-prompts.md)
   - actionable backlog added in [progress.md](/home/mubarkahimself/Desktop/QUANTMINDX/docs/handoffs/2026-03-31-agentic-fix/progress.md)
-- next frontend slice is richer mail/task detail views, followed by portfolio/shared-assets alignment and stale test-data cleanup
+- next frontend slice is richer mail/task detail views, followed by portfolio/shared-assets alignment, remaining localhost/API-base cleanup, and stale test-data cleanup
+- another deployment/no-mock slice landed after the last handoff refresh:
+  - [workflow_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/workflow_endpoints.py) no longer self-calls `localhost:8000` for workflow approval lookups; it now reads local approval-gate state directly
+  - workflow pending approval checks now include both `pending` and `pending_review`, so Alpha Forge review gates are visible again through `/api/workflows/{workflow_id}/approvals/pending`
+  - [ide_handlers_broker.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_broker.py) no longer fabricates broker-account rows when no live entries exist; `/api/trading/broker-accounts` now returns `[]`
+  - [settings_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/settings_endpoints.py) now resolves `APP_DIR` dynamically and reports deploy-version health from the current process instead of a loopback self-probe
+  - [workshop_copilot_service.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/services/workshop_copilot_service.py) now prefers `INTERNAL_API_BASE_URL` for internal Floor Manager delegation
+  - [BotStatusGrid.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/live-trading/BotStatusGrid.svelte) and [CloseAllModal.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/live-trading/CloseAllModal.svelte) no longer invent per-position preview rows from aggregate `open_positions`
+  - focused verification passed:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_ide_handlers_broker.py tests/api/test_workflow_endpoints_local.py tests/api/test_workshop_copilot.py -k 'internal_api_base_url_takes_priority or workflow_approvals or pending_approvals or broker_accounts_returns_empty'`
+    - `python3 -m compileall src/api/workflow_endpoints.py src/api/settings_endpoints.py src/api/services/workshop_copilot_service.py src/api/ide_handlers_broker.py`
+    - `npx --prefix quantmind-ide svelte-check --workspace quantmind-ide/src/lib/components/live-trading/BotStatusGrid.svelte --no-tsconfig --diagnostic-sources svelte`
+    - `npx --prefix quantmind-ide svelte-check --workspace quantmind-ide/src/lib/components/live-trading/CloseAllModal.svelte --no-tsconfig --diagnostic-sources svelte`
+  - live API verification passed:
+    - `GET /api/settings/deploy/version -> {"health":"healthy","branch":"main","commit":"017195b1","app_dir":"/home/mubarkahimself/Desktop/QUANTMINDX"}`
+    - `GET /api/trading/broker-accounts -> []`
+    - `POST /api/approval-gates` followed by `GET /api/workflows/{workflow_id}/approvals -> total=1`
+    - `GET /api/workflows/{workflow_id}/approvals/pending -> has_pending=true`
+- DB/data-pipeline deployment hardening advanced on 2026-04-01:
+  - [docker-compose.production.yml](/home/mubarkahimself/Desktop/QUANTMINDX/docker-compose.production.yml) now includes a persistent `redis` service plus `REDIS_URL`, `REDIS_HOST`, `REDIS_PORT`, and `INTERNAL_API_BASE_URL` wiring for `quantmind-api`
+  - [docker-compose.contabo.yml](/home/mubarkahimself/Desktop/QUANTMINDX/docker-compose.contabo.yml) no longer health-checks the Prefect worker against the server API port; it now checks that the worker process itself is alive
+  - [.env.example](/home/mubarkahimself/Desktop/QUANTMINDX/.env.example) now documents canonical production env vars for shared Redis, internal API routing, and `PREFECT_API_URL`
+  - [svss_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/svss_endpoints.py), [svss_service.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/risk/svss_service.py), [svss_rvol_consumer.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/risk/svss_rvol_consumer.py), and [svss_engine.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/risk/svss_engine.py) now resolve Redis from `REDIS_URL` instead of pinning production data paths to loopback Redis only
+  - focused verification passed:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_svss_endpoints.py tests/risk/test_svss_redis_config.py tests/risk/test_svss_engine_config.py`
+    - `python3 -m compileall src/api/svss_endpoints.py src/risk/svss_service.py src/risk/svss_rvol_consumer.py src/risk/svss_engine.py`
+    - `python3 - <<'PY' ... yaml.safe_load(...)` parse check passed for both compose files
+- deployment-storage hardening advanced further on 2026-04-01:
+  - [engine.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/database/engine.py) now applies SQLite-only `check_same_thread` / `StaticPool` settings only when the DB URL is actually SQLite; Postgres/MySQL URLs are no longer booted with the wrong pool configuration
+  - [node_update_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/node_update_endpoints.py) now resolves version metadata through `QUANTMIND_DATA_DIR` or the mounted app data directory instead of writing to absolute `/data/...`
+  - [notification_config_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/notification_config_endpoints.py) now logs notification artifacts under the same env-backed data directory instead of hardcoding `/data/notifications`
+  - focused verification passed:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/database/test_engine_config.py tests/api/test_node_update_endpoints.py tests/api/test_notification_config.py -k 'quantmind_data_dir or send_notification_uses_quantmind_data_dir or postgres_engine_avoids_sqlite_only_kwargs or sqlite_engine_keeps_sqlite_specific_kwargs'`
+    - `python3 -m compileall src/database/engine.py src/api/node_update_endpoints.py src/api/notification_config_endpoints.py`
+- deployment hardening continued on 2026-04-02:
+  - [encryption.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/database/encryption.py) now honors `QUANTMIND_MACHINE_KEY_FILE` so Fernet key material can live on a persisted volume instead of being trapped under the container home directory
+  - [docker-compose.production.yml](/home/mubarkahimself/Desktop/QUANTMINDX/docker-compose.production.yml) now mounts `quantmind-state-data:/app/state` and sets `QUANTMIND_MACHINE_KEY_FILE=/app/state/machine.key`
+  - [.env.example](/home/mubarkahimself/Desktop/QUANTMINDX/.env.example) now documents `QUANTMIND_MACHINE_KEY_FILE`
+  - [config.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/config.py) now exposes `get_internal_api_base_url()` with fallback order `INTERNAL_API_BASE_URL -> NODE_BACKEND_URL -> API_BASE_URL -> QUANTMIND_API_URL -> 127.0.0.1`
+  - [knowledge_uploads_tool.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/tools/knowledge/knowledge_uploads_tool.py), [classifier.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/intent/classifier.py), and [node_update_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/node_update_endpoints.py) now use env-aware split-host API resolution instead of pinning backend-to-backend calls to `localhost:8000`
+  - [auth/config.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/auth/config.py) still prefers `API_BASE_URL` for public Auth0 callback URLs, but now falls back cleanly through the shared resolver instead of defaulting straight to `localhost`
+  - focused verification passed:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/database/test_encryption_config.py tests/test_config.py tests/auth/test_auth_config.py tests/agents/tools/knowledge/test_knowledge_uploads_tool.py tests/intent/test_classifier.py tests/api/test_node_update_endpoints.py -k 'machine_key_file_uses_env_override or internal_api_base_url or auth0_config or list_available_uploads_uses_internal_api_base_url or execute_node_update_uses_internal_api_base_url or get_node_url_prefers_public_or_internal_api_base'`
+    - `python3 -m compileall src/database/encryption.py src/config.py src/auth/config.py src/agents/tools/knowledge/knowledge_uploads_tool.py src/intent/classifier.py src/api/node_update_endpoints.py`
+- shared-knowledge bridge advanced on 2026-04-02:
+  - Shared Assets now exposes real scraped articles plus uploaded books/articles/docs through the live backend
+  - Research `Articles` and `Books` now hydrate from the same real filesystem-backed sources instead of diverging
+- new upload route: [ide_assets.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_assets.py) `POST /api/assets/upload`
+- canvas-context attachment work advanced on 2026-04-02:
+  - runtime context is being upgraded from summary-only to resource-aware attachments
+  - `research`, `shared-assets`, `risk`, `flowforge`, `live-trading`, `development`, `portfolio`, and `trading` now publish `attachable_resources`
+  - `AgentPanel` can now attach specific resource records from the current canvas, not only full canvas contexts
+  - `WorkshopCanvas` now supports the same specific-resource attachment path to Copilot
+  - `PortfolioCanvas` race-board loading now uses the shared API transport instead of raw `/api` fetches
+  - `timeout 120s npm --prefix quantmind-ide run build` passed after the multi-canvas runtime-publication patch
+  - `npm --prefix quantmind-ide run check` now executes after installing `svelte-check`; current failures are from existing repo-wide diagnostics rather than missing tooling
+- frontend transport cleanup follow-up advanced on 2026-04-02:
+  - audit confirmed [TRDEditor.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/TRDEditor.svelte), [BrokerConnectModal.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/BrokerConnectModal.svelte), and [BacktestResultsView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/BacktestResultsView.svelte) were already using shared URL helpers
+  - [node-health.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/node-health.ts), [provenance.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/provenance.ts), [alpha-forge.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/alpha-forge.ts), [approvalStore.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/approvalStore.ts), [WorkshopCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/WorkshopCanvas.svelte), [settingsStore.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/settingsStore.ts), [trading.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/trading.ts), [risk.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/risk.ts), and [MorningDigestCard.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/live-trading/MorningDigestCard.svelte) no longer bypass the shared transport layer for their active requests
+  - targeted leak scan on the just-touched files returned no remaining `localhost`, `127.0.0.1`, or raw same-origin `/api` fetch matches
+  - `timeout 120s npm --prefix quantmind-ide run build` passed again after this follow-up slice
+- settings surface transport cleanup advanced further on 2026-04-02:
+  - [SettingsView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/SettingsView.svelte) now uses the shared API layer for its settings/provider/MCP/agent-config/model-config flows instead of raw same-origin `/api` calls
+  - [AgentsPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/settings/AgentsPanel.svelte), [DeployPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/settings/DeployPanel.svelte), and [ServerHealthPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/settings/ServerHealthPanel.svelte) were rechecked and remained clean
+  - the only remaining `localhost` matches in `SettingsView.svelte` are placeholder endpoint strings for Redis/ZMQ connection fields, not live transport code
+  - `timeout 120s npm --prefix quantmind-ide run build` passed after the `SettingsView` cleanup
+- settings-panel transport cleanup advanced on 2026-04-02:
+  - [DeployPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/settings/DeployPanel.svelte), [AgentsPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/settings/AgentsPanel.svelte), and [ServerHealthPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/settings/ServerHealthPanel.svelte) now use shared API helpers instead of raw same-origin fetches
+  - `timeout 120s npm --prefix quantmind-ide run build` passed again after the settings-panel cleanup
+  - [SettingsView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/SettingsView.svelte) still contains a legacy raw `/api` fetch cluster and is the next likely cleanup target if that view remains reachable
+- `NODE_ROLE` router isolation is now actually enforced for the split-node deployment topology:
+  - [server.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/server.py) no longer unconditionally re-includes backend-management routes such as settings, providers, copilot, floor-manager, and workshop/copilot bridges after the role-specific include logic
+  - [ide_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_endpoints.py) now normalizes legacy node-role aliases and mounts IDE trading/MT5 routers only on `local` and `node_trading`, removing `/api/trading/bots` from `node_backend`
+  - direct route inspection now confirms:
+    - `node_trading` exposes trading routes but not backend-management surfaces
+    - `node_backend` exposes backend-management surfaces but not IDE trading-bot routes
+  - focused verification passed:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_node_role_route_isolation.py`
+    - `python3 -m compileall src/api/server.py src/api/ide_endpoints.py`
+- another deployment-grade hardening slice landed after the role-isolation pass:
+  - [.github/workflows/deploy-contabo.yml](/home/mubarkahimself/Desktop/QUANTMINDX/.github/workflows/deploy-contabo.yml) now writes `all_passed` and `deploy_sha` to `$GITHUB_OUTPUT`, exposes `deploy_sha` as a real job output, and deploys via `docker compose -f docker-compose.production.yml -f docker-compose.contabo.yml up -d --build --remove-orphans` instead of `systemctl restart quantmind-api`
+  - [.github/workflows/rollback.yml](/home/mubarkahimself/Desktop/QUANTMINDX/.github/workflows/rollback.yml) now rolls back through the same Docker Compose topology instead of `git reset --hard` plus `systemctl`
+  - [workflow_orchestrator.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/router/workflow_orchestrator.py) and [workshop_copilot_service.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/services/workshop_copilot_service.py) now both use the shared `get_internal_api_base_url()` resolver instead of open-coding loopback fallbacks
+  - [mcp_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/mcp_endpoints.py) now seeds the default PageIndex MCP env from `PAGEINDEX_*_URL` env vars with container-network defaults (`pageindex-articles`, `pageindex-books`, `pageindex-logs`) rather than desktop localhost ports
+  - [copilot.yaml](/home/mubarkahimself/Desktop/QUANTMINDX/config/agents/copilot.yaml) no longer ships with `default_broker: exness_demo_mock`
+  - [brokers.yaml](/home/mubarkahimself/Desktop/QUANTMINDX/config/brokers.yaml) no longer enables the MT5 mock broker or Binance spot testnet by default
+  - [portfolio_head.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/portfolio_head.py) no longer returns baked-in demo equity, P&L, attribution, drawdown, or correlation rows; it now reads live broker registry state plus persisted broker/trade/house-money/performance tables and otherwise returns honest empty data
+  - focused verification passed:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/agents/departments/heads/test_portfolio_head.py tests/agents/departments/test_epic7_p1_department_heads.py -k 'portfolio'`
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_workshop_copilot.py -k 'internal_api_base_url_takes_priority'`
+    - `python3 -m compileall src/agents/departments/heads/portfolio_head.py src/router/workflow_orchestrator.py src/api/services/workshop_copilot_service.py src/api/mcp_endpoints.py`
+    - YAML parse check passed for `.github/workflows/deploy-contabo.yml` and `.github/workflows/rollback.yml`
+
+- 2026-04-02 follow-up verification/fix slice:
+  - Research `Books` now has a real upload action in-canvas, wired to `POST /api/assets/upload` (category `Books`) with no mock adapter.
+  - Research `Books` now merges live `/api/knowledge/books` with Shared Assets `Books` from `/api/assets/shared`, so uploaded shared books surface in Research immediately.
+  - Workshop/Copilot session operations were re-verified in browser:
+    - individual delete works
+    - clear-history works
+    - per-canvas session isolation still holds.
+  - human-to-agent mail UI path was re-verified:
+    - sent from Trading inbox compose modal to Research
+    - delivery confirmed in Research mailbox panel (`UI mail smoke test`).
+  - build and targeted checks passed:
+    - `cd quantmind-ide && npx vitest run src/lib/components/canvas/ResearchCanvas.article-groups.test.ts src/lib/components/shell/AgentPanel.session-management.test.ts src/lib/components/trading-floor/CopilotPanel.session-parity.test.ts src/lib/components/canvas/WorkshopCanvas.session-parity.test.ts src/lib/components/canvas/WorkshopCanvas.assets-source.test.ts`
+    - `cd quantmind-ide && npx svelte-check --workspace src/lib/components/canvas/ResearchCanvas.svelte --no-tsconfig --diagnostic-sources svelte`
+    - `cd quantmind-ide && npm run build`
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/database/test_engine_config.py tests/database/test_db_manager.py tests/api/test_node_update_endpoints.py`
+  - planning-doc/codebase comparison from the low-cost analysis worker was saved to:
+    - [gap-report.md](/home/mubarkahimself/Desktop/QUANTMINDX/docs/handoffs/2026-03-31-agentic-fix/gap-report.md)
+  - deployment/data-path hardening notes from the low-cost deployment worker are now reflected in current tracked diffs for:
+    - [.env.example](/home/mubarkahimself/Desktop/QUANTMINDX/.env.example)
+    - [docker-compose.production.yml](/home/mubarkahimself/Desktop/QUANTMINDX/docker-compose.production.yml)
+    - [server.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/server.py)
+    - [tiered_storage.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/database/tiered_storage.py)
+- 2026-04-02 workshop/session-truthfulness + check-hygiene follow-up:
+  - Workshop no longer shows a fake `Today's session` row after `Clear history`; empty state now renders `No recent chats`.
+  - browser recheck confirms:
+    - empty workshop history renders `No recent chats`
+    - `New Chat` immediately creates a persisted recent row
+    - skills clicks remain in `Skills Catalogue` and queue into chat draft
+  - `agentSessions.ts` no longer calls undefined `getSessionStore()`; it now reloads through `sessionStore.loadSession(...)`.
+  - strict-runes ref typing errors were cleaned in:
+    - [BacktestRunner.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/BacktestRunner.svelte)
+    - [SlashCommandPalette.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/agent-panel/SlashCommandPalette.svelte)
+    - [InputArea.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/agent-panel/InputArea.svelte)
+  - check-environment baseline improved:
+    - [tsconfig.json](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/tsconfig.json) now includes `node` and `vitest/globals` types
+    - `@types/node` + `@types/uuid` installed
+    - `npm run check` improved from `478 errors / 169 files` to `473 errors / 165 files` (warnings unchanged).
+  - follow-up hardening in the same cycle:
+    - [MemoriesSettings.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/agent-panel/settings/MemoriesSettings.svelte) fixed from migration-broken script to strict typed logic with no random/mock counters.
+    - [settingsStore.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/settingsStore.ts) now initializes and normalizes skills/permissions for all agent types (including department heads + floor manager).
+    - latest global check snapshot after these follow-ups: `446 errors / 164 files` (warnings now `1107`).
+    - mail system still verified live after these changes (Trading compose -> Research inbox delivery confirmed with `Mail smoke 2`).
+
+- 2026-04-02 no-mock + connectivity follow-up:
+  - shared-assets frontend API now consumes backend-only data paths:
+    - [sharedAssetsApi.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/api/sharedAssetsApi.ts) dropped `MOCK_ASSETS`
+    - grouping now resolves by `category` or canonical `type` (`asset.category ?? asset.type ?? asset.asset_type`) to avoid false-empty Shared Assets tiles
+    - per-type list now merges preferred `/api/assets?category=...` records with `/api/assets/shared` compatibility records (dedup by id)
+  - Workshop sidebar cleanup:
+    - [WorkshopCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/WorkshopCanvas.svelte) bottom `Settings` item removed as requested
+    - [WorkshopCanvas.assets-source.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/WorkshopCanvas.assets-source.test.ts) updated to lock that contract
+  - new guard test:
+    - [sharedAssetsApi.contract.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/api/sharedAssetsApi.contract.test.ts)
+  - focused verification passed:
+    - `cd quantmind-ide && npx vitest run src/lib/api/sharedAssetsApi.contract.test.ts src/lib/components/canvas/WorkshopCanvas.assets-source.test.ts src/lib/components/canvas/WorkshopCanvas.session-parity.test.ts src/lib/components/canvas/WorkshopCanvas.skills-behavior.test.ts`
+    - `cd quantmind-ide && npx svelte-check --workspace src/lib/components/canvas/WorkshopCanvas.svelte --no-tsconfig --diagnostic-sources svelte`
+    - `cd quantmind-ide && npx svelte-check --workspace src/lib/components/canvas/SharedAssetsCanvas.svelte --no-tsconfig --diagnostic-sources svelte`
+  - runtime/server restart status:
+    - backend healthy: `GET http://127.0.0.1:8000/health -> {"status":"healthy","service":"QuantMind IDE API"}`
+    - frontend serving on `http://127.0.0.1:3001/`
+    - Chrome launched directly for web validation (`google-chrome --new-window http://127.0.0.1:3001/`)
+  - limitation in this session:
+    - Chrome DevTools MCP tool remains unavailable (`Transport closed`), so direct browser launch + API/runtime verification was used as fallback.
+
+- 2026-04-02 agent-panel parity + research categorization follow-up:
+  - [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte) now includes `Clear history` for department panel sessions (bulk delete parity with Copilot history controls).
+  - [ResearchCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/ResearchCanvas.svelte) now groups articles using `category || source_category || tags[0]`, preserving grouped scraped-article display when backend payload shape varies.
+  - tests/verification:
+    - [AgentPanel.session-management.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.session-management.test.ts)
+    - [ResearchCanvas.article-groups.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/ResearchCanvas.article-groups.test.ts)
+    - `cd quantmind-ide && npx vitest run src/lib/components/shell/AgentPanel.session-management.test.ts src/lib/components/canvas/ResearchCanvas.article-groups.test.ts`
+    - `cd quantmind-ide && npx svelte-check --workspace src/lib/components/shell/AgentPanel.svelte --no-tsconfig --diagnostic-sources svelte`
+    - `cd quantmind-ide && npx svelte-check --workspace src/lib/components/canvas/ResearchCanvas.svelte --no-tsconfig --diagnostic-sources svelte`
+
+- 2026-04-03 deprecated-agent compatibility hardening:
+  - canonical model-config IDs are now department-era only (`floor_manager`, `research`, `development`, `trading`, `risk`, `portfolio`) in [model_config_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/model_config_endpoints.py)
+  - legacy IDs (`copilot`, `analyst`, `quantcode`) remain accepted only as API aliases and map to canonical IDs
+  - Settings model-save flow in [SettingsView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/SettingsView.svelte) now saves only canonical IDs and no longer keeps a dedicated legacy Copilot config block
+  - workshop session identity was canonicalized:
+    - [chat_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/chat_endpoints.py) now creates workshop sessions as `floor-manager`
+    - [WorkshopCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/WorkshopCanvas.svelte) now lists only `floor-manager` sessions
+  - Chrome verification confirms Settings -> Agents no longer shows dedicated legacy Copilot/Analyst/QuantCode entries
+  - verification passed:
+    - `python3 -m compileall src/api/model_config_endpoints.py src/api/chat_endpoints.py src/api/server.py`
+    - `cd quantmind-ide && npx svelte-check --workspace src/lib/components/SettingsView.svelte --no-tsconfig --diagnostic-sources svelte`
+    - `cd quantmind-ide && npx svelte-check --workspace src/lib/components/canvas/WorkshopCanvas.svelte --no-tsconfig --diagnostic-sources svelte`
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_chat_per_agent.py tests/api/test_chat_endpoints.py`
+  - remaining compatibility surface intentionally left mounted for now:
+    - `/api/copilot/*`
+    - `/api/workshop/copilot/*`
+
+- 2026-04-03 workspace contract + session/tool envelope standardization:
+  - backend workspace resource contract implemented with real-data manifest/search/read:
+    - [workspace_resource_service.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/services/workspace_resource_service.py)
+    - [canvas_context_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/canvas_context_endpoints.py)
+  - session contract now normalized to `interactive_session | workflow_session`:
+    - [chat_session_service.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/services/chat_session_service.py)
+    - [chat_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/chat_endpoints.py)
+  - department-head mutating tools now return structured envelopes with `ui_projection_event`:
+    - [base.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/base.py)
+  - frontend now consumes backend natural resource search and carries contract fields in chat context:
+    - [canvasContextService.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/canvasContextService.ts)
+    - [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte)
+    - [WorkshopCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/WorkshopCanvas.svelte)
+    - [CopilotPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/trading-floor/CopilotPanel.svelte)
+  - focused verification passed:
+    - `compileall` for touched backend files
+    - `pytest` (`tests/api/test_canvas_context_endpoints.py`, `tests/api/test_chat_per_agent.py`) -> passed
+    - `svelte-check` on touched frontend files -> passed
+  - live Chrome/API verification passed for:
+    - `/api/canvas-context/resources/search`
+    - `/api/canvas-context/resources/manifest`
+    - `/api/canvas-context/resources/read/{resource_id}`
+  - tracked follow-up:
+    - Settings modal close trap still observed during navigation and remains queued.
 
 ## Deferred Context Reads
 

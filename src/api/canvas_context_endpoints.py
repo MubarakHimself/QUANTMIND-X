@@ -1,12 +1,14 @@
 """Canvas Context API Endpoints.
 
-Provides endpoints for loading CanvasContextTemplate and assembling canvas context.
+Provides endpoints for:
+- loading CanvasContextTemplate + memory identifiers
+- workspace resource contract manifest/search/read
 """
 import logging
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from src.canvas_context.loader import (
@@ -15,6 +17,7 @@ from src.canvas_context.loader import (
     get_canvas_list,
     SUPPORTED_CANVASES,
 )
+from src.api.services.workspace_resource_service import get_workspace_resource_service
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +40,21 @@ class CanvasContextResponse(BaseModel):
     memory_identifiers: list[str] = []
     session_id: Optional[str] = None
     loaded_at: str
+
+
+class WorkspaceResourceManifestRequest(BaseModel):
+    canvases: Optional[list[str]] = None
+    tabs: Optional[list[str]] = None
+    types: Optional[list[str]] = None
+    limit: int = 300
+
+
+class WorkspaceResourceSearchRequest(BaseModel):
+    query: str
+    canvases: Optional[list[str]] = None
+    tabs: Optional[list[str]] = None
+    types: Optional[list[str]] = None
+    limit: int = 20
 
 
 @router.get("/templates")
@@ -149,3 +167,61 @@ async def health_check():
         "status": "healthy",
         "supported_canvases": list(SUPPORTED_CANVASES),
     }
+
+
+@router.post("/resources/manifest")
+async def workspace_resource_manifest(request: WorkspaceResourceManifestRequest):
+    """Return manifest-first workspace resource descriptors."""
+    try:
+        svc = get_workspace_resource_service()
+        return svc.manifest(
+            canvases=request.canvases,
+            tabs=request.tabs,
+            types=request.types,
+            limit=request.limit,
+        )
+    except Exception as e:
+        logger.error(f"Failed to build workspace resource manifest: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/resources/search")
+async def workspace_resource_search(request: WorkspaceResourceSearchRequest):
+    """Natural resource search for agents and UI attachment menus."""
+    try:
+        svc = get_workspace_resource_service()
+        resources = svc.search_resources(
+            query=request.query,
+            canvases=request.canvases,
+            tabs=request.tabs,
+            types=request.types,
+            limit=request.limit,
+        )
+        return {
+            "query": request.query,
+            "count": len(resources),
+            "resources": resources,
+        }
+    except Exception as e:
+        logger.error(f"Failed to search workspace resources: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/resources/read/{resource_id:path}")
+async def workspace_resource_read(
+    resource_id: str,
+    max_chars: int = Query(120000, ge=1024, le=500000),
+):
+    """Read one resource by resource_id from the workspace contract."""
+    try:
+        svc = get_workspace_resource_service()
+        return svc.read_resource(resource_id, max_chars=max_chars)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to read workspace resource {resource_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

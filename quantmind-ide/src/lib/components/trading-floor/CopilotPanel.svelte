@@ -20,12 +20,14 @@
     MessageSquarePlus,
     History,
     Trash2,
+    Pencil,
+    Check,
     MessageCircle,
     Power,
     Play,
   } from "lucide-svelte";
   import AgentModelSelector from "$lib/components/AgentModelSelector.svelte";
-  import { chatApi, type ChatSession } from "$lib/api/chatApi";
+  import { chatApi, type ChatSession, type StoredChatMessage } from "$lib/api/chatApi";
   import {
     departmentChatStore,
     activeDelegatedTasks,
@@ -41,17 +43,21 @@
   import { canvasContextStore } from "$lib/stores/canvas";
   import { serverHealthAlertEvent, getLastPersistedAlert, clearServerHealthAlert } from "$lib/stores/serverHealthAlerts";
   import { listAllAssets, type SharedAsset } from "$lib/api/sharedAssetsApi";
+  import { API_CONFIG } from "$lib/config/api";
+  import { marked } from 'marked';
+  import DOMPurify from 'dompurify';
 
-  interface Props {
-    isCopilot?: boolean;
+  // Render markdown safely — only for assistant messages
+  function renderMarkdown(text: string): string {
+    if (!text) return '';
+    const html = marked.parse(text, { breaks: true, gfm: true }) as string;
+    return DOMPurify.sanitize(html);
   }
-
-  let { isCopilot = false }: Props = $props();
 
   const dispatch = createEventDispatcher();
 
-  // API base URL
-  const API_BASE = "http://localhost:8000/api";
+  // API base URL — use config to support remote servers
+  const API_BASE = API_CONFIG.API_BASE;
 
   // Configurable conversation history limit (Story 5.5 - AC #4)
   const CONVERSATION_HISTORY_LIMIT = 10;
@@ -61,6 +67,9 @@
   let sessions: ChatSession[] = $state([]);
   let currentSessionId: string | null = $state(null);
   let chatHistoryLoading = $state(false);
+  let sessionActionLoading = $state(false);
+  let renamingSessionId: string | null = $state(null);
+  let renameSessionTitle = $state('');
 
   // Story 5.7: NL System Commands - pending confirmation state
   let pendingConfirmation: PendingConfirmation | null = $state(null);
@@ -82,6 +91,14 @@
     last30Days: [],
     older: [],
   });
+
+  let sessionGroups = $derived([
+    { label: 'Today', items: groupedSessions.today },
+    { label: 'Yesterday', items: groupedSessions.yesterday },
+    { label: 'Previous 7 Days', items: groupedSessions.last7Days },
+    { label: 'Previous 30 Days', items: groupedSessions.last30Days },
+    { label: 'Older', items: groupedSessions.older },
+  ]);
 
   // Floor Manager state
   let message = $state("");
@@ -107,6 +124,8 @@
   let cursorVisible = $state(true);
   let autoScroll = $state(true);
   let currentToolCall = $state<{ tool: string; status: "started" | "completed" } | null>(null);
+  let fmModel = $state<string | null>(null);
+  let fmProvider = $state<string | null>(null);
 
   // Copilot Kill Switch state (Story 5.6)
   let killSwitchActive = $state(false);
@@ -154,6 +173,42 @@
         )
       : allAssets
   );
+
+  // ── Workflow Templates (Story C1) ──────────────────────────────────────────
+  interface WorkflowTemplate {
+    id: string;
+    name: string;
+    description: string;
+    trigger_message: string;
+    departments: string[];
+    estimated_duration: string;
+  }
+
+  let workflowsExpanded = $state(false);
+  let workflows = $state<WorkflowTemplate[]>([]);
+  let workflowsLoading = $state(false);
+
+  async function loadWorkflows() {
+    if (workflows.length > 0) return;
+    workflowsLoading = true;
+    try {
+      const response = await fetch(`${API_BASE}/workflow-templates`);
+      if (response.ok) {
+        workflows = await response.json();
+      }
+    } catch (e) {
+      console.error('Failed to load workflows:', e);
+    } finally {
+      workflowsLoading = false;
+    }
+  }
+
+  async function triggerWorkflow(template: WorkflowTemplate) {
+    // Send the trigger message to copilot chat
+    message = template.trigger_message;
+    workflowsExpanded = false;
+    await sendMessage();
+  }
 
   async function loadAllAssetsFlat() {
     if (allAssets.length > 0) return;
@@ -320,6 +375,7 @@
   // Initialize kill switch status on mount
   onMount(async () => {
     await checkKillSwitchStatus();
+    await loadAgentModel();
 
     // Subscribe to server health threshold alerts (Story 10-5 AC3)
     // Injects a system message into the chat when a metric crosses its threshold.
@@ -382,35 +438,29 @@
     error?: string;
     retry?: boolean;
     isStreaming?: boolean;  // Track if message is still streaming
+    thinking?: string;  // Extended thinking content
     toolCall?: {
       tool: string;
       status: "started" | "completed";
     };
   }
 
-  // Dynamic greeting based on agent type
-  const copilotGreeting = "Hello! I'm QuantMind Copilot, your AI trading assistant. I can help with market analysis, strategy questions, or delegate tasks to the Floor Manager for trading operations. How can I assist you?";
+  // Floor Manager greeting
   const floorManagerGreeting = "Hello! I'm the Floor Manager. I coordinate tasks across all departments - Analysis, Research, Risk, Execution, and Portfolio. I can delegate tasks, check status, or answer questions about the trading floor. How can I help?";
 
-  let greeting = $derived(isCopilot ? copilotGreeting : floorManagerGreeting);
-  let agentName = $derived(isCopilot ? "QuantMind Copilot" : "Floor Manager");
-  let placeholderText = $derived(isCopilot ? "Ask QuantMind Copilot..." : "Ask the Floor Manager...");
-  // Route to correct endpoint based on mode (Story 5.4)
-  // Floor Manager mode → POST /api/floor-manager/chat
-  // Workshop Copilot mode → POST /api/workshop/copilot/chat
-  let apiEndpoint = $derived(
-    isCopilot
-      ? `${API_BASE}/workshop/copilot/chat`
-      : `${API_BASE}/floor-manager/chat`
-  );
-  let messages = $derived([
+  let greeting = floorManagerGreeting;
+  let agentName = "Floor Manager";
+  let placeholderText = "Ask the Floor Manager...";
+  // Use the session-backed chat API so live streaming and saved history share one source of truth.
+  const apiEndpoint = `${API_BASE}/chat/floor-manager/message`;
+  let messages = [
     {
       id: "fm_welcome",
-      role: isCopilot ? "copilot" : "floor_manager",
+      role: "floor_manager" as const,
       content: greeting,
       timestamp: new Date(),
     },
-  ]);
+  ];
 
   // Department info for display
   const departmentList = Object.values(DEPARTMENTS);
@@ -456,13 +506,35 @@
     return grouped;
   }
 
+  function sortSessionsByUpdated(sessionList: ChatSession[]): ChatSession[] {
+    return [...sessionList].sort(
+      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+    );
+  }
+
+  function applySessions(sessionList: ChatSession[]) {
+    sessions = sortSessionsByUpdated(sessionList);
+    groupedSessions = groupSessionsByTime(sessions);
+  }
+
+  function resetMessagesToGreeting() {
+    messages = [
+      {
+        id: "fm_welcome",
+        role: "floor_manager" as const,
+        content: greeting,
+        timestamp: new Date(),
+      },
+    ];
+  }
+
   // Load chat sessions
   async function loadSessions() {
     chatHistoryLoading = true;
     try {
-      const agentType = isCopilot ? 'workshop' : 'floor-manager';
-      sessions = await chatApi.listSessions(undefined, agentType);
-      groupedSessions = groupSessionsByTime(sessions);
+      const agentType = 'floor-manager';
+      const fetched = await chatApi.listSessions(undefined, agentType);
+      applySessions(fetched);
     } catch (e) {
       console.error('Failed to load sessions:', e);
     } finally {
@@ -472,27 +544,29 @@
 
   // Create new chat session
   async function createNewChat() {
+    if (sessionActionLoading) return;
+    sessionActionLoading = true;
     try {
-      const agentType = isCopilot ? 'workshop' : 'floor-manager';
+      const agentType = 'floor-manager';
+      const now = new Date();
       const newSession = await chatApi.createSession({
         agentType,
-        agentId: isCopilot ? 'copilot' : 'floor_manager',
+        agentId: 'floor-manager',
         userId: 'default_user',
-        title: 'New Conversation',
+        title: `Chat ${now.toLocaleString()}`,
+        context: {
+          canvas: 'workshop',
+          session_type: 'interactive_session',
+        },
       });
       currentSessionId = newSession.id;
-      messages = [
-        {
-          id: "fm_welcome",
-          role: isCopilot ? "copilot" : "floor_manager",
-          content: greeting,
-          timestamp: new Date(),
-        },
-      ];
-      showChatHistory = false;
+      resetMessagesToGreeting();
+      applySessions([newSession, ...sessions.filter((session) => session.id !== newSession.id)]);
       await loadSessions();
     } catch (e) {
       console.error('Failed to create new chat:', e);
+    } finally {
+      sessionActionLoading = false;
     }
   }
 
@@ -500,14 +574,15 @@
   async function loadSession(sessionId: string) {
     try {
       currentSessionId = sessionId;
-      messages = [
-        {
-          id: "fm_welcome",
-          role: isCopilot ? "copilot" : "floor_manager",
-          content: greeting,
-          timestamp: new Date(),
-        },
-      ];
+      renamingSessionId = null;
+      renameSessionTitle = '';
+      const stored: StoredChatMessage[] = await chatApi.getSessionMessages(sessionId);
+      messages = stored.map((msg) => ({
+        id: msg.id,
+        role: msg.role === 'assistant' ? 'floor_manager' : (msg.role as FloorManagerMessage["role"]),
+        content: msg.content,
+        timestamp: new Date(msg.created_at),
+      }));
       showChatHistory = false;
     } catch (e) {
       console.error('Failed to load session:', e);
@@ -517,14 +592,93 @@
   // Delete session
   async function deleteSession(sessionId: string, event: MouseEvent) {
     event.stopPropagation();
+    if (sessionActionLoading) return;
+    sessionActionLoading = true;
+    if (renamingSessionId === sessionId) {
+      renamingSessionId = null;
+      renameSessionTitle = '';
+    }
+
+    const nextSessions = sessions.filter((session) => session.id !== sessionId);
+    applySessions(nextSessions);
+    if (currentSessionId === sessionId) {
+      currentSessionId = null;
+      resetMessagesToGreeting();
+    }
+
     try {
       await chatApi.deleteSession(sessionId);
       await loadSessions();
-      if (currentSessionId === sessionId) {
-        await createNewChat();
-      }
     } catch (e) {
       console.error('Failed to delete session:', e);
+      await loadSessions();
+    } finally {
+      sessionActionLoading = false;
+    }
+  }
+
+  function startSessionRename(session: ChatSession, event: MouseEvent) {
+    event.stopPropagation();
+    renamingSessionId = session.id;
+    renameSessionTitle = (session.title || '').trim();
+  }
+
+  function cancelSessionRename(event?: Event) {
+    event?.stopPropagation();
+    renamingSessionId = null;
+    renameSessionTitle = '';
+  }
+
+  async function saveSessionRename(sessionId: string, event?: Event) {
+    event?.stopPropagation();
+    const nextTitle = renameSessionTitle.trim();
+    if (!nextTitle || sessionActionLoading) {
+      cancelSessionRename();
+      return;
+    }
+
+    sessionActionLoading = true;
+    const previous = sessions;
+
+    applySessions(
+      sessions.map((session) =>
+        session.id === sessionId ? { ...session, title: nextTitle } : session
+      )
+    );
+    renamingSessionId = null;
+    renameSessionTitle = '';
+
+    try {
+      await chatApi.updateSessionTitle(sessionId, { title: nextTitle });
+      await loadSessions();
+    } catch (e) {
+      console.error('Failed to rename session:', e);
+      applySessions(previous);
+      await loadSessions();
+    } finally {
+      sessionActionLoading = false;
+    }
+  }
+
+  async function clearAllSessions() {
+    if (sessions.length === 0 || sessionActionLoading) return;
+
+    sessionActionLoading = true;
+    const sessionIds = sessions.map((session) => session.id);
+    const previous = sessions;
+
+    applySessions([]);
+    currentSessionId = null;
+    resetMessagesToGreeting();
+
+    try {
+      await Promise.all(sessionIds.map((sessionId) => chatApi.deleteSession(sessionId)));
+    } catch (e) {
+      console.error('Failed to clear session history:', e);
+      applySessions(previous);
+      await loadSessions();
+    } finally {
+      sessionActionLoading = false;
     }
   }
 
@@ -563,6 +717,24 @@
     if (messagesContainer && autoScroll) {
       messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
+  }
+
+  async function loadAgentModel() {
+    try {
+      const res = await fetch(`${API_BASE}/agent-config/floor_manager/model`);
+      if (res.ok) {
+        const data = await res.json();
+        fmModel = data?.model ?? fmModel;
+        fmProvider = data?.provider ?? fmProvider;
+      }
+    } catch (e) {
+      console.error("Failed to load floor_manager model config", e);
+    }
+  }
+
+  function handleModelChange(event: CustomEvent<{ model: string; provider?: string }>) {
+    fmModel = event.detail.model;
+    fmProvider = event.detail.provider ?? fmProvider;
   }
 
   // Send message to Floor Manager with streaming support (Story 5.5)
@@ -634,9 +806,17 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userContent,
+          session_id: currentSessionId ?? undefined,
           context: {
             canvas_context: currentCanvas,
-            session_id: currentSessionId || crypto.randomUUID(),
+            model: fmModel,
+            provider: fmProvider,
+            session_type: 'interactive_session',
+            workspace_contract: {
+              version: 'manifest-v1',
+              strategy: 'manifest-first',
+              natural_resource_search: true,
+            },
           },
           history: conversationHistory,
           stream: true,  // Enable streaming (Story 5.5)
@@ -651,8 +831,10 @@
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let fullContent = "";
+      let thinkingContent = "";
       let delegation: FloorManagerMessage["delegation"] | undefined;
       let lineBuffer = "";  // Buffer for partial SSE lines
+      let resolvedSessionId = currentSessionId;
 
       // NFR-P3: Track first token time
       const streamStartTime = performance.now();
@@ -694,6 +876,14 @@
                     continue;
                   }
 
+                  // Handle thinking chunks
+                  if (data.type === "thinking" && data.content !== undefined) {
+                    thinkingContent += data.content;
+                    streamingMessage.thinking = thinkingContent;
+                    messages = [...messages];
+                    continue;
+                  }
+
                   // Handle content deltas
                   if (data.type === "content" && data.delta) {
                     // NFR-P3: Track first token time
@@ -721,17 +911,20 @@
                     continue;
                   }
 
-                  // Handle error events
-                  if (data.type === "error") {
-                    throw new Error(data.error);
-                  }
-
-                  // Handle done event
                   if (data.type === "done") {
+                    if (typeof data.session_id === "string" && data.session_id) {
+                      resolvedSessionId = data.session_id;
+                    }
                     isStreaming = false;
                     streamingMessage.isStreaming = false;
                     currentToolCall = null;
                     messages = [...messages];
+                    continue;
+                  }
+
+                  // Handle error events
+                  if (data.type === "error") {
+                    throw new Error(data.error);
                   }
                 } catch (e) {
                   // Skip parse errors for incomplete chunks
@@ -749,7 +942,10 @@
       streamingMessage.isStreaming = false;
       streamingMessage.content = fullContent || "I've processed your request.";
       streamingMessage.delegation = delegation;
+      if (thinkingContent) streamingMessage.thinking = thinkingContent;
       messages = [...messages];
+      currentSessionId = resolvedSessionId;
+      await loadSessions();
 
       await tick();
       scrollToBottom();
@@ -888,6 +1084,12 @@
 
   // Clear chat
   function clearChat() {
+    currentSessionId = null;
+    currentToolCall = null;
+    pendingConfirmation = null;
+    lastFailedMessage = null;
+    attachedAssets = [];
+    showMailCompose = false;
     messages = [
       {
         id: "fm_welcome",
@@ -1351,8 +1553,22 @@
           {:else if msg.role === "system"}
             <div class="message-label system">System</div>
           {/if}
+          <!-- Extended thinking block -->
+          {#if msg.thinking}
+            <details class="thinking-block">
+              <summary class="thinking-summary">
+                <ChevronRight size={12} class="thinking-chevron" />
+                Thinking
+              </summary>
+              <div class="thinking-content">{msg.thinking}</div>
+            </details>
+          {/if}
           <div class="message-text">
-            {msg.content}
+            {#if msg.role === 'floor_manager' || msg.role === 'assistant'}
+              {@html renderMarkdown(msg.content)}
+            {:else}
+              {msg.content}
+            {/if}
             <!-- Typing cursor (Story 5.5) -->
             {#if msg.isStreaming}
               <span class="typing-cursor" class:visible={cursorVisible}>|</span>
@@ -1415,8 +1631,9 @@
     <div class="input-wrapper">
       <div class="model-selector-inline">
         <AgentModelSelector
-          agentId={isCopilot ? 'copilot' : 'floor_manager'}
-          currentModel="opus"
+          agentId="floor_manager"
+          currentModel={fmModel ?? 'opus'}
+          on:modelchange={handleModelChange}
         />
       </div>
       <!-- Story 5.7: Confirmation Dialog -->
@@ -1490,6 +1707,41 @@
         </div>
       {/if}
 
+      <!-- Workflow Templates (Story C1) -->
+      <div class="workflows-section">
+        <button
+          class="workflows-toggle"
+          onclick={() => { workflowsExpanded = !workflowsExpanded; if (!workflowsExpanded) loadWorkflows(); }}
+        >
+          <span class="workflows-toggle-icon" class:rotated={workflowsExpanded}>▶</span>
+          <span>Workflows</span>
+          {#if workflows.length > 0}
+            <span class="workflows-count">{workflows.length}</span>
+          {/if}
+        </button>
+        {#if workflowsExpanded}
+          <div class="workflows-list">
+            {#if workflowsLoading}
+              <div class="workflows-loading">Loading workflows...</div>
+            {:else}
+              {#each workflows as wf}
+                <button
+                  class="workflow-item"
+                  onclick={() => triggerWorkflow(wf)}
+                  title={wf.description}
+                >
+                  <div class="workflow-name">{wf.name}</div>
+                  <div class="workflow-meta">
+                    <span class="workflow-duration">{wf.estimated_duration}</span>
+                    <span class="workflow-depts">{wf.departments.join(', ')}</span>
+                  </div>
+                </button>
+              {/each}
+            {/if}
+          </div>
+        {/if}
+      </div>
+
       <textarea
         bind:this={textareaElement}
         bind:value={message}
@@ -1537,11 +1789,21 @@
   <div class="chat-history-sidebar" transition:fly={{ x: -300, duration: 200 }}>
     <div class="history-header">
       <span>Chat History</span>
+      {#if sessions.length > 0}
+        <button
+          class="clear-history-btn"
+          onclick={clearAllSessions}
+          disabled={sessionActionLoading}
+          title="Delete all chat sessions"
+        >
+          Clear history
+        </button>
+      {/if}
       <button class="close-history-btn" onclick={toggleChatHistory}>
         <X size={16} />
       </button>
     </div>
-    <button class="new-chat-btn" onclick={createNewChat}>
+    <button class="new-chat-btn" onclick={createNewChat} disabled={sessionActionLoading}>
       <MessageSquarePlus size={16} />
       <span>New Chat</span>
     </button>
@@ -1549,76 +1811,53 @@
       {#if chatHistoryLoading}
         <div class="history-loading">Loading...</div>
       {:else}
-        {#if groupedSessions.today.length > 0}
-          <div class="history-group">
-            <div class="history-group-header">Today</div>
-            {#each groupedSessions.today as session}
-              <div class="history-item" class:active={currentSessionId === session.id} onclick={() => loadSession(session.id)} onkeydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
-                <MessageCircle size={14} />
-                <span class="history-title">{session.title || 'New Conversation'}</span>
-                <button class="delete-session-btn" onclick={(e) => deleteSession(session.id, e)}>
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            {/each}
-          </div>
-        {/if}
-        {#if groupedSessions.yesterday.length > 0}
-          <div class="history-group">
-            <div class="history-group-header">Yesterday</div>
-            {#each groupedSessions.yesterday as session}
-              <div class="history-item" class:active={currentSessionId === session.id} onclick={() => loadSession(session.id)} onkeydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
-                <MessageCircle size={14} />
-                <span class="history-title">{session.title || 'New Conversation'}</span>
-                <button class="delete-session-btn" onclick={(e) => deleteSession(session.id, e)}>
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            {/each}
-          </div>
-        {/if}
-        {#if groupedSessions.last7Days.length > 0}
-          <div class="history-group">
-            <div class="history-group-header">Previous 7 Days</div>
-            {#each groupedSessions.last7Days as session}
-              <div class="history-item" class:active={currentSessionId === session.id} onclick={() => loadSession(session.id)} onkeydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
-                <MessageCircle size={14} />
-                <span class="history-title">{session.title || 'New Conversation'}</span>
-                <button class="delete-session-btn" onclick={(e) => deleteSession(session.id, e)}>
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            {/each}
-          </div>
-        {/if}
-        {#if groupedSessions.last30Days.length > 0}
-          <div class="history-group">
-            <div class="history-group-header">Previous 30 Days</div>
-            {#each groupedSessions.last30Days as session}
-              <div class="history-item" class:active={currentSessionId === session.id} onclick={() => loadSession(session.id)} onkeydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
-                <MessageCircle size={14} />
-                <span class="history-title">{session.title || 'New Conversation'}</span>
-                <button class="delete-session-btn" onclick={(e) => deleteSession(session.id, e)}>
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            {/each}
-          </div>
-        {/if}
-        {#if groupedSessions.older.length > 0}
-          <div class="history-group">
-            <div class="history-group-header">Older</div>
-            {#each groupedSessions.older as session}
-              <div class="history-item" class:active={currentSessionId === session.id} onclick={() => loadSession(session.id)} onkeydown={(e) => e.key === 'Enter' && loadSession(session.id)} role="button" tabindex="0">
-                <MessageCircle size={14} />
-                <span class="history-title">{session.title || 'New Conversation'}</span>
-                <button class="delete-session-btn" onclick={(e) => deleteSession(session.id, e)}>
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            {/each}
-          </div>
-        {/if}
+        {#each sessionGroups as group}
+          {#if group.items.length > 0}
+            <div class="history-group">
+              <div class="history-group-header">{group.label}</div>
+              {#each group.items as session}
+                <div
+                  class="history-item"
+                  class:active={currentSessionId === session.id}
+                  onclick={() => loadSession(session.id)}
+                  onkeydown={(e) => e.key === 'Enter' && loadSession(session.id)}
+                  role="button"
+                  tabindex="0"
+                >
+                  <MessageCircle size={14} />
+                  {#if renamingSessionId === session.id}
+                    <input
+                      class="history-title-input"
+                      bind:value={renameSessionTitle}
+                      onclick={(e) => e.stopPropagation()}
+                      onkeydown={(e) => {
+                        if (e.key === 'Enter') {
+                          void saveSessionRename(session.id, e);
+                        } else if (e.key === 'Escape') {
+                          cancelSessionRename(e);
+                        }
+                      }}
+                    />
+                    <button class="session-action-btn" title="Save title" onclick={(e) => saveSessionRename(session.id, e)}>
+                      <Check size={12} />
+                    </button>
+                    <button class="session-action-btn" title="Cancel rename" onclick={(e) => cancelSessionRename(e)}>
+                      <X size={12} />
+                    </button>
+                  {:else}
+                    <span class="history-title">{session.title || 'New Conversation'}</span>
+                    <button class="session-action-btn" title="Rename" onclick={(e) => startSessionRename(session, e)}>
+                      <Pencil size={12} />
+                    </button>
+                    <button class="delete-session-btn" onclick={(e) => deleteSession(session.id, e)}>
+                      <Trash2 size={12} />
+                    </button>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/if}
+        {/each}
         {#if sessions.length === 0}
           <div class="history-empty">No chat history yet</div>
         {/if}
@@ -1929,6 +2168,51 @@
     opacity: 1;
   }
 
+  /* Extended thinking block */
+  .thinking-block {
+    margin-bottom: 0.375rem;
+    border: 1px solid rgba(139, 92, 246, 0.25);
+    border-radius: 0.375rem;
+    background: rgba(139, 92, 246, 0.06);
+    overflow: hidden;
+  }
+
+  .thinking-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.6875rem;
+    color: #a78bfa;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+  }
+
+  .thinking-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .thinking-block[open] .thinking-chevron {
+    transform: rotate(90deg);
+  }
+
+  .thinking-chevron {
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .thinking-content {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.6875rem;
+    color: rgba(167, 139, 250, 0.8);
+    white-space: pre-wrap;
+    word-break: break-word;
+    border-top: 1px solid rgba(139, 92, 246, 0.15);
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
   /* Story 5.5: Tool call UI */
   .tool-call {
     display: inline-flex;
@@ -2192,6 +2476,34 @@
     background: var(--accent-primary-hover, #2563eb);
   }
 
+  .new-chat-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .clear-history-btn {
+    margin-left: auto;
+    margin-right: 0.5rem;
+    padding: 0.2rem 0.45rem;
+    border: 1px solid rgba(248, 113, 113, 0.32);
+    background: rgba(239, 68, 68, 0.08);
+    color: #fca5a5;
+    border-radius: 0.25rem;
+    font-size: 0.66rem;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .clear-history-btn:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.15);
+    color: #fecaca;
+  }
+
+  .clear-history-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   .history-list {
     flex: 1;
     overflow-y: auto;
@@ -2250,6 +2562,36 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .history-title-input {
+    flex: 1;
+    min-width: 0;
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid var(--border-color, #334155);
+    border-radius: 4px;
+    padding: 2px 6px;
+    color: var(--text-primary, #e2e8f0);
+    font-size: 0.75rem;
+  }
+
+  .session-action-btn {
+    opacity: 0;
+    background: none;
+    border: none;
+    color: var(--text-muted, #64748b);
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+  }
+
+  .history-item:hover .session-action-btn {
+    opacity: 1;
+  }
+
+  .session-action-btn:hover {
+    color: var(--text-primary, #e2e8f0);
   }
 
   .delete-session-btn {
@@ -2741,5 +3083,112 @@
 
   .chip-remove:hover {
     color: #ef4444;
+  }
+
+  /* ── Workflow Templates Section (Story C1) ───────────────────────────────── */
+  .workflows-section {
+    margin-bottom: 0.5rem;
+  }
+
+  .workflows-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    width: 100%;
+    padding: 0.375rem 0.5rem;
+    background: rgba(0, 212, 255, 0.06);
+    border: 1px solid rgba(0, 212, 255, 0.15);
+    border-radius: 0.375rem;
+    color: rgba(224, 224, 224, 0.6);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .workflows-toggle:hover {
+    background: rgba(0, 212, 255, 0.1);
+    border-color: rgba(0, 212, 255, 0.3);
+    color: #e0e0e0;
+  }
+
+  .workflows-toggle-icon {
+    font-size: 0.625rem;
+    transition: transform 0.2s;
+  }
+
+  .workflows-toggle-icon.rotated {
+    transform: rotate(90deg);
+  }
+
+  .workflows-count {
+    margin-left: auto;
+    padding: 0.125rem 0.375rem;
+    background: rgba(0, 212, 255, 0.15);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 10px;
+    font-size: 0.625rem;
+    color: #00d4ff;
+  }
+
+  .workflows-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: rgba(8, 13, 20, 0.5);
+    backdrop-filter: blur(12px) saturate(160%);
+    -webkit-backdrop-filter: blur(12px) saturate(160%);
+    border: 1px solid rgba(0, 212, 255, 0.15);
+    border-radius: 0.5rem;
+  }
+
+  .workflows-loading {
+    padding: 0.5rem;
+    text-align: center;
+    color: rgba(224, 224, 224, 0.4);
+    font-size: 0.75rem;
+  }
+
+  .workflow-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.5rem 0.625rem;
+    background: rgba(0, 212, 255, 0.05);
+    border: 1px solid rgba(0, 212, 255, 0.12);
+    border-radius: 0.375rem;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+  }
+
+  .workflow-item:hover {
+    background: rgba(0, 212, 255, 0.12);
+    border-color: rgba(0, 212, 255, 0.35);
+    transform: translateY(-1px);
+  }
+
+  .workflow-name {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #00d4ff;
+  }
+
+  .workflow-meta {
+    display: flex;
+    gap: 0.5rem;
+    font-size: 0.625rem;
+    color: rgba(224, 224, 224, 0.4);
+  }
+
+  .workflow-duration {
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .workflow-depts {
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
   }
 </style>

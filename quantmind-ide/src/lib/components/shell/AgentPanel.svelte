@@ -1,10 +1,15 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { Plus, History, ChevronRight, Send, Paperclip } from 'lucide-svelte';
-  import { canvasContextService } from '$lib/services/canvasContextService';
+  import { Plus, History, ChevronRight, Send, Paperclip, Trash2, Pencil, Check, X } from 'lucide-svelte';
+  import {
+    canvasContextService,
+    type CanvasAttachableResource,
+    type CanvasContextState,
+  } from '$lib/services/canvasContextService';
   import { API_CONFIG } from '$lib/config/api';
   import RichRenderer from '$lib/components/shared/RichRenderer.svelte';
   import { listOpinionNodes, type OpinionNode } from '$lib/api/graphMemory';
+  import { chatApi, type ChatSession, type StoredChatMessage } from '$lib/api/chatApi';
   import { getCanvasPanelState } from './agentPanelState';
 
   // ─── Types ───────────────────────────────────────────────────────────────────
@@ -28,8 +33,9 @@
     backendSessionId?: string;
     type: 'interactive' | 'autonomous';
     deptHead: string;
+    title: string;
     canvasId: string;
-    canvasContext?: Record<string, unknown> | null;
+    canvasContext?: Record<string, unknown> | CanvasContextState | null;
     messages: AgentMessage[];
     workflowName?: string;
     workflowStage?: string;
@@ -43,12 +49,14 @@
     id: string;
     label: string;
     canvasId: string;
+    kind: 'canvas' | 'resource';
+    resource?: CanvasAttachableResource;
   }
 
   interface AttachedCanvasContextPayload {
     canvas: string;
     label: string;
-    context: Record<string, unknown> | null;
+    context: Record<string, unknown> | CanvasContextState | null;
   }
 
   interface MailEntry {
@@ -83,6 +91,13 @@
     mailEntries: MailEntry[];
     mailLoading: boolean;
     mailError: string | null;
+    renamingSessionId: string | null;
+    renameSessionTitle: string;
+  }
+
+  interface AgentModelPreference {
+    model?: string;
+    provider?: string;
   }
 
   type AgentStreamEvent =
@@ -151,6 +166,8 @@
       mailEntries: [],
       mailLoading: false,
       mailError: null,
+      renamingSessionId: null,
+      renameSessionTitle: '',
     };
   }
 
@@ -169,6 +186,8 @@
       mailEntries,
       mailLoading,
       mailError,
+      renamingSessionId,
+      renameSessionTitle,
     };
   }
 
@@ -186,6 +205,8 @@
     mailEntries = state.mailEntries;
     mailLoading = state.mailLoading;
     mailError = state.mailError;
+    renamingSessionId = state.renamingSessionId;
+    renameSessionTitle = state.renameSessionTitle;
   }
 
   let panelStateByCanvas = $state<Record<string, AgentPanelCanvasState>>({});
@@ -197,14 +218,18 @@
   let activeTab = $state<AgentPanelTab>('chat');
   let attachments = $state<Attachment[]>([]);
   let showAttachMenu = $state(false);
+  let attachableResources = $state<CanvasAttachableResource[]>([]);
   let isSending = $state(false);
+  let sessionActionLoading = $state(false);
   let memoryNodes = $state<OpinionNode[]>([]);
   let memoryLoading = $state(false);
   let memoryError = $state<string | null>(null);
   let mailEntries = $state<MailEntry[]>([]);
   let mailLoading = $state(false);
   let mailError = $state<string | null>(null);
-  let activeCanvasStateKey = $state(activeCanvas);
+  let renamingSessionId = $state<string | null>(null);
+  let renameSessionTitle = $state('');
+  let activeCanvasStateKey = $state('');
 
   let activeSession = $derived(sessions.find(s => s.id === activeSessionId) ?? null);
   let messages = $derived(activeSession?.messages ?? []);
@@ -219,11 +244,14 @@
 
   // Full list of canvas context options (shown in Workshop/Copilot for full context)
   const allCanvasContextOptions: CanvasContextOption[] = [
+    { id: 'live-trading', label: 'Live Trading context' },
     { id: 'research',    label: 'Research context' },
     { id: 'development', label: 'Development context' },
     { id: 'trading',     label: 'Trading context' },
     { id: 'risk',        label: 'Risk context' },
     { id: 'portfolio',   label: 'Portfolio context' },
+    { id: 'shared-assets', label: 'Shared Assets context' },
+    { id: 'flowforge', label: 'FlowForge context' },
   ];
 
   // Filtered options: show only current department when in a department canvas,
@@ -231,7 +259,13 @@
   let canvasContextOptions = $derived(
     isWorkshop
       ? allCanvasContextOptions
-      : allCanvasContextOptions.filter(opt => opt.id === activeCanvas)
+      : (() => {
+          const primary = allCanvasContextOptions.filter((opt) => opt.id === activeCanvas);
+          const includeSharedAssets = activeCanvas !== 'shared-assets'
+            ? allCanvasContextOptions.filter((opt) => opt.id === 'shared-assets')
+            : [];
+          return [...primary, ...includeSharedAssets];
+        })()
   );
 
   // Filter slash commands based on current input
@@ -424,51 +458,6 @@
     }
   }
 
-  function isVisibleElement(element: Element | null): boolean {
-    let current: Element | null = element;
-    while (current) {
-      if (current.hasAttribute('hidden') || current.getAttribute('aria-hidden') === 'true') {
-        return false;
-      }
-      const style = window.getComputedStyle(current);
-      if (style.display === 'none' || style.visibility === 'hidden') {
-        return false;
-      }
-      current = current.parentElement;
-    }
-    return true;
-  }
-
-  function getVisibleCanvasText(): string {
-    if (typeof document === 'undefined') return '';
-
-    const root = document.querySelector('.main-content');
-    if (!root) return '';
-
-    const chunks: string[] = [];
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode(node) {
-        const text = node.textContent?.replace(/\s+/g, ' ').trim();
-        const parent = node.parentElement;
-        if (!text || !parent || !isVisibleElement(parent)) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        return NodeFilter.FILTER_ACCEPT;
-      },
-    });
-
-    while (walker.nextNode()) {
-      const text = walker.currentNode.textContent?.replace(/\s+/g, ' ').trim();
-      if (!text) continue;
-      if (chunks[chunks.length - 1] !== text) {
-        chunks.push(text);
-      }
-      if (chunks.length >= 120) break;
-    }
-
-    return chunks.join(' | ').slice(0, 4000);
-  }
-
   function resolveDepartmentId(canvasId: string): string | null {
     const mapping: Record<string, string> = {
       'live-trading': 'trading',
@@ -477,20 +466,11 @@
       'risk': 'risk',
       'trading': 'trading',
       'portfolio': 'portfolio',
+      'shared-assets': 'floor-manager',
       'flowforge': 'floor-manager',
       'workshop': 'floor-manager',
     };
     return mapping[canvasId] ?? null;
-  }
-
-  function captureVisibleCanvasText(canvasId: string): string | null {
-    if (typeof document === 'undefined') return null;
-
-    const selectorId = resolveDepartmentId(canvasId) ?? canvasId;
-    const canvasRoot = document.querySelector<HTMLElement>(`[data-dept="${selectorId}"]`);
-    const text = canvasRoot?.innerText?.trim();
-    if (!text) return null;
-    return text.slice(0, 4000);
   }
 
   function getChatEndpointForCanvas(canvasId: string): string | null {
@@ -500,6 +480,73 @@
       return `${API_CONFIG.API_BASE}/chat/floor-manager/message`;
     }
     return `${API_CONFIG.API_BASE}/chat/departments/${dept}/message`;
+  }
+
+  function getChatSessionAgentType(canvasId: string): 'department' | 'floor-manager' | null {
+    const dept = resolveDepartmentId(canvasId);
+    if (!dept) return null;
+    return dept === 'floor-manager' ? 'floor-manager' : 'department';
+  }
+
+  function getChatSessionAgentId(canvasId: string): string | null {
+    const dept = resolveDepartmentId(canvasId);
+    if (!dept) return null;
+    return dept;
+  }
+
+  function getAgentConfigId(canvasId: string): string | null {
+    const dept = resolveDepartmentId(canvasId);
+    if (!dept) return null;
+    return dept.replace('-', '_');
+  }
+
+  async function loadAgentModelPreference(canvasId: string): Promise<AgentModelPreference> {
+    const agentConfigId = getAgentConfigId(canvasId);
+    if (!agentConfigId) {
+      return {};
+    }
+
+    try {
+      const response = await fetch(`${API_CONFIG.API_BASE}/agent-config/${agentConfigId}/model`);
+      if (!response.ok) {
+        return {};
+      }
+      const data = await response.json() as AgentModelPreference;
+      return {
+        model: data.model,
+        provider: data.provider,
+      };
+    } catch {
+      return {};
+    }
+  }
+
+  function mapStoredMessagesToAgentMessages(messages: StoredChatMessage[]): AgentMessage[] {
+    return messages.map((message) => ({
+      id: message.id,
+      type: message.role === 'assistant' ? 'agent' : 'user',
+      content: message.content,
+      timestamp: message.created_at,
+    }));
+  }
+
+  function mapChatSessionToPanelSession(
+    session: ChatSession,
+    fallbackCanvas: string,
+    cached?: AgentSession
+  ): AgentSession {
+    return {
+      id: session.id,
+      backendSessionId: session.id,
+      type: 'interactive',
+      deptHead: deptHead.label,
+      title: session.title || `${deptHead.label} chat`,
+      canvasId: fallbackCanvas,
+      canvasContext: cached?.canvasContext ?? null,
+      messages: cached?.messages ?? [],
+      createdAt: session.created_at,
+      status: 'active',
+    };
   }
 
   async function loadMemoryTab() {
@@ -547,21 +594,21 @@
 
   async function loadSessionHistory() {
     try {
-      const apiBase = getAgentApiBase();
-      const response = await fetch(
-        `${apiBase}/api/agents/sessions?dept_head=${encodeURIComponent(deptHead.label)}`
-      );
-      if (!response.ok) return;
-      const data = await response.json() as { sessions?: AgentSession[] };
-      if (!data.sessions) return;
-      // Merge backend sessions with in-memory sessions (avoid duplicates by id)
-      const existingIds = new Set(sessions.map(s => s.id));
-      const newSessions = data.sessions.filter(s => !existingIds.has(s.id));
-      if (newSessions.length > 0) {
-        sessions = [...sessions, ...newSessions];
-      }
+      const agentType = getChatSessionAgentType(activeCanvas);
+      const agentId = getChatSessionAgentId(activeCanvas);
+      if (!agentType || !agentId) return;
+
+      const fetched = await chatApi.listSessions(undefined, agentType);
+      const filtered = agentType === 'department'
+        ? fetched.filter((session) => session.agent_id === agentId)
+        : fetched.filter((session) => session.agent_id === 'floor-manager');
+
+      const existingById = new Map(sessions.map((session) => [session.id, session]));
+      sessions = filtered
+        .sort((left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime())
+        .map((session) => mapChatSessionToPanelSession(session, activeCanvas, existingById.get(session.id)));
     } catch {
-      // Backend unavailable in Epic 12 scaffold — silently ignore
+      // backend unavailable — keep local state
     }
   }
 
@@ -573,34 +620,218 @@
   }
 
   async function createNewSession() {
-    const context = await canvasContextService.loadCanvasContext(activeCanvas);
-    const session: AgentSession = {
-      id: crypto.randomUUID(),
-      type: 'interactive',
-      deptHead: deptHead.label,
-      canvasId: activeCanvas,
-      canvasContext: context,
-      messages: [],
-      createdAt: new Date().toISOString(),
-      status: 'active',
-    };
-    sessions = [...sessions, session];
-    activeSessionId = session.id;
+    if (sessionActionLoading) {
+      return;
+    }
+    sessionActionLoading = true;
+    try {
+      const context = await canvasContextService.loadCanvasContext(activeCanvas);
+      const now = new Date();
+      const agentType = getChatSessionAgentType(activeCanvas);
+      const agentId = getChatSessionAgentId(activeCanvas);
+
+      if (!agentType || !agentId) {
+        return;
+      }
+
+      const created = await chatApi.createSession({
+        agentType,
+        agentId,
+        userId: 'default_user',
+        title: `Chat ${now.toLocaleString()}`,
+        context: {
+          canvas: activeCanvas,
+          session_type: 'interactive_session',
+        },
+      });
+
+      const session: AgentSession = {
+        id: created.id,
+        backendSessionId: created.id,
+        type: 'interactive',
+        deptHead: deptHead.label,
+        title: created.title || `Chat ${now.toLocaleString()}`,
+        canvasId: activeCanvas,
+        canvasContext: context,
+        messages: [],
+        createdAt: created.created_at,
+        status: 'active',
+      };
+      sessions = [session, ...sessions.filter((entry) => entry.id !== session.id)];
+      showSessionHistory = false;
+      activeSessionId = session.id;
+      await loadSessionHistory();
+    } catch (error) {
+      const failureMessage: AgentMessage = {
+        id: crypto.randomUUID(),
+        type: 'agent',
+        content: `Error creating session: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date().toISOString(),
+      };
+      sessions = activeSessionId
+        ? sessions.map((session) =>
+            session.id === activeSessionId
+              ? { ...session, messages: [...session.messages, failureMessage] }
+              : session,
+          )
+        : sessions;
+    } finally {
+      sessionActionLoading = false;
+    }
+  }
+
+  async function selectSession(id: string) {
+    if (renamingSessionId) return;
+    const selected = sessions.find((session) => session.id === id);
+    if (!selected) return;
+
+    activeSessionId = id;
+    if (selected.backendSessionId) {
+      try {
+        const stored = await chatApi.getSessionMessages(selected.backendSessionId);
+        sessions = sessions.map((session) =>
+          session.id === id
+            ? { ...session, messages: mapStoredMessagesToAgentMessages(stored) }
+            : session
+        );
+      } catch (error) {
+        console.error('Failed to load session messages:', error);
+      }
+    }
     showSessionHistory = false;
   }
 
-  function selectSession(id: string) {
-    activeSessionId = id;
-    showSessionHistory = false;
+  async function deleteSession(sessionId: string, event: MouseEvent) {
+    event.stopPropagation();
+
+    const sessionToDelete = sessions.find((session) => session.id === sessionId);
+    sessions = sessions.filter((session) => session.id !== sessionId);
+    if (activeSessionId === sessionId) {
+      activeSessionId = null;
+    }
+    if (renamingSessionId === sessionId) {
+      renamingSessionId = null;
+      renameSessionTitle = '';
+    }
+
+    if (!sessionToDelete?.backendSessionId) {
+      return;
+    }
+
+    try {
+      await chatApi.deleteSession(sessionToDelete.backendSessionId);
+    } catch (error) {
+      console.error('Failed to delete backend session:', error);
+    }
+  }
+
+  async function deleteAllSessions() {
+    if (sessions.length === 0) return;
+
+    const snapshot = sessions;
+    const previousActive = activeSessionId;
+    const backendSessionIds = sessions
+      .map((session) => session.backendSessionId)
+      .filter((id): id is string => Boolean(id));
+
+    sessions = [];
+    activeSessionId = null;
+    renamingSessionId = null;
+    renameSessionTitle = '';
+
+    if (backendSessionIds.length === 0) {
+      return;
+    }
+
+    try {
+      await Promise.all(backendSessionIds.map((id) => chatApi.deleteSession(id)));
+    } catch (error) {
+      console.error('Failed to delete all backend sessions:', error);
+      sessions = snapshot;
+      activeSessionId = previousActive;
+    }
+  }
+
+  function beginRenameSession(session: AgentSession, event: MouseEvent) {
+    event.stopPropagation();
+    renamingSessionId = session.id;
+    renameSessionTitle = (session.title || '').trim();
+  }
+
+  function cancelRenameSession(event?: Event) {
+    event?.stopPropagation();
+    renamingSessionId = null;
+    renameSessionTitle = '';
+  }
+
+  async function saveSessionRename(sessionId: string, event?: Event) {
+    event?.stopPropagation();
+    const nextTitle = renameSessionTitle.trim();
+    if (!nextTitle) {
+      cancelRenameSession();
+      return;
+    }
+
+    const target = sessions.find((session) => session.id === sessionId);
+    sessions = sessions.map((session) =>
+      session.id === sessionId ? { ...session, title: nextTitle } : session
+    );
+    renamingSessionId = null;
+    renameSessionTitle = '';
+
+    if (!target?.backendSessionId) {
+      return;
+    }
+
+    try {
+      await chatApi.updateSessionTitle(target.backendSessionId, { title: nextTitle });
+    } catch (error) {
+      console.error('Failed to rename backend session:', error);
+    }
+  }
+
+  function finalizePendingMessage(
+    session: AgentSession,
+    pendingReplyId: string,
+    finalMessage: AgentMessage,
+  ): AgentSession {
+    let replacedById = false;
+    const replacedByIdMessages = session.messages.map((message) => {
+      if (message.id !== pendingReplyId) {
+        return message;
+      }
+      replacedById = true;
+      return finalMessage;
+    });
+    if (replacedById) {
+      return { ...session, messages: replacedByIdMessages };
+    }
+
+    const cursorIndex = [...session.messages]
+      .reverse()
+      .findIndex((message) => message.type === 'agent' && message.content.trim() === '▊');
+    if (cursorIndex >= 0) {
+      const absoluteIndex = session.messages.length - 1 - cursorIndex;
+      return {
+        ...session,
+        messages: session.messages.map((message, index) =>
+          index === absoluteIndex ? finalMessage : message,
+        ),
+      };
+    }
+
+    return { ...session, messages: [...session.messages, finalMessage] };
   }
 
   async function submitMessage() {
     if (!inputValue.trim() || !activeSessionId || isSending) return;
 
+    const targetSessionId = activeSessionId;
+    const targetSession = activeSession;
     const rawMessage = inputValue.trim();
-    const sessionRef = activeSession?.backendSessionId ?? activeSessionId ?? undefined;
+    const sessionRef = targetSession?.backendSessionId ?? targetSessionId ?? undefined;
 
-    let activeCanvasContext = await canvasContextService.getEnrichedContext(
+    let activeCanvasContext = await canvasContextService.getChatContext(
       activeCanvas,
       sessionRef,
     );
@@ -608,12 +839,32 @@
       activeCanvasContext = canvasContextService.getCanvasContext(activeCanvas) ?? canvasContextService.getCurrentContext();
     }
 
+    const searchCanvases = canvasContextOptions.length > 0
+      ? canvasContextOptions.map((option) => option.id)
+      : [activeCanvas];
+    const naturalResourceHints = await canvasContextService.searchAttachableResources(
+      rawMessage,
+      searchCanvases,
+      16,
+    );
+
     const attachedContexts: AttachedCanvasContextPayload[] = attachments.length > 0
       ? await Promise.all(
           attachments.map(async (attachment) => {
-            const loadedContext =
-              await canvasContextService.getEnrichedContext(attachment.canvasId, sessionRef);
-
+            if (attachment.kind === 'resource' && attachment.resource) {
+              return {
+                canvas: attachment.canvasId,
+                label: attachment.label,
+                context: {
+                  attachment_type: 'resource',
+                  resource: canvasContextService.buildResourceAttachmentContext(attachment.resource),
+                },
+              };
+            }
+            const loadedContext = await canvasContextService.buildCanvasAttachmentContract(
+              attachment.canvasId,
+              sessionRef,
+            );
             return {
               canvas: attachment.canvasId,
               label: attachment.label,
@@ -622,8 +873,6 @@
           }),
         )
       : [];
-    const visibleCanvasText = captureVisibleCanvasText(activeCanvas);
-
     const msg: AgentMessage = {
       id: crypto.randomUUID(),
       type: 'user',
@@ -631,7 +880,7 @@
       timestamp: new Date().toISOString(),
     };
     sessions = sessions.map(s =>
-      s.id === activeSessionId
+      s.id === targetSessionId
         ? { ...s, messages: [...s.messages, msg] }
         : s
     );
@@ -655,55 +904,194 @@
     }
 
     isSending = true;
+    const pendingReplyId = crypto.randomUUID();
+    sessions = sessions.map((session) =>
+      session.id === targetSessionId
+        ? {
+            ...session,
+            messages: [
+              ...session.messages,
+              {
+                id: pendingReplyId,
+                type: 'agent',
+                content: '▊',
+                timestamp: new Date().toISOString(),
+              },
+            ],
+          }
+        : session
+    );
+
     try {
+      const modelPreference = await loadAgentModelPreference(activeCanvas);
+
+      const requestPayload = {
+        message: rawMessage,
+        session_id: targetSession?.backendSessionId ?? null,
+        context: {
+          canvas: activeCanvas,
+          active_canvas: activeCanvas,
+          canvas_context: activeCanvasContext,
+          attached_contexts: attachedContexts,
+          workspace_contract: {
+            version: 'manifest-v1',
+            strategy: 'manifest-first',
+            natural_resource_search: true,
+          },
+          session_type: 'interactive_session',
+          workspace_resource_hints: naturalResourceHints.map((resource) =>
+            canvasContextService.buildResourceAttachmentContext(resource),
+          ),
+          ...(modelPreference.model ? { model: modelPreference.model } : {}),
+          ...(modelPreference.provider ? { provider: modelPreference.provider } : {}),
+        },
+        stream: true,
+      };
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: rawMessage,
-          session_id: activeSession?.backendSessionId ?? null,
-          context: {
-            canvas: activeCanvas,
-            active_canvas: activeCanvas,
-            canvas_context: activeCanvasContext,
-            attached_contexts: attachedContexts,
-            visible_canvas_text: visibleCanvasText,
-          },
-          stream: false,
-        }),
+        body: JSON.stringify(requestPayload),
       });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
-      const data = await response.json() as { reply?: string; session_id?: string };
-      if (data.session_id) {
-        sessions = sessions.map(s =>
-          s.id === activeSessionId
-            ? { ...s, backendSessionId: data.session_id }
-            : s
+      const contentType = response.headers.get('content-type') ?? '';
+      if (contentType.includes('text/event-stream') && response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let fullReply = '';
+        let resolvedSessionId = targetSession?.backendSessionId ?? null;
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              break;
+            }
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) {
+                continue;
+              }
+              const payload = line.slice(6).trim();
+              if (!payload) {
+                continue;
+              }
+              let event: Record<string, unknown>;
+              try {
+                event = JSON.parse(payload) as Record<string, unknown>;
+              } catch {
+                continue;
+              }
+
+              const eventType = String(event.type ?? '');
+              if (eventType === 'content') {
+                const delta = String(event.delta ?? event.content ?? '');
+                if (delta) {
+                  fullReply += delta;
+                  const streamMessage: AgentMessage = {
+                    id: pendingReplyId,
+                    type: 'agent',
+                    content: fullReply || '▊',
+                    timestamp: new Date().toISOString(),
+                  };
+                  sessions = sessions.map((session) =>
+                    session.id === targetSessionId
+                      ? finalizePendingMessage(session, pendingReplyId, streamMessage)
+                      : session,
+                  );
+                }
+                continue;
+              }
+
+              if (eventType === 'tool') {
+                const toolName = String(event.tool ?? 'tool');
+                const status = String(event.status ?? '');
+                const toolMsg: AgentMessage = {
+                  id: crypto.randomUUID(),
+                  type: 'tool',
+                  content: `${toolName}${status ? ` · ${status}` : ''}`,
+                  timestamp: new Date().toISOString(),
+                };
+                sessions = sessions.map((session) =>
+                  session.id === targetSessionId
+                    ? { ...session, messages: [...session.messages, toolMsg] }
+                    : session,
+                );
+                continue;
+              }
+
+              if (eventType === 'done') {
+                const sid = event.session_id;
+                if (typeof sid === 'string' && sid) {
+                  resolvedSessionId = sid;
+                }
+                continue;
+              }
+
+              if (eventType === 'error') {
+                throw new Error(String(event.error ?? 'Streaming error'));
+              }
+            }
+          }
+        } finally {
+          reader.releaseLock();
+        }
+
+        if (resolvedSessionId) {
+          sessions = sessions.map((session) =>
+            session.id === targetSessionId
+              ? { ...session, backendSessionId: resolvedSessionId ?? session.backendSessionId }
+              : session,
+          );
+        }
+        const finalReplyMessage: AgentMessage = {
+          id: pendingReplyId,
+          type: 'agent',
+          content: fullReply || 'No response received.',
+          timestamp: new Date().toISOString(),
+        };
+        sessions = sessions.map((session) =>
+          session.id === targetSessionId
+            ? finalizePendingMessage(session, pendingReplyId, finalReplyMessage)
+            : session,
+        );
+      } else {
+        const data = await response.json() as { reply?: string; session_id?: string };
+        if (data.session_id) {
+          sessions = sessions.map((session) =>
+            session.id === targetSessionId
+              ? { ...session, backendSessionId: data.session_id }
+              : session,
+          );
+        }
+        const replyMessage: AgentMessage = {
+          id: pendingReplyId,
+          type: 'agent',
+          content: data.reply || 'No response received.',
+          timestamp: new Date().toISOString(),
+        };
+        sessions = sessions.map((session) =>
+          session.id === targetSessionId
+            ? finalizePendingMessage(session, pendingReplyId, replyMessage)
+            : session,
         );
       }
-      const replyMessage: AgentMessage = {
-        id: crypto.randomUUID(),
-        type: 'agent',
-        content: data.reply || 'No response received.',
-        timestamp: new Date().toISOString(),
-      };
-      sessions = sessions.map(s =>
-        s.id === activeSessionId
-          ? { ...s, messages: [...s.messages, replyMessage] }
-          : s
-      );
     } catch (error) {
       const errorMessage: AgentMessage = {
-        id: crypto.randomUUID(),
+        id: pendingReplyId,
         type: 'agent',
         content: `Error: ${error instanceof Error ? error.message : 'Failed to send message'}`,
         timestamp: new Date().toISOString(),
       };
       sessions = sessions.map(s =>
-        s.id === activeSessionId
-          ? { ...s, messages: [...s.messages, errorMessage] }
+        s.id === targetSessionId
+          ? finalizePendingMessage(s, pendingReplyId, errorMessage)
           : s
       );
     } finally {
@@ -730,8 +1118,58 @@
     inputValue = cmd + ' ';
   }
 
-  function openAttachMenu() {
-    showAttachMenu = !showAttachMenu;
+  async function openAttachMenu() {
+    const nextOpen = !showAttachMenu;
+    showAttachMenu = nextOpen;
+    if (!nextOpen) {
+      return;
+    }
+
+    const resourcesById = new Map<string, CanvasAttachableResource>();
+    const options = canvasContextOptions.length > 0
+      ? canvasContextOptions
+      : [{ id: activeCanvas, label: `${deptHead.label} context` }];
+
+    for (const option of options) {
+      await canvasContextService.getEnrichedContext(option.id);
+      for (const resource of canvasContextService.getAttachableResources(option.id)) {
+        const uniqueId = `${resource.canvas}:${resource.id}`;
+        if (resourcesById.has(uniqueId)) {
+          continue;
+        }
+
+        const shouldPrefixLabel = option.id !== activeCanvas;
+        resourcesById.set(uniqueId, {
+          ...resource,
+          label: shouldPrefixLabel ? `${option.label}: ${resource.label}` : resource.label,
+        });
+      }
+    }
+
+    // Contract-first: merge backend workspace resource search (natural + cross-canvas).
+    try {
+      const workspaceResources = await canvasContextService.searchAttachableResources(
+        '',
+        options.map((option) => option.id),
+        300,
+      );
+      for (const resource of workspaceResources) {
+        const uniqueId = `${resource.canvas}:${resource.id}`;
+        if (resourcesById.has(uniqueId)) continue;
+        const sourceOption = options.find((option) => option.id === resource.canvas);
+        const shouldPrefixLabel = !!sourceOption && resource.canvas !== activeCanvas;
+        resourcesById.set(uniqueId, {
+          ...resource,
+          label: shouldPrefixLabel && sourceOption
+            ? `${sourceOption.label}: ${resource.label}`
+            : resource.label,
+        });
+      }
+    } catch (error) {
+      console.warn('Workspace attachment discovery fallback', error);
+    }
+
+    attachableResources = Array.from(resourcesById.values()).slice(0, 200);
   }
 
   function attachCanvas(opt: CanvasContextOption) {
@@ -744,6 +1182,27 @@
       id: crypto.randomUUID(),
       label: opt.label,
       canvasId: opt.id,
+      kind: 'canvas',
+    }];
+    showAttachMenu = false;
+  }
+
+  function attachResource(resource: CanvasAttachableResource) {
+    const resourceKey = `${resource.canvas}:${resource.id}`;
+    if (attachments.find((attachment) =>
+      attachment.kind === 'resource' &&
+      attachment.resource &&
+      `${attachment.resource.canvas}:${attachment.resource.id}` === resourceKey
+    )) {
+      showAttachMenu = false;
+      return;
+    }
+    attachments = [...attachments, {
+      id: crypto.randomUUID(),
+      label: resource.label,
+      canvasId: resource.canvas,
+      kind: 'resource',
+      resource,
     }];
     showAttachMenu = false;
   }
@@ -790,6 +1249,7 @@
         title="New interactive session"
         onclick={createNewSession}
         aria-label="New session"
+        disabled={sessionActionLoading}
       >
         <Plus size={14} />
       </button>
@@ -830,21 +1290,68 @@
     <!-- Session history panel -->
     {#if showSessionHistory}
       <div class="ap-session-history" role="list" aria-label="Past sessions">
+        {#if sessions.length > 0}
+          <div class="ap-session-history-actions">
+            <button
+              type="button"
+              class="ap-session-clear-btn"
+              onclick={() => { void deleteAllSessions(); }}
+              title="Delete all sessions"
+            >
+              Clear history
+            </button>
+          </div>
+        {/if}
         {#if sessions.length === 0}
           <p class="ap-empty-state">No sessions yet. Click + to start.</p>
         {/if}
         {#each sessions as session (session.id)}
-          <button
+          <div
             class="ap-session-entry"
             class:active={session.id === activeSessionId}
-            onclick={() => selectSession(session.id)}
+            onclick={() => { void selectSession(session.id); }}
+            onkeypress={(e) => e.key === 'Enter' && void selectSession(session.id)}
+            role="button"
+            tabindex="0"
           >
-            <span class="ap-session-title">{session.deptHead}</span>
+            {#if renamingSessionId === session.id}
+              <input
+                class="ap-session-rename-input"
+                bind:value={renameSessionTitle}
+                onclick={(e) => e.stopPropagation()}
+                onkeydown={(e) => {
+                  if (e.key === 'Enter') {
+                    void saveSessionRename(session.id, e);
+                  } else if (e.key === 'Escape') {
+                    cancelRenameSession(e);
+                  }
+                }}
+              />
+            {:else}
+              <span class="ap-session-title">{session.title}</span>
+            {/if}
             <span class="ap-session-meta">
               <span class="ap-session-date">{formatLocalDate(session.createdAt)}</span>
               <span class="ap-session-badge" data-status={session.status}>{session.status}</span>
             </span>
-          </button>
+            <span class="ap-session-actions">
+              {#if renamingSessionId === session.id}
+                <button class="ap-session-action-btn" onclick={(e) => saveSessionRename(session.id, e)} title="Save title">
+                  <Check size={11} />
+                </button>
+                <button class="ap-session-action-btn" onclick={(e) => cancelRenameSession(e)} title="Cancel rename">
+                  <X size={11} />
+                </button>
+              {:else}
+                <button class="ap-session-action-btn" onclick={(e) => beginRenameSession(session, e)} title="Rename">
+                  <Pencil size={11} />
+                </button>
+                <button class="ap-session-action-btn danger" onclick={(e) => deleteSession(session.id, e)} title="Delete">
+                  <Trash2 size={11} />
+                </button>
+              {/if}
+            </span>
+          </div>
         {/each}
       </div>
     {/if}
@@ -994,6 +1501,19 @@
                     <span class="opt-label">{opt.label}</span>
                   </button>
                 {/each}
+                {#if attachableResources.length > 0}
+                  <div class="attach-header attach-subheader">Attach a visible file or tile</div>
+                  {#each attachableResources as resource}
+                    <button
+                      class="attach-option attach-resource"
+                      onclick={() => attachResource(resource)}
+                      role="menuitem"
+                    >
+                      <span class="opt-label">{resource.label}</span>
+                      <span class="opt-meta">{resource.resource_type}</span>
+                    </button>
+                  {/each}
+                {/if}
               </div>
             {/if}
           </div>
@@ -1208,16 +1728,41 @@
     padding: 4px 0;
   }
 
+  .ap-session-history-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 4px 10px 6px;
+  }
+
+  .ap-session-clear-btn {
+    border: 1px solid var(--color-border-subtle);
+    background: transparent;
+    color: var(--color-text-muted);
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-radius: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
+  }
+
+  .ap-session-clear-btn:hover {
+    color: var(--color-accent-red);
+    border-color: rgba(255, 92, 92, 0.45);
+    background: rgba(255, 92, 92, 0.08);
+  }
+
   .ap-session-entry {
     display: flex;
-    flex-direction: column;
+    align-items: center;
     width: 100%;
     padding: 6px 10px;
     background: transparent;
     border: none;
-    text-align: left;
     cursor: pointer;
-    gap: 2px;
+    gap: 6px;
     transition: background 150ms ease;
   }
 
@@ -1227,18 +1772,24 @@
   }
 
   .ap-session-title {
+    flex: 1;
+    min-width: 0;
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 10px;
     font-weight: 600;
     color: var(--color-text-primary);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .ap-session-meta {
     display: flex;
+    flex-direction: column;
     gap: 8px;
-    align-items: center;
+    align-items: flex-end;
+    flex-shrink: 0;
   }
 
   .ap-session-date {
@@ -1265,6 +1816,49 @@
 
   .ap-session-badge[data-status="error"] {
     color: var(--color-accent-red);
+  }
+
+  .ap-session-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .ap-session-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: color 150ms ease, background 150ms ease;
+  }
+
+  .ap-session-action-btn:hover {
+    color: var(--color-text-primary);
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .ap-session-action-btn.danger:hover {
+    color: var(--color-accent-red);
+  }
+
+  .ap-session-rename-input {
+    flex: 1;
+    min-width: 0;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 4px;
+    border: 1px solid var(--color-border-subtle);
+    background: rgba(15, 23, 42, 0.65);
+    color: var(--color-text-primary);
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 10px;
   }
 
   /* ── Body ── */
@@ -1634,9 +2228,14 @@
     border-bottom: 1px solid rgba(0, 212, 255, 0.1);
   }
 
+  .attach-subheader {
+    border-top: 1px solid rgba(0, 212, 255, 0.08);
+  }
+
   .attach-option {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 8px;
     width: 100%;
     padding: 7px 10px;
@@ -1655,6 +2254,13 @@
     font-family: var(--font-family, 'Inter', system-ui, sans-serif);
     font-size: 12px;
     color: var(--color-text-primary);
+  }
+
+  .opt-meta {
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
   }
 
   /* ── Send button ── */
