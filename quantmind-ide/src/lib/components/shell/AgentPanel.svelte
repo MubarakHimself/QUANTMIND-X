@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { Plus, History, ChevronRight, Send, Paperclip, Trash2, Pencil, Check, X } from 'lucide-svelte';
+  import { Plus, History, ChevronRight, ChevronDown, Send, Paperclip, Trash2, Pencil, Check, X } from 'lucide-svelte';
   import {
     canvasContextService,
     type CanvasAttachableResource,
@@ -154,9 +154,15 @@
     activeCanvas: string;
     collapsed?: boolean;
     hidden?: boolean;
+    panelWidth?: number;
   }
 
-  let { activeCanvas, collapsed = $bindable(false), hidden = false }: Props = $props();
+  let {
+    activeCanvas,
+    collapsed = $bindable(false),
+    hidden = false,
+    panelWidth: boundPanelWidth = $bindable(380),
+  }: Props = $props();
 
   // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -248,6 +254,8 @@
   let activeCanvasStateKey = $state('');
   let panelWidth = $state(380);
   let isResizing = $state(false);
+  let resizeHandleEl = $state<HTMLButtonElement | null>(null);
+  let resizePointerId = -1;
   let resizeStartX = 0;
   let resizeStartWidth = 380;
   let panelWidthsHydrated = false;
@@ -481,7 +489,7 @@
     };
   }
 
-  function resizeOnMouseMove(event: MouseEvent) {
+  function resizeOnPointerMove(event: PointerEvent) {
     if (!isResizing) return;
     const delta = resizeStartX - event.clientX;
     updatePanelWidth(resizeStartWidth + delta);
@@ -491,27 +499,48 @@
     if (typeof window === 'undefined') {
       return;
     }
-    window.removeEventListener('mousemove', resizeOnMouseMove);
-    window.removeEventListener('mouseup', stopResize);
+    window.removeEventListener('pointermove', resizeOnPointerMove);
+    window.removeEventListener('pointerup', stopResize);
+    window.removeEventListener('pointercancel', stopResize);
+    document.body.style.removeProperty('cursor');
+    document.body.style.removeProperty('user-select');
   }
 
   function stopResize() {
     if (!isResizing) return;
     isResizing = false;
     persistPanelWidths();
+    if (resizeHandleEl && resizePointerId >= 0) {
+      try {
+        resizeHandleEl.releasePointerCapture?.(resizePointerId);
+      } catch {
+        // noop
+      }
+    }
+    resizePointerId = -1;
     detachResizeListeners();
   }
 
-  function startResize(event: MouseEvent) {
+  function startResize(event: PointerEvent) {
     if (collapsed || hidden || isWorkshop) {
       return;
     }
     isResizing = true;
+    resizeHandleEl = event.currentTarget instanceof HTMLButtonElement ? event.currentTarget : null;
+    resizePointerId = event.pointerId;
     resizeStartX = event.clientX;
     resizeStartWidth = panelWidth;
+    try {
+      resizeHandleEl?.setPointerCapture?.(event.pointerId);
+    } catch {
+      // noop
+    }
     if (typeof window !== 'undefined') {
-      window.addEventListener('mousemove', resizeOnMouseMove);
-      window.addEventListener('mouseup', stopResize);
+      window.addEventListener('pointermove', resizeOnPointerMove);
+      window.addEventListener('pointerup', stopResize);
+      window.addEventListener('pointercancel', stopResize);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
     }
     event.preventDefault();
   }
@@ -567,6 +596,10 @@
     updatePanelWidth(panelWidthByCanvas[activeCanvas] ?? nextCanvasState.panelWidth ?? PANEL_WIDTH_DEFAULT);
     showAttachMenu = false;
     activeCanvasStateKey = activeCanvas;
+  });
+
+  $effect(() => {
+    boundPanelWidth = hidden || collapsed || isWorkshop ? 0 : panelWidth;
   });
 
   $effect(() => {
@@ -768,8 +801,29 @@
     }
   }
 
-  function selectMailEntry(entryId: string) {
+  async function selectMailEntry(entryId: string) {
     selectedMailId = entryId;
+    const selectedEntry = mailEntries.find((entry) => entry.id === entryId);
+    if (!selectedEntry || selectedEntry.read) {
+      return;
+    }
+
+    mailEntries = mailEntries.map((entry) =>
+      entry.id === entryId ? { ...entry, read: true } : entry,
+    );
+
+    try {
+      const response = await fetch(`${API_CONFIG.API_BASE}/departments/mail/${entryId}/read`, {
+        method: 'PATCH',
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch {
+      mailEntries = mailEntries.map((entry) =>
+        entry.id === entryId ? { ...entry, read: false } : entry,
+      );
+    }
   }
 
   function clearSelectedMail() {
@@ -1222,6 +1276,11 @@
                   id: crypto.randomUUID(),
                   type: 'tool',
                   content: `${toolName}${status ? ` · ${status}` : ''}`,
+                  tool: toolName,
+                  args: {
+                    ...(typeof event.args === 'object' && event.args ? event.args as Record<string, unknown> : {}),
+                    status,
+                  },
                   timestamp: new Date().toISOString(),
                 };
                 sessions = sessions.map((session) =>
@@ -1240,6 +1299,12 @@
                   id: crypto.randomUUID(),
                   type: 'tool',
                   content: `${phase} · ${status}${statusMessage ? ` · ${statusMessage}` : ''}`,
+                  tool: 'status',
+                  args: {
+                    phase,
+                    status,
+                    message: statusMessage,
+                  },
                   timestamp: new Date().toISOString(),
                 };
                 sessions = sessions.map((session) =>
@@ -1443,6 +1508,43 @@
     return msg.tool === 'write_memory' && String(msg.args?.['node_type'] ?? '') === 'OPINION';
   }
 
+  function getToolTone(msg: AgentMessage): 'thinking' | 'mail' | 'memory' | 'tool' {
+    const toolName = String(msg.tool ?? '').toLowerCase();
+    const content = msg.content.toLowerCase();
+    if (toolName.includes('mail') || content.includes('mail')) {
+      return 'mail';
+    }
+    if (toolName.includes('memory') || toolName.includes('opinion') || content.includes('memory')) {
+      return 'memory';
+    }
+    if (toolName.includes('status') || toolName.includes('thinking') || content.includes('thinking') || content.includes('routing') || content.includes('stream')) {
+      return 'thinking';
+    }
+    return 'tool';
+  }
+
+  function getToolSummary(msg: AgentMessage): string {
+    if (msg.tool) {
+      const status = typeof msg.args?.['status'] === 'string' ? msg.args.status : null;
+      const phase = typeof msg.args?.['phase'] === 'string' ? msg.args.phase : null;
+      const label = [msg.tool, phase, status].filter(Boolean).join(' · ');
+      if (label) {
+        return label;
+      }
+    }
+    return msg.content;
+  }
+
+  function getToolDetail(msg: AgentMessage): string {
+    if (isOpinionTool(msg)) {
+      return '';
+    }
+    if (msg.args && Object.keys(msg.args).length > 0) {
+      return JSON.stringify(msg.args, null, 2);
+    }
+    return msg.content;
+  }
+
   async function setActiveTab(tab: 'chat' | 'agents' | 'memory' | 'mail') {
     activeTab = tab;
     if (tab === 'memory') {
@@ -1464,7 +1566,9 @@
   style="--agent-panel-width: {panelWidth}px; --ap-dept-accent: {deptColor}; --ap-step-accent: {stepAccentColor};"
 >
   {#if !isWorkshop}
-    <div
+    <button
+      type="button"
+      bind:this={resizeHandleEl}
       class="ap-resize-handle"
       role="separator"
       tabindex="0"
@@ -1474,9 +1578,9 @@
       aria-valuemax={getPanelWidthMax()}
       aria-valuenow={panelWidth}
       title="Resize panel"
-      onmousedown={startResize}
+      onpointerdown={startResize}
       onkeydown={handleResizeHandleKeydown}
-    ></div>
+    ></button>
 
     <!-- Header -->
     <header class="ap-header">
@@ -1640,19 +1744,31 @@
             <button
               type="button"
               class="ap-tool"
+              class:expanded={expandedToolLine === msg.id}
+              data-tone={getToolTone(msg)}
               onclick={() => toggleToolLine(msg.id)}
               aria-expanded={expandedToolLine === msg.id}
-              title={isOpinionTool(msg) ? 'Click to expand OPINION details' : undefined}
+              title="Click to expand event details"
             >
-              <span class="ap-tool-text">{msg.content}</span>
-              {#if expandedToolLine === msg.id && isOpinionTool(msg)}
-                <div class="ap-tool-detail" aria-label="OPINION details">
-                  <div class="ap-detail-row"><span class="ap-detail-key">action</span><span class="ap-detail-val">{String(msg.args?.['action'] ?? '—')}</span></div>
-                  <div class="ap-detail-row"><span class="ap-detail-key">reasoning</span><span class="ap-detail-val">{String(msg.args?.['reasoning'] ?? '—')}</span></div>
-                  <div class="ap-detail-row"><span class="ap-detail-key">confidence</span><span class="ap-detail-val">{String(msg.args?.['confidence'] ?? '—')}</span></div>
-                  <div class="ap-detail-row"><span class="ap-detail-key">alternatives_considered</span><span class="ap-detail-val">{String(msg.args?.['alternatives_considered'] ?? '—')}</span></div>
-                  <div class="ap-detail-row"><span class="ap-detail-key">constraints_applied</span><span class="ap-detail-val">{String(msg.args?.['constraints_applied'] ?? '—')}</span></div>
-                  <div class="ap-detail-row"><span class="ap-detail-key">agent_role</span><span class="ap-detail-val">{String(msg.args?.['agent_role'] ?? '—')}</span></div>
+              <span class="ap-tool-topline">
+                <span class="ap-tool-badge">{getToolTone(msg)}</span>
+                <span class="ap-tool-text">{getToolSummary(msg)}</span>
+                <span class="ap-tool-chevron" aria-hidden="true">
+                  <ChevronDown size={12} />
+                </span>
+              </span>
+              {#if expandedToolLine === msg.id}
+                <div class="ap-tool-detail" aria-label="Tool or reasoning event details">
+                  {#if isOpinionTool(msg)}
+                    <div class="ap-detail-row"><span class="ap-detail-key">action</span><span class="ap-detail-val">{String(msg.args?.['action'] ?? '—')}</span></div>
+                    <div class="ap-detail-row"><span class="ap-detail-key">reasoning</span><span class="ap-detail-val">{String(msg.args?.['reasoning'] ?? '—')}</span></div>
+                    <div class="ap-detail-row"><span class="ap-detail-key">confidence</span><span class="ap-detail-val">{String(msg.args?.['confidence'] ?? '—')}</span></div>
+                    <div class="ap-detail-row"><span class="ap-detail-key">alternatives_considered</span><span class="ap-detail-val">{String(msg.args?.['alternatives_considered'] ?? '—')}</span></div>
+                    <div class="ap-detail-row"><span class="ap-detail-key">constraints_applied</span><span class="ap-detail-val">{String(msg.args?.['constraints_applied'] ?? '—')}</span></div>
+                    <div class="ap-detail-row"><span class="ap-detail-key">agent_role</span><span class="ap-detail-val">{String(msg.args?.['agent_role'] ?? '—')}</span></div>
+                  {:else}
+                    <pre class="ap-tool-detail-pre">{getToolDetail(msg)}</pre>
+                  {/if}
                 </div>
               {/if}
             </button>
@@ -1817,7 +1933,7 @@
                   class="mail-row"
                   class:selected={selectedMailId === entry.id}
                   class:unread={!entry.read}
-                  onclick={() => selectMailEntry(entry.id)}
+                  onclick={() => { void selectMailEntry(entry.id); }}
                 >
                   <div class="mail-row-top">
                     <span class="mail-row-from">{entry.from_dept} · {entry.type}</span>
@@ -1907,20 +2023,19 @@
     top: 0;
     bottom: 0;
     left: 0;
-    width: 8px;
-    transform: translateX(-50%);
+    width: 18px;
     border: none;
     background: transparent;
     cursor: col-resize;
-    z-index: 30;
+    z-index: 40;
     padding: 0;
+    touch-action: none;
   }
 
   .ap-resize-handle::after {
     content: '';
     position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 3px;
     top: 0;
     bottom: 0;
     width: 2px;
@@ -2279,6 +2394,10 @@
     color: var(--color-text-primary);
   }
 
+  .mail-row.unread .mail-row-from {
+    color: color-mix(in srgb, var(--ap-dept-accent) 85%, white);
+  }
+
   .mail-row-top {
     display: flex;
     justify-content: space-between;
@@ -2491,15 +2610,30 @@
   }
 
   .ap-tool {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
     width: 100%;
     border: none;
-    background: transparent;
+    background: color-mix(in srgb, var(--color-surface-elevated, rgba(255, 255, 255, 0.03)) 65%, transparent);
     border-left: 2px solid var(--ap-step-accent);
-    padding: 4px 6px;
+    border-radius: 6px;
+    padding: 6px 8px;
     text-align: left;
     cursor: pointer;
     outline: none;
+  }
+
+  .ap-tool[data-tone='thinking'] {
+    border-left-color: color-mix(in srgb, var(--color-accent-amber) 75%, white);
+  }
+
+  .ap-tool[data-tone='mail'] {
+    border-left-color: color-mix(in srgb, var(--color-accent-cyan) 75%, white);
+  }
+
+  .ap-tool[data-tone='memory'] {
+    border-left-color: color-mix(in srgb, var(--color-accent-green) 75%, white);
   }
 
   .ap-tool:focus-visible {
@@ -2507,17 +2641,57 @@
     outline-offset: -1px;
   }
 
-  .ap-tool-text {
-    font-family: var(--font-mono, 'JetBrains Mono', monospace);
-    font-size: 9px;
-    color: var(--color-text-muted);
-    word-break: break-all;
-    display: block;
+  .ap-tool-topline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
   }
 
-  /* ── Tool detail (OPINION expand) ── */
+  .ap-tool-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 54px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ap-step-accent) 15%, transparent);
+    color: var(--ap-step-accent);
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+
+  .ap-tool-text {
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 10px;
+    color: var(--color-text-secondary);
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .ap-tool-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+    transition: transform 150ms ease, color 150ms ease;
+  }
+
+  .ap-tool.expanded .ap-tool-chevron {
+    transform: rotate(180deg);
+    color: var(--color-text-secondary);
+  }
+
   .ap-tool-detail {
-    margin-top: 6px;
     padding: 6px;
     background: color-mix(in srgb, var(--ap-step-accent) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--ap-step-accent) 30%, transparent);
@@ -2525,6 +2699,15 @@
     display: flex;
     flex-direction: column;
     gap: 3px;
+  }
+
+  .ap-tool-detail-pre {
+    margin: 0;
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 9px;
+    color: var(--color-text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   .ap-detail-row {

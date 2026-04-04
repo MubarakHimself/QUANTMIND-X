@@ -65,6 +65,9 @@ export interface StrategyFolder {
     has_trd: boolean;
     has_ea: boolean;
     has_backtest: boolean;
+    has_source_audio?: boolean;
+    has_source_captions?: boolean;
+    has_chunk_manifest?: boolean;
 }
 
 export interface StrategyDetail {
@@ -76,6 +79,16 @@ export interface StrategyDetail {
     trd?: { files: string[] };
     ea?: { files: string[] };
     backtests: Array<{ name: string; path: string; mode: string }>;
+    has_source_audio?: boolean;
+    has_source_captions?: boolean;
+    has_chunk_manifest?: boolean;
+    source_artifacts?: {
+        audio_files: string[];
+        caption_files: string[];
+        timeline_files: string[];
+        chunk_manifest_files: string[];
+        chunk_timeline_files: string[];
+    };
 }
 
 // =============================================================================

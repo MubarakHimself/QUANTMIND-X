@@ -36,7 +36,12 @@
     { id: 'mistral', name: 'Mistral AI', base_url: 'https://api.mistral.ai/v1' },
   ];
 
-  interface ProviderModel { id: string; name: string; }
+  interface ProviderModel {
+    id: string;
+    name: string;
+    pricing?: string;
+    capabilities?: string;
+  }
 
   interface Provider {
     id: string;
@@ -67,11 +72,40 @@
       { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' },
     ],
     openrouter: [
-      { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet (OR)' },
-      { id: 'anthropic/claude-3-opus', name: 'Claude 3 Opus (OR)' },
-      { id: 'google/gemini-pro-1.5', name: 'Gemini Pro 1.5 (OR)' },
-      { id: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B (OR)' },
-      { id: 'mistralai/mistral-7b-instruct', name: 'Mistral 7B (OR)' },
+      {
+        id: 'google/gemini-2.0-flash-lite-001',
+        name: 'Gemini 2.0 Flash Lite 001',
+        pricing: '$0.075/M input · $0.30/M output · $0.075/M audio',
+        capabilities: 'video, audio, file',
+      },
+      {
+        id: 'google/gemini-2.5-flash-lite',
+        name: 'Gemini 2.5 Flash Lite',
+        pricing: '$0.10/M input · $0.40/M output · $0.30/M audio',
+        capabilities: 'video, audio, file',
+      },
+      {
+        id: 'google/gemini-2.0-flash-001',
+        name: 'Gemini 2.0 Flash 001',
+        pricing: '$0.10/M input · $0.40/M output · $0.70/M audio',
+        capabilities: 'video, audio, file',
+      },
+      {
+        id: 'qwen/qwen3.6-plus:free',
+        name: 'Qwen 3.6 Plus Free',
+        pricing: 'free tier',
+        capabilities: 'video',
+      },
+      {
+        id: 'qwen/qwen3.5-9b',
+        name: 'Qwen 3.5 9B',
+        capabilities: 'video',
+      },
+      {
+        id: 'qwen/qwen3.5-flash-02-23',
+        name: 'Qwen 3.5 Flash 02-23',
+        capabilities: 'video',
+      },
     ],
     deepseek: [
       { id: 'deepseek-chat', name: 'DeepSeek Chat' },
@@ -439,6 +473,10 @@
   }
 
   onMount(() => { loadProviders(); loadZeroAuthStatus(); });
+
+  function getSelectedModel(providerType: string, primaryModel?: string): ProviderModel | undefined {
+    return (PROVIDER_MODELS_MAP[providerType] || []).find((model) => model.id === primaryModel);
+  }
 </script>
 
 <div class="panel">
@@ -607,6 +645,7 @@
 
         {#if editingProvider === defP.id && provider}
           {@const availableModels = PROVIDER_MODELS_MAP[defP.id] || []}
+          {@const selectedModel = getSelectedModel(defP.id, provider.primary_model)}
           <div class="provider-fields">
             <div class="form-group">
               <label>Base URL</label>
@@ -621,10 +660,20 @@
                 <label>Primary Model</label>
                 <select class="text-input" bind:value={provider.primary_model}>
                   {#each availableModels as m}
-                    <option value={m.id}>{m.name}</option>
+                    <option value={m.id}>
+                      {m.name}{m.pricing ? ` · ${m.pricing}` : ''}
+                    </option>
                   {/each}
                 </select>
                 <small class="field-hint">The model used by default for this provider.</small>
+                {#if selectedModel?.pricing || selectedModel?.capabilities}
+                  <small class="field-hint model-detail">
+                    {selectedModel?.capabilities || 'model'}
+                    {#if selectedModel?.pricing}
+                      · {selectedModel.pricing}
+                    {/if}
+                  </small>
+                {/if}
               </div>
             {:else}
               <div class="form-group">

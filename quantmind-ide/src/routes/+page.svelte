@@ -30,6 +30,7 @@
 
   let agentPanelCollapsed = $state(false);
   let agentPanelCollapsedByCanvas = $state<Record<string, boolean>>({});
+  let agentPanelWidth = $state(380);
   let currentCanvas = $derived($activeCanvasStore);
   let agentPanelCollapseCanvasKey = $state($activeCanvasStore);
   let mainContentRef: MainContent;
@@ -112,7 +113,11 @@
   }
 </script>
 
-<div class="ide-layout" class:agent-panel-collapsed={agentPanelCollapsed || !showAgentPanel}>
+<div
+  class="ide-layout"
+  class:agent-panel-collapsed={agentPanelCollapsed || !showAgentPanel}
+  style={`--agent-panel-width: ${agentPanelWidth}px;`}
+>
   <!-- Wallpaper Background -->
   <div
     class="wallpaper-layer"
@@ -133,6 +138,7 @@
   <AgentPanel
     activeCanvas={currentCanvas}
     bind:collapsed={agentPanelCollapsed}
+    bind:panelWidth={agentPanelWidth}
     hidden={!showAgentPanel}
   />
 </div>

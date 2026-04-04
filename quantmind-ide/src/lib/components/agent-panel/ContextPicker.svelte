@@ -243,6 +243,8 @@
                         <span class="item-meta">
                           Status: {strategy.status}
                           {#if strategy.has_video_ingest}• VideoIngest{/if}
+                          {#if strategy.has_source_captions}• Captions{/if}
+                          {#if strategy.has_source_audio}• Audio{/if}
                           {#if strategy.has_ea}• EA{/if}
                         </span>
                       </div>

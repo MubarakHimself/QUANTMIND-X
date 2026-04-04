@@ -241,11 +241,12 @@ PROVIDER_MODELS = {
         {"id": "gpt-3.5-turbo", "name": "GPT-3.5 Turbo"},
     ],
     "openrouter": [
-        {"id": "anthropic/claude-3.5-sonnet", "name": "Claude 3.5 Sonnet (OR)"},
-        {"id": "anthropic/claude-3-opus", "name": "Claude 3 Opus (OR)"},
-        {"id": "google/gemini-pro-1.5", "name": "Gemini Pro 1.5 (OR)"},
-        {"id": "meta-llama/llama-3.1-70b-instruct", "name": "Llama 3.1 70B (OR)"},
-        {"id": "mistralai/mistral-7b-instruct", "name": "Mistral 7B (OR)"},
+        {"id": "google/gemini-2.0-flash-lite-001", "name": "Gemini 2.0 Flash Lite 001 · Video · $0.075/M in · $0.30/M out"},
+        {"id": "google/gemini-2.5-flash-lite", "name": "Gemini 2.5 Flash Lite · Video · $0.10/M in · $0.40/M out"},
+        {"id": "google/gemini-2.0-flash-001", "name": "Gemini 2.0 Flash 001 · Video · $0.10/M in · $0.40/M out"},
+        {"id": "qwen/qwen3.6-plus:free", "name": "Qwen 3.6 Plus Free · Video"},
+        {"id": "qwen/qwen3.5-9b", "name": "Qwen 3.5 9B · Video"},
+        {"id": "qwen/qwen3.5-flash-02-23", "name": "Qwen 3.5 Flash 02-23 · Video"},
     ],
     "deepseek": [
         {"id": "deepseek-chat", "name": "DeepSeek Chat"},

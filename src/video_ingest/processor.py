@@ -8,6 +8,8 @@ processing pipeline: download → frame extraction → audio extraction → AI a
 import logging
 import tempfile
 import shutil
+import subprocess
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict, Any
@@ -44,6 +46,8 @@ from .exceptions import (
 
 
 logger = logging.getLogger(__name__)
+
+CHUNK_ANALYSIS_THRESHOLD_SECONDS = 20 * 60
 
 
 # Default analysis prompt for video content extraction
@@ -327,22 +331,47 @@ class VideoIngestProcessor:
             self._update_status(job_id, JobState.DOWNLOADING, 10, "Downloading video...")
             video_metadata = self._download_video(url, work_dir, options)
             logger.info(f"Video downloaded: {video_metadata.file_path}")
-            
-            # Step 2: Extract frames
-            self._update_status(job_id, JobState.PROCESSING, 30, "Extracting frames...")
-            frames = self._extract_frames(video_metadata.file_path, work_dir, options)
-            logger.info(f"Extracted {len(frames)} frames")
-            
-            # Step 3: Extract audio
-            self._update_status(job_id, JobState.PROCESSING, 50, "Extracting audio...")
-            audio_path = self._extract_audio(video_metadata.file_path, work_dir, options)
-            logger.info(f"Audio extracted: {audio_path}")
-            
-            # Step 4: Analyze content
-            self._update_status(job_id, JobState.ANALYZING, 70, "Analyzing content...")
-            timeline, provider_used = self._analyze_content(
-                frames, audio_path, video_metadata, options
-            )
+
+            self._update_status(job_id, JobState.PROCESSING, 20, "Extracting source audio...")
+            source_audio_path = self._extract_audio(video_metadata.file_path, work_dir, options)
+            self._persist_source_audio(source_audio_path, options)
+
+            self._update_status(job_id, JobState.PROCESSING, 25, "Fetching captions...")
+            captions_path = self._download_captions(url, work_dir, options)
+            caption_segments = self._parse_caption_file(captions_path) if captions_path else []
+
+            chunk_plan = self._build_chunk_plan(int(video_metadata.duration or 0), options)
+            self._persist_chunk_plan(job_id, chunk_plan, options)
+
+            if len(chunk_plan) == 1:
+                # Step 2: Extract frames
+                self._update_status(job_id, JobState.PROCESSING, 30, "Extracting frames...")
+                frames = self._extract_frames(video_metadata.file_path, work_dir, options)
+                logger.info(f"Extracted {len(frames)} frames")
+
+                # Step 4: Analyze content
+                self._update_status(job_id, JobState.ANALYZING, 70, "Analyzing content...")
+                captions_text = self._captions_for_window(
+                    caption_segments,
+                    0,
+                    int(video_metadata.duration or 0),
+                )
+                timeline, provider_used = self._analyze_content(
+                    frames,
+                    None if captions_text else source_audio_path,
+                    video_metadata,
+                    options,
+                    captions_text=captions_text,
+                )
+            else:
+                timeline, provider_used = self._process_chunked_video(
+                    job_id=job_id,
+                    video_metadata=video_metadata,
+                    chunk_plan=chunk_plan,
+                    work_dir=work_dir,
+                    options=options,
+                    caption_segments=caption_segments,
+                )
             logger.info(f"Analysis complete using {provider_used}")
             
             # Calculate processing time
@@ -372,6 +401,281 @@ class VideoIngestProcessor:
                 shutil.rmtree(work_dir)
             except Exception as e:
                 logger.warning(f"Failed to cleanup work directory: {e}")
+
+    def _resolve_chunk_budget_seconds(self, options: Optional[JobOptions] = None) -> int:
+        options = options or JobOptions()
+        model_name = ""
+        if options.model_provider and options.model_provider.lower() == "openrouter":
+            model_name = (self.config.openrouter_model or "").lower()
+        elif options.model_provider and "qwen" in options.model_provider.lower():
+            model_name = (self.config.qwen_model or "").lower()
+        else:
+            model_name = (self.config.openrouter_model or "").lower()
+
+        model_budgets = {
+            "google/gemini-2.0-flash-lite-001": 30 * 60,
+            "google/gemini-2.5-flash-lite": 40 * 60,
+            "google/gemini-2.0-flash-001": 35 * 60,
+            "qwen-vl-plus": 25 * 60,
+            "qwen-vl-max": 30 * 60,
+        }
+        return model_budgets.get(model_name, 30 * 60)
+
+    def _build_chunk_plan(self, duration_seconds: int, options: Optional[JobOptions] = None) -> List[Dict[str, Any]]:
+        """Create chunk boundaries for long videos."""
+        chunk_budget_seconds = self._resolve_chunk_budget_seconds(options)
+        threshold_seconds = min(CHUNK_ANALYSIS_THRESHOLD_SECONDS, chunk_budget_seconds)
+        if duration_seconds <= 0 or duration_seconds <= threshold_seconds:
+            return [{"start": 0, "end": max(duration_seconds, 0), "label": "full"}]
+
+        chunk_count = max((duration_seconds + chunk_budget_seconds - 1) // chunk_budget_seconds, 2)
+        chunk_duration = max(duration_seconds // chunk_count, 1)
+        chunks: List[Dict[str, Any]] = []
+        for index in range(chunk_count):
+            start = index * chunk_duration
+            end = duration_seconds if index == chunk_count - 1 else min((index + 1) * chunk_duration, duration_seconds)
+            chunks.append({"start": start, "end": end, "label": f"part_{index + 1}"})
+        return chunks
+
+    def _chunk_manifest_path(self, job_id: str, options: JobOptions) -> Optional[Path]:
+        if not options.artifact_root:
+            return None
+        return options.artifact_root / "source" / "chunks" / f"{job_id}.json"
+
+    def _persist_chunk_plan(
+        self,
+        job_id: str,
+        chunk_plan: List[Dict[str, Any]],
+        options: JobOptions,
+    ) -> None:
+        chunk_path = self._chunk_manifest_path(job_id, options)
+        if chunk_path is None:
+            return
+        try:
+            chunk_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "job_id": job_id,
+                "workflow_id": options.workflow_id,
+                "strategy_id": options.strategy_id,
+                "strategy_family": options.strategy_family,
+                "source_bucket": options.source_bucket,
+                "chunk_count": len(chunk_plan),
+                "total_duration_seconds": max((int(chunk.get("end", 0) or 0) for chunk in chunk_plan), default=0),
+                "updated_at": datetime.now().isoformat(),
+                "chunks": [
+                    {
+                        "chunk_id": index,
+                        "label": chunk["label"],
+                        "start_seconds": int(chunk["start"]),
+                        "end_seconds": int(chunk["end"]),
+                        "duration_seconds": max(int(chunk["end"]) - int(chunk["start"]), 0),
+                        "status": "pending",
+                        "timeline_path": None,
+                    }
+                    for index, chunk in enumerate(chunk_plan, start=1)
+                ],
+            }
+            chunk_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        except Exception as exc:
+            logger.warning("Failed to persist chunk plan: %s", exc)
+
+    def _update_chunk_manifest_entry(
+        self,
+        job_id: str,
+        chunk_label: str,
+        options: JobOptions,
+        **updates: Any,
+    ) -> None:
+        chunk_path = self._chunk_manifest_path(job_id, options)
+        if chunk_path is None or not chunk_path.exists():
+            return
+        try:
+            payload = json.loads(chunk_path.read_text(encoding="utf-8"))
+            for chunk in payload.get("chunks", []):
+                if chunk.get("label") == chunk_label:
+                    chunk.update(updates)
+                    break
+            payload["updated_at"] = datetime.now().isoformat()
+            chunk_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        except Exception as exc:
+            logger.warning("Failed to update chunk manifest for %s: %s", chunk_label, exc)
+
+    def _persist_chunk_timeline(
+        self,
+        job_id: str,
+        chunk_label: str,
+        timeline: TimelineOutput,
+        options: JobOptions,
+    ) -> None:
+        if not options.artifact_root:
+            return
+        try:
+            chunk_timeline_path = (
+                options.artifact_root
+                / "source"
+                / "timelines"
+                / "chunks"
+                / job_id
+                / f"{chunk_label}.json"
+            )
+            chunk_timeline_path.parent.mkdir(parents=True, exist_ok=True)
+            timeline.save_to_file(chunk_timeline_path)
+            relative_path = str(chunk_timeline_path.relative_to(options.artifact_root)).replace("\\", "/")
+            self._update_chunk_manifest_entry(
+                job_id,
+                chunk_label,
+                options,
+                status="completed",
+                timeline_path=relative_path,
+            )
+        except Exception as exc:
+            logger.warning("Failed to persist chunk timeline for %s: %s", chunk_label, exc)
+
+    def _extract_video_chunk(
+        self,
+        video_path: Path,
+        start_seconds: int,
+        end_seconds: int,
+        output_path: Path,
+    ) -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(video_path),
+                "-ss",
+                str(start_seconds),
+                "-to",
+                str(end_seconds),
+                "-c",
+                "copy",
+                str(output_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode != 0:
+            raise ExtractionError(f"Failed to extract chunk {start_seconds}-{end_seconds}: {result.stderr}")
+        return output_path
+
+    def _process_chunked_video(
+        self,
+        job_id: str,
+        video_metadata: VideoMetadata,
+        chunk_plan: List[Dict[str, Any]],
+        work_dir: Path,
+        options: JobOptions,
+        caption_segments: Optional[List[Dict[str, Any]]] = None,
+    ) -> tuple[TimelineOutput, str]:
+        combined_clips: List[TimelineClip] = []
+        provider_used = ""
+        chunk_root = work_dir / "chunks"
+        total_chunks = len(chunk_plan)
+
+        for index, chunk in enumerate(chunk_plan):
+            progress_floor = 25 + int((index / total_chunks) * 55)
+            label = chunk["label"]
+            self._update_status(job_id, JobState.PROCESSING, progress_floor, f"Preparing chunk {label}...")
+            self._update_chunk_manifest_entry(job_id, label, options, status="processing")
+
+            chunk_dir = chunk_root / label
+            chunk_video = self._extract_video_chunk(
+                video_metadata.file_path,
+                chunk["start"],
+                chunk["end"],
+                chunk_dir / "segment.mp4",
+            )
+
+            frames = self._extract_frames(chunk_video, chunk_dir, options)
+            captions_text = self._captions_for_window(
+                caption_segments or [],
+                int(chunk["start"]),
+                int(chunk["end"]),
+            )
+            audio_path = None
+            if not captions_text:
+                audio_path = self._extract_audio(chunk_video, chunk_dir, options)
+
+            self._update_status(job_id, JobState.ANALYZING, progress_floor + 10, f"Analyzing chunk {label}...")
+            chunk_metadata = VideoMetadata(
+                file_path=chunk_video,
+                duration=max(chunk["end"] - chunk["start"], 0),
+                resolution=video_metadata.resolution,
+                format=video_metadata.format,
+                file_size=chunk_video.stat().st_size if chunk_video.exists() else video_metadata.file_size,
+                url=video_metadata.url,
+                title=video_metadata.title,
+            )
+            timeline, provider_used = self._analyze_content(
+                frames,
+                audio_path,
+                chunk_metadata,
+                options,
+                captions_text=captions_text,
+            )
+            self._persist_chunk_timeline(job_id, label, timeline, options)
+            rebased = self._rebase_timeline(timeline, seconds_offset=chunk["start"], clip_offset=len(combined_clips))
+            combined_clips.extend(rebased.timeline)
+
+        return (
+            TimelineOutput(
+                video_url=video_metadata.url,
+                title=video_metadata.title or "Untitled",
+                duration_seconds=int(video_metadata.duration),
+                processed_at=datetime.now().isoformat(),
+                model_provider=provider_used.lower() if provider_used else "unknown",
+                timeline=combined_clips,
+            ),
+            provider_used,
+        )
+
+    def _rebase_timeline(
+        self,
+        timeline: TimelineOutput,
+        seconds_offset: int,
+        clip_offset: int = 0,
+    ) -> TimelineOutput:
+        rebased_clips: List[TimelineClip] = []
+        for index, clip in enumerate(timeline.timeline, start=1):
+            rebased_clips.append(
+                TimelineClip(
+                    clip_id=clip_offset + index,
+                    timestamp_start=self._format_timestamp(self._parse_timestamp(clip.timestamp_start) + seconds_offset),
+                    timestamp_end=self._format_timestamp(self._parse_timestamp(clip.timestamp_end) + seconds_offset),
+                    transcript=clip.transcript,
+                    visual_description=clip.visual_description,
+                    frame_path=clip.frame_path,
+                )
+            )
+
+        return TimelineOutput(
+            video_url=timeline.video_url,
+            title=timeline.title,
+            duration_seconds=timeline.duration_seconds,
+            processed_at=timeline.processed_at,
+            model_provider=timeline.model_provider,
+            version=timeline.version,
+            timeline=rebased_clips,
+        )
+
+    def _parse_timestamp(self, value: str) -> int:
+        try:
+            hours, minutes, seconds = value.split(":", 2)
+            seconds = seconds.split(".", 1)[0]
+            hours, minutes, seconds = int(hours), int(minutes), int(seconds)
+        except Exception:
+            return 0
+        return hours * 3600 + minutes * 60 + seconds
+
+    def _format_timestamp(self, total_seconds: int) -> str:
+        total_seconds = max(int(total_seconds), 0)
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     
     def _check_cache(
         self,
@@ -490,13 +794,117 @@ class VideoIngestProcessor:
             bitrate=bitrate,
             channels=channels
         )
+
+    def _persist_source_audio(self, audio_path: Path, options: JobOptions) -> Optional[Path]:
+        if not options.artifact_root or not audio_path.exists():
+            return None
+        destination = options.artifact_root / "source" / "audio" / audio_path.name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(audio_path, destination)
+        return destination
+
+    def _download_captions(
+        self,
+        url: str,
+        work_dir: Path,
+        options: JobOptions,
+    ) -> Optional[Path]:
+        try:
+            caption_path = self.downloader.download_captions(url, str(work_dir / "captions"))
+        except Exception as exc:
+            logger.info("Caption download unavailable for %s: %s", url, exc)
+            return None
+        if caption_path is None or not caption_path.exists():
+            return None
+        if options.artifact_root:
+            destination = options.artifact_root / "source" / "captions" / caption_path.name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(caption_path, destination)
+            return destination
+        return caption_path
+
+    def _parse_caption_file(self, caption_path: Optional[Path]) -> List[Dict[str, Any]]:
+        if caption_path is None or not caption_path.exists():
+            return []
+        lines = caption_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        segments: List[Dict[str, Any]] = []
+        start_seconds: Optional[int] = None
+        end_seconds: Optional[int] = None
+        text_lines: List[str] = []
+
+        def flush() -> None:
+            nonlocal start_seconds, end_seconds, text_lines
+            if start_seconds is None or end_seconds is None or not text_lines:
+                start_seconds = None
+                end_seconds = None
+                text_lines = []
+                return
+            text = "\n".join(line.strip() for line in text_lines if line.strip()).strip()
+            if text:
+                segments.append(
+                    {
+                        "start_seconds": start_seconds,
+                        "end_seconds": end_seconds,
+                        "text": text,
+                    }
+                )
+            start_seconds = None
+            end_seconds = None
+            text_lines = []
+
+        for raw_line in lines:
+            line = raw_line.strip()
+            if not line:
+                flush()
+                continue
+            if line == "WEBVTT" or line.startswith("NOTE") or line.isdigit():
+                continue
+            if "-->" in line:
+                flush()
+                start_text, end_text = [part.strip() for part in line.split("-->", 1)]
+                start_seconds = self._parse_timestamp(start_text)
+                end_seconds = self._parse_timestamp(end_text)
+                continue
+            if start_seconds is not None and end_seconds is not None:
+                text_lines.append(line)
+
+        flush()
+        return segments
+
+    def _captions_for_window(
+        self,
+        segments: List[Dict[str, Any]],
+        start_seconds: int,
+        end_seconds: int,
+    ) -> Optional[str]:
+        matching = [
+            segment["text"]
+            for segment in segments
+            if int(segment["end_seconds"]) > int(start_seconds)
+            and int(segment["start_seconds"]) < int(end_seconds)
+        ]
+        if not matching:
+            return None
+        return "\n".join(text for text in matching if text).strip() or None
+
+    def _build_analysis_prompt(self, captions_text: Optional[str] = None) -> str:
+        if not captions_text:
+            return DEFAULT_ANALYSIS_PROMPT
+        return (
+            DEFAULT_ANALYSIS_PROMPT.strip()
+            + "\n\nCaption transcript:\n"
+            + captions_text.strip()
+            + "\n\nUse the caption transcript as the primary speech source. "
+              "Do not invent missing spoken words; rely on visuals for visual descriptions only."
+        )
     
     def _analyze_content(
         self,
         frames: List[Path],
-        audio_path: Path,
+        audio_path: Optional[Path],
         video_metadata: VideoMetadata,
-        options: JobOptions
+        options: JobOptions,
+        captions_text: Optional[str] = None,
     ) -> tuple[TimelineOutput, str]:
         """
         Analyze content using AI provider with fallback.
@@ -532,7 +940,11 @@ class VideoIngestProcessor:
                 logger.info(f"Trying provider: {provider_name}")
                 
                 # Analyze content
-                timeline = provider.analyze(frames, audio_path, DEFAULT_ANALYSIS_PROMPT)
+                timeline = provider.analyze(
+                    frames,
+                    None if captions_text else audio_path,
+                    self._build_analysis_prompt(captions_text),
+                )
                 
                 # Update timeline metadata
                 timeline.video_url = video_metadata.url

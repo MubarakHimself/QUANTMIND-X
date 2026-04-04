@@ -2,23 +2,23 @@
 Workflow API Endpoints
 
 Provides REST API endpoints for workflow management and execution.
-Supports VideoIngest to EA workflow, status tracking, and control operations.
 
-Delegates all workflow operations to the WorkflowOrchestrator for consistent
-state management and real agent/MCP integration.
+The canonical workflow authority is the department workflow coordinator
+(`wf1_creation`–`wf4_weekend_update`). The legacy `/api/workflows/*`
+compatibility endpoints below now serialize coordinator state into the older
+workflowStore.ts shape instead of dispatching to the obsolete private
+orchestrator stack.
 
-Endpoints match the expected shapes from workflowStore.ts:
+Endpoints still match the expected shapes from workflowStore.ts:
 - workflow_id, workflow_type, status, progress_percent, steps, final_result, timestamps
 """
 
 import json
 import logging
-import uuid
 import asyncio
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from enum import Enum
-from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel, Field
 
@@ -105,20 +105,24 @@ class WorkflowListResponse(BaseModel):
 
 
 # ============================================================================
-# Orchestrator Integration
+# Coordinator Integration
 # ============================================================================
 
-def _get_orchestrator():
-    """Get the workflow orchestrator instance."""
-    from src.router.workflow_orchestrator import get_orchestrator
-    return get_orchestrator()
+def _get_coordinator():
+    """Get the department workflow coordinator instance."""
+    from src.agents.departments.workflow_coordinator import get_workflow_coordinator
+
+    return get_workflow_coordinator()
 
 
-def _convert_orchestrator_status(status: str) -> WorkflowStatus:
-    """Convert orchestrator status to API status."""
+def _convert_coordinator_status(status: str) -> WorkflowStatus:
+    """Convert coordinator/canonical status to the legacy workflow API enum."""
     status_map = {
         "pending": WorkflowStatus.PENDING,
         "running": WorkflowStatus.RUNNING,
+        "waiting": WorkflowStatus.PAUSED,
+        "pending_review": WorkflowStatus.PAUSED,
+        "expired_review": WorkflowStatus.PAUSED,
         "paused": WorkflowStatus.PAUSED,
         "completed": WorkflowStatus.COMPLETED,
         "failed": WorkflowStatus.FAILED,
@@ -127,57 +131,77 @@ def _convert_orchestrator_status(status: str) -> WorkflowStatus:
     return status_map.get(status, WorkflowStatus.PENDING)
 
 
-def _convert_orchestrator_workflow(orch_workflow: Dict[str, Any]) -> Workflow:
-    """Convert orchestrator workflow format to API format."""
+def _step_status_from_task(status: str) -> StepStatus:
+    status_map = {
+        "pending": StepStatus.PENDING,
+        "running": StepStatus.RUNNING,
+        "waiting": StepStatus.RUNNING,
+        "completed": StepStatus.COMPLETED,
+        "failed": StepStatus.FAILED,
+        "cancelled": StepStatus.SKIPPED,
+    }
+    return status_map.get(status, StepStatus.PENDING)
+
+
+def _task_to_step(task: Dict[str, Any], index: int, workflow_id: str) -> WorkflowStep:
+    return WorkflowStep(
+        step_id=f"{workflow_id}_step_{index}",
+        name=task.get("stage", f"step_{index}"),
+        description=f"Execute {task.get('stage', f'step_{index}')} stage",
+        agent_type=task.get("to_dept", "system"),
+        status=_step_status_from_task(task.get("status", "pending")),
+        started_at=task.get("created_at"),
+        completed_at=task.get("completed_at"),
+        input_data=task.get("payload") or {},
+        output_data=task.get("result") or {},
+        error=task.get("error"),
+        retries=0,
+    )
+
+
+def _convert_coordinator_workflow(workflow_data: Dict[str, Any]) -> Workflow:
+    """Convert coordinator workflow format to the legacy workflow API format."""
     steps = []
-    step_names = list(orch_workflow.get("steps", {}).keys())
-    
-    for i, (step_name, step_data) in enumerate(orch_workflow.get("steps", {}).items()):
-        step_status = StepStatus.PENDING
-        if step_data.get("status") == "running":
-            step_status = StepStatus.RUNNING
-        elif step_data.get("status") == "completed":
-            step_status = StepStatus.COMPLETED
-        elif step_data.get("status") == "failed":
-            step_status = StepStatus.FAILED
-        
-        steps.append(WorkflowStep(
-            step_id=f"{orch_workflow['workflow_id']}_step_{i}",
-            name=step_name,
-            description=f"Execute {step_name} stage",
-            agent_type=_get_agent_type_for_step(step_name),
-            status=step_status,
-            started_at=step_data.get("started_at"),
-            completed_at=step_data.get("completed_at"),
-            output_data=step_data.get("output", {}),
-            error=step_data.get("error"),
-            retries=step_data.get("retry_count", 0)
-        ))
-    
-    # Calculate progress
-    completed_steps = sum(1 for s in steps if s.status == StepStatus.COMPLETED)
-    progress = (completed_steps / len(steps) * 100) if steps else 0
-    
-    # Determine workflow type
-    workflow_type = "video_ingest_to_ea"
-    if "video_ingest_processing" not in orch_workflow.get("steps", {}):
-        workflow_type = "trd_to_ea"
-    
+    tasks = workflow_data.get("tasks", [])
+    for index, task in enumerate(tasks, start=1):
+        steps.append(_task_to_step(task, index, workflow_data["workflow_id"]))
+
+    completed_steps = sum(1 for step in steps if step.status == StepStatus.COMPLETED)
+    workflow_type = workflow_data.get("workflow_type", "wf1_creation")
+    legacy_type = workflow_type
+    if workflow_type == "wf1_creation":
+        entry_stage = (workflow_data.get("metadata") or {}).get("entry_stage")
+        if entry_stage == "development":
+            legacy_type = "trd_to_ea"
+        else:
+            legacy_type = "video_ingest_to_ea"
+
+    created_at = workflow_data.get("created_at")
+    updated_at = workflow_data.get("updated_at")
+    duration_seconds = None
+    if created_at and updated_at:
+        try:
+            duration_seconds = (
+                datetime.fromisoformat(updated_at) - datetime.fromisoformat(created_at)
+            ).total_seconds()
+        except ValueError:
+            duration_seconds = None
+
     return Workflow(
-        workflow_id=orch_workflow["workflow_id"],
-        workflow_type=workflow_type,
-        status=_convert_orchestrator_status(orch_workflow.get("status", "pending")),
+        workflow_id=workflow_data["workflow_id"],
+        workflow_type=legacy_type,
+        status=_convert_coordinator_status(workflow_data.get("status", "pending")),
         current_step_index=completed_steps,
-        progress_percent=progress,
+        progress_percent=float(workflow_data.get("progress_percent", 0.0)),
         steps=steps,
-        input_data=orch_workflow.get("metadata", {}),
-        intermediate_results=orch_workflow.get("metadata", {}),
-        final_result=orch_workflow.get("steps", {}).get("validation", {}).get("output", {}),
-        created_at=orch_workflow.get("created_at", ""),
-        started_at=orch_workflow.get("steps", {}).get("video_ingest_processing", {}).get("started_at") or
-                   orch_workflow.get("steps", {}).get("quantcode", {}).get("started_at"),
-        completed_at=orch_workflow.get("steps", {}).get("validation", {}).get("completed_at"),
-        error=orch_workflow.get("error")
+        input_data=(workflow_data.get("metadata") or {}).get("initial_payload", {}),
+        intermediate_results=workflow_data.get("metadata", {}),
+        final_result=(workflow_data.get("metadata") or {}).get("latest_results", {}),
+        created_at=created_at or "",
+        started_at=steps[0].started_at if steps else created_at,
+        completed_at=updated_at if workflow_data.get("status") in {"completed", "failed", "cancelled"} else None,
+        duration_seconds=duration_seconds,
+        error=workflow_data.get("error"),
     )
 
 
@@ -253,41 +277,28 @@ async def start_video_ingest_to_ea_workflow(
     5. Runs a backtest (using Backtest MCP)
     6. Analyzes and validates results
 
-    Delegates to the WorkflowOrchestrator for execution.
+    Compatibility entrypoint for legacy clients. This now starts the canonical
+    WF1 coordinator workflow instead of the retired private video-to-EA stack.
     """
-    orchestrator = _get_orchestrator()
-    
-    # Save VideoIngest content to a temporary file
-    import tempfile
-    import json
-    
-    temp_dir = Path("workflows/video_ingest_inputs")
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    
-    video_ingest_file = temp_dir / f"video_ingest_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.json"
-    
-    # Parse VideoIngest content if it's a string
-    try:
-        if isinstance(request.video_ingest_content, str):
-            video_ingest_data = json.loads(request.video_ingest_content)
-        else:
-            video_ingest_data = request.video_ingest_content
-    except json.JSONDecodeError:
-        video_ingest_data = {"content": request.video_ingest_content}
-    
-    with open(video_ingest_file, 'w') as f:
-        json.dump(video_ingest_data, f, indent=2)
-    
-    # Submit to orchestrator
-    workflow_id = await orchestrator.submit_video_ingest_task(video_ingest_file, request.metadata)
-    
-    logger.info(f"Started VideoIngest to EA workflow: {workflow_id}")
-    
+    from src.agents.departments.workflow_models import TaskPriority, WorkflowType
+
+    coordinator = _get_coordinator()
+    payload = {
+        "video_ingest_content": request.video_ingest_content,
+        "source_type": "video_ingest",
+    }
+    workflow_id = coordinator.start_workflow(
+        workflow_type=WorkflowType.WF1_CREATION,
+        initial_payload=payload,
+        priority=TaskPriority.MEDIUM,
+        metadata=request.metadata or {},
+    )
+
     return {
         "workflow_id": workflow_id,
         "workflow_type": "video_ingest_to_ea",
         "status": "pending",
-        "message": "Workflow started successfully",
+        "message": "Canonical WF1 workflow started successfully",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -307,31 +318,35 @@ async def start_trd_to_ea_workflow(
     3. Runs a backtest (using Backtest MCP)
     4. Analyzes and validates results
 
-    Delegates to the WorkflowOrchestrator for execution.
+    Compatibility entrypoint for legacy clients. This now starts the canonical
+    WF1 coordinator workflow at the development stage using an existing TRD
+    artifact instead of the retired private orchestrator.
     """
-    orchestrator = _get_orchestrator()
-    
-    # Save TRD content to a file
-    temp_dir = Path("workflows/trd_inputs")
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    
-    trd_file = Path(request.trd_file) if request.trd_file else \
-               temp_dir / f"trd_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.md"
-    
-    if not request.trd_file:
-        with open(trd_file, 'w') as f:
-            f.write(request.trd_content)
-    
-    # Submit to orchestrator
-    workflow_id = await orchestrator.submit_trd_task(trd_file, request.trd_content, request.metadata)
-    
-    logger.info(f"Started TRD to EA workflow: {workflow_id}")
-    
+    from src.agents.departments.workflow_models import (
+        TaskPriority,
+        WorkflowStage,
+        WorkflowType,
+    )
+
+    coordinator = _get_coordinator()
+    payload = {
+        "trd_content": request.trd_content,
+        "trd_file": request.trd_file,
+        "source_type": "trd",
+    }
+    workflow_id = coordinator.start_workflow(
+        workflow_type=WorkflowType.WF1_CREATION,
+        initial_payload=payload,
+        priority=TaskPriority.MEDIUM,
+        metadata=request.metadata or {},
+        initial_stage=WorkflowStage.DEVELOPMENT,
+    )
+
     return {
         "workflow_id": workflow_id,
         "workflow_type": "trd_to_ea",
         "status": "pending",
-        "message": "Workflow started successfully",
+        "message": "Canonical WF1 workflow started from TRD successfully",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -341,15 +356,16 @@ async def get_workflow(workflow_id: str):
     """
     Get workflow status and details.
     
-    Retrieves the current state from the WorkflowOrchestrator.
+    Retrieves the current state from the canonical coordinator and projects it
+    into the legacy workflowStore shape.
     """
-    orchestrator = _get_orchestrator()
-    workflow_data = orchestrator.get_workflow_status(workflow_id)
+    coordinator = _get_coordinator()
+    workflow_data = coordinator.get_workflow_status(workflow_id)
     
     if not workflow_data:
         raise HTTPException(status_code=404, detail=f"Workflow {workflow_id} not found")
     
-    return _convert_orchestrator_workflow(workflow_data)
+    return _convert_coordinator_workflow(workflow_data)
 
 
 @router.get("/", response_model=WorkflowListResponse)
@@ -359,14 +375,15 @@ async def list_workflows(
     """
     List all workflows.
     
-    Retrieves all workflows from the WorkflowOrchestrator.
+    Retrieves canonical workflows from the department workflow coordinator and
+    projects them into the legacy workflowStore shape.
     """
-    orchestrator = _get_orchestrator()
-    all_workflows = orchestrator.get_all_workflows()
+    coordinator = _get_coordinator()
+    all_workflows = coordinator.get_all_workflows()
     
     workflows = []
     for wf_data in all_workflows:
-        workflow = _convert_orchestrator_workflow(wf_data)
+        workflow = _convert_coordinator_workflow(wf_data)
         if status is None or workflow.status == status:
             workflows.append(workflow)
     
@@ -378,17 +395,16 @@ async def cancel_workflow(workflow_id: str):
     """
     Cancel a running workflow.
     
-    Delegates cancellation to the WorkflowOrchestrator.
+    Delegates cancellation to the canonical workflow coordinator.
     """
-    orchestrator = _get_orchestrator()
+    coordinator = _get_coordinator()
     
     # Check if workflow exists
-    workflow_data = orchestrator.get_workflow_status(workflow_id)
+    workflow_data = coordinator.get_workflow_status(workflow_id)
     if not workflow_data:
         raise HTTPException(status_code=404, detail=f"Workflow {workflow_id} not found")
     
-    # Cancel via orchestrator
-    success = await orchestrator.cancel_workflow(workflow_id)
+    success = coordinator.cancel_workflow(workflow_id)
     
     if not success:
         raise HTTPException(
@@ -412,8 +428,8 @@ async def pause_workflow(workflow_id: str):
 
     The workflow will stop at the current step and can be resumed later.
     """
-    orchestrator = _get_orchestrator()
-    workflow_data = orchestrator.get_workflow_status(workflow_id)
+    coordinator = _get_coordinator()
+    workflow_data = coordinator.get_workflow_status(workflow_id)
 
     if not workflow_data:
         raise HTTPException(status_code=404, detail=f"Workflow {workflow_id} not found")
@@ -424,23 +440,10 @@ async def pause_workflow(workflow_id: str):
             detail=f"Can only pause running workflows, current status: {workflow_data.get('status')}"
         )
 
-    # Call the orchestrator to pause the workflow
-    success = await orchestrator.pause_workflow(workflow_id)
-
-    if not success:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Failed to pause workflow {workflow_id}"
-        )
-
-    logger.info(f"Paused workflow: {workflow_id}")
-
-    return {
-        "success": True,
-        "workflow_id": workflow_id,
-        "status": "paused",
-        "message": "Workflow paused successfully"
-    }
+    raise HTTPException(
+        status_code=501,
+        detail="Manual pause is not wired for canonical workflows yet",
+    )
 
 
 @router.post("/{workflow_id}/resume", response_model=Dict[str, Any])
@@ -450,35 +453,22 @@ async def resume_workflow(workflow_id: str):
 
     The workflow will continue from where it was paused.
     """
-    orchestrator = _get_orchestrator()
-    workflow_data = orchestrator.get_workflow_status(workflow_id)
+    coordinator = _get_coordinator()
+    workflow_data = coordinator.get_workflow_status(workflow_id)
 
     if not workflow_data:
         raise HTTPException(status_code=404, detail=f"Workflow {workflow_id} not found")
 
-    if workflow_data.get("status") != "paused":
+    if workflow_data.get("status") != "waiting":
         raise HTTPException(
             status_code=400,
-            detail=f"Can only resume paused workflows, current status: {workflow_data.get('status')}"
+            detail=f"Can only resume waiting workflows, current status: {workflow_data.get('status')}"
         )
 
-    # Call the orchestrator to resume the workflow
-    success = await orchestrator.resume_workflow(workflow_id)
-
-    if not success:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Failed to resume workflow {workflow_id}"
-        )
-
-    logger.info(f"Resumed workflow: {workflow_id}")
-
-    return {
-        "success": True,
-        "workflow_id": workflow_id,
-        "status": "running",
-        "message": "Workflow resumed successfully"
-    }
+    raise HTTPException(
+        status_code=501,
+        detail="Manual resume is not wired for canonical workflows yet; use approval resolution or canonical endpoints",
+    )
 
 
 @router.get("/{workflow_id}/wait", response_model=Workflow)
@@ -491,18 +481,20 @@ async def wait_for_workflow(
     
     Returns the final workflow state when completed, failed, or cancelled.
     """
-    orchestrator = _get_orchestrator()
-    
-    try:
-        result = await orchestrator.wait_for_completion(workflow_id, timeout)
-        return _convert_orchestrator_workflow(result)
-    except TimeoutError:
-        raise HTTPException(
-            status_code=408,
-            detail=f"Workflow did not complete within {timeout} seconds"
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    coordinator = _get_coordinator()
+    deadline = datetime.now(timezone.utc).timestamp() + timeout
+    while datetime.now(timezone.utc).timestamp() < deadline:
+        workflow_data = coordinator.get_workflow_status(workflow_id)
+        if not workflow_data:
+            raise HTTPException(status_code=404, detail=str(f"Workflow {workflow_id} not found"))
+        if workflow_data.get("status") in {"completed", "failed", "cancelled"}:
+            return _convert_coordinator_workflow(workflow_data)
+        await asyncio.sleep(1)
+
+    raise HTTPException(
+        status_code=408,
+        detail=f"Workflow did not complete within {timeout} seconds"
+    )
 
 
 @router.get("/{workflow_id}/results", response_model=Dict[str, Any])
@@ -512,29 +504,26 @@ async def get_workflow_results(workflow_id: str):
     
     Returns backtest results, validation status, and generated files.
     """
-    orchestrator = _get_orchestrator()
-    workflow_data = orchestrator.get_workflow_status(workflow_id)
+    coordinator = _get_coordinator()
+    workflow_data = coordinator.get_workflow_status(workflow_id)
     
     if not workflow_data:
         raise HTTPException(status_code=404, detail=f"Workflow {workflow_id} not found")
     
-    if workflow_data.get("status") not in ["completed", "failed"]:
+    if workflow_data.get("status") not in ["completed", "failed", "cancelled"]:
         raise HTTPException(
             status_code=400,
             detail=f"Workflow not yet complete. Current status: {workflow_data.get('status')}"
         )
     
-    # Extract results from workflow
-    steps = workflow_data.get("steps", {})
-    backtest_results = steps.get("backtest", {}).get("output", {})
-    validation_results = steps.get("validation", {}).get("output", {})
+    latest_results = (workflow_data.get("metadata") or {}).get("latest_results", {})
     
     return {
         "workflow_id": workflow_id,
         "status": workflow_data.get("status"),
-        "backtest_results": backtest_results,
-        "validation": validation_results,
-        "output_files": workflow_data.get("output_files", {}),
+        "backtest_results": latest_results.get("backtest_results", {}),
+        "validation": latest_results.get("validation", {}),
+        "output_files": latest_results.get("output_files", {}),
         "metadata": workflow_data.get("metadata", {}),
         "error": workflow_data.get("error")
     }
@@ -547,27 +536,20 @@ async def delete_workflow(workflow_id: str):
     
     Only allowed for completed, failed, or cancelled workflows.
     """
-    orchestrator = _get_orchestrator()
-    workflow_data = orchestrator.get_workflow_status(workflow_id)
+    coordinator = _get_coordinator()
+    workflow_data = coordinator.get_workflow_status(workflow_id)
     
     if not workflow_data:
         raise HTTPException(status_code=404, detail=f"Workflow {workflow_id} not found")
     
-    if workflow_data.get("status") in ["pending", "running"]:
+    if workflow_data.get("status") in ["pending", "running", "waiting"]:
         raise HTTPException(
             status_code=400,
             detail="Cannot delete a running workflow. Cancel it first."
         )
-    
-    # Delete workflow files
-    import shutil
-    workflow_dir = Path("workflows") / workflow_id
-    if workflow_dir.exists():
-        shutil.rmtree(workflow_dir)
-    
-    # Remove from orchestrator's memory
-    if workflow_id in orchestrator._workflows:
-        del orchestrator._workflows[workflow_id]
+
+    if workflow_id in coordinator._workflows:
+        del coordinator._workflows[workflow_id]
     
     return {
         "success": True,

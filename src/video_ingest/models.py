@@ -196,7 +196,13 @@ class JobOptions:
     audio_channels: int = 1  # 1 = mono, 2 = stereo
     cache_enabled: bool = True
     retry_attempts: int = 3
-    
+    workflow_id: Optional[str] = None
+    strategy_id: Optional[str] = None
+    strategy_family: Optional[str] = None
+    source_bucket: Optional[str] = None
+    job_manifest_path: Optional[Path] = None
+    artifact_root: Optional[Path] = None
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -207,6 +213,12 @@ class JobOptions:
             "audio_channels": self.audio_channels,
             "cache_enabled": self.cache_enabled,
             "retry_attempts": self.retry_attempts,
+            "workflow_id": self.workflow_id,
+            "strategy_id": self.strategy_id,
+            "strategy_family": self.strategy_family,
+            "source_bucket": self.source_bucket,
+            "job_manifest_path": str(self.job_manifest_path) if self.job_manifest_path else None,
+            "artifact_root": str(self.artifact_root) if self.artifact_root else None,
         }
 
 
@@ -332,12 +344,30 @@ class VideoIngestConfig:
     def from_env(cls) -> "VideoIngestConfig":
         """Load configuration from environment variables."""
         import os
-        
+
+        openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+        openrouter_model = os.getenv("OPENROUTER_MODEL")
+        openrouter_base_url = os.getenv("OPENROUTER_BASE_URL")
+
+        if not (openrouter_api_key and openrouter_model and openrouter_base_url):
+            try:
+                from src.agents.providers.router import get_router
+
+                provider = get_router().get_provider("openrouter")
+                if provider:
+                    openrouter_api_key = openrouter_api_key or provider.api_key
+                    openrouter_base_url = openrouter_base_url or provider.base_url
+                    if not openrouter_model and provider.model_list:
+                        first_model = provider.model_list[0]
+                        openrouter_model = first_model.get("id") or first_model.get("model_id")
+            except Exception:
+                pass
+
         return cls(
             # OpenRouter settings (primary provider)
-            openrouter_api_key=os.getenv("OPENROUTER_API_KEY"),
-            openrouter_model=os.getenv("OPENROUTER_MODEL", "anthropic/claude-sonnet-4"),
-            openrouter_base_url=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+            openrouter_api_key=openrouter_api_key,
+            openrouter_model=openrouter_model or "google/gemini-2.0-flash-lite-001",
+            openrouter_base_url=openrouter_base_url or "https://openrouter.ai/api/v1",
             # Qwen Code CLI settings (fallback provider)
             qwen_api_key=os.getenv("QWEN_API_KEY"),
             qwen_headless=os.getenv("QWEN_HEADLESS", "true").lower() == "true",

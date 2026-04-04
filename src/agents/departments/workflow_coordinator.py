@@ -271,15 +271,16 @@ class DepartmentWorkflowCoordinator:
         # 1. Persist to strategy .meta.json for polling-based Kanban
         if strategy_id:
             try:
-                from src.api.ide_models import STRATEGIES_DIR
-                meta_path = STRATEGIES_DIR / strategy_id / ".meta.json"
-                if meta_path.exists():
-                    meta = json.loads(meta_path.read_text())
+                from src.api.wf1_artifacts import find_strategy_root
+                strategy_root = find_strategy_root(strategy_id)
+                meta_path = strategy_root / ".meta.json" if strategy_root else None
+                if meta_path and meta_path.exists():
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
                     meta["status"] = kanban_status
                     meta["last_stage"] = stage.value
                     meta["workflow_id"] = workflow_id
                     meta["updated_at"] = datetime.now().isoformat()
-                    meta_path.write_text(json.dumps(meta, indent=2))
+                    meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
                     logger.debug(f"Kanban .meta.json updated: {strategy_id} → {kanban_status}")
             except Exception as e:
                 logger.debug(f"Kanban .meta.json update skipped: {e}")
@@ -354,6 +355,7 @@ class DepartmentWorkflowCoordinator:
         strategy_id: Optional[str] = None,
         priority: TaskPriority = TaskPriority.MEDIUM,
         metadata: Optional[Dict[str, Any]] = None,
+        initial_stage: Optional[WorkflowStage] = None,
     ) -> str:
         """
         Start a new workflow of the specified type.
@@ -369,9 +371,15 @@ class DepartmentWorkflowCoordinator:
             Workflow ID
         """
         workflow_id = f"wf_{workflow_type.value}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:6]}"
-        initial_stage = WORKFLOW_INITIAL_STAGES.get(
+        resolved_initial_stage = initial_stage or WORKFLOW_INITIAL_STAGES.get(
             workflow_type, WorkflowStage.COMPLETED
         )
+
+        stage_dept_map = WORKFLOW_STAGE_DEPARTMENTS.get(workflow_type, {})
+        if resolved_initial_stage not in stage_dept_map:
+            raise ValueError(
+                f"Initial stage {resolved_initial_stage.value} is not valid for {workflow_type.value}"
+            )
 
         # Determine initial EA lifecycle state
         ea_state = None
@@ -384,13 +392,14 @@ class DepartmentWorkflowCoordinator:
             workflow_id=workflow_id,
             workflow_type=workflow_type,
             status=WorkflowStatus.PENDING,
-            current_stage=initial_stage,
+            current_stage=resolved_initial_stage,
             created_at=datetime.now(),
             updated_at=datetime.now(),
             metadata={
                 **(metadata or {}),
                 "initial_payload": initial_payload or {},
                 "priority": priority.value,
+                "entry_stage": resolved_initial_stage.value,
             },
             strategy_id=strategy_id,
             ea_lifecycle_state=ea_state,
@@ -399,12 +408,11 @@ class DepartmentWorkflowCoordinator:
         self._workflows[workflow_id] = workflow
 
         # Create initial task via department mail
-        dept_map = WORKFLOW_STAGE_DEPARTMENTS.get(workflow_type, {})
-        to_dept = dept_map.get(initial_stage, "floor_manager")
+        to_dept = stage_dept_map.get(resolved_initial_stage, "floor_manager")
 
         self._create_task(
             workflow=workflow,
-            stage=initial_stage,
+            stage=resolved_initial_stage,
             from_dept="floor_manager",
             to_dept=to_dept,
             payload=initial_payload or {},
@@ -425,18 +433,18 @@ class DepartmentWorkflowCoordinator:
             content=(
                 f"Workflow {workflow_type.value} started: {workflow_id}. "
                 f"Strategy: {strategy_id or 'N/A'}. "
-                f"Initial stage: {initial_stage.value} → dept:{to_dept}"
+                f"Initial stage: {resolved_initial_stage.value} → dept:{to_dept}"
             ),
             node_type="ACTION",
             tags=["workflow", "start", workflow_type.value, workflow_id],
         )
 
         # --- Integration: Kanban board ---
-        self._update_kanban_status(strategy_id, initial_stage, workflow_id)
+        self._update_kanban_status(strategy_id, resolved_initial_stage, workflow_id)
 
         logger.info(
             f"Started {workflow_type.value} workflow {workflow_id} "
-            f"→ {initial_stage.value} → dept:{to_dept}"
+            f"→ {resolved_initial_stage.value} → dept:{to_dept}"
         )
         return workflow_id
 
@@ -926,23 +934,29 @@ class DepartmentWorkflowCoordinator:
     # Query Methods
     # -----------------------------------------------------------------------
 
+    @staticmethod
+    def _serialize_workflow(workflow: DepartmentWorkflow) -> Dict[str, Any]:
+        data = workflow.to_dict()
+        data["progress_percent"] = workflow.get_progress()
+        return data
+
     def get_workflow_status(self, workflow_id: str) -> Optional[Dict[str, Any]]:
         workflow = self._workflows.get(workflow_id)
-        return workflow.to_dict() if workflow else None
+        return self._serialize_workflow(workflow) if workflow else None
 
     def get_all_workflows(self) -> List[Dict[str, Any]]:
-        return [w.to_dict() for w in self._workflows.values()]
+        return [self._serialize_workflow(w) for w in self._workflows.values()]
 
     def get_workflows_by_type(self, workflow_type: WorkflowType) -> List[Dict[str, Any]]:
         return [
-            w.to_dict()
+            self._serialize_workflow(w)
             for w in self._workflows.values()
             if w.workflow_type == workflow_type
         ]
 
     def get_active_workflows(self) -> List[Dict[str, Any]]:
         return [
-            w.to_dict()
+            self._serialize_workflow(w)
             for w in self._workflows.values()
             if w.status in (WorkflowStatus.RUNNING, WorkflowStatus.WAITING, WorkflowStatus.PENDING)
         ]

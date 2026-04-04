@@ -24,7 +24,7 @@
   let loading = $state(false);
   let error = $state('');
   let jobs: VideoIngestJob[] = $state([]);
-  let authStatus: AuthStatus = $state({ gemini: false, qwen: false });
+  let authStatus: AuthStatus = $state({ openrouter: false, gemini: false, qwen: false });
   let checkingAuth = $state(true);
 
   // Check authentication status on mount
@@ -157,6 +157,17 @@
       <span>AI Providers</span>
     </div>
     <div class="auth-status">
+      <div class="auth-item" class:authenticated={authStatus.openrouter}>
+        <span class="auth-dot"></span>
+        <span>OpenRouter</span>
+        {#if checkingAuth}
+          <Loader2 size={12} class="spin" />
+        {:else if authStatus.openrouter}
+          <CheckCircle size={12} />
+        {:else}
+          <XCircle size={12} />
+        {/if}
+      </div>
       <div class="auth-item" class:authenticated={authStatus.gemini}>
         <span class="auth-dot"></span>
         <span>Gemini CLI</span>
@@ -180,6 +191,7 @@
         {/if}
       </div>
     </div>
+    <p class="auth-hint">Select the OpenRouter video model and compare pricing in Settings → Providers.</p>
   </div>
 
   <!-- Submit Form -->
@@ -310,6 +322,7 @@
   .auth-status {
     display: flex;
     gap: 16px;
+    flex-wrap: wrap;
   }
 
   .auth-item {
@@ -333,6 +346,12 @@
 
   .auth-item.authenticated .auth-dot {
     background: var(--color-accent-green);
+  }
+
+  .auth-hint {
+    margin: 8px 0 0;
+    font-size: 11px;
+    color: var(--color-text-muted);
   }
 
   /* Submit Form */

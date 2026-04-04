@@ -776,8 +776,8 @@ class ChatService:
                     "artifacts": []
                 }
 
-            # Mock response
-            return self._mock_response(message, agent_id)
+            # Production fallback: do not fabricate agent output.
+            return self._orchestrator_unavailable_response(message, agent_id)
 
         except Exception as e:
             self.logger.error(f"Chat processing error: {e}", exc_info=True)
@@ -895,42 +895,19 @@ class ChatService:
             "artifacts": []
         }
 
-    def _mock_response(self, message: str, agent_id: str) -> Dict[str, Any]:
-        """Fallback response when no orchestrator is available."""
-        msg = message.lower()
-
-        if "deploy" in msg:
-            return {
-                "reply": "I can help with deployment. Since I'm in mock mode, I'll simulate a deployment check. Please verify your strategy parameters.",
-                "agent_id": "copilot",
-                "task_id": None,
-                "action_taken": None,
-                "artifacts": []
-            }
-        elif "analyze" in msg or "summary" in msg:
-            return {
-                "reply": "Market analysis requires a connection to live data sources. In this demo mode, I can confirm that the 'analyst' agent is registered and ready.",
-                "agent_id": "analyst",
-                "task_id": None,
-                "action_taken": None,
-                "artifacts": []
-            }
-        elif "code" in msg or "generate" in msg:
-            return {
-                "reply": "Code generation requires the QuantCode agent. In this demo mode, I can confirm the agent is registered and ready to generate MQL5 code.",
-                "agent_id": "quantcode",
-                "task_id": None,
-                "action_taken": None,
-                "artifacts": []
-            }
-        else:
-            return {
-                "reply": f"I received your message: '{message}'. To get real responses, please ensure Claude Orchestrator is properly configured.",
-                "agent_id": agent_id,
-                "task_id": None,
-                "action_taken": None,
-                "artifacts": []
-            }
+    def _orchestrator_unavailable_response(self, message: str, agent_id: str) -> Dict[str, Any]:
+        """Honest fallback when the orchestrator/runtime is unavailable."""
+        return {
+            "reply": (
+                "No live agent runtime is available for this request. "
+                "Configure a provider/runtime in Settings and retry. "
+                f"Request was not simulated: '{message[:160]}'"
+            ),
+            "agent_id": agent_id,
+            "task_id": None,
+            "action_taken": None,
+            "artifacts": [],
+        }
 
     def _quantmind_aware_response(self, message: str, agent_id: str) -> Dict[str, Any]:
         """

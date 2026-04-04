@@ -40,7 +40,7 @@ class ModelProvider(ABC):
     """
     
     @abstractmethod
-    def analyze(self, frames: List[Path], audio: Path, prompt: str) -> TimelineOutput:
+    def analyze(self, frames: List[Path], audio: Optional[Path], prompt: str) -> TimelineOutput:
         """
         Analyze video content using multimodal AI.
         
@@ -148,7 +148,7 @@ class GeminiCLIProvider(ModelProvider):
             logger.error(f"Gemini auth failed: {e}")
             return False
 
-    def analyze(self, frames: List[Path], audio: Path, prompt: str) -> TimelineOutput:
+    def analyze(self, frames: List[Path], audio: Optional[Path], prompt: str) -> TimelineOutput:
         """
         Analyze video content using Gemini CLI.
         
@@ -174,7 +174,7 @@ class GeminiCLIProvider(ModelProvider):
             logger.warning("No frames provided for analysis")
             return self._create_empty_timeline()
         
-        if not audio.exists():
+        if audio is not None and not audio.exists():
             raise ValidationError(f"Audio file not found: {audio}")
         
         for frame in frames:
@@ -239,7 +239,7 @@ class GeminiCLIProvider(ModelProvider):
         """
         return self.rate_limit
     
-    def _build_command(self, frames: List[Path], audio: Path, prompt: str) -> List[str]:
+    def _build_command(self, frames: List[Path], audio: Optional[Path], prompt: str) -> List[str]:
         """
         Build Gemini CLI command with YOLO mode.
 
@@ -265,7 +265,10 @@ class GeminiCLIProvider(ModelProvider):
         # Add prompt in headless mode
         cmd.append("--prompt")
         # Build combined prompt with file references
-        file_refs = f"Audio file: {audio}\n" + "\n".join([f"Frame: {f}" for f in frames])
+        refs = [f"Frame: {frame}" for frame in frames]
+        if audio is not None:
+            refs.insert(0, f"Audio file: {audio}")
+        file_refs = "\n".join(refs)
         full_prompt = f"{prompt}\n\n{file_refs}"
         cmd.append(full_prompt)
 
@@ -495,7 +498,7 @@ class QwenVLProvider(ModelProvider):
         
         logger.info(f"Initialized QwenVLProvider with headless={headless}")
     
-    def analyze(self, frames: List[Path], audio: Path, prompt: str) -> TimelineOutput:
+    def analyze(self, frames: List[Path], audio: Optional[Path], prompt: str) -> TimelineOutput:
         """
         Analyze video content using Qwen-VL API.
         
@@ -522,7 +525,7 @@ class QwenVLProvider(ModelProvider):
             logger.warning("No frames provided for analysis")
             return self._create_empty_timeline()
         
-        if not audio.exists():
+        if audio is not None and not audio.exists():
             raise ValidationError(f"Audio file not found: {audio}")
         
         for frame in frames:
@@ -587,7 +590,7 @@ class QwenVLProvider(ModelProvider):
         """
         return self.rate_limit
     
-    def _call_qwen_api(self, frames: List[Path], audio: Path, prompt: str) -> TimelineOutput:
+    def _call_qwen_api(self, frames: List[Path], audio: Optional[Path], prompt: str) -> TimelineOutput:
         """
         Call Qwen-VL API using OpenAI-compatible endpoint.
         
@@ -800,29 +803,51 @@ class OpenRouterProvider(ModelProvider):
     
     # Available models with their capabilities
     SUPPORTED_MODELS = {
+        "google/gemini-2.0-flash-lite-001": {
+            "multimodal": True,
+            "audio": True,
+            "video": True,
+            "description": "Gemini 2.0 Flash Lite - low-cost multimodal analysis"
+        },
+        "google/gemini-2.5-flash-lite": {
+            "multimodal": True,
+            "audio": True,
+            "video": True,
+            "description": "Gemini 2.5 Flash Lite - affordable higher-quality multimodal analysis"
+        },
+        "google/gemini-2.0-flash-001": {
+            "multimodal": True,
+            "audio": True,
+            "video": True,
+            "description": "Gemini 2.0 Flash - balanced multimodal analysis"
+        },
         "anthropic/claude-sonnet-4": {
             "multimodal": True,
             "audio": False,
-            "description": "Claude Sonnet 4 - excellent for complex analysis"
+            "video": False,
+            "description": "Claude Sonnet 4 - strong text/image reasoning"
         },
-        "google/gemini-2.0-flash-exp": {
-            "multimodal": True,
-            "audio": True,
-            "description": "Gemini 2.0 Flash - fast multimodal with audio support"
-        },
-        "deepseek/deepseek-coder": {
-            "multimodal": False,
-            "audio": False,
-            "description": "DeepSeek Coder - specialized for code analysis"
-        },
-        "zhipu/glm-4-plus": {
+        "qwen/qwen3.6-plus:free": {
             "multimodal": True,
             "audio": False,
-            "description": "GLM-4 Plus - Chinese-English bilingual support"
-        }
+            "video": False,
+            "description": "Qwen 3.6 Plus free tier"
+        },
+        "qwen/qwen3.5-9b": {
+            "multimodal": True,
+            "audio": False,
+            "video": False,
+            "description": "Qwen 3.5 9B"
+        },
+        "qwen/qwen3.5-flash-02-23": {
+            "multimodal": True,
+            "audio": False,
+            "video": False,
+            "description": "Qwen 3.5 Flash"
+        },
     }
     
-    DEFAULT_MODEL = "anthropic/claude-sonnet-4"
+    DEFAULT_MODEL = "google/gemini-2.0-flash-lite-001"
     
     def __init__(
         self,
@@ -849,7 +874,7 @@ class OpenRouterProvider(ModelProvider):
         
         logger.info(f"Initialized OpenRouterProvider with model={self.model}")
     
-    def analyze(self, frames: List[Path], audio: Path, prompt: str) -> TimelineOutput:
+    def analyze(self, frames: List[Path], audio: Optional[Path], prompt: str) -> TimelineOutput:
         """
         Analyze video content using OpenRouter API.
         
@@ -875,7 +900,7 @@ class OpenRouterProvider(ModelProvider):
             logger.warning("No frames provided for analysis")
             return self._create_empty_timeline()
         
-        if not audio.exists():
+        if audio is not None and not audio.exists():
             raise ValidationError(f"Audio file not found: {audio}")
         
         for frame in frames:
@@ -930,7 +955,7 @@ class OpenRouterProvider(ModelProvider):
         """
         return self.rate_limit
     
-    def _call_openrouter_api(self, frames: List[Path], audio: Path, prompt: str) -> TimelineOutput:
+    def _call_openrouter_api(self, frames: List[Path], audio: Optional[Path], prompt: str) -> TimelineOutput:
         """
         Call OpenRouter API using direct HTTP requests.
 
@@ -949,7 +974,7 @@ class OpenRouterProvider(ModelProvider):
         return self._call_openrouter_api_direct(frames, audio, prompt)
 
 
-    def _call_openrouter_api_direct(self, frames: List[Path], audio: Path, prompt: str) -> TimelineOutput:
+    def _call_openrouter_api_direct(self, frames: List[Path], audio: Optional[Path], prompt: str) -> TimelineOutput:
         """
         Call OpenRouter API directly without LangChain.
         
@@ -961,36 +986,10 @@ class OpenRouterProvider(ModelProvider):
         Returns:
             TimelineOutput object
         """
-        import requests
         import base64
-        
-        # Prepare multimodal content
-        content = [{"type": "text", "text": prompt}]
-        
-        # Add frames as images
-        for i, frame in enumerate(frames):
-            with open(frame, 'rb') as f:
-                image_data = base64.b64encode(f.read()).decode('utf-8')
-            
-            content.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{image_data}"
-                }
-            })
-        
-        # Check if model supports audio and add audio content
-        model_info = self.SUPPORTED_MODELS.get(self.model, {})
-        if model_info.get("audio", False) and audio.exists():
-            with open(audio, 'rb') as f:
-                audio_data = base64.b64encode(f.read()).decode('utf-8')
-            
-            content.append({
-                "type": "audio_url",
-                "audio_url": {
-                    "url": f"data:audio/mp3;base64,{audio_data}"
-                }
-            })
+        import requests
+
+        content = self._build_multimodal_content(frames, audio, prompt, base64)
         
         # Make API request
         headers = {
@@ -1040,6 +1039,43 @@ class OpenRouterProvider(ModelProvider):
             model_provider="openrouter",
             timeline=clips
         )
+
+    def _build_multimodal_content(
+        self,
+        frames: List[Path],
+        audio: Optional[Path],
+        prompt: str,
+        base64_module,
+    ) -> List[dict]:
+        content = [{"type": "text", "text": prompt}]
+
+        for frame in frames:
+            with open(frame, "rb") as file_handle:
+                image_data = base64_module.b64encode(file_handle.read()).decode("utf-8")
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{image_data}"
+                    },
+                }
+            )
+
+        model_info = self.SUPPORTED_MODELS.get(self.model, {})
+        if model_info.get("audio", False) and audio is not None and audio.exists():
+            with open(audio, "rb") as file_handle:
+                audio_data = base64_module.b64encode(file_handle.read()).decode("utf-8")
+            content.append(
+                {
+                    "type": "input_audio",
+                    "inputAudio": {
+                        "data": audio_data,
+                        "format": audio.suffix.lstrip(".").lower() or "mp3",
+                    },
+                }
+            )
+
+        return content
     
     def _parse_openrouter_response(self, content: str, frames: List[Path]) -> List[TimelineClip]:
         """
@@ -1215,7 +1251,7 @@ class QwenCodeCLIProvider(ModelProvider):
             logger.error(f"Qwen auth failed: {e}")
             return False
 
-    def analyze(self, frames: List[Path], audio: Path, prompt: str) -> TimelineOutput:
+    def analyze(self, frames: List[Path], audio: Optional[Path], prompt: str) -> TimelineOutput:
         """
         Analyze video content using Qwen Code CLI.
         
@@ -1242,7 +1278,7 @@ class QwenCodeCLIProvider(ModelProvider):
             logger.warning("No frames provided for analysis")
             return self._create_empty_timeline()
         
-        if not audio.exists():
+        if audio is not None and not audio.exists():
             raise ValidationError(f"Audio file not found: {audio}")
         
         for frame in frames:
@@ -1323,7 +1359,7 @@ class QwenCodeCLIProvider(ModelProvider):
         """
         return self.rate_limit
     
-    def _build_command(self, frames: List[Path], audio: Path, prompt: str) -> List[str]:
+    def _build_command(self, frames: List[Path], audio: Optional[Path], prompt: str) -> List[str]:
         """
         Build Qwen Code CLI command with headless mode.
         
@@ -1351,7 +1387,10 @@ class QwenCodeCLIProvider(ModelProvider):
 
         # Add prompt (use positional for headless)
         # Build combined prompt with file references
-        file_refs = f"Audio file: {audio}\n" + "\n".join([f"Frame: {f}" for f in frames])
+        refs = [f"Frame: {frame}" for frame in frames]
+        if audio is not None:
+            refs.insert(0, f"Audio file: {audio}")
+        file_refs = "\n".join(refs)
         full_prompt = f"{prompt}\n\n{file_refs}"
         cmd.append(full_prompt)
 

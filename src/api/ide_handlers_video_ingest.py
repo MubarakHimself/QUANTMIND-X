@@ -8,10 +8,12 @@ import logging
 import os
 import re
 import threading
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
-from src.api.ide_models import STRATEGIES_DIR
+from src.api.wf1_artifacts import ensure_bundle
 from src.video_ingest.exceptions import JobError
 from src.video_ingest.job_queue import JobQueueManager
 from src.video_ingest.models import JobOptions, VideoIngestConfig
@@ -105,14 +107,25 @@ class VideoIngestAPIHandler:
         _, processor, job_queue = _get_runtime()
 
         folder_name = _sanitize_strategy_folder(strategy_name)
-        strategy_path = STRATEGIES_DIR / folder_name
-        strategy_path.mkdir(parents=True, exist_ok=True)
-        options = JobOptions(output_dir=strategy_path)
+        bundle = ensure_bundle(
+            strategy_name=folder_name,
+            is_playlist=is_playlist,
+            source_url=url,
+        )
+        options = JobOptions(
+            output_dir=bundle.timeline_dir,
+            workflow_id=bundle.workflow_id,
+            strategy_id=bundle.strategy_id,
+            strategy_family=bundle.strategy_family,
+            source_bucket=bundle.source_bucket,
+            artifact_root=bundle.root,
+        )
 
         if is_playlist:
             job_ids = [job_id for job_id in processor.create_playlist_jobs(url, job_queue, options=options) if job_id]
             if not job_ids:
                 raise RuntimeError("Playlist ingest did not create any jobs")
+            self._write_job_manifest(bundle.workflow_manifest_path, job_ids, bundle)
             return {
                 "job_id": job_ids[0],
                 "job_ids": job_ids,
@@ -121,6 +134,7 @@ class VideoIngestAPIHandler:
             }
 
         job_id = job_queue.submit_job(url, options=options)
+        self._write_job_manifest(bundle.workflow_manifest_path, [job_id], bundle)
         return {
             "job_id": job_id,
             "status": "PENDING",
@@ -158,3 +172,13 @@ class VideoIngestAPIHandler:
             "gemini": gemini_available,
             "qwen": qwen_available,
         }
+
+    def _write_job_manifest(self, workflow_manifest_path: Path, job_ids: list[str], bundle) -> None:
+        try:
+            payload = json.loads(workflow_manifest_path.read_text(encoding="utf-8"))
+        except Exception:
+            payload = bundle.as_metadata()
+
+        payload["job_ids"] = job_ids
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        workflow_manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

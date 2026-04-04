@@ -57,11 +57,11 @@ class TradingControlAPIHandler:
                 success=True,
                 message=f"Emergency stop activated: {request.reason}",
                 kill_switch_active=True,
-                positions_closed=0,  # Would be actual count
+                positions_closed=0,
                 triggered_by="api_request",
                 timestamp=datetime.now(timezone.utc),
                 exit_strategy="IMMEDIATE" if not request.use_smart_exit else "SMART",
-                accounts_affected=["demo", "machine_gun", "sniper"]
+                accounts_affected=[]
             )
 
         except Exception as e:
@@ -96,10 +96,9 @@ class TradingControlAPIHandler:
                 chaos_score = regime_report.chaos_score
                 regime_quality = regime_report.regime_quality
             else:
-                # Default values if Sentinel not available
                 current_regime = "UNKNOWN"
-                chaos_score = 0.5
-                regime_quality = 0.5
+                chaos_score = 0.0
+                regime_quality = 0.0
 
             return TradingStatusResponse(
                 trading_enabled=self._trading_enabled,
@@ -107,10 +106,10 @@ class TradingControlAPIHandler:
                 current_regime=current_regime,
                 chaos_score=chaos_score,
                 regime_quality=regime_quality,
-                open_positions=3,  # Would query actual count
-                daily_pnl_pct=1.5,  # Would query actual P&L
-                account_equity=10150.0,  # Would query actual equity
-                account_balance=10000.0,  # Would query actual balance
+                open_positions=0,
+                daily_pnl_pct=0.0,
+                account_equity=0.0,
+                account_balance=0.0,
                 risk_multiplier=1.0,
                 daily_loss_limit_pct=5.0,
                 max_drawdown_pct=10.0

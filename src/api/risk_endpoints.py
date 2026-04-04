@@ -42,12 +42,9 @@ router = APIRouter(prefix="/api/risk", tags=["risk"])
 
 logger = logging.getLogger(__name__)
 
-# In-memory storage for demo (would be database in production)
+# In-memory authoring state until database-backed calendar persistence lands.
 _calendar_rules: Dict[str, CalendarRule] = {}
 _calendar_events: List[NewsItem] = []
-
-# Demo data for compliance and circuit breaker state
-_demo_account_tags = ["prop-firm-001", "prop-firm-002", "demo-account"]
 
 
 # =============================================================================

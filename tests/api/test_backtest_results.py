@@ -20,7 +20,7 @@ from src.api.backtest_endpoints import (
     ReportType,
     _completed_backtests,
     _running_backtests,
-    _init_demo_data,
+    refresh_backtests_from_storage,
 )
 
 
@@ -196,60 +196,67 @@ class TestReportTypes:
         assert expected == actual
 
 
-class TestDemoData:
-    """Test demo data initialization and structure."""
+class TestStorageBacktests:
+    """Backtests now come from persisted artifacts, never seeded demo rows."""
 
-    def test_demo_data_initialization(self):
-        """Test that demo data initializes correctly."""
-        # Reset and re-init
-        _completed_backtests.clear()
-        _running_backtests.clear()
-        _init_demo_data()
+    def test_refresh_storage_empty_state(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("src.api.backtest_endpoints.iter_strategy_roots", lambda: iter([]))
+        refresh_backtests_from_storage()
+        assert _completed_backtests == {}
+        assert _running_backtests == {}
 
-        # Should have demo data
-        assert len(_completed_backtests) >= 6
-        assert len(_running_backtests) >= 1
+    def test_refresh_storage_reads_completed_and_running(self, monkeypatch, tmp_path):
+        strategy_root = tmp_path / "shared_assets" / "strategies" / "scalping" / "single-videos" / "london_scalper"
+        backtests_dir = strategy_root / "backtests"
+        reports_dir = strategy_root / "reports"
+        backtests_dir.mkdir(parents=True, exist_ok=True)
+        reports_dir.mkdir(parents=True, exist_ok=True)
 
-    def test_demo_backtest_structure(self):
-        """Verify demo backtest has all required fields."""
-        _init_demo_data()
+        (backtests_dir / "bt-001.json").write_text(
+            """
+            {
+              "id": "bt-001",
+              "ea_name": "LondonScalper_v1",
+              "mode": "VANILLA",
+              "run_at_utc": "2026-03-01T12:00:00Z",
+              "net_pnl": 12.5,
+              "sharpe": 1.8,
+              "max_drawdown": 4.2,
+              "win_rate": 61.0,
+              "equity_curve": [{"timestamp":"2026-03-01T12:00:00Z","equity":10000}],
+              "trade_distribution": [],
+              "mode_params": {"symbol":"EURUSD"},
+              "report_type": "basic",
+              "total_trades": 25,
+              "profit_factor": 1.7,
+              "avg_trade_pnl": 0.5
+            }
+            """,
+            encoding="utf-8",
+        )
+        (reports_dir / "bt-running-001.json").write_text(
+            """
+            {
+              "id": "bt-running-001",
+              "ea_name": "LondonScalper_v2",
+              "mode": "SPICED",
+              "status": "running",
+              "progress_pct": 45.0,
+              "started_at_utc": "2026-03-02T08:00:00Z",
+              "partial_metrics": {"net_pnl": 3.0}
+            }
+            """,
+            encoding="utf-8",
+        )
 
-        for bt in _completed_backtests.values():
-            # AC #1 fields
-            assert bt.id
-            assert bt.ea_name
-            assert bt.mode in BacktestMode
-            assert bt.run_at_utc
-            assert bt.net_pnl is not None
-            assert bt.sharpe is not None
-            assert bt.max_drawdown is not None
-            assert bt.win_rate is not None
+        monkeypatch.setattr("src.api.backtest_endpoints.iter_strategy_roots", lambda: iter([strategy_root]))
+        refresh_backtests_from_storage()
 
-            # AC #2 additional fields
-            assert bt.equity_curve is not None
-            assert bt.trade_distribution is not None
-            assert bt.mode_params is not None
-
-    def test_demo_running_backtest_structure(self):
-        """Verify demo running backtest has all required fields."""
-        _init_demo_data()
-
-        for running in _running_backtests.values():
-            assert running.id
-            assert running.ea_name
-            assert running.mode in BacktestMode
-            assert 0 <= running.progress_pct <= 100
-            assert running.started_at_utc
-            assert running.partial_metrics
-
-    def test_modes_covered_in_demo(self):
-        """Verify all 6 modes are represented in demo data."""
-        _init_demo_data()
-
-        modes = {bt.mode for bt in _completed_backtests.values()}
-        expected = {BacktestMode.VANILLA, BacktestMode.SPICED, BacktestMode.VANILLA_FULL,
-                   BacktestMode.SPICED_FULL, BacktestMode.MODE_B, BacktestMode.MODE_C}
-        assert expected.issubset(modes), f"Expected modes {expected} not all present in {modes}"
+        assert "bt-001" in _completed_backtests
+        assert _completed_backtests["bt-001"].mode == BacktestMode.VANILLA
+        assert _completed_backtests["bt-001"].net_pnl == 12.5
+        assert "bt-running-001" in _running_backtests
+        assert _running_backtests["bt-running-001"].progress_pct == 45.0
 
 
 class TestEdgeCases:

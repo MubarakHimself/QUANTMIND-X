@@ -93,7 +93,6 @@ CONTABO_ROUTERS = {
     "knowledge_router",        # Knowledge endpoints
     "knowledge_unified_router", # Unified knowledge search API (Story 6-1)
     "knowledge_ingest_router",  # Web scraping + personal knowledge (Story 6-2)
-    "video_to_ea_router",     # Video to EA
     "video_ingest_ide_router",# Video ingest IDE
     "batch_router",            # Batch processing
     "evaluation_router",       # Evaluation
@@ -226,7 +225,6 @@ try:
     from src.api.copilot_kill_switch_endpoints import router as copilot_kill_switch_router
     from src.api.workshop_copilot_endpoints import router as workshop_copilot_router
     from src.api.copilot_endpoints import router as copilot_router
-    from src.api.video_to_ea_endpoints import router as video_to_ea_router
     from src.api.ide_knowledge import router as knowledge_router
     from src.api.knowledge_endpoints import router as knowledge_unified_router
     from src.api.batch_endpoints import router as batch_router
@@ -500,7 +498,6 @@ if _get_include_contabo():
     app.include_router(news_router)  # Live news feed (Story 6-3)
 
     # Video & Processing
-    app.include_router(video_to_ea_router)
     app.include_router(video_ingest_ide_router, prefix="/api")
     app.include_router(batch_router)
     app.include_router(evaluation_router)

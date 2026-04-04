@@ -2,6 +2,73 @@
 
 Updated: 2026-04-04
 
+## 2026-04-04 Incremental Slice (WF1 consolidation onto canonical coordinator; legacy video-to-EA path removed)
+
+- Consolidated WF1 startup/state onto the canonical department workflow coordinator in:
+  - [workflow_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/workflow_endpoints.py)
+  - [workflow_coordinator.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/workflow_coordinator.py)
+- The legacy compatibility endpoints now project coordinator state into the older `workflowStore.ts` shape instead of dispatching to the retired private workflow stack:
+  - `POST /api/workflows/video-ingest-to-ea` now starts `wf1_creation`
+  - `POST /api/workflows/trd-to-ea` now starts `wf1_creation` at `development`
+  - `GET /api/workflows/{id}` / `GET /api/workflows` now read coordinator state
+  - `POST /api/workflows/{id}/cancel` now cancels through the coordinator
+- Added canonical entry-stage override support in the coordinator so TRD-driven WF1 runs can begin at `development` without requiring the deleted legacy workflow branch.
+- Deleted the obsolete duplicate workflow path entirely:
+  - [video_to_ea_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/video_to_ea_endpoints.py)
+  - [video_to_ea_workflow.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/router/video_to_ea_workflow.py)
+- Removed server registration of the deleted router in both server entrypoints:
+  - [server.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/server.py)
+  - [server.py](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/api/server.py)
+- Fixed a production-relevant runtime issue exposed by the consolidation tests:
+  - [department_mail.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/department_mail.py) now opens SQLite with `check_same_thread=False`, which prevents FastAPI/TestClient thread handoff failures when the coordinator dispatches mail from request threads.
+- Added focused compatibility coverage in:
+  - [test_workflow_endpoints_wf1_compat.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_workflow_endpoints_wf1_compat.py)
+- Verification completed:
+  - `python3 -m py_compile src/agents/departments/department_mail.py src/api/workflow_endpoints.py src/agents/departments/workflow_coordinator.py src/api/server.py quantmind-ide/src/api/server.py tests/api/test_workflow_endpoints_wf1_compat.py`
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_workflow_endpoints_wf1_compat.py tests/api/test_workflow_endpoints_local.py`
+    - result: `5 passed`
+  - `rg -n "video-to-ea|video_to_ea|VideoToEA|/api/video-to-ea" src quantmind-ide tests docs/handoffs/2026-03-31-agentic-fix -g '!**/node_modules/**'`
+    - result: no matches in active code/tests after deletion
+
+## 2026-04-04 Incremental Slice (AgentPanel collapsible event rows + mail read-state + resize hit-area hardening)
+
+- Tightened the active right-rail agent panel interaction model in [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte):
+  - replaced the fragile mouse-only resize path with pointer-based resize listeners
+  - expanded the resize hit-area from the panel edge so it is easier to grab instead of selecting text accidentally
+  - preserved keyboard resize on the separator for accessibility and recovery
+  - finalized the drag handle as a real button-backed separator with pointer capture, anchored fully inside the panel edge instead of a partially clipped non-interactive element
+- Compressed tool/thinking stream rendering so it no longer permanently consumes excessive vertical space:
+  - tool/status events now render as compact collapsible rows
+  - each row now includes a tone badge and chevron state
+  - tone grading now distinguishes:
+    - `thinking`
+    - `mail`
+    - `memory`
+    - generic `tool`
+  - detail is hidden by default and expands only on demand
+  - structured status/tool args are now preserved on streamed messages so expanded detail has real content
+- Added live mail read-state writeback when opening a message:
+  - selecting a mail row now calls:
+    - `PATCH /api/departments/mail/{message_id}/read`
+  - the inbox row is updated optimistically in-panel and reverts if the backend call fails
+  - unread sender/subject styling is now visually stronger until the message is opened
+- Live Chrome verification completed on `http://127.0.0.1:3001/`:
+  - opened `Portfolio`
+  - switched to `MAIL`
+  - confirmed the list/detail mail workspace still renders correctly
+  - confirmed the selected mail detail pane shows the live message body and routing metadata
+  - toggled `Session history` and confirmed existing sessions render in-panel
+  - focused the resize separator and verified width changes live via keyboard:
+    - `380 -> 404`
+- Verification completed:
+  - `cd quantmind-ide && npx vitest run src/lib/components/shell/AgentPanel.session-management.test.ts`
+    - result: `3 passed`
+  - `cd quantmind-ide && npx vite build --mode development`
+    - result: build passed
+- Remaining follow-up from this slice:
+  - Chrome still needs a live agent-response verification pass specifically for the new compact tool/thinking rows during an active streamed conversation
+  - workflow exploration and deployment-path tracking were promoted into the TODO as the next explicit slice after this UI stabilization pass
+
 ## 2026-04-04 Incremental Slice (Trading canvas de-placeholder + paper-trading host-safe runtime)
 
 - Removed the remaining non-production Trading canvas placeholder tiles and replaced them with live summary surfaces:
@@ -1819,3 +1886,205 @@ Tests added/updated:
       - prompt: `What canvas am I on right now?`
       - response: `You're on the workshop canvas — an interactive session with a manifest-first workspace strategy.`
       - recent-session row created in the Workshop sidebar
+
+- 2026-04-04 WF1 shared-artifact root + video-ingest provider bridge (`2026-04-04T13:10:00+03:00`):
+  - canonical WF1 artifact tree added:
+    - [wf1_artifacts.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/wf1_artifacts.py)
+    - new canonical root is now:
+      - `data/shared_assets/strategies/{strategy_family}/{single-videos|playlists}/{strategy_id}/`
+    - created subtrees:
+      - `source/`
+      - `source/timelines/`
+      - `research/`
+      - `development/`
+      - `variants/`
+      - `compilation/`
+      - `backtests/`
+      - `reports/`
+      - `workflow/`
+    - each tree now starts with:
+      - `.meta.json`
+      - `source/request.json`
+      - `workflow/manifest.json`
+  - WF1 ids now travel with the active ingest queue contract:
+    - [models.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/video_ingest/models.py)
+    - [job_queue.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/video_ingest/job_queue.py)
+    - `JobOptions` now carries:
+      - `workflow_id`
+      - `strategy_id`
+      - `strategy_family`
+      - `source_bucket`
+      - `artifact_root`
+    - queue reload now restores path-like fields back into `Path(...)`
+  - active video-ingest routing no longer writes raw jobs into deprecated `data/strategies/*`:
+    - [ide_handlers_video_ingest.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_video_ingest.py)
+    - single-video and playlist submissions now:
+      - create the canonical WF1 tree first
+      - point queue output to `source/timelines/`
+      - persist workflow manifest `job_ids`
+      - keep the response shape stable (`strategy_folder`) for current UI callers
+  - strategy polling / Kanban compatibility moved onto the new canonical tree:
+    - [ide_handlers_strategy.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_strategy.py)
+    - [workflow_coordinator.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/workflow_coordinator.py)
+    - strategy list/get now read canonical WF1 roots first and fall back to legacy `data/strategies/*` only for untouched old folders
+    - workflow Kanban status writes now target the canonical `.meta.json`
+  - video-ingest runtime now respects saved OpenRouter provider configuration from Settings instead of env-only fallback:
+    - [models.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/video_ingest/models.py)
+    - `VideoIngestConfig.from_env()` now resolves:
+      - API key from configured `openrouter` provider when env var is absent
+      - base URL from configured `openrouter` provider when env var is absent
+      - model from configured `openrouter` provider’s primary model when env var is absent
+    - default OpenRouter fallback model changed from stale `anthropic/claude-sonnet-4` to `google/gemini-2.0-flash-lite-001`
+  - provider settings UI now exposes cheap video-capable OpenRouter choices with pricing/capability hints:
+    - [provider_config_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/provider_config_endpoints.py)
+    - [ProvidersPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/settings/ProvidersPanel.svelte)
+    - curated options now include:
+      - `google/gemini-2.0-flash-lite-001`
+      - `google/gemini-2.5-flash-lite`
+      - `google/gemini-2.0-flash-001`
+      - cheap/free Qwen video-capable options for comparison
+  - Video Ingest UI now shows OpenRouter availability and points model selection to Settings:
+    - [VideoIngestWorkflow.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/VideoIngestWorkflow.svelte)
+  - tests added/updated:
+    - [test_wf1_artifacts.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_wf1_artifacts.py)
+    - [test_ide_handlers_video_ingest.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_ide_handlers_video_ingest.py)
+    - validates:
+      - canonical tree creation
+      - single-video routing to `shared_assets/strategies/.../source/timelines`
+      - playlist routing to `shared_assets/strategies/.../source/timelines`
+      - workflow manifest job tracking
+      - `VideoIngestConfig` provider-router fallback
+  - verification:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_ide_handlers_video_ingest.py tests/api/test_wf1_artifacts.py tests/api/test_workflow_endpoints_wf1_compat.py` -> passed (`10 passed`)
+    - `python3 -m py_compile src/video_ingest/models.py src/api/provider_config_endpoints.py src/api/ide_handlers_video_ingest.py src/api/wf1_artifacts.py src/api/ide_handlers_strategy.py src/agents/departments/workflow_coordinator.py` -> passed
+    - `cd quantmind-ide && npx vite build --mode development` -> passed
+  - explicit remaining boundary after this slice:
+    - active processor path still does not use real long-video chunking
+    - active OpenRouter provider payload shape still needs modernization before paid runs
+    - canonical WF1 tree exists, but UI projection of those artifacts into FlowForge/shared-assets browsing is still the next implementation slice
+
+- 2026-04-04 Active ingest chunk/runtime hardening (`2026-04-04T14:05:00+03:00`):
+  - active processor chunk path is now stateful and job-scoped instead of only writing a flat provisional `chunks.json`:
+    - [processor.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/video_ingest/processor.py)
+    - chunk manifests now write to:
+      - `source/chunks/{job_id}.json`
+    - each manifest now records:
+      - `job_id`
+      - WF1 identity fields already traveling in `JobOptions`
+      - `chunk_count`
+      - `total_duration_seconds`
+      - per-chunk status / start / end / duration / timeline path
+  - chunked runs now persist per-chunk timeline outputs into the canonical WF1 tree:
+    - `source/timelines/chunks/{job_id}/{label}.json`
+    - merged clip timestamps are rebased by chunk offset so long-video timelines stay monotonic instead of restarting from `00:00:00` per chunk
+    - merged clip IDs are rebased too, so downstream consumers see one continuous timeline
+  - active OpenRouter provider payload contract is now aligned with the current official multimodal docs for audio input:
+    - [providers.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/video_ingest/providers.py)
+    - audio-capable OpenRouter models now send:
+      - content type `input_audio`
+      - payload field `inputAudio { data, format }`
+    - old `audio_url` payload construction is gone from the active provider path
+    - supported/default OpenRouter model metadata was refreshed to match the cheap Gemini video-capable models already exposed in Settings
+  - tests added:
+    - [test_video_ingest_processor_chunking.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/unit/test_video_ingest_processor_chunking.py)
+    - [test_video_ingest_openrouter_provider.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/unit/test_video_ingest_openrouter_provider.py)
+    - validates:
+      - job-scoped chunk manifest persistence
+      - per-chunk timeline persistence under canonical WF1 storage
+      - timestamp / clip-id rebasing across chunk merges
+      - OpenRouter audio payload uses `input_audio` for audio-capable models
+  - verification:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/unit/test_video_ingest_processor_chunking.py tests/unit/test_video_ingest_openrouter_provider.py tests/api/test_ide_handlers_video_ingest.py tests/api/test_wf1_artifacts.py tests/api/test_workflow_endpoints_wf1_compat.py` -> passed (`13 passed`)
+    - `python3 -m py_compile src/video_ingest/processor.py src/video_ingest/providers.py src/api/ide_handlers_video_ingest.py src/api/wf1_artifacts.py` -> passed
+  - explicit remaining boundary after this slice:
+    - active processor still relies on extracted frames plus extracted audio; it does not yet use captions-first ingestion or provider-native `video_url`
+    - long-video chunking is now real in the active processor, but chunk sizing is still heuristic and not yet model-budget-aware
+    - FlowForge / department UI projection of WF1 artifact state is still the next implementation slice before end-to-end live workflow validation
+
+- 2026-04-04 Captions-first active ingest contract (`2026-04-04T14:45:00+03:00`):
+  - active ingest runtime now prefers downloaded captions over model-audio when captions exist:
+    - [processor.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/video_ingest/processor.py)
+    - [downloader.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/video_ingest/downloader.py)
+    - [providers.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/video_ingest/providers.py)
+  - source audio is still extracted and persisted for storage / reprocessing:
+    - canonical storage path:
+      - `source/audio/audio.mp3`
+  - captions are now downloaded with `yt-dlp` when available and persisted into the canonical WF1 tree:
+    - canonical storage path:
+      - `source/captions/*.vtt`
+  - caption handling is now chunk-aware:
+    - VTT files are parsed into timed segments
+    - each chunk selects only the overlapping caption text for its own analysis window
+    - if a chunk has caption text, provider analysis is called without audio
+    - if caption text is missing, the processor falls back to chunk audio analysis
+  - provider interface updated so audio is optional in the active ingest path:
+    - Gemini CLI
+    - Qwen-VL
+    - OpenRouter
+    - Qwen Code CLI
+    - prompts now omit audio file references automatically when captions are driving the run
+  - tests added:
+    - [test_video_ingest_processor_captions.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/unit/test_video_ingest_processor_captions.py)
+    - validates:
+      - WebVTT parsing
+      - chunk-local caption slicing
+      - captions-first analysis omits audio and injects transcript context into the prompt
+  - verification:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/unit/test_video_ingest_processor_captions.py tests/unit/test_video_ingest_processor_chunking.py tests/unit/test_video_ingest_openrouter_provider.py tests/api/test_ide_handlers_video_ingest.py tests/api/test_wf1_artifacts.py tests/api/test_workflow_endpoints_wf1_compat.py` -> passed (`15 passed`)
+    - `python3 -m py_compile src/video_ingest/processor.py src/video_ingest/providers.py src/video_ingest/downloader.py` -> passed
+  - explicit remaining boundary after this slice:
+    - captions-first is now real, but chunk sizing is still heuristic rather than model-budget-aware
+    - the active provider path still uses extracted frames rather than provider-native `video_url`
+    - storage is canonical locally, but remote Contabo-backed storage/db wiring is still pending before live processing at scale
+
+- 2026-04-04 Model-aware chunk budgeting (`2026-04-04T15:05:00+03:00`):
+  - active chunk planning now uses the configured model budget instead of one fixed heuristic:
+    - [processor.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/video_ingest/processor.py)
+  - current chunk budgets:
+    - `google/gemini-2.0-flash-lite-001` -> `30m`
+    - `google/gemini-2.5-flash-lite` -> `40m`
+    - `google/gemini-2.0-flash-001` -> `35m`
+    - `qwen-vl-plus` -> `25m`
+    - `qwen-vl-max` -> `30m`
+    - unknown models -> conservative `30m` fallback
+  - the chunk planner now:
+    - respects the active configured model
+    - keeps a single full chunk for short videos below the resolved threshold
+    - scales chunk count by budget for long videos instead of the older tiered duration buckets
+  - tests added:
+    - [test_video_ingest_chunk_budget.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/unit/test_video_ingest_chunk_budget.py)
+    - validates:
+      - cheaper Flash Lite gets smaller chunks than 2.5 Flash Lite
+      - unknown models fall back to the conservative budget
+  - verification:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/unit/test_video_ingest_chunk_budget.py tests/unit/test_video_ingest_processor_captions.py tests/unit/test_video_ingest_processor_chunking.py tests/unit/test_video_ingest_openrouter_provider.py tests/api/test_ide_handlers_video_ingest.py tests/api/test_wf1_artifacts.py tests/api/test_workflow_endpoints_wf1_compat.py` -> passed (`17 passed`)
+    - `python3 -m py_compile src/video_ingest/processor.py src/video_ingest/providers.py src/video_ingest/downloader.py` -> passed
+  - explicit remaining boundary after this slice:
+    - budgeting is now model-aware, but still static rather than dynamically computed from live provider limits or measured token usage
+    - the active provider path still uses extracted frames rather than provider-native `video_url`
+    - remote storage / DB migration to Contabo is still pending before real scale runs
+
+- 2026-04-04 WF1 source artifact visibility (`2026-04-04T15:25:00+03:00`):
+  - strategy retrieval now exposes canonical source artifacts instead of only legacy coarse booleans:
+    - [ide_handlers_strategy.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_strategy.py)
+  - WF1-backed strategy payloads now include:
+    - `has_source_audio`
+    - `has_source_captions`
+    - `has_chunk_manifest`
+    - `source_artifacts.audio_files`
+    - `source_artifacts.caption_files`
+    - `source_artifacts.timeline_files`
+    - `source_artifacts.chunk_manifest_files`
+    - `source_artifacts.chunk_timeline_files`
+  - frontend strategy contract now understands those fields:
+    - [api.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/api.ts)
+  - context picker strategy rows now surface the new availability badges:
+    - [ContextPicker.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/agent-panel/ContextPicker.svelte)
+    - `VideoIngest • Captions • Audio • EA`
+  - tests added:
+    - [test_ide_handlers_strategy.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_ide_handlers_strategy.py)
+    - validates WF1 strategy detail now exposes the canonical source artifact lists
+  - verification:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_ide_handlers_strategy.py tests/api/test_ide_handlers_video_ingest.py tests/api/test_wf1_artifacts.py tests/api/test_workflow_endpoints_wf1_compat.py` -> passed (`11 passed`)
+    - `python3 -m py_compile src/api/ide_handlers_strategy.py` -> passed
+    - `cd quantmind-ide && npx vite build --mode development` -> passed

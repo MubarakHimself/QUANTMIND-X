@@ -562,6 +562,9 @@ class JobQueueManager:
             if row and row[0]:
                 import ast
                 options_dict = ast.literal_eval(row[0])
+                for path_key in ("output_dir", "job_manifest_path", "artifact_root"):
+                    if options_dict.get(path_key):
+                        options_dict[path_key] = Path(options_dict[path_key])
                 options = JobOptions(**options_dict)
             else:
                 options = JobOptions()

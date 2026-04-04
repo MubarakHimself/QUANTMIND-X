@@ -5,6 +5,7 @@ Downloads videos from YouTube using pytubefix (maintained fork of pytube).
 """
 
 import logging
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -132,3 +133,43 @@ class VideoDownloader:
             "publish_date": str(yt.publish_date) if yt.publish_date else None,
             "thumbnail_url": yt.thumbnail_url,
         }
+
+    def download_captions(self, url: str, output_dir: str) -> Optional[Path]:
+        """
+        Download subtitles/captions using yt-dlp when available.
+
+        Returns the first `.vtt` subtitle file found, or `None` if captions are
+        unavailable or yt-dlp fails.
+        """
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        cmd = [
+            "yt-dlp",
+            "--write-auto-sub",
+            "--write-sub",
+            "--sub-langs",
+            "all,-live_chat",
+            "--skip-download",
+            "--no-playlist",
+            "--output",
+            str(output_path / "captions.%(ext)s"),
+            url,
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            if result.returncode != 0:
+                logger.info("Caption download skipped for %s: %s", url, result.stderr.strip())
+                return None
+        except Exception as exc:
+            logger.info("Caption download unavailable for %s: %s", url, exc)
+            return None
+
+        caption_files = sorted(output_path.glob("captions*.vtt"))
+        return caption_files[0] if caption_files else None
