@@ -131,7 +131,7 @@ class MarketScanner:
         alerts = []
 
         # Get current session
-        from src.router.sessions import get_current_session
+        from src.router.session_detector import get_current_session
         current_session = get_current_session()
 
         logger.info(f"Running market scan for session: {current_session.value}")
@@ -469,7 +469,7 @@ class MarketScanner:
     def _get_current_session_name(self) -> str:
         """Get current session name."""
         try:
-            from src.router.sessions import get_current_session
+            from src.router.session_detector import get_current_session
             return get_current_session().value
         except Exception:
             return "UNKNOWN"
@@ -1214,7 +1214,7 @@ class MarketScanner:
     def get_scan_interval(self) -> int:
         """Get recommended scan interval in seconds based on current session."""
         try:
-            from src.router.sessions import get_current_session, TradingSession
+            from src.router.session_detector import get_current_session, TradingSession
 
             session = get_current_session()
 

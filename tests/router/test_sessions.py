@@ -210,6 +210,15 @@ class TestSessionInfo:
         assert info.next_session == TradingSession.LONDON
         assert info.time_until_open is not None
 
+    def test_get_session_info_during_overlap(self):
+        """Test session info during overlap transitions to New York after London closes."""
+        utc_time = datetime(2026, 2, 12, 14, 0, tzinfo=timezone.utc)
+        info = SessionDetector.get_session_info(utc_time)
+        assert info.session == TradingSession.OVERLAP
+        assert info.is_active is True
+        assert info.next_session == TradingSession.NEW_YORK
+        assert info.time_until_open is not None
+
     def test_session_info_includes_time_fields(self):
         """Test that SessionInfo includes all time fields."""
         utc_time = datetime(2026, 2, 12, 10, 0, tzinfo=timezone.utc)

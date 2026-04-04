@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 import logging
 
-from src.router.sessions import SessionDetector
+from src.router.session_detector import SessionDetector
 
 logger = logging.getLogger(__name__)
 

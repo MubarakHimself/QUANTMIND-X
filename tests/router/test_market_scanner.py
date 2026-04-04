@@ -22,6 +22,12 @@ from src.router.market_scanner import (
 )
 
 
+@pytest.fixture
+def scanner():
+    """Fallback scanner fixture for tests outside class-scoped fixtures."""
+    return MarketScanner(symbols=["EURUSD"])
+
+
 def test_scanner_imports():
     """Scanners should be importable from new module."""
     from src.router.scanners import MarketScanner, SymbolScanner, TrendScanner
@@ -327,8 +333,8 @@ class TestScanInterval:
         """Test 1-minute interval during overlap."""
         with patch('src.router.market_scanner.get_current_session') as mock_session:
             with patch('src.router.market_scanner.TradingSession') as mock_enum:
-                mock_session.return_value = mock_enum.OVERLAP
                 mock_enum.OVERLAP = "OVERLAP"
+                mock_session.return_value = mock_enum.OVERLAP
                 
                 interval = scanner.get_scan_interval()
                 
@@ -339,9 +345,10 @@ class TestScanInterval:
         """Test 5-minute interval during major sessions."""
         with patch('src.router.market_scanner.get_current_session') as mock_session:
             with patch('src.router.market_scanner.TradingSession') as mock_enum:
-                mock_session.return_value = mock_enum.LONDON
                 mock_enum.LONDON = "LONDON"
                 mock_enum.OVERLAP = "OVERLAP"
+                mock_enum.NEW_YORK = "NEW_YORK"
+                mock_session.return_value = mock_enum.LONDON
                 
                 interval = scanner.get_scan_interval()
                 

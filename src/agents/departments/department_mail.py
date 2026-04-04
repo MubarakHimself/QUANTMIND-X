@@ -1384,3 +1384,21 @@ def get_mail_service(
             stacklevel=2
         )
         return DepartmentMailService(db_path=db_path)
+
+
+def create_mail_service(
+    db_path: str = ".quantmind/department_mail.db",
+    use_redis: bool = True,
+    **redis_kwargs,
+) -> Any:
+    """
+    Backward-compatible factory retained for existing department-head imports.
+
+    The Redis/SQLite selection logic is owned by `get_mail_service`; this name
+    remains as a stable import surface for older callers.
+    """
+    return get_mail_service(
+        db_path=db_path,
+        use_redis=use_redis,
+        **redis_kwargs,
+    )

@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 from src.position_sizing.enhanced_kelly import EnhancedKellyCalculator, KellyResult, EnhancedKellyConfig
 from src.router.governor import Governor, RiskMandate
+from src.router.broker_registry import BrokerRegistryManager, DEFAULT_BROKER_PIP_VALUES
 
 # Optional imports for database features
 if TYPE_CHECKING:
@@ -458,54 +459,20 @@ class EnhancedGovernor(Governor):
             Falls back to standard values if not found or DB unavailable.
             Uses correct metal pip values (XAUUSD=1.0, XAGUSD=50.0) to avoid 10x underestimation.
         """
-        # Correct metal pip values (fallback when DB/registry unavailable)
-        # These match BrokerRegistryManager.create_broker() defaults to avoid divergence
-        pip_values = {
-            'EURUSD': 10.0,
-            'GBPUSD': 10.0,
-            'USDJPY': 9.09,
-            'USDCHF': 10.0,
-            'AUDUSD': 10.0,
-            'NZDUSD': 10.0,
-            'USDCAD': 10.0,
-            'XAUUSD': 1.0,   # Gold: $1 per pip (not $10 - corrects 10x underestimation)
-            'XAGUSD': 50.0,  # Silver: $50 per pip (not $10 - corrects 5x underestimation)
-        }
-
-        # If DB not available, use fallback values
-        if not self._db_available:
-            pip_value = pip_values.get(symbol, 10.0)
-            logger.debug(f"Pip value for {symbol}@{broker}: ${pip_value} (fallback, no DB)")
-            return pip_value
-
         try:
-            session = get_session()
-
-            # Query broker registry for pip values
-            broker_record = session.query(BrokerRegistry).filter_by(
-                broker_id=broker
-            ).first()
-
-            pip_value = 10.0  # Default
-
-            if broker_record and broker_record.pip_values:
-                # Get pip value for symbol from JSON field
-                pip_values_dict = broker_record.pip_values
-                # Use local pip_values dict as fallback for metals if not in registry
-                pip_value = pip_values_dict.get(symbol, pip_values.get(symbol, 10.0))
-                logger.debug(f"Pip value for {symbol}@{broker}: ${pip_value} (from registry)")
-            else:
-                # Fall back to correct defaults (not hardcoded 10.0 for metals)
-                pip_value = pip_values.get(symbol, 10.0)
-                logger.debug(f"Pip value for {symbol}@{broker}: ${pip_value} (fallback)")
-
-            session.close()
-            return pip_value
+            profile = BrokerRegistryManager().resolve_execution_profile(broker, symbol=symbol)
+            logger.debug(
+                "Pip value for %s@%s: $%s (%s)",
+                symbol,
+                broker,
+                profile.pip_value,
+                profile.source,
+            )
+            return profile.pip_value
 
         except Exception as e:
             logger.error(f"Error getting pip value from broker registry: {e}")
-            # Return fallback value on error (use correct metal values)
-            return pip_values.get(symbol, 10.0)
+            return DEFAULT_BROKER_PIP_VALUES.get(symbol, 10.0)
 
     def _load_daily_state(self, account_id: str) -> None:
         """

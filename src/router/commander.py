@@ -55,9 +55,9 @@ class Commander:
         Args:
             bot_registry: BotRegistry instance for manifest-based bot management.
                          If None, falls back to legacy dict-based storage.
-            governor: Optional Governor instance for position sizing (if None, defaults to EnhancedGovernor
-                     for fee-aware Kelly sizing). If explicitly set to base Governor, position_size
-                     filtering is skipped to allow legacy mode to work.
+            governor: Optional Governor instance for position sizing.
+                     Live router flow should inject this from StrategyRouter.
+                     If None, Commander enters explicit compatibility mode with a base Governor.
         """
         self._bot_registry = bot_registry
 
@@ -65,25 +65,27 @@ class Commander:
         self._routing_matrix = RoutingMatrix()
         logger.info("Commander: Initialized RoutingMatrix for bot-to-account routing")
 
-        # Guard: Ensure _governor is never None - default to EnhancedGovernor for fee-aware Kelly sizing
-        # This ensures bots are not filtered out by position_size > 0 check
+        self._compatibility_governor = False
+
+        # Batch 1 authority rule:
+        # Commander must not silently invent the runtime authority. If nothing is injected,
+        # fall back to an explicit compatibility-only base Governor.
         if governor is None:
-            try:
-                from src.router.enhanced_governor import EnhancedGovernor
-                self._governor = EnhancedGovernor()
-                self._use_enhanced_sizing = True
-                logger.info("Commander: No governor provided - created EnhancedGovernor for fee-aware Kelly sizing")
-            except ImportError:
-                # Fallback to base Governor if EnhancedGovernor unavailable
-                from src.router.governor import Governor
-                self._governor = Governor()
-                self._use_enhanced_sizing = False
-                logger.info("Commander: EnhancedGovernor not available - created base Governor (position_size filtering disabled)")
+            from src.router.governor import Governor
+
+            self._governor = Governor()
+            self._use_enhanced_sizing = False
+            self._compatibility_governor = True
+            logger.warning(
+                "Commander: No governor injected; using base Governor in compatibility mode. "
+                "StrategyRouter should supply the canonical runtime authority."
+            )
         else:
             self._governor = governor
             # Detect if using base Governor (legacy mode) or EnhancedGovernor
             governor_class_name = governor.__class__.__name__
             self._use_enhanced_sizing = (governor_class_name == "EnhancedGovernor")
+            self._compatibility_governor = False
             logger.info(f"Commander: Using {governor_class_name} governor (enhanced_sizing={self._use_enhanced_sizing})")
         self.active_bots: Dict = {}  # Legacy support
         self.regime_map: Dict = self._load_regime_map()
@@ -207,6 +209,65 @@ class Commander:
         """Load regime → bot mapping configuration."""
         # TODO: Load from config file
         return {}
+
+    def _get_legacy_dynamic_limit_status(
+        self,
+        account_balance: Optional[float] = None,
+        active_positions: Optional[int] = None,
+        limiter: Optional[DynamicBotLimiter] = None,
+    ) -> Dict[str, Any]:
+        """
+        Compatibility wrapper around DynamicBotLimiter.
+
+        Batch 2 uses this to make the legacy tier-cap path explicit until the
+        adaptive funded-breadth allocator replaces it.
+        """
+        limiter = limiter or DynamicBotLimiter()
+        resolved_balance = (
+            getattr(self._governor, '_daily_start_balance', 100000.0)
+            if account_balance is None
+            else account_balance
+        )
+        resolved_active_positions = (
+            self._count_active_positions() if active_positions is None else active_positions
+        )
+        max_bots = limiter.get_max_bots(resolved_balance)
+
+        return {
+            "limit_source": "dynamic_bot_limits_legacy",
+            "account_balance": resolved_balance,
+            "active_positions": resolved_active_positions,
+            "max_bots": max_bots,
+            "available_slots": max(0, max_bots - resolved_active_positions),
+        }
+
+    def _select_funded_bots_with_legacy_limits(
+        self,
+        ranked_bots: List[dict],
+        account_balance: Optional[float] = None,
+        limiter: Optional[DynamicBotLimiter] = None,
+    ) -> tuple[List[dict], Dict[str, Any]]:
+        """
+        Temporary funded-breadth selection using legacy DynamicBotLimiter tiers.
+        """
+        limiter = limiter or DynamicBotLimiter()
+        limit_status = self._get_legacy_dynamic_limit_status(
+            account_balance=account_balance,
+            limiter=limiter,
+        )
+        current_bot_count = limit_status["active_positions"]
+        selected_bots: List[dict] = []
+
+        for bot in ranked_bots:
+            can_add, reason = limiter.can_add_bot(limit_status["account_balance"], current_bot_count)
+            if can_add:
+                selected_bots.append(bot)
+                current_bot_count += 1
+                logger.debug(f"Bot {bot.get('bot_id')} added: {reason}")
+            else:
+                logger.debug(f"Bot {bot.get('bot_id')} rejected: {reason}")
+
+        return selected_bots, limit_status
 
     def _derive_mode_from_context(self, regime_report: "RegimeReport") -> str:
         """
@@ -380,27 +441,16 @@ class Commander:
         account_balance = account_balance or getattr(self._governor, '_daily_start_balance', 100000.0)
         logger.debug(f"Commander: Defaulted account_balance to {account_balance} (multi-timeframe)")
 
-        # Use DynamicBotLimiter for max_selection
-        # Comment 2 fix: Use can_add_bot() API instead of hard cap
-        limiter = DynamicBotLimiter()
-        max_bots = limiter.get_max_bots(account_balance)
-        active_positions = self._count_active_positions()
-        
-        # Use can_add_bot() for each candidate bot instead of hard cap
-        # This respects tier-based limits and safety buffer
-        selected_bots = []
-        current_bot_count = active_positions
-        
-        for bot in ranked_bots:
-            can_add, reason = limiter.can_add_bot(account_balance, current_bot_count)
-            if can_add:
-                selected_bots.append(bot)
-                current_bot_count += 1
-                logger.debug(f"Bot {bot.get('bot_id')} added: {reason}")
-            else:
-                logger.debug(f"Bot {bot.get('bot_id')} rejected: {reason}")
-        
-        top_bots = selected_bots
+        top_bots, limit_status = self._select_funded_bots_with_legacy_limits(
+            ranked_bots,
+            account_balance=account_balance,
+        )
+        logger.debug(
+            "Commander: legacy funded-bot selection source=%s max_bots=%s available_slots=%s",
+            limit_status["limit_source"],
+            limit_status["max_bots"],
+            limit_status["available_slots"],
+        )
 
         # 5. Calculate position sizes for each bot using Governor (if available)
         # Track routing statistics for audit
@@ -1211,14 +1261,14 @@ class Commander:
             primal_count = len(self.bot_registry.list_by_tag("@primal"))
             pending_count = len(self.bot_registry.list_by_tag("@pending"))
         
-        limiter = DynamicBotLimiter()
-        default_balance = getattr(self._governor, '_daily_start_balance', 100000.0)
-        max_bots = limiter.get_max_bots(default_balance)
+        limit_status = self._get_legacy_dynamic_limit_status()
         return {
             "active_bots": len(self.active_bots),
             "primal_bots": primal_count,
             "pending_bots": pending_count,
-            "max_bots": max_bots,
+            "max_bots": limit_status["max_bots"],
+            "available_slots": limit_status["available_slots"],
+            "limit_source": limit_status["limit_source"],
             "regime_strategy_map": self.regime_strategy_map
         }
     
@@ -1329,27 +1379,16 @@ class Commander:
         account_balance = account_balance or getattr(self._governor, '_daily_start_balance', 100000.0)
         logger.debug(f"Commander: Defaulted account_balance to {account_balance} (multi-timeframe)")
 
-        # Select top N using DynamicBotLimiter API
-        # Comment 2 fix: Use can_add_bot() API instead of hard cap
-        limiter = DynamicBotLimiter()
-        max_bots = limiter.get_max_bots(account_balance)
-        active_positions = self._count_active_positions()
-        
-        # Use can_add_bot() for each candidate bot instead of hard cap
-        # This respects tier-based limits and safety buffer
-        selected_bots = []
-        current_bot_count = active_positions
-        
-        for bot in ranked_bots:
-            can_add, reason = limiter.can_add_bot(account_balance, current_bot_count)
-            if can_add:
-                selected_bots.append(bot)
-                current_bot_count += 1
-                logger.debug(f"Bot {bot.get('bot_id')} added: {reason}")
-            else:
-                logger.debug(f"Bot {bot.get('bot_id')} rejected: {reason}")
-        
-        top_bots = selected_bots
+        top_bots, limit_status = self._select_funded_bots_with_legacy_limits(
+            ranked_bots,
+            account_balance=account_balance,
+        )
+        logger.debug(
+            "Commander: legacy multi-timeframe funded-bot selection source=%s max_bots=%s available_slots=%s",
+            limit_status["limit_source"],
+            limit_status["max_bots"],
+            limit_status["available_slots"],
+        )
 
         # Calculate position sizes and build dispatches
         # Track routing statistics for audit

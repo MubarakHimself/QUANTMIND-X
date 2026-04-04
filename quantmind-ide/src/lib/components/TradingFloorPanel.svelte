@@ -4,7 +4,8 @@
   import {
     newsKillZoneState,
     newsSessionStatuses,
-    newsUpcomingEvents
+    newsUpcomingEvents,
+    killSwitchLockState
   } from '../stores/kill-switch';
 
   let activeTab: 'copilot' | 'floor-manager' = $state('floor-manager');
@@ -32,6 +33,36 @@
 </script>
 
 <div class="trading-floor-panel">
+  {#if $killSwitchLockState?.manual_market_lock_active}
+    <div class="lock-banner manual-lock">
+      <div class="banner-left">
+        <ShieldAlert size={14} />
+        <span class="banner-label">MARKET LOCK</span>
+        <span class="banner-sep">—</span>
+        <span class="banner-text">Manual market lock active.</span>
+      </div>
+      <div class="banner-right">
+        {#if $killSwitchLockState?.reason}
+          <span class="banner-event">{$killSwitchLockState.reason}</span>
+        {/if}
+      </div>
+    </div>
+  {:else if $killSwitchLockState?.hard_lock_active}
+    <div class="lock-banner hard-lock">
+      <div class="banner-left">
+        <AlertTriangle size={14} />
+        <span class="banner-label">ACCOUNT LOCK</span>
+        <span class="banner-sep">—</span>
+        <span class="banner-text">Global hard lock active.</span>
+      </div>
+      <div class="banner-right">
+        {#if $killSwitchLockState?.pressure_state}
+          <span class="banner-event">{$killSwitchLockState.pressure_state}</span>
+        {/if}
+      </div>
+    </div>
+  {/if}
+
   <!-- News Kill Zone Banner -->
   {#if $newsKillZoneState === 'KILL_ZONE'}
     <div class="kill-zone-banner" class:just-fired={justFired}>
@@ -152,12 +183,35 @@
     align-items: center;
     justify-content: space-between;
     padding: 6px 12px;
-    background: rgba(239, 68, 68, 0.15);
-    border-bottom: 1px solid rgba(239, 68, 68, 0.3);
     font-size: 11px;
     font-family: var(--font-mono);
     flex-shrink: 0;
+  }
+
+  .lock-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+  }
+
+  .kill-zone-banner {
+    background: rgba(239, 68, 68, 0.15);
+    border-bottom: 1px solid rgba(239, 68, 68, 0.3);
     animation: killZoneFlash 1s ease-in-out infinite alternate;
+  }
+
+  .lock-banner.manual-lock {
+    background: rgba(245, 158, 11, 0.14);
+    border-bottom: 1px solid rgba(245, 158, 11, 0.28);
+  }
+
+  .lock-banner.hard-lock {
+    background: rgba(220, 38, 38, 0.18);
+    border-bottom: 1px solid rgba(220, 38, 38, 0.35);
   }
 
   .kill-zone-banner.just-fired {
@@ -180,6 +234,14 @@
 
   .pre-news .banner-left {
     color: #f0a500;
+  }
+
+  .manual-lock .banner-left {
+    color: #f59e0b;
+  }
+
+  .hard-lock .banner-left {
+    color: #ff6464;
   }
 
   .banner-label {

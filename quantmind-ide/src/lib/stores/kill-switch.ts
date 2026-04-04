@@ -38,6 +38,39 @@ export interface NewsBlackoutMessage {
   }>;
 }
 
+export interface KillSwitchLockState {
+  lock_source: string | null;
+  pressure_state: string | null;
+  reason: string | null;
+  hard_lock_active: boolean;
+  manual_market_lock_active: boolean;
+}
+
+function normalizeLockState(raw: unknown): KillSwitchLockState | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const state = raw as Record<string, unknown>;
+  const lockSource =
+    (typeof state.lock_source === 'string' ? state.lock_source : null) ??
+    (typeof state.source === 'string' ? state.source : null);
+  const pressureState = typeof state.pressure_state === 'string' ? state.pressure_state : null;
+  const reason =
+    (typeof state.reason === 'string' ? state.reason : null) ??
+    (typeof state.manual_market_lock_reason === 'string' ? state.manual_market_lock_reason : null);
+  const manualMarketLockActive = Boolean(state.manual_market_lock_active);
+  const hardLockActive =
+    typeof state.hard_lock_active === 'boolean'
+      ? state.hard_lock_active
+      : lockSource === 'ACCOUNT_HARD_LOCK' || lockSource === 'SYSTEM_SHUTDOWN' || lockSource === 'CHAOS_LOCK';
+
+  return {
+    lock_source: lockSource,
+    pressure_state: pressureState,
+    reason,
+    hard_lock_active: hardLockActive,
+    manual_market_lock_active: manualMarketLockActive
+  };
+}
+
 // Kill switch tier types
 export type KillSwitchTier = 1 | 2 | 3;
 
@@ -85,6 +118,15 @@ export const killSwitchLoading = writable<boolean>(false);
 export const newsKillZoneState = writable<NewsKillZoneState>('SAFE');
 export const newsSessionStatuses = writable<Record<string, SessionBlackoutStatus>>({});
 export const newsUpcomingEvents = writable<NewsBlackoutMessage['upcoming_events']>([]);
+export const killSwitchLockState = writable<KillSwitchLockState | null>(null);
+export const manualMarketLockActive = derived(
+  killSwitchLockState,
+  ($state) => Boolean($state?.manual_market_lock_active)
+);
+export const killSwitchPressureState = derived(
+  killSwitchLockState,
+  ($state) => $state?.pressure_state ?? null
+);
 
 // Store for error messages
 export const killSwitchError = writable<string | null>(null);
@@ -280,6 +322,7 @@ export async function fetchKillSwitchStatus(): Promise<void> {
     }
 
     const data = await response.json();
+    killSwitchLockState.set(normalizeLockState(data.lock_state));
 
     // Hydrate kill switch state from backend response.
     // The backend KillSwitchStatusResponse shape:
@@ -314,5 +357,64 @@ export async function fetchKillSwitchStatus(): Promise<void> {
     }
   } catch (error) {
     console.error('[KillSwitch] Failed to fetch status:', error);
+  }
+}
+
+export async function activateManualMarketLock(
+  reason: string = 'operator review',
+  adminKey: string = 'UI_User'
+): Promise<boolean> {
+  killSwitchLoading.set(true);
+  killSwitchError.set(null);
+
+  try {
+    const response = await fetch('/api/kill-switch/market-lock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        admin_key: adminKey,
+        reason
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'Failed to activate manual market lock');
+    }
+
+    await fetchKillSwitchStatus();
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    killSwitchError.set(message);
+    return false;
+  } finally {
+    killSwitchLoading.set(false);
+  }
+}
+
+export async function resumeManualMarketLock(adminKey: string = 'UI_User'): Promise<boolean> {
+  killSwitchLoading.set(true);
+  killSwitchError.set(null);
+
+  try {
+    const params = new URLSearchParams({ admin_key: adminKey });
+    const response = await fetch(`/api/kill-switch/market-lock/resume?${params.toString()}`, {
+      method: 'POST'
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'Failed to resume manual market lock');
+    }
+
+    await fetchKillSwitchStatus();
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    killSwitchError.set(message);
+    return false;
+  } finally {
+    killSwitchLoading.set(false);
   }
 }

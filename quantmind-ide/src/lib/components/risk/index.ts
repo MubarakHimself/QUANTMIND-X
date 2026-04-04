@@ -13,3 +13,4 @@ export { default as CalendarGateTile } from './CalendarGateTile.svelte';
 export { default as BacktestResultsPanel } from './BacktestResultsPanel.svelte';
 export { default as EquityCurveChart } from './EquityCurveChart.svelte';
 export { default as DrawdownChart } from './DrawdownChart.svelte';
+export { default as DprLeaderboard } from './DprLeaderboard.svelte';

@@ -144,6 +144,8 @@ class ConnectionManager:
 
 # Global connection manager
 manager = ConnectionManager(heartbeat_interval=30)
+# Backward-compatible alias used by older startup wiring.
+ws_manager = manager
 
 
 # Chart streaming state
@@ -1183,6 +1185,7 @@ __all__ = [
     'broadcast_market_opportunity',
     'broadcast_approval_gate',
     'manager',
+    'ws_manager',
     # Story 3-1 additions
     'broadcast_position_update',
     'broadcast_pnl_update',

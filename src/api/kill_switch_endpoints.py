@@ -69,7 +69,14 @@ class KillSwitchStatusResponse(BaseModel):
     current_alert_level: str
     active_alerts_count: int
     last_check_result: Optional[Dict[str, Any]]
+    lock_state: Optional[Dict[str, Any]] = None
     tiers: TierStatusResponse
+
+
+class ManualMarketLockRequest(BaseModel):
+    """Request to toggle sticky manual market lock."""
+    admin_key: str
+    reason: str = "operator review"
 
 
 # =============================================================================
@@ -194,6 +201,7 @@ async def get_kill_switch_status() -> KillSwitchStatusResponse:
         current_alert_level=status["current_alert_level"],
         active_alerts_count=status["active_alerts"],
         last_check_result=status.get("last_check_result"),
+        lock_state=status.get("lock_state"),
         tiers=TierStatusResponse(**status["tiers"])
     )
 
@@ -372,6 +380,39 @@ async def reset_account_stops(
         "success": True,
         "message": f"Account '{account_id}' stops reset",
         "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+@router.post("/market-lock")
+async def activate_manual_market_lock(request: ManualMarketLockRequest) -> Dict[str, Any]:
+    """Activate sticky manual market lock."""
+    if not _validate_admin_key(request.admin_key):
+        raise HTTPException(status_code=401, detail="Invalid admin key")
+
+    pks = _get_pks()
+    pks.activate_manual_market_lock(reason=request.reason)
+    status = pks.get_status()
+    return {
+        "success": True,
+        "message": "Manual market lock activated",
+        "lock_state": status.get("lock_state"),
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+@router.post("/market-lock/resume")
+async def resume_manual_market_lock(admin_key: str) -> Dict[str, Any]:
+    """Resume trading from sticky manual market lock."""
+    if not _validate_admin_key(admin_key):
+        raise HTTPException(status_code=401, detail="Invalid admin key")
+
+    pks = _get_pks()
+    resumed = pks.resume_manual_market_lock()
+    return {
+        "success": resumed,
+        "message": "Manual market lock resumed" if resumed else "Manual market lock was not active",
+        "lock_state": pks.get_status().get("lock_state"),
+        "timestamp": datetime.utcnow().isoformat(),
     }
 
 
@@ -564,6 +605,8 @@ async def health_check() -> Dict[str, Any]:
         "alert_level": status["current_alert_level"],
         "is_shutdown": status["tiers"]["tier5_system"]["is_shutdown"],
         "active_alerts": status["active_alerts"],
+        "lock_source": status.get("lock_state", {}).get("source"),
+        "manual_market_lock_active": status.get("lock_state", {}).get("manual_market_lock_active", False),
         "timestamp": datetime.utcnow().isoformat()
     }
 

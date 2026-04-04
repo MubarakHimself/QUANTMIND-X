@@ -11,6 +11,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, date, timedelta
 from typing import Optional, Dict, List, Any, TYPE_CHECKING
+from enum import Enum
 
 from src.router.alert_manager import AlertManager, AlertLevel, get_alert_manager
 
@@ -18,6 +19,21 @@ if TYPE_CHECKING:
     from mcp_mt5.alert_service import AlertService
 
 logger = logging.getLogger(__name__)
+
+
+class AccountPressureState(str, Enum):
+    """Externally visible account pressure bands."""
+    NORMAL = "NORMAL"
+    CAUTION = "CAUTION"
+    RESTRICTED = "RESTRICTED"
+    STOPPED = "STOPPED"
+
+
+class AccountLockSource(str, Enum):
+    """Canonical account-level lock source."""
+    NONE = "NONE"
+    ACCOUNT_PRESSURE = "ACCOUNT_PRESSURE"
+    ACCOUNT_HARD_LOCK = "ACCOUNT_HARD_LOCK"
 
 # Comment 4: DB Manager for database access
 _DB_SESSION = None
@@ -91,7 +107,7 @@ class AccountState:
             "daily_stop_triggered": self.daily_stop_triggered,
             "weekly_stop_triggered": self.weekly_stop_triggered,
             "daily_trades": self.daily_trades,
-            "weekly_trades": self.weekly_trades
+            "weekly_trades": self.weekly_trades,
         }
 
 
@@ -118,6 +134,8 @@ class AccountMonitor:
     # Default thresholds (can be overridden via config)
     MAX_DAILY_LOSS_PCT = 0.03  # 3%
     MAX_WEEKLY_LOSS_PCT = 0.10  # 10%
+    PRESSURE_CAUTION_RATIO = 0.50
+    PRESSURE_RESTRICTED_RATIO = 0.75
 
     def __init__(
         self,
@@ -152,6 +170,66 @@ class AccountMonitor:
             f"weekly_limit={max_weekly_loss_pct:.1%}, "
             f"email={email_alerts}, sms={sms_alerts}"
         )
+
+    def _get_pressure_snapshot(self, state: AccountState) -> Dict[str, Any]:
+        """Return canonical pressure/lock state for an account."""
+        daily_ratio = (
+            state.daily_loss_pct / self.max_daily_loss_pct
+            if self.max_daily_loss_pct > 0 else 0.0
+        )
+        weekly_ratio = (
+            state.weekly_loss_pct / self.max_weekly_loss_pct
+            if self.max_weekly_loss_pct > 0 else 0.0
+        )
+        operating_budget_consumed_ratio = max(daily_ratio, weekly_ratio, 0.0)
+
+        if state.daily_stop_triggered or state.weekly_stop_triggered or operating_budget_consumed_ratio >= 1.0:
+            reason = (
+                "Daily hard loss limit reached"
+                if state.daily_stop_triggered or daily_ratio >= 1.0
+                else "Weekly hard loss limit reached"
+            )
+            return {
+                "pressure_state": AccountPressureState.STOPPED.value,
+                "lock_source": AccountLockSource.ACCOUNT_HARD_LOCK.value,
+                "hard_lock_active": True,
+                "reason": reason,
+                "operating_budget_consumed_ratio": min(operating_budget_consumed_ratio, 1.0),
+                "daily_pressure_ratio": daily_ratio,
+                "weekly_pressure_ratio": weekly_ratio,
+            }
+
+        if operating_budget_consumed_ratio >= self.PRESSURE_RESTRICTED_RATIO:
+            return {
+                "pressure_state": AccountPressureState.RESTRICTED.value,
+                "lock_source": AccountLockSource.ACCOUNT_PRESSURE.value,
+                "hard_lock_active": False,
+                "reason": "Account drawdown in restricted pressure band",
+                "operating_budget_consumed_ratio": operating_budget_consumed_ratio,
+                "daily_pressure_ratio": daily_ratio,
+                "weekly_pressure_ratio": weekly_ratio,
+            }
+
+        if operating_budget_consumed_ratio >= self.PRESSURE_CAUTION_RATIO:
+            return {
+                "pressure_state": AccountPressureState.CAUTION.value,
+                "lock_source": AccountLockSource.ACCOUNT_PRESSURE.value,
+                "hard_lock_active": False,
+                "reason": "Account drawdown in caution pressure band",
+                "operating_budget_consumed_ratio": operating_budget_consumed_ratio,
+                "daily_pressure_ratio": daily_ratio,
+                "weekly_pressure_ratio": weekly_ratio,
+            }
+
+        return {
+            "pressure_state": AccountPressureState.NORMAL.value,
+            "lock_source": AccountLockSource.NONE.value,
+            "hard_lock_active": False,
+            "reason": None,
+            "operating_budget_consumed_ratio": operating_budget_consumed_ratio,
+            "daily_pressure_ratio": daily_ratio,
+            "weekly_pressure_ratio": weekly_ratio,
+        }
 
     def _get_or_create_state(
         self,
@@ -481,7 +559,8 @@ class AccountMonitor:
         self._check_and_reset_counters(state)
 
         # Check stops
-        if state.weekly_stop_triggered or state.daily_stop_triggered:
+        pressure = self._get_pressure_snapshot(state)
+        if pressure["hard_lock_active"]:
             return False
 
         return True
@@ -499,16 +578,19 @@ class AccountMonitor:
             }
 
         self._check_and_reset_counters(state)
+        pressure = self._get_pressure_snapshot(state)
 
-        return {
+        payload = {
             "account_id": account_id,
             "daily_stop": state.daily_stop_triggered,
             "weekly_stop": state.weekly_stop_triggered,
             "daily_loss_pct": state.daily_loss_pct,
             "weekly_loss_pct": state.weekly_loss_pct,
             "daily_pnl": state.daily_pnl,
-            "weekly_pnl": state.weekly_pnl
+            "weekly_pnl": state.weekly_pnl,
         }
+        payload.update(pressure)
+        return payload
 
     def reset_account_stops(self, account_id: str) -> bool:
         """
@@ -524,6 +606,10 @@ class AccountMonitor:
         if state is None:
             return False
 
+        state.daily_pnl = 0.0
+        state.weekly_pnl = 0.0
+        state.daily_trades = 0
+        state.weekly_trades = 0
         state.daily_stop_triggered = False
         state.weekly_stop_triggered = False
 
@@ -558,12 +644,15 @@ class AccountMonitor:
             weekly_pct = (state.weekly_loss_pct / self.max_weekly_loss_pct) * 100
 
             if daily_pct >= threshold_pct or weekly_pct >= threshold_pct:
+                pressure = self._get_pressure_snapshot(state)
                 at_risk.append({
                     "account_id": account_id,
                     "daily_threshold_pct": daily_pct,
                     "weekly_threshold_pct": weekly_pct,
                     "daily_stop": state.daily_stop_triggered,
-                    "weekly_stop": state.weekly_stop_triggered
+                    "weekly_stop": state.weekly_stop_triggered,
+                    "pressure_state": pressure["pressure_state"],
+                    "lock_source": pressure["lock_source"],
                 })
 
         return at_risk

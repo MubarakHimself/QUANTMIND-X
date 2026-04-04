@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from src.router.routing_matrix import RoutingMatrix
 
 from src.router.sentinel import Sentinel
-from src.router.governor import Governor, RiskMandate
+from src.router.governor import RiskMandate
 from src.router.enhanced_governor import EnhancedGovernor
 from src.router.commander import Commander
 from src.router.multi_timeframe_sentinel import MultiTimeframeSentinel, Timeframe
@@ -217,26 +217,29 @@ class StrategyRouter:
         else:
             self.multi_timeframe_sentinel = None
 
-        # FIX-01: Account-type-based Governor selection.
-        # PropGovernor activates for prop_firm accounts (quadratic throttle + tiered risk).
-        # EnhancedGovernor used for all normal accounts (Kelly + House Money).
+        # Batch 1 authority rule:
+        # StrategyRouter is the single runtime authority selector and
+        # EnhancedGovernor is the only live-router allocation owner.
         account_type = (account_config or {}).get('type', 'normal')
         account_id = (account_config or {}).get('account_id', None)
 
-        if account_type == 'prop_firm' and account_id:
-            try:
-                from src.router.prop.governor import PropGovernor
-                self.governor = PropGovernor(account_id, settings=self._risk_settings)
-                logger.info(f"StrategyRouter: PropGovernor activated for prop_firm account '{account_id}'")
-            except Exception as e:
-                logger.error(f"StrategyRouter: Failed to load PropGovernor for account '{account_id}': {e}. Falling back to EnhancedGovernor.")
-                self.governor = EnhancedGovernor(account_id=account_id, settings=self._risk_settings) if use_kelly_governor else Governor()
-        elif use_kelly_governor:
-            self.governor = EnhancedGovernor(account_id=account_id, settings=self._risk_settings)
-            logger.info(f"StrategyRouter: EnhancedGovernor (Kelly) activated for account '{account_id}'")
-        else:
-            self.governor = Governor()
-            logger.info("StrategyRouter: Base Governor activated")
+        if account_type == 'prop_firm':
+            logger.info(
+                "StrategyRouter: prop_firm account '%s' routed through EnhancedGovernor runtime authority",
+                account_id,
+            )
+
+        if not use_kelly_governor:
+            logger.warning(
+                "StrategyRouter: use_kelly_governor=False requested, but runtime authority remains "
+                "EnhancedGovernor for live router flow"
+            )
+
+        self.governor = EnhancedGovernor(account_id=account_id, settings=self._risk_settings)
+        logger.info(
+            "StrategyRouter: EnhancedGovernor activated as canonical runtime authority for account '%s'",
+            account_id,
+        )
 
         self.commander = Commander(governor=self.governor)
 

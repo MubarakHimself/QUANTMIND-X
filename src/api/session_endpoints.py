@@ -18,13 +18,19 @@ import gc
 import os
 from pathlib import Path
 
-from src.router.sessions import SessionDetector, TradingSession, get_current_session, is_market_open, get_next_session_time
+from src.router.session_detector import SessionDetector, TradingSession, get_current_session, is_market_open, get_next_session_time
+import src.router.sessions as session_runtime
 from src.agents.memory.compaction import SessionCompactor, CompactionConfig, CompactionResult
 
 logger = logging.getLogger(__name__)
 
 # Create router
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
+
+
+def _utc_now() -> datetime:
+    """Use the canonical session runtime clock so session tests patch one source."""
+    return session_runtime.datetime.now(timezone.utc)
 
 
 # =============================================================================
@@ -156,7 +162,7 @@ async def get_current_session_endpoint() -> SessionInfoResponse:
         }
     """
     try:
-        utc_now = datetime.now(timezone.utc)
+        utc_now = _utc_now()
         info = SessionDetector.get_session_info(utc_now)
 
         return SessionInfoResponse(
@@ -224,32 +230,12 @@ async def get_all_sessions_status() -> AllSessionsResponse:
         }
     """
     try:
-        utc_now = datetime.now(timezone.utc)
-
-        # Check if overlap is active first - this determines LONDON/NEW_YORK status
-        overlap_active = SessionDetector.is_in_session("OVERLAP", utc_now)
-        
-        # Check individual sessions
+        utc_now = _utc_now()
+        current_session = SessionDetector.detect_session(utc_now)
         statuses = {}
         
         for session in TradingSession:
-            if session == TradingSession.CLOSED:
-                # CLOSED is active when no other sessions are active
-                asian_active = SessionDetector.is_in_session("ASIAN", utc_now)
-                london_active = SessionDetector.is_in_session("LONDON", utc_now)
-                ny_active = SessionDetector.is_in_session("NEW_YORK", utc_now)
-                is_active = not (asian_active or london_active or ny_active)
-            elif session == TradingSession.OVERLAP:
-                # OVERLAP is active when in overlap period
-                is_active = overlap_active
-            elif session in (TradingSession.LONDON, TradingSession.NEW_YORK):
-                # During overlap, LONDON and NEW_YORK are forced inactive
-                # Only active when in their respective sessions but NOT in overlap
-                is_active = SessionDetector.is_in_session(session.value, utc_now) and not overlap_active
-            else:
-                # For other sessions (ASIAN), check if currently active
-                is_active = SessionDetector.is_in_session(session.value, utc_now)
-            
+            is_active = session == current_session
             session_name = SessionDetector.SESSIONS.get(session.value, {}).get("name", session.value)
             statuses[session.value] = SessionStatusResponse(
                 active=is_active,
@@ -425,15 +411,8 @@ async def check_session_active(session_name: str) -> Dict[str, Any]:
         
         # Special case: CLOSED session returns true when no other session is active
         if session_upper == "CLOSED":
-            utc_now = datetime.now(timezone.utc)
-            
-            # Check if any trading session is active
-            asian_active = SessionDetector.is_in_session("ASIAN", utc_now)
-            london_active = SessionDetector.is_in_session("LONDON", utc_now)
-            ny_active = SessionDetector.is_in_session("NEW_YORK", utc_now)
-            
-            # CLOSED is active when no trading sessions are active
-            is_active = not (asian_active or london_active or ny_active)
+            utc_now = _utc_now()
+            is_active = SessionDetector.detect_session(utc_now) == TradingSession.CLOSED
             
             return {
                 "session": "CLOSED",
@@ -450,7 +429,7 @@ async def check_session_active(session_name: str) -> Dict[str, Any]:
                 detail=f"Invalid session name: {session_name}. Must be one of: {[s.value for s in TradingSession]}"
             )
 
-        utc_now = datetime.now(timezone.utc)
+        utc_now = _utc_now()
         is_active = SessionDetector.is_in_session(session_upper, utc_now)
 
         return {
@@ -497,7 +476,7 @@ async def check_time_window(
         }
     """
     try:
-        utc_now = datetime.now(timezone.utc)
+        utc_now = _utc_now()
         is_in_window = SessionDetector.is_in_time_window(
             utc_now,
             start_time,
@@ -558,12 +537,12 @@ async def check_market_open() -> Dict[str, Any]:
         }
     """
     try:
-        utc_now = datetime.now(timezone.utc)
-        info = SessionDetector.get_session_info(utc_now)
+        utc_now = _utc_now()
+        current_session = SessionDetector.detect_session(utc_now)
 
         return {
-            "is_open": info.is_active,
-            "current_session": info.session.value if info.is_active else None,
+            "is_open": current_session != TradingSession.CLOSED,
+            "current_session": current_session.value if current_session != TradingSession.CLOSED else None,
             "utc_time": utc_now.isoformat()
         }
     except Exception as e:

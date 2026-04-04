@@ -5,16 +5,13 @@ Provides REST and WebSocket endpoints for broker management,
 including auto-detection from MT5 heartbeats and manual configuration.
 """
 
-import asyncio
 import json
 import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from dataclasses import dataclass, asdict
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Query
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from src.api.pagination import PaginatedResponse, DEFAULT_LIMIT, DEFAULT_OFFSET, MAX_LIMIT
 
@@ -61,10 +58,10 @@ class ManualBrokerAdd(BaseModel):
     is_testnet: bool = False
 
 
-# ============== Broker Registry ==============
+# ============== Broker Connection Registry ==============
 
-class BrokerRegistry:
-    """In-memory broker registry (use database in production)."""
+class BrokerConnectionRegistry:
+    """In-memory connection/heartbeat registry for discovered broker accounts."""
 
     def __init__(self):
         self.brokers: Dict[str, BrokerInfo] = {}
@@ -149,8 +146,8 @@ class BrokerRegistry:
         return None
 
 
-# Global registry
-broker_registry = BrokerRegistry()
+# Global connection registry
+broker_connections = BrokerConnectionRegistry()
 
 # ============== Account Switching State ==============
 class AccountSwitcher:
@@ -166,12 +163,12 @@ class AccountSwitcher:
     def set_active_account(self, account_id: str) -> bool:
         """Set the active account. Returns True if successful."""
         # Check if account exists
-        for broker_id, broker in broker_registry.brokers.items():
+        for broker_id, broker in broker_connections.brokers.items():
             if broker.account_id == account_id:
                 self._active_account_id = account_id
                 return True
         # Also check pending accounts
-        for broker_id, broker in broker_registry.pending.items():
+        for broker_id, broker in broker_connections.pending.items():
             if broker.account_id == account_id:
                 self._active_account_id = account_id
                 return True
@@ -181,7 +178,7 @@ class AccountSwitcher:
         """Get the currently active account details."""
         if not self._active_account_id:
             return None
-        for broker in broker_registry.get_all():
+        for broker in broker_connections.get_all():
             if broker.account_id == self._active_account_id:
                 return broker
         return None
@@ -259,7 +256,7 @@ async def list_brokers(
     offset: int = Query(DEFAULT_OFFSET, ge=0, description="Number of items to skip")
 ):
     """List all registered brokers with pagination."""
-    all_brokers = broker_registry.get_all()
+    all_brokers = broker_connections.get_all()
 
     if status:
         all_brokers = [b for b in all_brokers if b.status == status]
@@ -283,7 +280,7 @@ async def list_pending_brokers(
     offset: int = Query(DEFAULT_OFFSET, ge=0, description="Number of items to skip")
 ):
     """List all pending brokers awaiting confirmation with pagination."""
-    all_pending = broker_registry.get_pending()
+    all_pending = broker_connections.get_pending()
     total = len(all_pending)
     paginated = all_pending[offset:offset + limit]
 
@@ -298,7 +295,7 @@ async def list_pending_brokers(
 @router.get("/{broker_id}", response_model=BrokerInfo)
 async def get_broker(broker_id: str):
     """Get broker by ID."""
-    broker = broker_registry.get(broker_id)
+    broker = broker_connections.get(broker_id)
     if not broker:
         raise HTTPException(status_code=404, detail="Broker not found")
     return broker
@@ -312,7 +309,7 @@ async def broker_heartbeat(heartbeat: BrokerHeartbeat):
     This endpoint is called by the MT5 bridge to report account status.
     If the broker is new, it will be added to pending for confirmation.
     """
-    broker = broker_registry.add_or_update(heartbeat)
+    broker = broker_connections.add_or_update(heartbeat)
 
     # If it's a new broker (pending), notify WebSocket clients
     if broker.status == "pending":
@@ -334,7 +331,7 @@ async def broker_heartbeat(heartbeat: BrokerHeartbeat):
 @router.post("/{broker_id}/confirm")
 async def confirm_broker(broker_id: str):
     """Confirm a pending broker."""
-    broker = broker_registry.confirm(broker_id)
+    broker = broker_connections.confirm(broker_id)
     if not broker:
         raise HTTPException(status_code=404, detail="Pending broker not found")
 
@@ -345,7 +342,7 @@ async def confirm_broker(broker_id: str):
 @router.post("/{broker_id}/ignore")
 async def ignore_broker(broker_id: str):
     """Ignore and remove a pending broker."""
-    if not broker_registry.ignore(broker_id):
+    if not broker_connections.ignore(broker_id):
         raise HTTPException(status_code=404, detail="Pending broker not found")
     return {"status": "ignored"}
 
@@ -353,7 +350,7 @@ async def ignore_broker(broker_id: str):
 @router.post("/{broker_id}/sync")
 async def sync_broker(broker_id: str):
     """Request broker sync."""
-    broker = broker_registry.sync(broker_id)
+    broker = broker_connections.sync(broker_id)
     if not broker:
         raise HTTPException(status_code=404, detail="Broker not found")
 
@@ -371,7 +368,7 @@ async def sync_broker(broker_id: str):
 @router.post("/{broker_id}/disconnect")
 async def disconnect_broker(broker_id: str):
     """Disconnect a broker."""
-    if not broker_registry.disconnect(broker_id):
+    if not broker_connections.disconnect(broker_id):
         raise HTTPException(status_code=404, detail="Broker not found")
 
     await ws_manager.notify_broker_status(broker_id, "disconnected")
@@ -424,7 +421,7 @@ async def add_broker_manually(broker: ManualBrokerAdd):
         raise HTTPException(status_code=400, detail=f"Unknown broker type: {broker.type}")
 
     # Add to pending
-    broker_registry.pending[new_broker.id] = new_broker
+    broker_connections.pending[new_broker.id] = new_broker
 
     # Notify WebSocket clients
     await ws_manager.notify_broker_detected(new_broker)
@@ -443,7 +440,7 @@ async def broker_websocket(websocket: WebSocket):
         # Send current broker list
         await websocket.send_text(json.dumps({
             "type": "broker_list",
-            "brokers": [b.dict() for b in broker_registry.get_all()]
+            "brokers": [b.dict() for b in broker_connections.get_all()]
         }, default=str))
 
         while True:
@@ -455,7 +452,7 @@ async def broker_websocket(websocket: WebSocket):
 
                 if msg_type == "confirm_broker":
                     broker_id = message.get("broker_id")
-                    broker = broker_registry.confirm(broker_id)
+                    broker = broker_connections.confirm(broker_id)
                     if broker:
                         await ws_manager.broadcast({
                             "type": "broker_confirmed",
@@ -464,16 +461,16 @@ async def broker_websocket(websocket: WebSocket):
 
                 elif msg_type == "ignore_broker":
                     broker_id = message.get("broker_id")
-                    broker_registry.ignore(broker_id)
+                    broker_connections.ignore(broker_id)
 
                 elif msg_type == "disconnect_broker":
                     broker_id = message.get("broker_id")
-                    broker_registry.disconnect(broker_id)
+                    broker_connections.disconnect(broker_id)
                     await ws_manager.notify_broker_status(broker_id, "disconnected")
 
                 elif msg_type == "sync_broker":
                     broker_id = message.get("broker_id")
-                    broker = broker_registry.sync(broker_id)
+                    broker = broker_connections.sync(broker_id)
                     if broker:
                         await ws_manager.broadcast({
                             "type": "broker_synced",
@@ -515,7 +512,7 @@ class AccountSwitchResponse(BaseModel):
 @router.get("/accounts", response_model=List[BrokerInfo])
 async def list_all_accounts():
     """List all accounts (both connected and pending) with their status."""
-    all_accounts = list(broker_registry.brokers.values()) + list(broker_registry.pending.values())
+    all_accounts = list(broker_connections.brokers.values()) + list(broker_connections.pending.values())
     return all_accounts
 
 

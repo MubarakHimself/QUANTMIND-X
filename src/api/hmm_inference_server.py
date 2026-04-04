@@ -105,6 +105,7 @@ class PushResponse(BaseModel):
 
 
 router = APIRouter(prefix="/api/hmm", tags=["hmm"])
+ensemble_router = APIRouter(prefix="/api/ensemble", tags=["ensemble"])
 
 
 def _load_model(model_type: str = "universal", symbol: Optional[str] = None):
@@ -223,6 +224,17 @@ async def health_check():
         "status": "ok",
         "vps": "contabo",
         "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
+@ensemble_router.get("/health")
+async def ensemble_health_check():
+    """Compatibility endpoint for ensemble router imports in API startup."""
+    return {
+        "status": "ok",
+        "service": "ensemble",
+        "mode": "compat",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 

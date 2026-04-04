@@ -71,6 +71,26 @@ class TradeStatistics(BaseModel):
     largestLoss: float
 
 
+class ReviewCandidate(BaseModel):
+    bot_id: str
+    closed_trades: int
+    losses: int
+    win_rate: float
+    net_pnl: float
+    consecutive_losses: int
+    is_quarantined: bool
+    quarantine_reason: Optional[str] = None
+    last_trade_time: Optional[str] = None
+
+
+class JournalReviewSummaryResponse(BaseModel):
+    generated_at: str
+    total_reviewed: int
+    quarantined_bots: int
+    pressure_accounts: int
+    review_watchlist: List[ReviewCandidate]
+
+
 class TradeAnnotationRequest(BaseModel):
     """Request model for trade annotation."""
     note: str = Field(..., description="Annotation note for the trade")
@@ -247,6 +267,95 @@ def calculate_stats(trades: List[Dict[str, Any]], mode_filter: Optional[str] = N
     )
 
 
+def build_review_summary(limit: int = 200) -> JournalReviewSummaryResponse:
+    """Build a lightweight bot review/watchlist summary from journal and breaker state."""
+    trades = query_trade_journal(limit=limit)
+    by_bot: Dict[str, Dict[str, Any]] = {}
+
+    for trade in trades:
+        bot_id = trade.get("eaName") or trade.get("strategy") or "unknown"
+        aggregate = by_bot.setdefault(
+            bot_id,
+            {
+                "bot_id": bot_id,
+                "closed_trades": 0,
+                "losses": 0,
+                "wins": 0,
+                "net_pnl": 0.0,
+                "last_trade_time": trade.get("entryTime") or trade.get("timestamp"),
+            },
+        )
+
+        if trade.get("status") == "closed":
+            aggregate["closed_trades"] += 1
+            pnl = float(trade.get("pnl", 0.0) or 0.0)
+            aggregate["net_pnl"] += pnl
+            if pnl < 0:
+                aggregate["losses"] += 1
+            elif pnl > 0:
+                aggregate["wins"] += 1
+
+    breaker_states: Dict[str, Dict[str, Any]] = {}
+    try:
+        from src.router.bot_circuit_breaker import BotCircuitBreakerManager
+
+        breaker_states = {
+            state["bot_id"]: state
+            for state in BotCircuitBreakerManager().get_all_states()
+        }
+    except Exception:
+        breaker_states = {}
+
+    pressure_accounts = 0
+    try:
+        from src.router.account_monitor import get_account_monitor
+
+        pressure_accounts = len(get_account_monitor().get_accounts_at_risk())
+    except Exception:
+        pressure_accounts = 0
+
+    candidates: List[ReviewCandidate] = []
+    quarantined_count = 0
+    for bot_id, aggregate in by_bot.items():
+        state = breaker_states.get(bot_id, {})
+        is_quarantined = bool(state.get("is_quarantined", False))
+        if is_quarantined:
+            quarantined_count += 1
+
+        closed_trades = aggregate["closed_trades"]
+        wins = aggregate["wins"]
+        candidates.append(
+            ReviewCandidate(
+                bot_id=bot_id,
+                closed_trades=closed_trades,
+                losses=aggregate["losses"],
+                win_rate=(wins / closed_trades) * 100 if closed_trades else 0.0,
+                net_pnl=aggregate["net_pnl"],
+                consecutive_losses=int(state.get("consecutive_losses", 0) or 0),
+                is_quarantined=is_quarantined,
+                quarantine_reason=state.get("quarantine_reason"),
+                last_trade_time=aggregate["last_trade_time"],
+            )
+        )
+
+    candidates.sort(
+        key=lambda c: (
+            not c.is_quarantined,
+            c.net_pnl,
+            -c.consecutive_losses,
+            -c.losses,
+        )
+    )
+
+    return JournalReviewSummaryResponse(
+        generated_at=datetime.now(timezone.utc).isoformat(),
+        total_reviewed=len(candidates),
+        quarantined_bots=quarantined_count,
+        pressure_accounts=pressure_accounts,
+        review_watchlist=candidates[:10],
+    )
+
+
 def filter_trades(trades: List[Dict[str, Any]], filters: TradeFilters) -> List[Dict[str, Any]]:
     """Apply filters to trade list."""
     filtered = trades
@@ -420,6 +529,12 @@ async def get_trade_statistics(
     )
     
     return calculate_stats(trades, mode_filter=mode)
+
+
+@router.get("/review-summary", response_model=JournalReviewSummaryResponse)
+async def get_review_summary(limit: int = Query(200, ge=1, le=1000)) -> JournalReviewSummaryResponse:
+    """Get bot review/watchlist context for weekly journal and agentic analysis."""
+    return build_review_summary(limit=limit)
 
 
 @router.get("/export/{trade_id}")
