@@ -19,28 +19,7 @@ if TYPE_CHECKING:
 
 from datetime import datetime, timezone
 from src.router.session_detector import SessionDetector, TradingSession
-import src.router.sessions as session_module
-SESSION_BOT_MIX = session_module.SESSION_BOT_MIX
-from src.router.bot_manifest import BotManifest, PoolState
-from enum import Enum
-from src.router.sessions import TILT_TRANSITION_MINUTES
-
-
-class CloseReason(Enum):
-    """
-    Reason codes for forced trade closes.
-
-    Used to annotate why a position was closed involuntarily,
-    enabling post-trade analysis of close patterns.
-    """
-    SESSION_END_CLOSE = "SESSION_END_CLOSE"       # Forced close at session boundary
-    TILT_PROFIT_TAKE = "TILT_PROFIT_TAKE"         # Tilt: in profit, RVOL < 0.8, take profit
-    TILT_LOSS_ACCEPT = "TILT_LOSS_ACCEPT"         # Tilt: at loss, close anyway
-    TIME_EXIT_BREAKEVEN = "TIME_EXIT_BREAKEVEN"   # Time exit when SL hit breakeven
-    TIME_EXIT_LIMIT = "TIME_EXIT_LIMIT"            # Trade stuck beyond max_hold_minutes
-    RVOL_MOMENTUM_DEATH = "RVOL_MOMENTUM_DEATH"   # RVOL >= 1.4 triggered TP or momentum death
-    NEWS_BLACKOUT_CLOSE = "NEWS_BLACKOUT_CLOSE"   # High-impact news event blackout
-    CIRCUIT_BREAKER_CLOSE = "CIRCUIT_BREAKER_CLOSE"  # Circuit breaker triggered
+from src.router.bot_manifest import BotManifest
 
 from src.router.dynamic_bot_limits import DynamicBotLimiter
 from src.router.routing_matrix import RoutingMatrix
@@ -76,9 +55,9 @@ class Commander:
         Args:
             bot_registry: BotRegistry instance for manifest-based bot management.
                          If None, falls back to legacy dict-based storage.
-            governor: Optional Governor instance for position sizing (if None, defaults to EnhancedGovernor
-                     for fee-aware Kelly sizing). If explicitly set to base Governor, position_size
-                     filtering is skipped to allow legacy mode to work.
+            governor: Optional Governor instance for position sizing.
+                     Live router flow should inject this from StrategyRouter.
+                     If None, Commander enters explicit compatibility mode with a base Governor.
         """
         self._bot_registry = bot_registry
 
@@ -86,25 +65,27 @@ class Commander:
         self._routing_matrix = RoutingMatrix()
         logger.info("Commander: Initialized RoutingMatrix for bot-to-account routing")
 
-        # Guard: Ensure _governor is never None - default to EnhancedGovernor for fee-aware Kelly sizing
-        # This ensures bots are not filtered out by position_size > 0 check
+        self._compatibility_governor = False
+
+        # Batch 1 authority rule:
+        # Commander must not silently invent the runtime authority. If nothing is injected,
+        # fall back to an explicit compatibility-only base Governor.
         if governor is None:
-            try:
-                from src.router.enhanced_governor import EnhancedGovernor
-                self._governor = EnhancedGovernor()
-                self._use_enhanced_sizing = True
-                logger.info("Commander: No governor provided - created EnhancedGovernor for fee-aware Kelly sizing")
-            except ImportError:
-                # Fallback to base Governor if EnhancedGovernor unavailable
-                from src.router.governor import Governor
-                self._governor = Governor()
-                self._use_enhanced_sizing = False
-                logger.info("Commander: EnhancedGovernor not available - created base Governor (position_size filtering disabled)")
+            from src.router.governor import Governor
+
+            self._governor = Governor()
+            self._use_enhanced_sizing = False
+            self._compatibility_governor = True
+            logger.warning(
+                "Commander: No governor injected; using base Governor in compatibility mode. "
+                "StrategyRouter should supply the canonical runtime authority."
+            )
         else:
             self._governor = governor
             # Detect if using base Governor (legacy mode) or EnhancedGovernor
             governor_class_name = governor.__class__.__name__
             self._use_enhanced_sizing = (governor_class_name == "EnhancedGovernor")
+            self._compatibility_governor = False
             logger.info(f"Commander: Using {governor_class_name} governor (enhanced_sizing={self._use_enhanced_sizing})")
         self.active_bots: Dict = {}  # Legacy support
         self.regime_map: Dict = self._load_regime_map()
@@ -112,73 +93,15 @@ class Commander:
         # Router mode selection: auction (default), priority, round_robin
         self.router_mode: str = "auction"
         self._last_selected_index: int = -1  # For round_robin mode
-
-        # Current canonical window for session-based bot type filtering (set by Tilt ACTIVATE callback)
-        self._current_canonical_window: Optional[str] = None
         
         # Regime → Strategy Type mapping
         self.regime_strategy_map = {
             "TREND_STABLE": ["SCALPER", "STRUCTURAL", "HFT"],
             "RANGE_STABLE": ["SCALPER", "STRUCTURAL"],
-            "BREAKOUT_PRIME": ["ORB"],
+            "BREAKOUT_PRIME": ["STRUCTURAL", "SWING"],
             "HIGH_CHAOS": [],  # No bots authorized
             "NEWS_EVENT": [],  # Kill zone - no new trades
             "UNCERTAIN": ["STRUCTURAL"],  # Conservative only
-        }
-
-        # Regime → Pool State mapping (Story 8.10: Regime-Conditional Strategy Pool Framework)
-        # Pool states: ACTIVE, MUTED, CONDITIONAL (requires volume confirmation)
-        self.regime_pool_map = {
-            "TREND_STABLE": {
-                "scalping_long": PoolState.ACTIVE,
-                "scalping_short": PoolState.MUTED,
-                "orb_long": PoolState.CONDITIONAL,  # volume confirmation required
-                "orb_short": PoolState.MUTED,
-                "scalping_neutral": PoolState.MUTED,
-            },
-            "RANGE_STABLE": {
-                "scalping_long": PoolState.MUTED,
-                "scalping_short": PoolState.MUTED,
-                "scalping_neutral": PoolState.ACTIVE,
-                "orb_long": PoolState.MUTED,
-                "orb_short": PoolState.MUTED,
-            },
-            "BREAKOUT_PRIME": {
-                "orb_long": PoolState.ACTIVE,
-                "orb_short": PoolState.ACTIVE,
-                "orb_false_breakout": PoolState.ACTIVE,
-                "scalping_long": PoolState.MUTED,  # per ORB session config
-                "scalping_short": PoolState.MUTED,
-                "scalping_neutral": PoolState.MUTED,
-            },
-            "HIGH_CHAOS": {
-                "scalping_long": PoolState.MUTED,
-                "scalping_short": PoolState.MUTED,
-                "scalping_neutral": PoolState.MUTED,
-                "orb_long": PoolState.MUTED,
-                "orb_short": PoolState.MUTED,
-                "orb_false_breakout": PoolState.MUTED,
-                # Layer 3 CHAOS response triggered for open positions
-            },
-            "NEWS_EVENT": {
-                # All pools muted — no new trades during kill zone
-                # Existing behavior unchanged
-                "scalping_long": PoolState.MUTED,
-                "scalping_short": PoolState.MUTED,
-                "scalping_neutral": PoolState.MUTED,
-                "orb_long": PoolState.MUTED,
-                "orb_short": PoolState.MUTED,
-                "orb_false_breakout": PoolState.MUTED,
-            },
-            "UNCERTAIN": {
-                # Conservative only — scalping pools muted, structural may trade
-                "scalping_long": PoolState.MUTED,
-                "scalping_short": PoolState.MUTED,
-                "scalping_neutral": PoolState.MUTED,
-                "orb_long": PoolState.MUTED,
-                "orb_short": PoolState.MUTED,
-                "orb_false_breakout": PoolState.MUTED,
-            },
         }
         
         # Multi-timeframe sentinel (Comment 1: shared from StrategyRouter)
@@ -257,137 +180,6 @@ class Commander:
         overlay = PropFirmRiskOverlay(firm_name=prop_firm_name)
         return overlay.should_block_trade(account_book, prop_firm_name, current_drawdown)
 
-    def evaluate_sqs_gate(
-        self,
-        symbol: str,
-        strategy_type: str = "scalping"
-    ) -> tuple[bool, Dict[str, Any]]:
-        """
-        Evaluate SQS gate for a symbol and strategy type.
-
-        SQS = historical_avg_spread / current_spread
-        Thresholds: scalping >0.75, ORB >0.80, hard block <0.50
-
-        Args:
-            symbol: Trading symbol (e.g., "EURUSD")
-            strategy_type: "scalping" or "ORB"
-
-        Returns:
-            Tuple of (allowed: bool, result_data: dict)
-                - allowed: True if trade is allowed
-                - result_data: Contains sqs, threshold, reason, is_hard_block
-        """
-        try:
-            from src.risk.sqs_engine import create_sqs_engine
-            from src.risk.sqs_cache import create_sqs_cache
-            from src.risk.sqs_calendar import create_calendar_integration
-            from datetime import datetime as dt
-
-            # Create SQS engine lazily
-            if not hasattr(self, '_sqs_engine'):
-                self._sqs_engine = create_sqs_engine()
-
-            # Get current spread (would come from MT5 ZMQ feed in production)
-            current_spread = self._get_current_spread(symbol)
-
-            # Get historical buckets (would come from Redis in production)
-            buckets = self._get_historical_buckets(symbol)
-
-            # Get news override
-            news_override = None
-            if hasattr(self._sqs_engine, '_calendar') and self._sqs_engine._calendar:
-                news_override = self._sqs_engine._calendar.get_threshold_override(symbol)
-
-            # Evaluate SQS
-            result = self._sqs_engine.evaluate(
-                symbol=symbol,
-                strategy_type=strategy_type,
-                current_spread=current_spread,
-                historical_buckets=buckets,
-                news_override=news_override
-            )
-
-            # Log evaluation
-            self._sqs_engine.log_evaluation(
-                symbol=symbol,
-                strategy_type=strategy_type,
-                result=result,
-                current_spread=current_spread,
-                historical_avg=buckets.get(self._sqs_engine._get_bucket_key(dt.now()), None) if buckets else 0
-            )
-
-            result_data = {
-                'sqs': result.sqs,
-                'threshold': result.threshold,
-                'reason': result.reason,
-                'is_hard_block': result.is_hard_block,
-                'current_spread': current_spread
-            }
-
-            return result.allowed, result_data
-
-        except Exception as e:
-            logger.warning(f"SQS gate evaluation failed for {symbol}: {e}")
-            # NFR-R1: Graceful degradation - allow trade if SQS unavailable
-            return True, {'sqs': 1.0, 'threshold': 0.75, 'reason': f'SQS unavailable - graceful degradation: {e}', 'is_hard_block': False}
-
-    def _get_current_spread(self, symbol: str) -> float:
-        """Get current spread from MT5 or demo data."""
-        try:
-            from src.risk.integrations.mt5_client import get_mt5_client
-            client = get_mt5_client()
-            if client and hasattr(client, 'is_connected') and client.is_connected():
-                tick = client.get_tick(symbol)
-                if tick and hasattr(tick, 'spread'):
-                    return tick.spread
-        except Exception:
-            pass
-
-        # Demo fallback
-        demo_spreads = {
-            "EURUSD": 0.9,
-            "GBPUSD": 1.2,
-            "USDJPY": 1.1,
-            "GBPJPY": 1.8,
-        }
-        return demo_spreads.get(symbol, 1.0)
-
-    def _get_historical_buckets(self, symbol: str) -> Dict[str, Any]:
-        """Get historical spread buckets from cache or demo."""
-        try:
-            from src.risk.sqs_cache import create_sqs_cache
-            from src.risk.sqs_engine import SpreadBucket
-            from datetime import datetime as dt
-
-            cache = create_sqs_cache()
-            if cache.is_available:
-                # Would fetch from Redis here
-                pass
-        except Exception:
-            pass
-
-        # Demo buckets
-        from src.risk.sqs_engine import SpreadBucket
-        now = dt.now()
-        buckets = {}
-        base_spreads = {
-            "EURUSD": 0.8, "GBPUSD": 1.1, "USDJPY": 1.0, "GBPJPY": 1.6
-        }
-        base = base_spreads.get(symbol, 1.0)
-
-        for i in range(-6, 7):
-            test_time = now.replace(minute=(now.minute // 5) * 5) + __import__('datetime').timedelta(minutes=i * 5)
-            dow = test_time.weekday()
-            hour = test_time.hour
-            minute_bucket = test_time.minute // 5
-            key = f"{dow}:{hour}:{minute_bucket}"
-            buckets[key] = SpreadBucket(
-                avg_spread=base + (hash(f"{symbol}{key}") % 100) / 1000.0,
-                sample_count=50,
-                updated_at_utc=now
-            )
-        return buckets
-
     def _setup_lifecycle_scheduler(self):
         """Setup APScheduler for LifecycleManager daily checks."""
         try:
@@ -417,6 +209,65 @@ class Commander:
         """Load regime → bot mapping configuration."""
         # TODO: Load from config file
         return {}
+
+    def _get_legacy_dynamic_limit_status(
+        self,
+        account_balance: Optional[float] = None,
+        active_positions: Optional[int] = None,
+        limiter: Optional[DynamicBotLimiter] = None,
+    ) -> Dict[str, Any]:
+        """
+        Compatibility wrapper around DynamicBotLimiter.
+
+        Batch 2 uses this to make the legacy tier-cap path explicit until the
+        adaptive funded-breadth allocator replaces it.
+        """
+        limiter = limiter or DynamicBotLimiter()
+        resolved_balance = (
+            getattr(self._governor, '_daily_start_balance', 100000.0)
+            if account_balance is None
+            else account_balance
+        )
+        resolved_active_positions = (
+            self._count_active_positions() if active_positions is None else active_positions
+        )
+        max_bots = limiter.get_max_bots(resolved_balance)
+
+        return {
+            "limit_source": "dynamic_bot_limits_legacy",
+            "account_balance": resolved_balance,
+            "active_positions": resolved_active_positions,
+            "max_bots": max_bots,
+            "available_slots": max(0, max_bots - resolved_active_positions),
+        }
+
+    def _select_funded_bots_with_legacy_limits(
+        self,
+        ranked_bots: List[dict],
+        account_balance: Optional[float] = None,
+        limiter: Optional[DynamicBotLimiter] = None,
+    ) -> tuple[List[dict], Dict[str, Any]]:
+        """
+        Temporary funded-breadth selection using legacy DynamicBotLimiter tiers.
+        """
+        limiter = limiter or DynamicBotLimiter()
+        limit_status = self._get_legacy_dynamic_limit_status(
+            account_balance=account_balance,
+            limiter=limiter,
+        )
+        current_bot_count = limit_status["active_positions"]
+        selected_bots: List[dict] = []
+
+        for bot in ranked_bots:
+            can_add, reason = limiter.can_add_bot(limit_status["account_balance"], current_bot_count)
+            if can_add:
+                selected_bots.append(bot)
+                current_bot_count += 1
+                logger.debug(f"Bot {bot.get('bot_id')} added: {reason}")
+            else:
+                logger.debug(f"Bot {bot.get('bot_id')} rejected: {reason}")
+
+        return selected_bots, limit_status
 
     def _derive_mode_from_context(self, regime_report: "RegimeReport") -> str:
         """
@@ -575,16 +426,9 @@ class Commander:
         # Get eligible bots for current regime and session (Comment 1 fix)
         # V4: Pass mode to filter by trading_mode
         eligible_bots = self._get_bots_for_regime_and_session(
-            regime_report, current_session, current_utc, mode=mode
+            regime_report.regime, current_session, current_utc, mode=mode
         )
-
-        # Task 5: Apply session-based bot type filtering (SESSION_BOT_MIX)
-        # This filters bots by type (ORB/MOM/MR/TC) based on the canonical window
-        if self._current_canonical_window:
-            eligible_bots = self._filter_bots_by_session_bot_type(
-                eligible_bots, self._current_canonical_window
-            )
-
+        
         # Apply chaos-based filtering (high chaos reduces bot selection to lower frequency bots)
         if regime_report.chaos_score > 0.6:
             logger.info("High chaos detected - reducing bot selection")
@@ -597,27 +441,16 @@ class Commander:
         account_balance = account_balance or getattr(self._governor, '_daily_start_balance', 100000.0)
         logger.debug(f"Commander: Defaulted account_balance to {account_balance} (multi-timeframe)")
 
-        # Use DynamicBotLimiter for max_selection
-        # Comment 2 fix: Use can_add_bot() API instead of hard cap
-        limiter = DynamicBotLimiter()
-        max_bots = limiter.get_max_bots(account_balance)
-        active_positions = self._count_active_positions()
-        
-        # Use can_add_bot() for each candidate bot instead of hard cap
-        # This respects tier-based limits and safety buffer
-        selected_bots = []
-        current_bot_count = active_positions
-        
-        for bot in ranked_bots:
-            can_add, reason = limiter.can_add_bot(account_balance, current_bot_count)
-            if can_add:
-                selected_bots.append(bot)
-                current_bot_count += 1
-                logger.debug(f"Bot {bot.get('bot_id')} added: {reason}")
-            else:
-                logger.debug(f"Bot {bot.get('bot_id')} rejected: {reason}")
-        
-        top_bots = selected_bots
+        top_bots, limit_status = self._select_funded_bots_with_legacy_limits(
+            ranked_bots,
+            account_balance=account_balance,
+        )
+        logger.debug(
+            "Commander: legacy funded-bot selection source=%s max_bots=%s available_slots=%s",
+            limit_status["limit_source"],
+            limit_status["max_bots"],
+            limit_status["available_slots"],
+        )
 
         # 5. Calculate position sizes for each bot using Governor (if available)
         # Track routing statistics for audit
@@ -844,28 +677,7 @@ class Commander:
                     'bot_id': None,
                     'order_id': None
                 }
-
-            # =================================================================
-            # FIX-015: Tilt Window Entry Blocking
-            # Block new entries during T-5 tilt window before session end
-            # =================================================================
-            if action in ['long', 'short']:  # Only block new entries, not close actions
-                utc_now = datetime.now(timezone.utc)
-                if SessionDetector.is_tilt_window(utc_now):
-                    logger.warning(
-                        f"TILT WINDOW BLOCK: Signal rejected for {symbol} at "
-                        f"{utc_now.isoformat()} - tilt window active, no new entries allowed"
-                    )
-                    return {
-                        'status': 'error',
-                        'message': 'Tilt window - no new entries allowed',
-                        'bot_id': None,
-                        'order_id': None,
-                        'tilt_window': True,
-                        'tilt_minutes_remaining': TILT_TRANSITION_MINUTES
-                    }
-            # =================================================================
-
+            
             logger.info(f"Executing signal: {action} {volume} {symbol}")
             
             # 2. Get Current Regime
@@ -909,26 +721,7 @@ class Commander:
             
             # Filter by symbol
             bot_dispatches = [b for b in bot_dispatches if symbol in b.get('symbols', [symbol])]
-
-            # FIX-014: Filter by symbol_affinity - skip bots that exclude this symbol
-            # If "exclude": skip this bot for the symbol entirely
-            bot_dispatches = [
-                b for b in bot_dispatches
-                if not (b.get('symbol_affinity') == 'exclude' and symbol in b.get('symbols', []))
-            ]
-
-            # FIX-014: Prioritize bots that prefer this symbol (preferred affinity)
-            # Sort so preferred bots come first while preserving relative order within each affinity group
-            def symbol_affinity_sort_key(bot):
-                affinity = bot.get('symbol_affinity', 'agnostic')
-                if affinity == 'preferred' and symbol in bot.get('symbols', []):
-                    return 0  # highest priority
-                elif affinity == 'agnostic':
-                    return 1
-                else:
-                    return 2  # exclude (already filtered but just in case)
-            bot_dispatches = sorted(bot_dispatches, key=symbol_affinity_sort_key)
-
+            
             # Filter by strategy if provided
             if strategy:
                 bot_dispatches = [b for b in bot_dispatches if b.get('strategy') == strategy]
@@ -984,41 +777,6 @@ class Commander:
                         'bot_id': bot_id,
                         'order_id': None
                     }
-
-                # === SQS GATE CHECK (Story 4-7) ===
-                # Evaluate SQS gate after drawdown check, before MT5 dispatch
-                strategy_type = execution_params.get('strategy', 'scalping')
-                # Infer scalping vs ORB from strategy name if not explicitly provided
-                if strategy_type not in ('scalping', 'ORB'):
-                    strategy_type = 'scalping'  # Default to scalping
-
-                sqs_allowed, sqs_result = self.evaluate_sqs_gate(symbol, strategy_type)
-
-                if not sqs_allowed:
-                    logger.warning(
-                        f"Trade blocked due to SQS gate: symbol={symbol} "
-                        f"sqs={sqs_result.get('sqs', 0):.4f} "
-                        f"threshold={sqs_result.get('threshold', 0):.2f} "
-                        f"reason={sqs_result.get('reason', 'unknown')}"
-                    )
-
-                    # If hard block (SQS < 0.50), route to kill:pending for logging
-                    if sqs_result.get('is_hard_block', False):
-                        logger.error(
-                            f"SQS HARD BLOCK: symbol={symbol} sqs={sqs_result.get('sqs', 0):.4f} "
-                            f"- routed to kill:pending for audit logging"
-                        )
-
-                    return {
-                        'status': 'error',
-                        'message': f"Trade blocked by SQS gate: {sqs_result.get('reason', 'SQS below threshold')}",
-                        'bot_id': bot_id,
-                        'order_id': None,
-                        'sqs': sqs_result.get('sqs', 0),
-                        'threshold': sqs_result.get('threshold', 0),
-                        'is_hard_block': sqs_result.get('is_hard_block', False)
-                    }
-                # === END SQS GATE CHECK ===
 
                 # Map action to MT5 direction
                 direction = 'buy' if action in ['long'] else 'sell'
@@ -1089,9 +847,9 @@ class Commander:
 
     
     def _get_bots_for_regime_and_session(
-        self,
-        regime_report: "RegimeReport",
-        current_session: TradingSession,
+        self, 
+        regime: str, 
+        current_session: TradingSession, 
         current_utc: datetime,
         mode: Optional[str] = None
     ) -> List[dict]:
@@ -1101,10 +859,9 @@ class Commander:
         V2: Only @primal tagged bots are included.
         V3: Session-aware filtering for ICT-style strategies.
         V4: Trading mode filtering - only bots with matching trading_mode participate.
-        V5: Pool-based filtering for regime-conditional strategy pool framework (Story 8.10).
 
         Args:
-            regime_report: Current regime report from Sentinel (contains regime string + chaos_score)
+            regime: Current market regime from Sentinel
             current_session: Current trading session
             current_utc: Current UTC time
             mode: Trading mode ('demo' or 'live'). If provided, filters bots by trading_mode.
@@ -1113,33 +870,23 @@ class Commander:
             List of bot dicts with manifest data
         """
         from src.router.bot_manifest import TradingMode
-
-        regime = regime_report.regime
-
-        # HIGH_CHAOS: Trigger Layer 3 CHAOS response and block all new trades
-        if regime == "HIGH_CHAOS":
-            self._trigger_chaos_response(regime_report)
-            logger.info("HIGH_CHAOS regime: all pools muted, Layer 3 CHAOS response triggered")
+        
+        # No trading in extreme conditions
+        if regime in ["HIGH_CHAOS", "NEWS_EVENT"]:
             return []
 
-        # NEWS_EVENT: No new trades during kill zone
-        if regime == "NEWS_EVENT":
-            logger.info("NEWS_EVENT regime: kill zone - no new trades")
-            return []
-
-        # Get allowed strategy types for this regime (legacy fallback)
+        # Get allowed strategy types for this regime
         allowed_strategies = self.regime_strategy_map.get(regime, ["STRUCTURAL"])
 
         # Determine target trading mode based on mode parameter
-        # Note: DEMO mode was merged into PAPER mode
+        # - 'demo' mode -> only DEMO bots
+        # - 'live' mode -> only LIVE bots
+        # - None (unspecified) -> all bots (backward compatible)
         target_trading_mode = None
         if mode == "demo":
-            target_trading_mode = TradingMode.PAPER  # DEMO merged into PAPER
+            target_trading_mode = TradingMode.DEMO
         elif mode == "live":
             target_trading_mode = TradingMode.LIVE
-
-        # Get active pools for this regime (Story 8.10 pool framework)
-        active_pools = self._get_active_pools_for_regime(regime)
 
         # Try BotRegistry first (V2)
         if self.bot_registry:
@@ -1156,34 +903,23 @@ class Commander:
                             f"{manifest.trading_mode.value} != {target_trading_mode.value}"
                         )
                         continue
-
-                # Skip PAPER bots in live auctions
+                
+                # Skip PAPER bots in live auctions (they haven't been promoted yet)
                 if mode == "live" and manifest.trading_mode == TradingMode.PAPER:
                     logger.debug(f"Bot {manifest.bot_id} skipped: PAPER mode in live auction")
                     continue
 
-                # V5: Pool-based filtering (Story 8.10)
-                # Determine this bot's pool membership
-                bot_pool_name = self._get_bot_pool_name(manifest)
-                if bot_pool_name is not None:
-                    # Bot belongs to a named pool - check if pool is active
-                    if bot_pool_name not in active_pools:
-                        logger.debug(
-                            f"Bot {manifest.bot_id} filtered by pool: "
-                            f"pool={bot_pool_name}, regime={regime}, active_pools={active_pools}"
-                        )
-                        continue
-                else:
-                    # Bot not in a named pool - use legacy strategy type filtering
-                    if manifest.strategy_type.value not in allowed_strategies:
-                        continue
+                # Filter by strategy type compatibility with regime
+                if manifest.strategy_type.value not in allowed_strategies:
+                    continue
 
                 # V3: Filter by session compatibility
                 if not self._is_bot_session_compatible(manifest, current_session, current_utc):
                     logger.debug(f"Bot {manifest.bot_id} filtered by session")
                     continue
 
-                # Include pool name in bot data for downstream reference
+                # Comment 3 fix: Include timeframe fields from BotManifest for multi-timeframe filtering
+                # V4: Include trading_mode and capital_allocated for downstream use
                 eligible.append({
                     "bot_id": manifest.bot_id,
                     "name": manifest.name,
@@ -1193,10 +929,8 @@ class Commander:
                     "win_rate": manifest.win_rate,
                     "prop_firm_safe": manifest.prop_firm_safe,
                     "symbols": manifest.symbols,
-                    "symbol_affinity": getattr(manifest, 'symbol_affinity', 'agnostic'),
-                    "manifest": manifest,
-                    "pool_name": bot_pool_name,
-                    # Timeframe fields
+                    "manifest": manifest,  # Include full manifest for downstream
+                    # Timeframe fields for multi-timeframe filtering (Comment 3)
                     "preferred_timeframe": manifest.preferred_timeframe.name if manifest.preferred_timeframe else None,
                     "use_multi_timeframe": manifest.use_multi_timeframe,
                     "secondary_timeframes": [tf.name for tf in manifest.secondary_timeframes] if manifest.secondary_timeframes else [],
@@ -1390,396 +1124,10 @@ class Commander:
         # All checks passed
         return True
 
-    # =============================================================================
-    # Per-Session Bot Type Mix (Task 5: Wire per-session bot type mix into Commander)
-    # =============================================================================
-
-    # Mapping from StrategyType to bot_type for SESSION_BOT_MIX filtering
-    # Bot types: ORB, MOM, MR, TC
-    STRATEGY_TO_BOT_TYPE = {
-        "ORB": "ORB",       # Opening Range Breakout
-        "SCALPER": "MOM",  # Scalpers trade momentum
-        "HFT": "MOM",      # HFT is momentum-based
-        "STRUCTURAL": "MR", # Structural analysis is mean reversion
-        "SWING": "TC",      # Swing trading is trend continuation
-    }
-
-    def _derive_bot_type(self, manifest: "BotManifest") -> str:
-        """
-        Derive bot_type (ORB/MOM/MR/TC) from manifest's strategy_type.
-
-        Used for SESSION_BOT_MIX filtering during Tilt ACTIVATE.
-
-        Args:
-            manifest: Bot manifest
-
-        Returns:
-            Bot type string (ORB, MOM, MR, TC), defaults to "MR" if unknown
-        """
-        strategy_value = manifest.strategy_type.value
-        bot_type = self.STRATEGY_TO_BOT_TYPE.get(strategy_value)
-        if bot_type is None:
-            logger.warning(
-                f"Unknown strategy_type '{strategy_value}' for bot {manifest.bot_id}, "
-                f"defaulting to MR for session filtering"
-            )
-            return "MR"
-        return bot_type
-
-    def _derive_bot_type_from_dict(self, bot_data: dict) -> str:
-        """
-        Derive bot_type (ORB/MOM/MR/TC) from legacy bot_data dict.
-
-        Args:
-            bot_data: Legacy bot dictionary
-
-        Returns:
-            Bot type string, defaults to "MR" if unknown
-        """
-        strategy_str = bot_data.get('strategy_type', 'STRUCTURAL')
-        bot_type = self.STRATEGY_TO_BOT_TYPE.get(strategy_str)
-        if bot_type is None:
-            logger.warning(
-                f"Unknown strategy_type '{strategy_str}' for bot {bot_data.get('bot_id', 'unknown')}, "
-                f"defaulting to MR for session filtering"
-            )
-            return "MR"
-        return bot_type
-
-    def on_session_activate(self, canonical_window: str) -> None:
-        """
-        Handle Tilt ACTIVATE callback for session-based bot type filtering.
-
-        Called by Tilt state machine when transitioning to ACTIVATE phase.
-        Stores the canonical window name for use in subsequent auction runs.
-
-        Args:
-            canonical_window: The canonical window name (e.g., "LONDON_OPEN", "DEAD_ZONE")
-        """
-        self._current_canonical_window = canonical_window
-        logger.info(
-            f"Commander: Session activate callback received for window='{canonical_window}'"
-        )
-
-        # Log the allowed bot types for this window
-        allowed_types = SessionDetector.get_session_bot_types(canonical_window)
-        if allowed_types:
-            logger.info(
-                f"Commander: Bot types allowed for {canonical_window}: {allowed_types}"
-            )
-        else:
-            logger.info(
-                f"Commander: No trading allowed in {canonical_window} (DEAD_ZONE or unknown)"
-            )
-
-    def _filter_bots_by_session_bot_type(
-        self,
-        bots: List[dict],
-        canonical_window: Optional[str]
-    ) -> List[dict]:
-        """
-        Filter bots by session-based bot type mix.
-
-        During Tilt ACTIVATE, filters the DPR-ranked queue so only bots of the
-        correct types (as defined in SESSION_BOT_MIX) are slotted into the active roster.
-
-        Args:
-            bots: List of bot dicts (from _get_bots_for_regime_and_session)
-            canonical_window: Current canonical window name
-
-        Returns:
-            Filtered list of bots
-        """
-        if not canonical_window:
-            # No window set yet - skip filtering
-            return bots
-
-        # Check if trading is allowed in this window
-        if not SessionDetector.is_trading_allowed(canonical_window):
-            logger.info(
-                f"Commander: No trading allowed in {canonical_window}, "
-                f"filtering out all bots"
-            )
-            return []
-
-        # Get allowed bot types for this window
-        allowed_types = SessionDetector.get_session_bot_types(canonical_window)
-        if not allowed_types:
-            # Empty mix means no trading in this window (e.g., DEAD_ZONE)
-            logger.info(
-                f"Commander: Empty bot type mix for {canonical_window}, "
-                f"no bots will be dispatched"
-            )
-            return []
-
-        logger.debug(
-            f"Commander: Filtering {len(bots)} bots by allowed types: {allowed_types}"
-        )
-
-        filtered = []
-        for bot in bots:
-            manifest = bot.get('manifest')
-            if manifest is not None:
-                # Bot has a manifest - derive bot_type from strategy_type
-                bot_type = self._derive_bot_type(manifest)
-            else:
-                # Legacy bot - try to derive from bot_data
-                bot_type = self._derive_bot_type_from_dict(bot)
-
-            if bot_type in allowed_types:
-                filtered.append(bot)
-            else:
-                logger.debug(
-                    f"Commander: Bot {bot.get('bot_id')} filtered out - "
-                    f"bot_type={bot_type} not in {allowed_types}"
-                )
-
-        logger.info(
-            f"Commander: Bot type filtering result: {len(filtered)}/{len(bots)} bots allowed"
-        )
-        return filtered
-
     def _count_active_positions(self) -> int:
         """Count currently active positions across all bots."""
         # TODO: Get from socket_server or position tracker
         return 0
-
-    # =============================================================================
-    # FIX-015: Tilt Enforcement - Entry Blocking + Force Close
-    # =============================================================================
-
-    async def manage_running_positions(
-        self,
-        running_bots: List[Dict[str, Any]],
-        utc_now: Optional[datetime] = None
-    ) -> Dict[str, Any]:
-        """
-        FIX-015: Enforce tilt actions on running positions during tilt window.
-
-        During T-5 tilt window, evaluates each running position and:
-        - If get_tilt_action() returns 'take_profit': close with TILT_PROFIT_TAKE
-        - If get_tilt_action() returns 'force_close': close with SESSION_END_CLOSE
-
-        This should be called from the main tick loop or position management loop.
-
-        Args:
-            running_bots: List of dicts with bot_id, current_profit, rvol, is_scalper
-            utc_now: UTC datetime to check. Defaults to now.
-
-        Returns:
-            Dict with tilt enforcement results: closed_positions, errors
-        """
-        if utc_now is None:
-            utc_now = datetime.now(timezone.utc)
-        elif utc_now.tzinfo is None:
-            utc_now = utc_now.replace(tzinfo=timezone.utc)
-
-        results = {
-            "tilt_window_active": False,
-            "closed_positions": [],
-            "errors": []
-        }
-
-        # Check if we're in tilt window
-        if not SessionDetector.is_tilt_window(utc_now):
-            return results
-
-        results["tilt_window_active"] = True
-        logger.info(f"TILT WINDOW: Managing {len(running_bots)} running positions")
-
-        for bot in running_bots:
-            bot_id = bot.get("bot_id")
-            if not bot_id:
-                continue
-
-            current_profit = bot.get("current_profit", 0.0)
-            rvol = bot.get("rvol", 1.0)
-
-            # Get tilt action for this bot
-            tilt_action = SessionDetector.get_tilt_action(
-                bot_id=bot_id,
-                current_profit=current_profit,
-                rvol=rvol,
-                utc_now=utc_now
-            )
-
-            if tilt_action is None:
-                continue
-
-            # Execute the tilt action
-            if tilt_action == "take_profit":
-                close_reason = CloseReason.TILT_PROFIT_TAKE
-                logger.info(
-                    f"TILT: Taking profit on bot {bot_id} - "
-                    f"profit={current_profit:.2f}, rvol={rvol:.4f}"
-                )
-            elif tilt_action == "force_close":
-                close_reason = CloseReason.SESSION_END_CLOSE
-                logger.info(
-                    f"TILT: Force closing bot {bot_id} at session boundary - "
-                    f"profit={current_profit:.2f}, rvol={rvol:.4f}"
-                )
-            else:
-                continue
-
-            # Execute the close
-            try:
-                close_result = await self._close_position(
-                    bot_id=bot_id,
-                    close_reason=close_reason,
-                    current_profit=current_profit
-                )
-                if close_result:
-                    results["closed_positions"].append({
-                        "bot_id": bot_id,
-                        "action": tilt_action,
-                        "close_reason": close_reason.value,
-                        "profit": current_profit
-                    })
-            except Exception as e:
-                error_msg = f"Failed to close bot {bot_id}: {e}"
-                logger.error(error_msg)
-                results["errors"].append(error_msg)
-
-        return results
-
-    async def check_session_boundary(
-        self,
-        running_bots: List[Dict[str, Any]],
-        utc_now: Optional[datetime] = None
-    ) -> Dict[str, Any]:
-        """
-        FIX-015: Scalper force-close at session boundary (T-0).
-
-        At session end, force close all scalping positions that are still open.
-        This ensures no positions carry over between sessions.
-
-        Args:
-            running_bots: List of dicts with bot_id, is_scalper, is_open
-            utc_now: UTC datetime to check. Defaults to now.
-
-        Returns:
-            Dict with session boundary results: scalpers_closed, errors
-        """
-        if utc_now is None:
-            utc_now = datetime.now(timezone.utc)
-        elif utc_now.tzinfo is None:
-            utc_now = utc_now.replace(tzinfo=timezone.utc)
-
-        results = {
-            "session_end_detected": False,
-            "scalpers_closed": [],
-            "errors": []
-        }
-
-        # Check if we're at session end (within 1 minute)
-        current_window = SessionDetector.detect_canonical_window(utc_now)
-        if current_window is None:
-            return results
-
-        # Get time until session end
-        session_template = SessionDetector._get_template_for_window(current_window)
-        if session_template is None:
-            return results
-
-        # Parse session end time
-        end_hour, end_minute = map(int, session_template.end_gmt.split(":"))
-        end_time = utc_now.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0)
-
-        # Handle overnight sessions
-        if end_time <= utc_now:
-            end_time += __import__('datetime').timedelta(days=1)
-
-        delta = end_time - utc_now
-        minutes_until_end = delta.total_seconds() / 60
-
-        # Only proceed if within 1 minute of session end
-        if minutes_until_end > 1:
-            return results
-
-        results["session_end_detected"] = True
-        logger.info(
-            f"SESSION END: Force closing scalpers - "
-            f"window={current_window}, minutes_until_end={minutes_until_end:.2f}"
-        )
-
-        # Force close all scalping bots
-        for bot in running_bots:
-            bot_id = bot.get("bot_id")
-            if not bot_id:
-                continue
-
-            is_scalper = bot.get("is_scalper", False)
-            is_open = bot.get("is_open", True)
-
-            if not is_scalper or not is_open:
-                continue
-
-            current_profit = bot.get("current_profit", 0.0)
-
-            logger.info(
-                f"SESSION END: Force closing scalper {bot_id} - "
-                f"profit={current_profit:.2f}"
-            )
-
-            try:
-                close_result = await self._close_position(
-                    bot_id=bot_id,
-                    close_reason=CloseReason.SESSION_END_CLOSE,
-                    current_profit=current_profit
-                )
-                if close_result:
-                    results["scalpers_closed"].append({
-                        "bot_id": bot_id,
-                        "profit": current_profit,
-                        "close_reason": CloseReason.SESSION_END_CLOSE.value
-                    })
-            except Exception as e:
-                error_msg = f"Failed to force close scalper {bot_id}: {e}"
-                logger.error(error_msg)
-                results["errors"].append(error_msg)
-
-        return results
-
-    async def _close_position(
-        self,
-        bot_id: str,
-        close_reason: "CloseReason",
-        current_profit: float
-    ) -> bool:
-        """
-        Execute close for a single position.
-
-        Args:
-            bot_id: Bot identifier
-            close_reason: CloseReason enum value
-            current_profit: Current profit for logging
-
-        Returns:
-            True if close executed successfully
-        """
-        try:
-            # Dispatch close command to the bot
-            instruction = "CLOSE"
-            success = self.dispatch(
-                bot_id=bot_id,
-                instruction=instruction,
-                mode="live"  # Use live mode for closes during tilt
-            )
-
-            if success:
-                logger.info(
-                    f"Position closed: bot={bot_id}, reason={close_reason.value}, "
-                    f"profit={current_profit:.2f}"
-                )
-            else:
-                logger.warning(f"Failed to dispatch close for bot {bot_id}")
-
-            return success
-
-        except Exception as e:
-            logger.error(f"Error closing position for bot {bot_id}: {e}")
-            return False
 
     def _build_manifest_from_bot_data(self, bot_id: str, bot_data: dict) -> Optional["BotManifest"]:
         """
@@ -1913,19 +1261,15 @@ class Commander:
             primal_count = len(self.bot_registry.list_by_tag("@primal"))
             pending_count = len(self.bot_registry.list_by_tag("@pending"))
         
-        limiter = DynamicBotLimiter()
-        default_balance = getattr(self._governor, '_daily_start_balance', 100000.0)
-        max_bots = limiter.get_max_bots(default_balance)
+        limit_status = self._get_legacy_dynamic_limit_status()
         return {
             "active_bots": len(self.active_bots),
             "primal_bots": primal_count,
             "pending_bots": pending_count,
-            "max_bots": max_bots,
-            "regime_strategy_map": self.regime_strategy_map,
-            "regime_pool_map": {
-                regime: {pool: state.value for pool, state in pools.items()}
-                for regime, pools in self.regime_pool_map.items()
-            }
+            "max_bots": limit_status["max_bots"],
+            "available_slots": limit_status["available_slots"],
+            "limit_source": limit_status["limit_source"],
+            "regime_strategy_map": self.regime_strategy_map
         }
     
     # ========== Multi-Timeframe Auction (Comment 1) ==========
@@ -1998,18 +1342,11 @@ class Commander:
         # Get all eligible bots
         # V4: Pass mode to filter by trading_mode
         eligible_bots = self._get_bots_for_regime_and_session(
-            primary_regime_report,
-            current_session,
+            primary_regime_report.regime, 
+            current_session, 
             current_utc,
             mode=mode
         )
-
-        # Task 5: Apply session-based bot type filtering (SESSION_BOT_MIX)
-        # This filters bots by type (ORB/MOM/MR/TC) based on the canonical window
-        if self._current_canonical_window:
-            eligible_bots = self._filter_bots_by_session_bot_type(
-                eligible_bots, self._current_canonical_window
-            )
 
         if not eligible_bots:
             logger.debug(f"No eligible bots for primary regime: {primary_regime_report.regime}")
@@ -2042,27 +1379,16 @@ class Commander:
         account_balance = account_balance or getattr(self._governor, '_daily_start_balance', 100000.0)
         logger.debug(f"Commander: Defaulted account_balance to {account_balance} (multi-timeframe)")
 
-        # Select top N using DynamicBotLimiter API
-        # Comment 2 fix: Use can_add_bot() API instead of hard cap
-        limiter = DynamicBotLimiter()
-        max_bots = limiter.get_max_bots(account_balance)
-        active_positions = self._count_active_positions()
-        
-        # Use can_add_bot() for each candidate bot instead of hard cap
-        # This respects tier-based limits and safety buffer
-        selected_bots = []
-        current_bot_count = active_positions
-        
-        for bot in ranked_bots:
-            can_add, reason = limiter.can_add_bot(account_balance, current_bot_count)
-            if can_add:
-                selected_bots.append(bot)
-                current_bot_count += 1
-                logger.debug(f"Bot {bot.get('bot_id')} added: {reason}")
-            else:
-                logger.debug(f"Bot {bot.get('bot_id')} rejected: {reason}")
-        
-        top_bots = selected_bots
+        top_bots, limit_status = self._select_funded_bots_with_legacy_limits(
+            ranked_bots,
+            account_balance=account_balance,
+        )
+        logger.debug(
+            "Commander: legacy multi-timeframe funded-bot selection source=%s max_bots=%s available_slots=%s",
+            limit_status["limit_source"],
+            limit_status["max_bots"],
+            limit_status["available_slots"],
+        )
 
         # Calculate position sizes and build dispatches
         # Track routing statistics for audit
@@ -2342,237 +1668,5 @@ class Commander:
                 # Filter out if any secondary timeframe is in extreme regime
                 if regime in ["HIGH_CHAOS", "NEWS_EVENT"]:
                     return False
-
+        
         return True
-
-    # ========== Regime-Conditional Strategy Pool Framework (Story 8.10) ==========
-
-    def _get_pool_states_for_regime(self, regime: str) -> Dict[str, PoolState]:
-        """
-        Get pool states for a given regime.
-
-        Args:
-            regime: Market regime string (e.g., "TREND_STABLE", "HIGH_CHAOS")
-
-        Returns:
-            Dict of pool_name -> PoolState for the given regime
-        """
-        return self.regime_pool_map.get(regime, {})
-
-    def _get_active_pools_for_regime(
-        self,
-        regime: str,
-        symbol: Optional[str] = None,
-        volume: Optional[float] = None
-    ) -> List[str]:
-        """
-        Get list of active pool names for a given regime.
-
-        Handles CONDITIONAL pools by checking volume confirmation.
-
-        Args:
-            regime: Market regime string
-            symbol: Trading symbol for volume check (optional)
-            volume: Current volume for CONDITIONAL pool evaluation (optional)
-
-        Returns:
-            List of active pool names
-        """
-        pool_states = self._get_pool_states_for_regime(regime)
-        active_pools = []
-
-        for pool_name, state in pool_states.items():
-            if state == PoolState.ACTIVE:
-                active_pools.append(pool_name)
-            elif state == PoolState.CONDITIONAL:
-                # Check volume confirmation for CONDITIONAL pools
-                if self._check_volume_confirmation(pool_name, symbol, volume):
-                    active_pools.append(pool_name)
-                    logger.debug(f"Pool {pool_name} activated: volume confirmed")
-                else:
-                    logger.debug(f"Pool {pool_name} not activated: volume not confirmed")
-
-        return active_pools
-
-    def _check_volume_confirmation(
-        self,
-        pool_name: str,
-        symbol: Optional[str] = None,
-        volume: Optional[float] = None
-    ) -> bool:
-        """
-        Check if volume confirms a CONDITIONAL pool activation.
-
-        For ORB Long pools under TREND_STABLE, requires volume to exceed
-        the session average volume threshold.
-
-        Args:
-            pool_name: Pool name (e.g., "orb_long")
-            symbol: Trading symbol
-            volume: Current volume reading
-
-        Returns:
-            True if volume confirms activation, False otherwise
-        """
-        if "orb_long" not in pool_name:
-            return False
-
-        if symbol is None:
-            symbol = "EURUSD"  # Default symbol
-
-        if volume is None:
-            # Get volume from market scanner or use demo threshold
-            volume = self._get_current_volume(symbol)
-
-        # Volume confirmation threshold: current volume > 1.2x session average
-        VOLUME_CONFIRMATION_THRESHOLD = 1.2
-        session_avg = self._get_session_average_volume(symbol)
-
-        if session_avg <= 0:
-            # No volume data available - be conservative and don't activate
-            logger.debug(f"No session average volume for {symbol}, ORB Long not activated")
-            return False
-
-        confirmed = volume >= (session_avg * VOLUME_CONFIRMATION_THRESHOLD)
-        logger.debug(
-            f"Volume check for {pool_name}: current={volume:.2f}, "
-            f"session_avg={session_avg:.2f}, threshold={session_avg * VOLUME_CONFIRMATION_THRESHOLD:.2f}, "
-            f"confirmed={confirmed}"
-        )
-        return confirmed
-
-    def _get_current_volume(self, symbol: str) -> float:
-        """
-        Get current volume for a symbol from market feed.
-
-        Args:
-            symbol: Trading symbol
-
-        Returns:
-            Current volume or demo value
-        """
-        try:
-            from src.risk.integrations.mt5_client import get_mt5_client
-            client = get_mt5_client()
-            if client and hasattr(client, 'is_connected') and client.is_connected():
-                tick = client.get_tick(symbol)
-                if tick and hasattr(tick, 'volume'):
-                    return float(tick.volume)
-        except Exception:
-            pass
-
-        # Demo fallback
-        demo_volumes = {
-            "EURUSD": 15000.0,
-            "GBPUSD": 12000.0,
-            "USDJPY": 18000.0,
-            "XAUUSD": 8000.0,
-        }
-        return demo_volumes.get(symbol, 10000.0)
-
-    def _get_session_average_volume(self, symbol: str) -> float:
-        """
-        Get average volume for current session.
-
-        Args:
-            symbol: Trading symbol
-
-        Returns:
-            Average volume for the current session period
-        """
-        # In production, this would come from SVSS (Story 15) or historical data
-        # For now, return demo values based on typical session volumes
-        demo_session_avg = {
-            "EURUSD": 12000.0,
-            "GBPUSD": 9500.0,
-            "USDJPY": 14000.0,
-            "XAUUSD": 6500.0,
-        }
-        return demo_session_avg.get(symbol, 10000.0)
-
-    def _get_bot_pool_name(self, manifest: "BotManifest") -> Optional[str]:
-        """
-        Determine the pool name for a bot based on its manifest.
-
-        Pool membership is determined by strategy_type and trading direction.
-        The direction is inferred from the bot's name or tags if not explicit.
-
-        Args:
-            manifest: Bot manifest
-
-        Returns:
-            Pool name string or None if not pool-assigned
-        """
-        strategy = manifest.strategy_type.value
-        name_lower = manifest.name.lower() if manifest.name else ""
-        tags = manifest.tags if manifest.tags else []
-
-        # Determine direction from name or tags
-        direction = "neutral"  # default
-        if "long" in name_lower or "long" in tags:
-            direction = "long"
-        elif "short" in name_lower or "short" in tags:
-            direction = "short"
-        elif "false_breakout" in name_lower or "fb" in tags:
-            direction = "false_breakout"
-
-        # Map strategy + direction to pool name
-        if strategy == "SCALPER":
-            return f"scalping_{direction}"
-        elif strategy == "ORB":
-            return f"orb_{direction}"
-        elif strategy == "STRUCTURAL":
-            # Structural strategies don't belong to scalping/ORB pools
-            return None
-        elif strategy == "SWING":
-            return None
-        elif strategy == "HFT":
-            return None
-        return None
-
-    def _trigger_chaos_response(self, regime_report: "RegimeReport") -> None:
-        """
-        Trigger Layer 3 CHAOS response when HIGH_CHAOS regime is detected.
-
-        Wires to ProgressiveKillSwitch for coordinated position management
-        and risk mitigation.
-
-        Args:
-            regime_report: Current regime report with chaos details
-        """
-        try:
-            from src.router.progressive_kill_switch import get_progressive_kill_switch
-
-            pks = get_progressive_kill_switch()
-            logger.warning(
-                f"HIGH_CHAOS detected: chaos_score={regime_report.chaos_score:.3f}, "
-                f"regime_quality={regime_report.regime_quality:.3f}. "
-                f"Triggering Layer 3 CHAOS response via ProgressiveKillSwitch."
-            )
-
-            # Trigger chaos response through the progressive kill switch
-            # This evaluates all tiers and executes appropriate protective actions
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.create_task(pks.check_all_tiers({
-                        'reason': 'HIGH_CHAOS_regime',
-                        'chaos_score': regime_report.chaos_score,
-                        'regime': regime_report.regime,
-                    }))
-                else:
-                    loop.run_until_complete(pks.check_all_tiers({
-                        'reason': 'HIGH_CHAOS_regime',
-                        'chaos_score': regime_report.chaos_score,
-                        'regime': regime_report.regime,
-                    }))
-            except RuntimeError:
-                asyncio.run(pks.check_all_tiers({
-                    'reason': 'HIGH_CHAOS_regime',
-                    'chaos_score': regime_report.chaos_score,
-                    'regime': regime_report.regime,
-                }))
-
-        except Exception as e:
-            logger.error(f"Failed to trigger chaos response: {e}")

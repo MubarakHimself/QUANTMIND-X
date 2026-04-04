@@ -23,6 +23,8 @@ import {
 	killSwitchFired,
 	killSwitchLoading,
 	killSwitchError,
+	killSwitchLockState,
+	manualMarketLockActive,
 	killSwitchAriaLabel,
 	armKillSwitch,
 	disarmKillSwitch,
@@ -31,6 +33,8 @@ import {
 	triggerKillSwitch,
 	confirmKillSwitch,
 	fetchKillSwitchStatus,
+	activateManualMarketLock,
+	resumeManualMarketLock,
 	TIER_DESCRIPTIONS,
 	type KillSwitchState,
 	type KillSwitchTier
@@ -52,6 +56,7 @@ describe('Kill Switch Store', () => {
 		killSwitchFired.set(false);
 		killSwitchLoading.set(false);
 		killSwitchError.set(null);
+		killSwitchLockState.set(null);
 	});
 
 	afterEach(() => {
@@ -324,6 +329,48 @@ describe('Kill Switch Store', () => {
 			expect(global.fetch).toHaveBeenCalledWith('/api/kill-switch/status');
 		});
 
+		it('should hydrate lock state from backend response', async () => {
+			(mockedFetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({
+					enabled: true,
+					lock_state: {
+						lock_source: 'MANUAL_MARKET_LOCK',
+						pressure_state: 'RESTRICTED',
+						reason: 'operator review',
+						hard_lock_active: false,
+						manual_market_lock_active: true
+					}
+				})
+			});
+
+			await fetchKillSwitchStatus();
+
+			expect(get(killSwitchLockState)?.lock_source).toBe('MANUAL_MARKET_LOCK');
+			expect(get(manualMarketLockActive)).toBe(true);
+		});
+
+		it('should normalize canonical backend lock_state shape', async () => {
+			(mockedFetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({
+					enabled: true,
+					lock_state: {
+						source: 'ACCOUNT_HARD_LOCK',
+						pressure_state: 'STOPPED',
+						reason: 'Daily loss budget breached',
+						manual_market_lock_active: false
+					}
+				})
+			});
+
+			await fetchKillSwitchStatus();
+
+			expect(get(killSwitchLockState)?.lock_source).toBe('ACCOUNT_HARD_LOCK');
+			expect(get(killSwitchLockState)?.hard_lock_active).toBe(true);
+			expect(get(manualMarketLockActive)).toBe(false);
+		});
+
 		it('should handle fetch errors gracefully', async () => {
 			(mockedFetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
 				new Error('Network error')
@@ -386,6 +433,48 @@ describe('Kill Switch Store', () => {
 
 			// Should handle gracefully
 			expect(get(killSwitchLoading)).toBe(false);
+		});
+	});
+
+	describe('manual market lock', () => {
+		it('should call activate endpoint and refresh status', async () => {
+			(mockedFetch as ReturnType<typeof vi.fn>)
+				.mockResolvedValueOnce({
+					ok: true,
+					json: async () => ({ success: true })
+				})
+				.mockResolvedValueOnce({
+					ok: true,
+					json: async () => ({ enabled: true, lock_state: null })
+				});
+
+			const result = await activateManualMarketLock('operator review');
+
+			expect(result).toBe(true);
+			expect(global.fetch).toHaveBeenNthCalledWith(1, '/api/kill-switch/market-lock', expect.any(Object));
+			expect(global.fetch).toHaveBeenNthCalledWith(2, '/api/kill-switch/status');
+		});
+
+		it('should call resume endpoint and refresh status', async () => {
+			(mockedFetch as ReturnType<typeof vi.fn>)
+				.mockResolvedValueOnce({
+					ok: true,
+					json: async () => ({ success: true })
+				})
+				.mockResolvedValueOnce({
+					ok: true,
+					json: async () => ({ enabled: true, lock_state: null })
+				});
+
+			const result = await resumeManualMarketLock();
+
+			expect(result).toBe(true);
+			expect(global.fetch).toHaveBeenNthCalledWith(
+				1,
+				'/api/kill-switch/market-lock/resume?admin_key=UI_User',
+				expect.objectContaining({ method: 'POST' })
+			);
+			expect(global.fetch).toHaveBeenNthCalledWith(2, '/api/kill-switch/status');
 		});
 	});
 });

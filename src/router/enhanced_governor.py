@@ -6,10 +6,6 @@ scientifically optimal position sizing with house money effect,
 dynamic pip values, and fee-aware sizing.
 
 Task Group 6: Enhanced Governor Integration
-
-Story 4.10: SessionKellyModifiers integration replaces _update_house_money_effect
-with session-scoped Kelly modifiers including House Money Mode (HMM) and
-Reverse HMM effects.
 """
 
 import logging
@@ -18,8 +14,7 @@ from datetime import datetime, timezone
 
 from src.position_sizing.enhanced_kelly import EnhancedKellyCalculator, KellyResult, EnhancedKellyConfig
 from src.router.governor import Governor, RiskMandate
-from src.risk.sizing.session_kelly_modifiers import SessionKellyModifiers, SessionKellyState
-from src.router.sessions import SessionDetector, TradingSession
+from src.router.broker_registry import BrokerRegistryManager, DEFAULT_BROKER_PIP_VALUES
 
 # Optional imports for database features
 if TYPE_CHECKING:
@@ -104,13 +99,11 @@ class EnhancedGovernor(Governor):
     - Dynamic pip value calculation (no hardcoding)
     - Fee-aware position sizing
     - Prop firm rule enforcement via PropGovernor
-    - Session Kelly Modifiers (Story 4.10): Session-scoped HMM and Reverse HMM
 
     Attributes:
         kelly_calculator: EnhancedKellyCalculator instance
-        house_money_multiplier: Current risk multiplier (1.0x, 1.4x, or 0.5x)
+        house_money_multiplier: Current risk multiplier (1.0x, 1.5x, or 0.5x)
         account_id: Prop firm account ID for tracking
-        session_kelly: SessionKellyModifiers instance for session-scoped modifiers
     """
 
     def __init__(
@@ -155,18 +148,6 @@ class EnhancedGovernor(Governor):
             self._default_risk_per_trade = 0.02  # 2% default risk
             self.risk_mode = 'dynamic'
 
-        # Story 4.10: Initialize SessionKellyModifiers
-        # Use Story 4.10 thresholds: +8% for HMM, -10% for preservation
-        self.session_kelly = SessionKellyModifiers(
-            account_id=account_id,
-            hmm_profit_threshold=0.08,  # Story 4.10: +8% threshold
-            hmm_loss_threshold=-0.10,    # Story 4.10: -10% threshold
-        )
-
-        # Story 4.10: Track last session for automatic boundary detection
-        self._last_session: Optional[TradingSession] = None
-        self._session_initialized: bool = False
-
         # Load daily state if account_id provided and database is available
         if account_id and self._db_available:
             self._load_daily_state(account_id)
@@ -179,54 +160,6 @@ class EnhancedGovernor(Governor):
             f"db_available={self._db_available}, "
             f"{settings_info}"
         )
-
-    def _check_session_boundary(self, utc_now: Optional[datetime] = None) -> None:
-        """
-        Story 4.10: Check if session has changed and auto-reset modifiers if needed.
-
-        Called at the start of calculate_risk() to detect session boundaries
-        and automatically reset session-level modifiers (Reverse HMM, premium boost).
-
-        Args:
-            utc_now: Current UTC time (defaults to now)
-        """
-        if utc_now is None:
-            utc_now = datetime.now(timezone.utc)
-
-        current_session = SessionDetector.get_current_session()
-
-        # First call - just set the initial session, don't reset
-        if not self._session_initialized:
-            self._last_session = current_session
-            self._session_initialized = True
-            logger.info(f"Session tracking initialized: {current_session.value}")
-            return
-
-        # Detect session change
-        if current_session != self._last_session:
-            logger.info(
-                f"Session boundary detected: {self._last_session.value} -> {current_session.value}. "
-                f"Resetting session-level modifiers."
-            )
-            # Reset session-level modifiers
-            self.session_kelly.on_session_close(utc_now)
-            self._last_session = current_session
-
-    def on_trade_result(self, is_win: bool) -> SessionKellyState:
-        """
-        Story 4.10: Report trade result for session Kelly modifier tracking.
-
-        Call this when a trade closes to update the session loss counter
-        (for Reverse HMM) and win streak counter (for premium re-enable).
-
-        Args:
-            is_win: True if trade was a winner, False if loser
-
-        Returns:
-            Updated SessionKellyState
-        """
-        logger.info(f"Trade result reported: is_win={is_win}")
-        return self.session_kelly.on_trade_result(is_win)
 
     def calculate_risk(
         self,
@@ -257,9 +190,6 @@ class EnhancedGovernor(Governor):
         Returns:
             RiskMandate with Kelly-based allocation scalar, including position_size and kelly_fraction
         """
-        # Story 4.10: Check for session boundary and auto-reset modifiers if needed
-        self._check_session_boundary()
-
         # Extract trade parameters
         symbol = trade_proposal.get('symbol', 'EURUSD')
         current_balance = trade_proposal.get('current_balance', self._daily_start_balance)
@@ -299,8 +229,7 @@ class EnhancedGovernor(Governor):
 
         # Get trading statistics for Kelly calculation
         # For now, use conservative defaults. In production, load from strategy performance.
-        # F-14 correction: Baseline win rate is 52% (was incorrectly 55%)
-        win_rate = trade_proposal.get('win_rate', 0.52)
+        win_rate = trade_proposal.get('win_rate', 0.55)
         avg_win = trade_proposal.get('avg_win', 400.0)
         avg_loss = trade_proposal.get('avg_loss', 200.0)
         stop_loss_pips = trade_proposal.get('stop_loss_pips', 20.0)
@@ -403,21 +332,6 @@ class EnhancedGovernor(Governor):
             risk_mode_adjustments['risk_mode'] = self.risk_mode
             risk_mode_adjustments['risk_mode_applied'] = True
 
-        # Story 4.10: Add session Kelly modifier to adjustments
-        session_state = self.session_kelly.get_current_state()
-        risk_mode_adjustments['session_kelly'] = {
-            'session_kelly_multiplier': session_state.session_kelly_multiplier,
-            'hmm_multiplier': session_state.hmm_multiplier,
-            'reverse_hmm_multiplier': session_state.reverse_hmm_multiplier,
-            'session_loss_counter': session_state.session_loss_counter,
-            'premium_boost_active': session_state.premium_boost_active,
-            'is_premium_session': session_state.is_premium_session,
-            'premium_assault': session_state.premium_assault.value if session_state.premium_assault else None,
-            'is_house_money_active': session_state.is_house_money_active,
-            'is_preservation_mode': session_state.is_preservation_mode,
-            'multiplier_chain_display': self.session_kelly.get_multiplier_chain_display(),
-        }
-
         mandate = RiskMandate(
             allocation_scalar=physics_scalar,
             risk_mode=base_mandate.risk_mode,
@@ -428,7 +342,7 @@ class EnhancedGovernor(Governor):
             mode=mode,  # Comment 2: Preserve mode in mandate for audit trail
             notes=(
                 f"{mode_tag} Kelly: {risk_mode_kelly_f:.4f} [{self.risk_mode}] × "
-                f"SessionKelly: {self.house_money_multiplier:.2f} ({self.session_kelly.get_multiplier_chain_display()}) × "
+                f"House Money: {self.house_money_multiplier:.2f} × "
                 f"Physics: {physics_scalar:.4f} = {final_kelly_fraction:.4f}. "
                 f"Final position: {final_position_size:.4f} lots, risk: ${final_risk_amount:.2f}. "
                 f"{base_mandate.notes or ''}"
@@ -437,72 +351,55 @@ class EnhancedGovernor(Governor):
 
         logger.info(
             f"EnhancedGovernor risk calculation: {mandate.allocation_scalar:.4f} "
-            f"(Kelly: {risk_mode_kelly_f:.4f} [{self.risk_mode}], SessionKelly: {self.house_money_multiplier:.2f}, "
-            f"HMM: {session_state.hmm_multiplier:.2f}, ReverseHMM: {session_state.reverse_hmm_multiplier:.2f}, "
-            f"Losses: {session_state.session_loss_counter})"
+            f"(Kelly: {risk_mode_kelly_f:.4f} [{self.risk_mode}], House Money: {self.house_money_multiplier:.2f})"
         )
 
         return mandate
 
-    def _update_house_money_effect(
-        self,
-        current_balance: float,
-        current_session: Optional[TradingSession] = None
-    ) -> None:
+    def _update_house_money_effect(self, current_balance: float) -> None:
         """
-        Update house money multiplier using SessionKellyModifiers.
+        Update house money multiplier based on running P&L.
 
-        Story 4.10: Uses SessionKellyModifiers for session-scoped HMM with:
-        - +8% daily P&L threshold for 1.4x House Money
-        - -10% daily P&L threshold for 0.5x Preservation
-        - Premium session threshold lowering
-        - Reverse HMM (2/4/6 loss penalties)
+        Risk multiplier logic (configurable via settings):
+        - houseMoneyMultiplierUp when up > houseMoneyThreshold (trade with house money)
+        - 1.0x when within normal range (normal trading)
+        - houseMoneyMultiplierDown when down > preservation threshold (preservation mode)
 
         Args:
             current_balance: Current account balance
-            current_session: Current trading session (optional, auto-detected if not provided)
         """
         if self._daily_start_balance == 0:
             logger.warning("Daily start balance is zero, using current balance")
             self._daily_start_balance = current_balance
             return
 
-        # Calculate daily P&L percentage
         pnl_pct = (current_balance - self._daily_start_balance) / self._daily_start_balance
         current_pnl = current_balance - self._daily_start_balance
 
-        # Detect current session if not provided
-        if current_session is None:
-            current_session = SessionDetector.get_current_session()
+        # Use settings-based thresholds and multipliers with fallback defaults
+        threshold_up = getattr(self, '_house_money_threshold', 0.05)
+        threshold_down = -0.03  # Down threshold remains at 3% for preservation mode
+        multiplier_up = getattr(self, '_house_money_multiplier_up', 1.5)
+        multiplier_down = getattr(self, '_house_money_multiplier_down', 0.5)
 
-        # Story 4.10: Use SessionKellyModifiers for HMM computation
-        utc_now = datetime.now(timezone.utc)
-        session_state = self.session_kelly.compute_session_kelly_modifier(
-            daily_pnl_pct=pnl_pct,
-            current_session=current_session,
-            utc_now=utc_now
-        )
-
-        # Update house money multiplier from SessionKellyModifiers
-        self.house_money_multiplier = session_state.session_kelly_multiplier
-
-        preservation_mode = session_state.is_preservation_mode
-        is_house_money = session_state.is_house_money_active
-
-        if is_house_money:
-            logger.info(
-                f"House Money ACTIVE: +{pnl_pct*100:.1f}% (session={current_session.value}) "
-                f"- Risk multiplier: {self.house_money_multiplier:.2f}x"
-            )
-        elif preservation_mode:
-            logger.warning(
-                f"Preservation Mode: {pnl_pct*100:.1f}% (session={current_session.value}) "
-                f"- Risk multiplier: {self.house_money_multiplier:.2f}x"
-            )
+        if pnl_pct > threshold_up:
+            # Up more than threshold - increase risk (house money)
+            self.house_money_multiplier = multiplier_up
+            preservation_mode = False
+            logger.info(f"House Money ACTIVE: +{pnl_pct*100:.1f}% - Risk multiplier: {multiplier_up}x")
+        elif pnl_pct < threshold_down:
+            # Down more than threshold - decrease risk (preservation mode)
+            self.house_money_multiplier = multiplier_down
+            preservation_mode = True
+            logger.warning(f"Preservation Mode: {pnl_pct*100:.1f}% - Risk multiplier: {multiplier_down}x")
+        else:
+            # Normal range
+            self.house_money_multiplier = 1.0
+            preservation_mode = False
 
         # Update house money state in database if account_id available and DB is enabled
         if self.account_id and self._db_available:
-            self._update_house_money_state(current_balance, current_pnl, preservation_mode, session_state)
+            self._update_house_money_state(current_balance, current_pnl, preservation_mode)
 
     def _calculate_kelly_fraction(self, win_rate: float, payoff_ratio: float) -> float:
         """
@@ -562,54 +459,20 @@ class EnhancedGovernor(Governor):
             Falls back to standard values if not found or DB unavailable.
             Uses correct metal pip values (XAUUSD=1.0, XAGUSD=50.0) to avoid 10x underestimation.
         """
-        # Correct metal pip values (fallback when DB/registry unavailable)
-        # These match BrokerRegistryManager.create_broker() defaults to avoid divergence
-        pip_values = {
-            'EURUSD': 10.0,
-            'GBPUSD': 10.0,
-            'USDJPY': 9.09,
-            'USDCHF': 10.0,
-            'AUDUSD': 10.0,
-            'NZDUSD': 10.0,
-            'USDCAD': 10.0,
-            'XAUUSD': 1.0,   # Gold: $1 per pip (not $10 - corrects 10x underestimation)
-            'XAGUSD': 50.0,  # Silver: $50 per pip (not $10 - corrects 5x underestimation)
-        }
-
-        # If DB not available, use fallback values
-        if not self._db_available:
-            pip_value = pip_values.get(symbol, 10.0)
-            logger.debug(f"Pip value for {symbol}@{broker}: ${pip_value} (fallback, no DB)")
-            return pip_value
-
         try:
-            session = get_session()
-
-            # Query broker registry for pip values
-            broker_record = session.query(BrokerRegistry).filter_by(
-                broker_id=broker
-            ).first()
-
-            pip_value = 10.0  # Default
-
-            if broker_record and broker_record.pip_values:
-                # Get pip value for symbol from JSON field
-                pip_values_dict = broker_record.pip_values
-                # Use local pip_values dict as fallback for metals if not in registry
-                pip_value = pip_values_dict.get(symbol, pip_values.get(symbol, 10.0))
-                logger.debug(f"Pip value for {symbol}@{broker}: ${pip_value} (from registry)")
-            else:
-                # Fall back to correct defaults (not hardcoded 10.0 for metals)
-                pip_value = pip_values.get(symbol, 10.0)
-                logger.debug(f"Pip value for {symbol}@{broker}: ${pip_value} (fallback)")
-
-            session.close()
-            return pip_value
+            profile = BrokerRegistryManager().resolve_execution_profile(broker, symbol=symbol)
+            logger.debug(
+                "Pip value for %s@%s: $%s (%s)",
+                symbol,
+                broker,
+                profile.pip_value,
+                profile.source,
+            )
+            return profile.pip_value
 
         except Exception as e:
             logger.error(f"Error getting pip value from broker registry: {e}")
-            # Return fallback value on error (use correct metal values)
-            return pip_values.get(symbol, 10.0)
+            return DEFAULT_BROKER_PIP_VALUES.get(symbol, 10.0)
 
     def _load_daily_state(self, account_id: str) -> None:
         """
@@ -694,26 +557,21 @@ class EnhancedGovernor(Governor):
         self,
         current_balance: float,
         current_pnl: float,
-        preservation_mode: bool,
-        session_state: Optional['SessionKellyState'] = None
+        preservation_mode: bool
     ) -> None:
         """
-        Update house money state in database with session-scoped fields.
-
-        Story 4.10: Stores session-scoped fields including current_session,
-        is_premium_session, and premium_assault_type.
+        Update house money state in database.
 
         Args:
             current_balance: Current account balance
             current_pnl: Current daily profit/loss
             preservation_mode: Whether preservation mode is active
-            session_state: Optional SessionKellyState with session-scoped data
         """
         if not self._db_available:
             return
 
         try:
-            db_session = get_session()
+            session = get_session()
 
             today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
@@ -723,7 +581,7 @@ class EnhancedGovernor(Governor):
                 return
 
             # Check if record exists for today
-            state = db_session.query(HouseMoneyState).filter_by(
+            state = session.query(HouseMoneyState).filter_by(
                 account_id=self.account_id,
                 date=today
             ).first()
@@ -737,16 +595,6 @@ class EnhancedGovernor(Governor):
                 # Update high water mark
                 if current_balance > state.high_water_mark:
                     state.high_water_mark = current_balance
-
-                # Story 4.10: Update session-scoped fields
-                if session_state:
-                    state.current_session = session_state.current_session
-                    state.is_premium_session = session_state.is_premium_session
-                    state.premium_assault_type = (
-                        session_state.premium_assault.value
-                        if session_state.premium_assault else None
-                    )
-                    state.session_start = session_state.last_updated
             else:
                 # Create new record
                 state = HouseMoneyState(
@@ -756,20 +604,12 @@ class EnhancedGovernor(Governor):
                     current_pnl=current_pnl,
                     high_water_mark=max(current_balance, self._daily_start_balance),
                     risk_multiplier=self.house_money_multiplier,
-                    is_preservation_mode=preservation_mode,
-                    # Story 4.10: Session-scoped fields
-                    current_session=session_state.current_session if session_state else None,
-                    is_premium_session=session_state.is_premium_session if session_state else False,
-                    premium_assault_type=(
-                        session_state.premium_assault.value
-                        if session_state and session_state.premium_assault else None
-                    ),
-                    session_start=session_state.last_updated if session_state else None,
+                    is_preservation_mode=preservation_mode
                 )
-                db_session.add(state)
+                session.add(state)
 
-            db_session.commit()
-            db_session.close()
+            session.commit()
+            session.close()
 
         except Exception as e:
             logger.error(f"Error updating house money state: {e}")

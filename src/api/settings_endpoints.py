@@ -72,6 +72,9 @@ class RiskSettings(BaseModel):
     houseMoneyEnabled: bool = True
     houseMoneyThreshold: float = 0.5
     dailyLossLimit: float = 5.0
+    weeklyLossLimit: float = 10.0
+    killSwitchDailyLossLimit: float = 3.0
+    killSwitchWeeklyLossLimit: float = 10.0
     maxDrawdown: float = 10.0
     riskMode: str = "dynamic"
     routerMode: str = "auction"  # auction, priority, round_robin
@@ -91,6 +94,35 @@ class RiskSettings(BaseModel):
     maxRiskPerTrade: float = 0.05
     defaultRiskPerTrade: float = 0.02
     propFirmPreset: str = "custom"
+    adaptiveDailyBudgetEnabled: bool = True
+    dailyOperatingBudgetLossUnitsMin: int = 4
+    dailyOperatingBudgetLossUnitsMax: int = 6
+    dailyOperatingBudgetPercentFloor: float = 2.5
+    dailyHardLockPercent: float = 4.0
+    sessionPressureTighteningEnabled: bool = True
+    manualMarketLockSticky: bool = True
+    brokerProfileSource: str = "database"
+
+
+class RuntimeRiskConfig(BaseModel):
+    """Normalized runtime risk config consumed by hot-path services."""
+
+    house_money_enabled: bool
+    risk_mode: str
+    max_portfolio_risk: float
+    max_risk_per_trade: float
+    default_risk_per_trade: float
+    daily_loss_limit_pct: float
+    weekly_loss_limit_pct: float
+    daily_hard_lock_pct: float
+    max_drawdown_pct: float
+    adaptive_daily_budget_enabled: bool
+    daily_budget_loss_units_min: int
+    daily_budget_loss_units_max: int
+    daily_budget_percent_floor: float
+    session_pressure_tightening_enabled: bool
+    manual_market_lock_sticky: bool
+    broker_profile_source: str
 
 class DatabaseSettings(BaseModel):
     sqlitePath: str = "./data/quantmind.db"
@@ -150,6 +182,34 @@ def load_risk_settings() -> RiskSettings:
     settings = load_settings()
     risk_data = settings.get("risk", RiskSettings().dict())
     return RiskSettings(**risk_data)
+
+
+def build_runtime_risk_config(settings: Optional[RiskSettings] = None) -> RuntimeRiskConfig:
+    """Convert settings-file values into a normalized runtime config."""
+    risk = settings or load_risk_settings()
+    return RuntimeRiskConfig(
+        house_money_enabled=risk.houseMoneyEnabled,
+        risk_mode=risk.riskMode,
+        max_portfolio_risk=risk.maxPortfolioRisk,
+        max_risk_per_trade=risk.maxRiskPerTrade,
+        default_risk_per_trade=risk.defaultRiskPerTrade,
+        daily_loss_limit_pct=risk.killSwitchDailyLossLimit / 100.0,
+        weekly_loss_limit_pct=risk.killSwitchWeeklyLossLimit / 100.0,
+        daily_hard_lock_pct=risk.dailyHardLockPercent / 100.0,
+        max_drawdown_pct=risk.maxDrawdown / 100.0,
+        adaptive_daily_budget_enabled=risk.adaptiveDailyBudgetEnabled,
+        daily_budget_loss_units_min=risk.dailyOperatingBudgetLossUnitsMin,
+        daily_budget_loss_units_max=risk.dailyOperatingBudgetLossUnitsMax,
+        daily_budget_percent_floor=risk.dailyOperatingBudgetPercentFloor / 100.0,
+        session_pressure_tightening_enabled=risk.sessionPressureTighteningEnabled,
+        manual_market_lock_sticky=risk.manualMarketLockSticky,
+        broker_profile_source=risk.brokerProfileSource,
+    )
+
+
+def load_runtime_risk_config() -> RuntimeRiskConfig:
+    """Load normalized runtime risk config from backend settings truth."""
+    return build_runtime_risk_config(load_risk_settings())
 
 
 # General Settings
@@ -627,6 +687,12 @@ async def get_risk_settings():
     """Get risk management settings."""
     settings = load_settings()
     return settings.get("risk", RiskSettings().dict())
+
+
+@router.get("/risk/runtime")
+async def get_runtime_risk_settings():
+    """Get normalized runtime risk settings for backend/trading-node consumers."""
+    return load_runtime_risk_config().dict()
 
 @router.post("/risk")
 async def update_risk_settings(settings: RiskSettings):

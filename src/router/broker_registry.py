@@ -8,6 +8,7 @@ Used for fee-aware position sizing and dynamic pip value calculation.
 """
 
 import logging
+from dataclasses import dataclass
 from typing import Optional, Dict, List, Any
 from datetime import datetime
 
@@ -15,6 +16,49 @@ from src.database.manager import DatabaseManager
 from src.database.models import BrokerRegistry
 
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_BROKER_PIP_VALUES: Dict[str, float] = {
+    "EURUSD": 10.0,
+    "GBPUSD": 10.0,
+    "USDJPY": 9.09,
+    "USDCHF": 10.0,
+    "AUDUSD": 10.0,
+    "NZDUSD": 10.0,
+    "USDCAD": 10.0,
+    "XAUUSD": 1.0,
+    "XAGUSD": 50.0,
+}
+
+
+@dataclass(frozen=True)
+class BrokerExecutionProfile:
+    """Canonical broker profile used by sizing and feasibility logic."""
+
+    broker_id: str
+    broker_name: str
+    spread_avg: float
+    commission_per_lot: float
+    lot_step: float
+    min_lot: float
+    max_lot: float
+    pip_value: float
+    preference_tags: List[str]
+    source: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "broker_id": self.broker_id,
+            "broker_name": self.broker_name,
+            "spread_avg": self.spread_avg,
+            "commission_per_lot": self.commission_per_lot,
+            "lot_step": self.lot_step,
+            "min_lot": self.min_lot,
+            "max_lot": self.max_lot,
+            "pip_value": self.pip_value,
+            "preference_tags": list(self.preference_tags),
+            "source": self.source,
+        }
 
 
 class BrokerRegistryManager:
@@ -91,14 +135,7 @@ class BrokerRegistryManager:
             Created BrokerRegistry object
         """
         if pip_values is None:
-            # Default pip values for common symbols
-            pip_values = {
-                "EURUSD": 10.0,
-                "GBPUSD": 10.0,
-                "USDJPY": 9.09,
-                "XAUUSD": 1.0,
-                "XAGUSD": 50.0,
-            }
+            pip_values = DEFAULT_BROKER_PIP_VALUES.copy()
 
         if preference_tags is None:
             preference_tags = ["STANDARD"]
@@ -173,16 +210,61 @@ class BrokerRegistryManager:
 
         if broker is None:
             logger.warning(f"Broker {broker_id} not found, using default pip value")
-            return 10.0
+            return DEFAULT_BROKER_PIP_VALUES.get(symbol.upper(), 10.0)
 
         # Look up symbol in pip_values dict
         pip_value = broker.pip_values.get(symbol.upper())
 
         if pip_value is None:
             logger.warning(f"Pip value for {symbol} not found in {broker_id}, using default")
-            return 10.0
+            return DEFAULT_BROKER_PIP_VALUES.get(symbol.upper(), 10.0)
 
         return pip_value
+
+    def resolve_execution_profile(
+        self,
+        broker_id: str,
+        symbol: Optional[str] = None
+    ) -> BrokerExecutionProfile:
+        """
+        Resolve the canonical broker execution profile for runtime sizing.
+
+        This is the profile-truth path. Connection telemetry lives elsewhere.
+        """
+        broker = self.get_broker(broker_id)
+        normalized_symbol = symbol.upper() if symbol else None
+
+        if broker is None:
+            return BrokerExecutionProfile(
+                broker_id=broker_id,
+                broker_name=broker_id,
+                spread_avg=0.0,
+                commission_per_lot=0.0,
+                lot_step=0.01,
+                min_lot=0.01,
+                max_lot=100.0,
+                pip_value=DEFAULT_BROKER_PIP_VALUES.get(normalized_symbol or "", 10.0),
+                preference_tags=[],
+                source="fallback",
+            )
+
+        pip_values = broker.pip_values or {}
+        pip_value = DEFAULT_BROKER_PIP_VALUES.get(normalized_symbol or "", 10.0)
+        if normalized_symbol:
+            pip_value = pip_values.get(normalized_symbol, pip_value)
+
+        return BrokerExecutionProfile(
+            broker_id=broker.broker_id,
+            broker_name=broker.broker_name,
+            spread_avg=broker.spread_avg,
+            commission_per_lot=broker.commission_per_lot,
+            lot_step=broker.lot_step,
+            min_lot=broker.min_lot,
+            max_lot=broker.max_lot,
+            pip_value=pip_value,
+            preference_tags=list(broker.preference_tags or []),
+            source="registry",
+        )
 
     def get_commission(self, broker_id: str) -> float:
         """

@@ -59,6 +59,8 @@ class DynamicBotLimiter:
         # Default to 100000 if None (same as governor fallback)
         if account_balance is None:
             account_balance = 100000.0
+        elif account_balance < 0:
+            return 0
         for min_bal, max_bal, max_bots in cls.TIERS:
             # Handle the tier range check properly
             if max_bal == float('inf'):
@@ -85,7 +87,12 @@ class DynamicBotLimiter:
         return risk_per_bot_pct * 100  # Return as percentage
     
     @classmethod
-    def can_add_bot(cls, account_balance: Optional[float], current_bots: int) -> Tuple[bool, str]:
+    def can_add_bot(
+        cls,
+        account_balance: Optional[float],
+        current_bots: int,
+        safety_buffer_multiplier: Optional[float] = None,
+    ) -> Tuple[bool, str]:
         """
         Check if account can support adding another bot.
         
@@ -110,7 +117,11 @@ class DynamicBotLimiter:
             return False, f"Bot limit reached ({current_bots}/{max_bots}) for ${account_balance:.0f} account"
         
         # Check safety buffer
-        safety_buffer = cls.calculate_safety_buffer(account_balance, current_bots + 1)
+        safety_buffer = cls.calculate_safety_buffer(
+            account_balance,
+            current_bots + 1,
+            safety_buffer_multiplier=safety_buffer_multiplier,
+        )
         if account_balance < safety_buffer:
             return False, f"Insufficient balance for safety buffer (need ${safety_buffer:.0f})"
         
@@ -138,29 +149,42 @@ class DynamicBotLimiter:
                 
             if in_tier:
                 tier_name = cls._get_tier_name(idx)
+                range_tuple = (min_bal, max_bal)
                 return {
-                    "tier": tier_name,
+                    "tier": idx,
                     "tier_number": idx,
-                    "range": f"${min_bal:.0f}-${max_bal:.0f}" if max_bal != float('inf') else f"${min_bal:.0f}+",
+                    "tier_label": tier_name,
+                    "range": range_tuple,
+                    "range_label": f"${min_bal:.0f}-${max_bal:.0f}" if max_bal != float('inf') else f"${min_bal:.0f}+",
                     "min_balance": min_bal,
                     "max_balance": max_bal,
                     "max_bots": max_bots,
                     "risk_per_bot_pct": cls.get_recommended_risk_per_bot(account_balance),
+                    "trading_enabled": max_bots > 0,
                 }
         
         # Default to highest tier
         return {
-            "tier": "Tier 6",
+            "tier": 6,
             "tier_number": 6,
-            "range": "$5000+",
+            "tier_label": "Tier 6 (Enterprise)",
+            "range": (5000, float('inf')),
+            "range_label": "$5000+",
             "min_balance": 5000,
             "max_balance": float('inf'),
             "max_bots": 20,
             "risk_per_bot_pct": 0.15,
+            "trading_enabled": True,
         }
     
     @classmethod
-    def calculate_safety_buffer(cls, account_balance: float, num_bots: int) -> float:
+    def calculate_safety_buffer(
+        cls,
+        account_balance: Optional[float] = None,
+        num_bots: int = 0,
+        min_capital_per_bot: Optional[float] = None,
+        safety_buffer_multiplier: Optional[float] = None,
+    ) -> float:
         """
         Calculate required capital with 2x safety buffer.
         
@@ -170,13 +194,25 @@ class DynamicBotLimiter:
         - Required capital = num_bots × $50 × 2
         
         Args:
-            account_balance: Current account balance (unused but kept for API consistency)
+            account_balance: Current account balance (unused but kept for API compatibility)
             num_bots: Number of bots to support
+            min_capital_per_bot: Optional override for per-bot capital
+            safety_buffer_multiplier: Optional override for safety multiplier
             
         Returns:
             Required capital with safety buffer
         """
-        return num_bots * cls.MIN_CAPITAL_PER_BOT * cls.SAFETY_BUFFER_MULTIPLIER
+        capital_per_bot = (
+            cls.MIN_CAPITAL_PER_BOT
+            if min_capital_per_bot is None
+            else min_capital_per_bot
+        )
+        buffer_multiplier = (
+            cls.SAFETY_BUFFER_MULTIPLIER
+            if safety_buffer_multiplier is None
+            else safety_buffer_multiplier
+        )
+        return num_bots * capital_per_bot * buffer_multiplier
     
     @classmethod
     def get_next_tier_threshold(cls, account_balance: Optional[float]) -> Optional[Dict[str, Any]]:

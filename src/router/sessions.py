@@ -708,6 +708,32 @@ class SessionDetector:
         if weekday >= 5:  # 5=Saturday, 6=Sunday
             logger.debug(f"Weekend detected (weekday {weekday}). Returning None for next session.")
             return None, None
+
+        current_session = cls.detect_session(utc_time)
+
+        # Preserve intermediate session transitions instead of skipping straight to the
+        # next base session. This matters when London is active and New York opens
+        # before London closes, because the actual next state is OVERLAP, not NEW_YORK.
+        if current_session in (TradingSession.LONDON, TradingSession.NEW_YORK):
+            current_close_mins, _ = cls._calculate_time_until_close(utc_time, current_session)
+            counterpart = (
+                TradingSession.NEW_YORK
+                if current_session == TradingSession.LONDON
+                else TradingSession.LONDON
+            )
+            counterpart_open_mins = cls._minutes_until_session_opens(counterpart, utc_time)
+
+            if (
+                current_close_mins is not None
+                and counterpart_open_mins is not None
+                and 0 < counterpart_open_mins < current_close_mins
+            ):
+                return TradingSession.OVERLAP, counterpart_open_mins
+
+        if current_session == TradingSession.OVERLAP:
+            overlap_close_mins, _ = cls._calculate_time_until_close(utc_time, TradingSession.OVERLAP)
+            if overlap_close_mins is not None:
+                return TradingSession.NEW_YORK, overlap_close_mins
         
         # Sessions to check (excluding OVERLAP and CLOSED)
         sessions_to_check = [

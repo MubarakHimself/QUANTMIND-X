@@ -49,11 +49,13 @@ class TestSessionDetectorModule:
         from src.router.session_detector import (
             get_current_session,
             is_market_open,
-            get_next_session_time
+            get_next_session_time,
+            get_current_session_snapshot,
         )
         assert get_current_session is not None
         assert is_market_open is not None
         assert get_next_session_time is not None
+        assert get_current_session_snapshot is not None
 
     def test_all_exports_defined(self):
         """Test that __all__ is properly defined."""
@@ -65,9 +67,24 @@ class TestSessionDetectorModule:
             'get_current_session',
             'is_market_open',
             'get_next_session_time',
+            'get_current_session_snapshot',
         ]
         for export in expected_exports:
             assert export in session_detector.__all__
+
+    def test_current_session_snapshot_contains_canonical_fields(self):
+        """Test the compatibility module exposes a canonical session snapshot helper."""
+        from src.router.session_detector import (
+            TradingSession,
+            get_current_session_snapshot,
+        )
+
+        utc_time = datetime(2026, 2, 12, 10, 0, tzinfo=timezone.utc)
+        snapshot = get_current_session_snapshot(utc_time)
+
+        assert snapshot["utc_time"] == utc_time
+        assert snapshot["current_session"] == TradingSession.LONDON
+        assert snapshot["session_info"].session == TradingSession.LONDON
 
 
 class TestSessionDetectorLondonNYOverlap:

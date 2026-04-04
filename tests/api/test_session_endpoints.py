@@ -113,6 +113,19 @@ class TestCheckSessionActive:
 
         assert data["session"] == "NEW_YORK"
 
+    def test_check_session_overlap_counts_as_london_and_ny(self, client):
+        """During overlap, both London and New York checks should be active."""
+        with patch('src.router.sessions.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(2026, 2, 12, 14, 0, tzinfo=timezone.utc)
+
+            london_response = client.get("/api/sessions/check/LONDON")
+            ny_response = client.get("/api/sessions/check/NEW_YORK")
+
+        assert london_response.status_code == 200
+        assert ny_response.status_code == 200
+        assert london_response.json()["is_active"] is True
+        assert ny_response.json()["is_active"] is True
+
     def test_check_session_invalid(self, client):
         """Test checking invalid session name returns 400."""
         response = client.get("/api/sessions/check/INVALID_SESSION")
@@ -125,9 +138,10 @@ class TestCheckSessionActive:
         This tests the special case where CLOSED should return true when
         no other session is active (e.g., outside trading hours or on weekends).
         """
-        # Mock time to be outside trading hours (20:00 UTC is outside all sessions)
+        # Mock time to be outside trading hours on a weekday.
+        # Under the DST-aware local-session model, 02:00 UTC is closed.
         with patch('src.router.sessions.datetime') as mock_datetime:
-            mock_datetime.now.return_value = datetime(2026, 2, 12, 20, 0, tzinfo=timezone.utc)
+            mock_datetime.now.return_value = datetime(2026, 2, 12, 2, 0, tzinfo=timezone.utc)
 
             response = client.get("/api/sessions/check/CLOSED")
 
@@ -145,7 +159,7 @@ class TestCheckSessionActive:
         During trading hours, CLOSED should return false because the market is open.
         """
         # Mock time to be during London session (10:00 UTC is during London)
-        with patch('src.api.session_endpoints.datetime') as mock_datetime:
+        with patch('src.router.sessions.datetime') as mock_datetime:
             mock_datetime.now.return_value = datetime(2026, 2, 12, 10, 0, tzinfo=timezone.utc)
 
             response = client.get("/api/sessions/check/CLOSED")

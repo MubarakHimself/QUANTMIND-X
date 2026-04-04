@@ -8,7 +8,7 @@ Comprehensive tests for all 5 tiers of protection and alert progression.
 
 import pytest
 from datetime import datetime, timezone, time, timedelta
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import Mock, patch, MagicMock, AsyncMock, PropertyMock
 from typing import Dict, Any
 import asyncio
 
@@ -60,6 +60,23 @@ def reset_all_singletons():
     reset_account_monitor()
     reset_session_monitor()
     reset_system_monitor()
+
+
+@pytest.fixture(autouse=True)
+def stub_bot_circuit_breaker(monkeypatch):
+    """Keep ProgressiveKillSwitch tests isolated from DB-backed circuit breaker setup."""
+
+    class _StubBotCircuitBreakerManager:
+        def check_allowed(self, bot_id):
+            return True, None
+
+        def get_quarantined_bots(self):
+            return []
+
+    monkeypatch.setattr(
+        "src.router.progressive_kill_switch.BotCircuitBreakerManager",
+        lambda *args, **kwargs: _StubBotCircuitBreakerManager(),
+    )
 
 
 @pytest.fixture
@@ -356,6 +373,34 @@ class TestAccountMonitor:
         account_monitor.reset_account_stops("test_account")
         assert account_monitor.is_account_allowed("test_account")
 
+    def test_pressure_state_visible_before_hard_lock(self, account_monitor):
+        """Pressure bands should be visible before the hard stop is hit."""
+        account_monitor.record_trade_pnl(
+            account_id="test_account",
+            pnl=-200.0,
+            account_balance=10000.0,
+        )
+
+        status = account_monitor.get_stop_status("test_account")
+        assert status["hard_lock_active"] is False
+        assert status["pressure_state"] in ["CAUTION", "RESTRICTED"]
+        assert status["lock_source"] == "ACCOUNT_PRESSURE"
+        assert status["operating_budget_consumed_ratio"] > 0
+
+    def test_hard_lock_status_includes_reason(self, account_monitor):
+        """Hard lock should expose source and reason, not only booleans."""
+        account_monitor.record_trade_pnl(
+            account_id="test_account",
+            pnl=-300.0,
+            account_balance=10000.0,
+        )
+
+        status = account_monitor.get_stop_status("test_account")
+        assert status["hard_lock_active"] is True
+        assert status["lock_source"] == "ACCOUNT_HARD_LOCK"
+        assert "reason" in status
+        assert status["pressure_state"] == "STOPPED"
+
 
 # =============================================================================
 # Tier 4: Session Monitor Tests
@@ -382,7 +427,11 @@ class TestSessionMonitor:
     def test_end_of_day_shutdown(self, session_monitor):
         """Test end of day closure at 21:00 UTC."""
         # Mock current time to be 21:30 UTC
-        with patch.object(session_monitor, 'current_time_utc') as mock_time:
+        with patch.object(
+            SessionMonitor,
+            'current_time_utc',
+            new_callable=PropertyMock,
+        ) as mock_time:
             mock_time.return_value = datetime(2026, 2, 14, 21, 30, tzinfo=timezone.utc)
 
             allowed, reason = session_monitor.check_session_allowed()
@@ -543,6 +592,7 @@ class TestProgressiveKillSwitch:
         allowed, reason = await pks.check_all_tiers(context)
         assert not allowed
         assert "account" in reason.lower()
+        assert pks.get_status()["lock_state"]["source"] == "ACCOUNT_HARD_LOCK"
 
     def test_status_endpoint(self, progressive_config, mock_sentinel, mock_news_sensor):
         """Test getting comprehensive status."""
@@ -613,6 +663,66 @@ class TestProgressiveKillSwitch:
         # Verify kill_switch.trigger was awaited exactly once
         mock_kill_switch.trigger.assert_awaited_once()
 
+    @pytest.mark.asyncio
+    async def test_manual_market_lock_is_sticky_until_resumed(
+        self,
+        progressive_config,
+        mock_sentinel,
+        mock_news_sensor,
+    ):
+        """Manual market lock should block trading until explicitly resumed."""
+        mock_sentinel.current_report.chaos_score = 0.2
+        mock_news_sensor.check_state.return_value = "SAFE"
+
+        pks = ProgressiveKillSwitch(
+            config=progressive_config,
+            sentinel=mock_sentinel,
+            news_sensor=mock_news_sensor,
+        )
+        pks.update_broker_ping()
+        pks.activate_manual_market_lock(reason="operator review")
+
+        context = {"bot_id": "test_bot", "account_id": "test_account", "strategy_family": "SCALPER"}
+        allowed, reason = await pks.check_all_tiers(context)
+        assert not allowed
+        assert "manual market lock" in reason.lower()
+        assert pks.get_status()["lock_state"]["source"] == "MANUAL_MARKET_LOCK"
+
+        resume_result = pks.resume_manual_market_lock()
+        assert resume_result is True
+
+        allowed, reason = await pks.check_all_tiers(context)
+        assert allowed
+        assert reason is None
+
+    @pytest.mark.asyncio
+    async def test_account_hard_lock_beats_session_opportunity(
+        self,
+        progressive_config,
+        mock_sentinel,
+        mock_news_sensor,
+    ):
+        """A safe session cannot reopen trading after an account hard lock."""
+        mock_sentinel.current_report.chaos_score = 0.2
+        mock_news_sensor.check_state.return_value = "SAFE"
+
+        pks = ProgressiveKillSwitch(
+            config=progressive_config,
+            sentinel=mock_sentinel,
+            news_sensor=mock_news_sensor,
+        )
+        pks.update_broker_ping()
+        pks.record_trade_pnl("test_account", pnl=-300.0, account_balance=10000.0)
+
+        context = {"bot_id": "test_bot", "account_id": "test_account", "strategy_family": "SCALPER"}
+        allowed, reason = await pks.check_all_tiers(context)
+        assert not allowed
+        assert "account" in reason.lower()
+
+        status = pks.get_status()
+        assert status["lock_state"]["source"] == "ACCOUNT_HARD_LOCK"
+        assert status["last_check_result"]["allowed"] is False
+
 
 # =============================================================================
 # Integration Tests
@@ -643,12 +753,12 @@ class TestIntegration:
         assert allowed
 
         # Trigger account loss (Tier 3)
-        pks.record_trade_pnl("integration_account", pnl=-500.0, account_balance=10000.0)
+        pks.record_trade_pnl("integration_account", pnl=-200.0, account_balance=10000.0)
         allowed, _ = await pks.check_all_tiers(context)
         assert allowed  # Not at 3% yet
 
         # More losses to trigger daily stop
-        pks.record_trade_pnl("integration_account", pnl=-300.0, account_balance=10000.0)
+        pks.record_trade_pnl("integration_account", pnl=-150.0, account_balance=10000.0)
         allowed, reason = await pks.check_all_tiers(context)
         assert not allowed
 

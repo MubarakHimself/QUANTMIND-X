@@ -26,8 +26,19 @@ from src.database.duckdb_connection import query_market_data, WARM_DB_PATH
 from src.database.db_manager import DBManager, HOTDBManager, get_hot_db_url
 from src.database.models import TickCache
 from src.data.brokers.mt5_socket_adapter import MT5SocketAdapter
+from src.router.session_detector import TradingSession as TradingSession
+from src.router.session_detector import get_current_session as _detect_current_session
 
 logger = logging.getLogger(__name__)
+
+
+def get_current_session():
+    """
+    Compatibility wrapper kept at module scope for older callers and tests.
+
+    The implementation authority remains `src.router.session_detector`.
+    """
+    return _detect_current_session()
 
 
 class AlertType(Enum):
@@ -109,8 +120,16 @@ class MarketScanner:
             # Try to create HOT DBManager from environment
             hot_url = get_hot_db_url()
             if hot_url:
-                self.hot_db_manager = HOTDBManager()
-                logger.info("Using HOT tier DBManager for tick_cache queries")
+                try:
+                    self.hot_db_manager = HOTDBManager()
+                    logger.info("Using HOT tier DBManager for tick_cache queries")
+                except Exception as exc:
+                    self.hot_db_manager = self.db_manager
+                    logger.warning(
+                        "HOT_DB_URL is set but HOT tier DBManager initialization failed; "
+                        "falling back to default DBManager. Error: %s",
+                        exc,
+                    )
             else:
                 # Fall back to default db_manager but warn
                 self.hot_db_manager = self.db_manager
@@ -134,7 +153,6 @@ class MarketScanner:
         alerts = []
         
         # Get current session
-        from src.router.sessions import get_current_session
         current_session = get_current_session()
         
         logger.info(f"Running market scan for session: {current_session.value}")
@@ -495,7 +513,6 @@ class MarketScanner:
     def _get_current_session_name(self) -> str:
         """Get current session name."""
         try:
-            from src.router.sessions import get_current_session
             return get_current_session().value
         except Exception:
             return "UNKNOWN"
@@ -1470,8 +1487,6 @@ class MarketScanner:
             Scan interval in seconds
         """
         try:
-            from src.router.sessions import get_current_session, TradingSession
-            
             session = get_current_session()
             
             if session == TradingSession.OVERLAP:

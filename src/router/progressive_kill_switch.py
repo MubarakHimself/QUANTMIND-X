@@ -79,15 +79,17 @@ def load_progressive_config(config_path: str = "config/trading_system.yaml") -> 
         path = Path(config_path)
         if not path.exists():
             logger.warning(f"Config file not found: {config_path}, using defaults")
-            return config
+            path = None
 
-        with open(path, 'r') as f:
-            data = yaml.safe_load(f)
+        data: Dict[str, Any] = {}
+        if path is not None:
+            with open(path, 'r') as f:
+                data = yaml.safe_load(f) or {}
 
         progressive = data.get('kill_switch', {}).get('progressive', {})
         if not progressive:
             logger.info("No progressive config found, using defaults")
-            return config
+            progressive = {}
 
         config.enabled = progressive.get('enabled', True)
 
@@ -121,6 +123,16 @@ def load_progressive_config(config_path: str = "config/trading_system.yaml") -> 
         config.alert_threshold_orange = thresholds.get('orange', 70)
         config.alert_threshold_red = thresholds.get('red', 85)
         config.alert_threshold_black = thresholds.get('black', 95)
+
+        try:
+            from src.api.settings_endpoints import load_runtime_risk_config
+
+            runtime_risk = load_runtime_risk_config()
+            config.tier3_max_daily_loss_pct = runtime_risk.daily_loss_limit_pct
+            config.tier3_max_weekly_loss_pct = runtime_risk.weekly_loss_limit_pct
+            logger.info("Overlayed progressive kill-switch thresholds from runtime risk settings")
+        except Exception as runtime_error:
+            logger.warning(f"Could not overlay runtime risk settings: {runtime_error}")
 
         logger.info(f"Loaded progressive config from {config_path}")
 
@@ -234,7 +246,13 @@ class ProgressiveKillSwitch:
             self.session_monitor.set_sentinel(sentinel)
             self.system_monitor.set_sentinel(sentinel)
 
-        self._last_check_result: Optional[Tuple[bool, Optional[str]]] = None
+        self._last_check_result: Optional[Dict[str, Any]] = None
+        self._manual_market_lock: Dict[str, Any] = {
+            "active": False,
+            "reason": None,
+            "triggered_at": None,
+            "triggered_by": None,
+        }
 
         # Account book mapping for prop firm emergency kills
         # Maps account_id -> AccountBook type
@@ -259,6 +277,47 @@ class ProgressiveKillSwitch:
             logger.warning(f"Invalid time format: {time_str}, using default")
             return time(0, 0)
 
+    def _record_check_result(
+        self,
+        *,
+        allowed: bool,
+        reason: Optional[str],
+        lock_source: str,
+        pressure_state: str = "NORMAL",
+        tier: Optional[int] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Persist the latest decision in an API-visible structure."""
+        self._last_check_result = {
+            "allowed": allowed,
+            "reason": reason,
+            "lock_source": lock_source,
+            "pressure_state": pressure_state,
+            "tier": tier,
+            "details": details or {},
+        }
+
+    def activate_manual_market_lock(self, reason: str, triggered_by: str = "operator") -> None:
+        """Activate a sticky manual market lock."""
+        self._manual_market_lock = {
+            "active": True,
+            "reason": reason or "manual review",
+            "triggered_at": datetime.now(timezone.utc).isoformat(),
+            "triggered_by": triggered_by,
+        }
+
+    def resume_manual_market_lock(self) -> bool:
+        """Resume trading from sticky manual market lock."""
+        if not self._manual_market_lock["active"]:
+            return False
+        self._manual_market_lock = {
+            "active": False,
+            "reason": None,
+            "triggered_at": None,
+            "triggered_by": None,
+        }
+        return True
+
     async def check_all_tiers(self, context: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
         """Check all protection tiers in priority order (5→4→3→2→1)."""
         if not self.config.enabled:
@@ -267,12 +326,33 @@ class ProgressiveKillSwitch:
         bot_id = context.get('bot_id')
         account_id = context.get('account_id')
         strategy_family = context.get('strategy_family')
+        account_pressure_state = "NORMAL"
+        account_lock_source = "NONE"
+        account_details: Dict[str, Any] = {}
+
+        if self._manual_market_lock["active"]:
+            reason = f"Manual market lock active: {self._manual_market_lock['reason']}"
+            self._record_check_result(
+                allowed=False,
+                reason=reason,
+                lock_source="MANUAL_MARKET_LOCK",
+                pressure_state="STOPPED",
+                details={"manual_market_lock": self._manual_market_lock.copy()},
+            )
+            return False, reason
 
         # Tier 5: System-Level
         allowed, reason = self.system_monitor.check_system_health()
         if not allowed:
             await self._execute_kill(5, reason, AlertLevel.BLACK)
-            self._last_check_result = (False, reason)
+            lock_source = "CHAOS_LOCK" if "chaos" in (reason or "").lower() else "SYSTEM_SHUTDOWN"
+            self._record_check_result(
+                allowed=False,
+                reason=reason,
+                lock_source=lock_source,
+                pressure_state="STOPPED",
+                tier=5,
+            )
             return False, reason
 
         # Tier 4: Session-Level
@@ -282,17 +362,33 @@ class ProgressiveKillSwitch:
             if "kill zone" in (reason or "").lower():
                 level = AlertLevel.BLACK
             await self._execute_kill(4, reason, level)
-            self._last_check_result = (False, reason)
+            lock_source = "NEWS_LOCK" if "kill zone" in (reason or "").lower() else "MARKET_LOCK"
+            self._record_check_result(
+                allowed=False,
+                reason=reason,
+                lock_source=lock_source,
+                pressure_state="STOPPED",
+                tier=4,
+            )
             return False, reason
 
         # Tier 3: Account-Level
         if account_id:
-            allowed = self.account_monitor.is_account_allowed(account_id)
-            if not allowed:
-                status = self.account_monitor.get_stop_status(account_id)
+            status = self.account_monitor.get_stop_status(account_id)
+            account_pressure_state = status.get("pressure_state", "NORMAL")
+            account_lock_source = status.get("lock_source", "NONE")
+            account_details = status
+            if status.get("hard_lock_active"):
                 reason = f"Account stop: daily={status['daily_stop']}, weekly={status['weekly_stop']}"
                 await self._execute_kill(3, reason, AlertLevel.RED)
-                self._last_check_result = (False, reason)
+                self._record_check_result(
+                    allowed=False,
+                    reason=reason,
+                    lock_source="ACCOUNT_HARD_LOCK",
+                    pressure_state=status.get("pressure_state", "STOPPED"),
+                    tier=3,
+                    details={"account": status},
+                )
                 return False, reason
 
         # Tier 2: Strategy-Level
@@ -302,7 +398,14 @@ class ProgressiveKillSwitch:
                 if not self.strategy_monitor.is_family_allowed(family):
                     reason = f"Strategy family {family.value} quarantined"
                     await self._execute_kill(2, reason, AlertLevel.ORANGE)
-                    self._last_check_result = (False, reason)
+                    self._record_check_result(
+                        allowed=False,
+                        reason=reason,
+                        lock_source="SESSION_PRESSURE",
+                        pressure_state=account_pressure_state,
+                        tier=2,
+                        details={"account": account_details},
+                    )
                     return False, reason
             except ValueError:
                 pass
@@ -313,10 +416,23 @@ class ProgressiveKillSwitch:
             if not allowed:
                 self.alert_manager.raise_alert(tier=1, message=f"Bot {bot_id} blocked: {reason}",
                     threshold_pct=60.0, source="bot", metadata={"bot_id": bot_id, "reason": reason})
-                self._last_check_result = (False, reason)
+                self._record_check_result(
+                    allowed=False,
+                    reason=reason,
+                    lock_source="SESSION_PRESSURE",
+                    pressure_state=account_pressure_state,
+                    tier=1,
+                    details={"account": account_details, "bot_id": bot_id},
+                )
                 return False, reason
 
-        self._last_check_result = (True, None)
+        self._record_check_result(
+            allowed=True,
+            reason=None,
+            lock_source=account_lock_source,
+            pressure_state=account_pressure_state,
+            details={"account": account_details} if account_details else {},
+        )
         return True, None
 
     async def _execute_kill(self, tier: int, reason: str, level: AlertLevel) -> None:
@@ -348,15 +464,35 @@ class ProgressiveKillSwitch:
     def update_broker_ping(self) -> None:
         self.system_monitor.update_broker_ping()
 
+    def _build_lock_state(self) -> Dict[str, Any]:
+        """Return canonical lock-state summary for API/UI surfaces."""
+        last = self._last_check_result or {}
+        return {
+            "source": last.get("lock_source", "NONE"),
+            "reason": last.get("reason"),
+            "pressure_state": last.get("pressure_state", "NORMAL"),
+            "manual_market_lock_active": self._manual_market_lock["active"],
+            "manual_market_lock_reason": self._manual_market_lock["reason"],
+            "manual_market_lock_triggered_at": self._manual_market_lock["triggered_at"],
+            "manual_market_lock_triggered_by": self._manual_market_lock["triggered_by"],
+        }
+
     def get_status(self) -> Dict[str, Any]:
+        accounts_at_risk = self.account_monitor.get_accounts_at_risk()
         return {"enabled": self.config.enabled, "current_alert_level": self.alert_manager.current_level.value,
             "active_alerts": len(self.alert_manager.active_alerts),
-            "last_check_result": {"allowed": self._last_check_result[0] if self._last_check_result else None,
-                "reason": self._last_check_result[1] if self._last_check_result else None},
+            "last_check_result": self._last_check_result,
+            "lock_state": self._build_lock_state(),
             "tiers": {"tier1_bot": {"quarantined_count": len(self.bot_circuit_breaker.get_quarantined_bots())},
                 "tier2_strategy": {"quarantined_families": self.strategy_monitor.get_quarantined_families()},
-                "tier3_account": {"accounts_at_risk": len(self.account_monitor.get_accounts_at_risk())},
-                "tier4_session": self.session_monitor.get_session_status(),
+                "tier3_account": {
+                    "accounts_at_risk": len(accounts_at_risk),
+                    "at_risk_accounts": accounts_at_risk,
+                    "manual_market_lock_active": self._manual_market_lock["active"],
+                },
+                "tier4_session": {**self.session_monitor.get_session_status(),
+                    "manual_market_lock_active": self._manual_market_lock["active"],
+                    "manual_market_lock_reason": self._manual_market_lock["reason"]},
                 "tier5_system": self.system_monitor.get_system_status()}}
 
     def get_all_alerts(self) -> Dict[str, Any]:

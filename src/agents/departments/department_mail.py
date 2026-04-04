@@ -113,7 +113,7 @@ class DepartmentMailService:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self.db = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        self.db = sqlite3.connect(str(self.db_path))
         self._init_schema()
 
     def _init_schema(self):
@@ -301,13 +301,12 @@ class DepartmentMailService:
 
         return messages
 
-    def mark_read(self, message_id: str, dept: Optional[str] = None) -> bool:
+    def mark_read(self, message_id: str) -> bool:
         """
         Mark a message as read.
 
         Args:
             message_id: ID of message to mark read
-            dept: Optional department name for API compatibility
 
         Returns:
             True if message was found and updated
@@ -449,205 +448,6 @@ class DepartmentMailService:
 
         return messages
 
-    def _row_to_message(self, row) -> DepartmentMessage:
-        """Convert a database row to a DepartmentMessage."""
-        return DepartmentMessage(
-            id=row[0],
-            from_dept=row[1],
-            to_dept=row[2],
-            type=MessageType(row[3]),
-            subject=row[4] or "",
-            body=row[5] or "",
-            priority=Priority(row[6]),
-            timestamp=datetime.fromisoformat(row[7]),
-            read=bool(row[8]),
-            gate_id=row[9],
-            workflow_id=row[10],
-            from_stage=row[11],
-            to_stage=row[12],
-        )
-
-    def list_messages(
-        self,
-        from_dept: Optional[str] = None,
-        to_dept: Optional[str] = None,
-        unread_only: bool = False,
-        message_type: Optional[MessageType] = None,
-        priority: Optional[Priority] = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> List[DepartmentMessage]:
-        """
-        List messages with flexible filtering and pagination.
-
-        Args:
-            from_dept: Filter by sender department
-            to_dept: Filter by recipient department
-            unread_only: Only return unread messages
-            message_type: Filter by message type
-            priority: Filter by priority
-            limit: Maximum messages to return
-            offset: Offset for pagination
-
-        Returns:
-            List of matching messages
-        """
-        cursor = self.db.cursor()
-        conditions: List[str] = []
-        params: list = []
-
-        if from_dept:
-            conditions.append("from_dept = ?")
-            params.append(from_dept)
-        if to_dept:
-            conditions.append("to_dept = ?")
-            params.append(to_dept)
-        if unread_only:
-            conditions.append("read = 0")
-        if message_type:
-            conditions.append("type = ?")
-            params.append(message_type.value)
-        if priority:
-            conditions.append("priority = ?")
-            params.append(priority.value)
-
-        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-        params.extend([limit, offset])
-
-        cursor.execute(f"""
-            SELECT id, from_dept, to_dept, type, subject, body, priority,
-                   timestamp, read, gate_id, workflow_id, from_stage, to_stage
-            FROM messages
-            {where}
-            ORDER BY timestamp DESC
-            LIMIT ? OFFSET ?
-        """, params)
-
-        return [self._row_to_message(row) for row in cursor.fetchall()]
-
-    def get_stats(self) -> Dict[str, Any]:
-        """
-        Get mail statistics.
-
-        Returns:
-            Dict with total_messages, unread_messages, by_department,
-            by_type, by_priority, unread_by_department, recent_24h,
-            urgent_unread counts.
-        """
-        cursor = self.db.cursor()
-
-        cursor.execute("SELECT COUNT(*) FROM messages")
-        total = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM messages WHERE read = 0")
-        unread = cursor.fetchone()[0]
-
-        cursor.execute(
-            "SELECT to_dept, COUNT(*) FROM messages GROUP BY to_dept"
-        )
-        by_department = dict(cursor.fetchall())
-
-        cursor.execute("SELECT type, COUNT(*) FROM messages GROUP BY type")
-        by_type = dict(cursor.fetchall())
-
-        cursor.execute(
-            "SELECT priority, COUNT(*) FROM messages GROUP BY priority"
-        )
-        by_priority = dict(cursor.fetchall())
-
-        cursor.execute(
-            "SELECT to_dept, COUNT(*) FROM messages "
-            "WHERE read = 0 GROUP BY to_dept"
-        )
-        unread_by_department = dict(cursor.fetchall())
-
-        cursor.execute(
-            "SELECT COUNT(*) FROM messages "
-            "WHERE timestamp > datetime('now', '-1 day')"
-        )
-        recent_24h = cursor.fetchone()[0]
-
-        cursor.execute(
-            "SELECT COUNT(*) FROM messages "
-            "WHERE read = 0 AND priority = 'urgent'"
-        )
-        urgent_unread = cursor.fetchone()[0]
-
-        return {
-            "total_messages": total,
-            "unread_messages": unread,
-            "by_department": by_department,
-            "by_type": by_type,
-            "by_priority": by_priority,
-            "unread_by_department": unread_by_department,
-            "recent_24h": recent_24h,
-            "urgent_unread": urgent_unread,
-        }
-
-    def reply(
-        self,
-        original_message_id: str,
-        from_dept: str,
-        body: str,
-        priority: Optional[Priority] = None,
-    ) -> Optional[DepartmentMessage]:
-        """
-        Reply to a message. Creates a new message with reversed from/to.
-
-        Args:
-            original_message_id: ID of message to reply to
-            from_dept: Department sending the reply
-            body: Reply content
-            priority: Optional priority (defaults to original's)
-
-        Returns:
-            The reply message, or None if original not found
-        """
-        original = self.get_message(original_message_id)
-        if original is None:
-            return None
-
-        return self.send(
-            from_dept=from_dept,
-            to_dept=original.from_dept,
-            type=original.type,
-            subject=f"Re: {original.subject}",
-            body=body,
-            priority=priority or original.priority,
-            gate_id=original.gate_id,
-            workflow_id=original.workflow_id,
-        )
-
-    def get_unread_count(self, dept: str) -> int:
-        """Get count of unread messages for a department."""
-        cursor = self.db.cursor()
-        cursor.execute(
-            "SELECT COUNT(*) FROM messages WHERE to_dept = ? AND read = 0",
-            (dept,),
-        )
-        return cursor.fetchone()[0]
-
-    def mark_as_read(self, message_id: str, dept: Optional[str] = None) -> bool:
-        """Alias for mark_read (compatibility with trading_floor_endpoints)."""
-        return self.mark_read(message_id, dept=dept)
-
-    def get_pending_approvals(self) -> List[Dict[str, Any]]:
-        """Get pending approval messages (unread approval_request type)."""
-        msgs = self.list_messages(
-            message_type=MessageType.APPROVAL_REQUEST,
-            unread_only=True,
-            limit=100,
-        )
-        return [m.to_dict() for m in msgs]
-
-    def get_queue_stats(self) -> Dict[str, int]:
-        """Get unread counts per department (for morning digest)."""
-        cursor = self.db.cursor()
-        cursor.execute(
-            "SELECT to_dept, COUNT(*) FROM messages "
-            "WHERE read = 0 GROUP BY to_dept"
-        )
-        return dict(cursor.fetchall())
-
     def send_approval_notification(
         self,
         from_dept: str,
@@ -759,6 +559,7 @@ def reset_mail_service() -> None:
 
 import logging
 import os
+import warnings
 from typing import List, Optional, Dict, Any
 import uuid
 import json
@@ -774,20 +575,6 @@ DEFAULT_REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 DEFAULT_REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
 DEFAULT_REDIS_DB = int(os.environ.get("REDIS_DB", "0"))
 DEFAULT_REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", None)
-DEFAULT_MAIL_DB_PATH = os.environ.get(
-    "DEPARTMENT_MAIL_DB", ".quantmind/department_mail.db"
-)
-DEFAULT_MAIL_BACKEND = os.environ.get(
-    "DEPARTMENT_MAIL_BACKEND", "auto"
-).strip().lower()
-
-# When true, Redis is required and SQLite fallback is skipped.
-FORCE_REDIS_MAIL = os.environ.get("DEPARTMENT_MAIL_FORCE_REDIS", "0").strip().lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
 
 # Stream key patterns (lowercase, colon-separated)
 # - mail:dept:{dept}:{workflow_id} — messages to dept in this workflow
@@ -1133,24 +920,11 @@ class RedisDepartmentMailService:
         Check inbox for department using consumer group.
 
         Uses consumer groups for reliable delivery with acknowledgment.
-
-        When unread_only=True:
-          1. First reads NEW messages via xreadgroup with ">" (never-delivered)
-          2. Then retrieves PENDING messages (delivered but unacknowledged)
-          This ensures messages are always claimed by a consumer before being
-          returned, fixing the prior issue where xpending_range returned
-          messages that were never properly claimed.
-
-        When unread_only=False:
-          Reads all messages from the stream via xrange (bypasses consumer groups).
-
-        IMPORTANT: Callers MUST call mark_read(msg_id) after processing each
-        message. This calls xack() on the consumer group so the message is
-        not replayed on the next check_inbox() call.
+        Unacknowledged messages are replayed on consumer restart.
 
         Args:
             dept: Department to check
-            unread_only: Only return unread messages (uses consumer group)
+            unread_only: Only return unread messages (uses pending messages)
             limit: Maximum messages to return
             workflow_id: Optional workflow ID
 
@@ -1171,51 +945,39 @@ class RedisDepartmentMailService:
             messages = []
 
             if unread_only:
-                # Step 1: Claim NEW messages (never delivered to any consumer)
-                # ">" means: give me messages not yet delivered to this consumer group
-                new_results = client.xreadgroup(
+                # Get pending messages (unacknowledged)
+                pending = client.xpending_range(
+                    stream_key,
+                    group_name,
+                    min="-",
+                    max="+",
+                    count=limit,
+                )
+
+                for p in pending:
+                    # Get message details
+                    msg_data = client.xrange(stream_key, min=p.message_id, max=p.message_id)
+                    if msg_data:
+                        msg = self._parse_stream_message(msg_data[0])
+                        if msg:
+                            messages.append(msg)
+            else:
+                # Get all messages (read and unread)
+                # Using consumer group read
+                results = client.xreadgroup(
                     group_name,
                     consumer,
                     {stream_key: ">"},
                     count=limit,
                     block=self.STREAM_READ_TIMEOUT,
                 )
-                if new_results:
-                    for stream, stream_messages in new_results:
+
+                if results:
+                    for stream, stream_messages in results:
                         for msg_id, msg_data in stream_messages:
                             msg = self._parse_stream_message((msg_id, msg_data))
                             if msg:
-                                # Store stream msg_id for xack
-                                msg._stream_msg_id = msg_id
                                 messages.append(msg)
-
-                # Step 2: Also retrieve PENDING messages (delivered but not acked)
-                # "0" means: give me all pending messages for this consumer
-                remaining = max(0, limit - len(messages))
-                if remaining > 0:
-                    pending_results = client.xreadgroup(
-                        group_name,
-                        consumer,
-                        {stream_key: "0"},
-                        count=remaining,
-                    )
-                    seen_ids = {getattr(m, '_stream_msg_id', m.id) for m in messages}
-                    if pending_results:
-                        for stream, stream_messages in pending_results:
-                            for msg_id, msg_data in stream_messages:
-                                if msg_id not in seen_ids and msg_data:
-                                    msg = self._parse_stream_message((msg_id, msg_data))
-                                    if msg:
-                                        msg._stream_msg_id = msg_id
-                                        messages.append(msg)
-            else:
-                # Get ALL messages from stream (ignores consumer group state)
-                all_msgs = client.xrange(stream_key, count=limit)
-                for msg_id, msg_data in all_msgs:
-                    msg = self._parse_stream_message((msg_id, msg_data))
-                    if msg:
-                        msg._stream_msg_id = msg_id
-                        messages.append(msg)
 
             logger.debug(f"Checked inbox for {dept}: {len(messages)} messages")
             return messages
@@ -1278,85 +1040,27 @@ class RedisDepartmentMailService:
             logger.warning(f"Failed to parse stream message: {e}")
             return None
 
-    def mark_read(self, message_id: str, dept: Optional[str] = None) -> bool:
+    def mark_read(self, message_id: str) -> bool:
         """
-        Acknowledge a message via xack on the consumer group.
-
-        This removes the message from the consumer's pending entries list (PEL),
-        preventing it from being replayed on the next check_inbox() call.
-
-        Also stores the ack in a Redis set for O(1) lookup.
+        Acknowledge a message (mark as read).
 
         Args:
-            message_id: Stream message ID (e.g., "1234567890-0") or logical message ID
-            dept: Department name (needed to resolve stream key and group)
+            message_id: ID of message to acknowledge
 
         Returns:
             True if acknowledged successfully
         """
+        # In Redis Streams, we acknowledge via consumer group
+        # This is a simplified implementation - stores acknowledgment in a separate key
         try:
             client = self._get_client()
-
-            # Store acknowledgment in set (for backward compat and fast lookup)
             ack_key = f"mail:acks:{self.workflow_id}"
             client.sadd(ack_key, message_id)
-
-            # xack: remove from consumer group pending entries list
-            if dept:
-                stream_key = self._get_dept_stream_key(dept, self.workflow_id)
-                group_name = self._get_consumer_group(dept)
-                try:
-                    acked = client.xack(stream_key, group_name, message_id)
-                    if acked:
-                        logger.debug(f"xack'd message {message_id} from {group_name}")
-                except RedisError:
-                    # message_id might be a logical ID, not a stream ID — ack set is enough
-                    pass
-
             logger.debug(f"Acknowledged message {message_id}")
             return True
         except RedisError as e:
             logger.error(f"Failed to acknowledge message: {e}")
             return False
-
-    def acknowledge_messages(
-        self, dept: str, message_ids: List[str],
-        workflow_id: Optional[str] = None,
-    ) -> int:
-        """
-        Bulk-acknowledge messages via xack.
-
-        Efficiently removes multiple messages from the pending entries list.
-
-        Args:
-            dept: Department name
-            message_ids: List of stream message IDs to acknowledge
-            workflow_id: Optional workflow ID
-
-        Returns:
-            Number of messages successfully acknowledged
-        """
-        if not message_ids:
-            return 0
-
-        wf = workflow_id or self.workflow_id
-        stream_key = self._get_dept_stream_key(dept, wf)
-        group_name = self._get_consumer_group(dept)
-
-        try:
-            client = self._get_client()
-            acked = client.xack(stream_key, group_name, *message_ids)
-
-            # Also add to ack set
-            ack_key = f"mail:acks:{wf}"
-            if message_ids:
-                client.sadd(ack_key, *message_ids)
-
-            logger.debug(f"Bulk ack'd {acked} messages for {dept}")
-            return acked
-        except RedisError as e:
-            logger.error(f"Bulk acknowledge failed: {e}")
-            return 0
 
     def get_message(self, message_id: str) -> Optional[DepartmentMessage]:
         """
@@ -1605,64 +1309,6 @@ class RedisDepartmentMailService:
 _redis_mail_service: Optional[RedisDepartmentMailService] = None
 
 
-def _normalize_mail_backend(use_redis: Optional[bool]) -> str:
-    """Resolve the configured department mail backend."""
-    if use_redis is True:
-        return "redis"
-    if use_redis is False:
-        return "sqlite"
-    if DEFAULT_MAIL_BACKEND in {"redis", "sqlite", "auto"}:
-        return DEFAULT_MAIL_BACKEND
-    logger.warning(
-        "Invalid DEPARTMENT_MAIL_BACKEND=%s, defaulting to auto",
-        DEFAULT_MAIL_BACKEND,
-    )
-    return "auto"
-
-
-def create_mail_service(
-    db_path: str = DEFAULT_MAIL_DB_PATH,
-    use_redis: Optional[bool] = None,
-    require_redis: bool = False,
-    **redis_kwargs,
-) -> Any:
-    """
-    Create a department mail service with Redis preferred and SQLite fallback.
-    """
-    resolved_db_path = os.environ.get("DEPARTMENT_MAIL_DB", db_path)
-    backend = _normalize_mail_backend(use_redis)
-    prefer_redis = backend in {"redis", "auto"}
-    final_require_redis = require_redis or FORCE_REDIS_MAIL
-
-    if prefer_redis:
-        redis_service = RedisDepartmentMailService(**redis_kwargs)
-        if redis_service.health_check():
-            logger.info(
-                "Department mail backend: redis (%s:%s)",
-                redis_service.host,
-                redis_service.port,
-            )
-            return redis_service
-
-        redis_service.close()
-        if backend == "redis" and final_require_redis:
-            raise RedisConnectionFailedError(
-                f"Redis department mail is required but unavailable at "
-                f"{redis_kwargs.get('host', DEFAULT_REDIS_HOST)}:"
-                f"{redis_kwargs.get('port', DEFAULT_REDIS_PORT)}"
-            )
-
-        logger.warning(
-            "Redis department mail unavailable at %s:%s; falling back to SQLite mail at %s",
-            redis_kwargs.get("host", DEFAULT_REDIS_HOST),
-            redis_kwargs.get("port", DEFAULT_REDIS_PORT),
-            resolved_db_path,
-        )
-
-    logger.info("Department mail backend: sqlite (%s)", resolved_db_path)
-    return DepartmentMailService(db_path=resolved_db_path)
-
-
 def get_redis_mail_service(
     host: str = DEFAULT_REDIS_HOST,
     port: int = DEFAULT_REDIS_PORT,
@@ -1707,9 +1353,8 @@ def reset_redis_mail_service() -> None:
 
 
 def get_mail_service(
-    db_path: str = DEFAULT_MAIL_DB_PATH,
-    use_redis: Optional[bool] = None,
-    force_redis: Optional[bool] = None,
+    db_path: str = ".quantmind/department_mail.db",
+    use_redis: bool = True,
     **redis_kwargs,
 ) -> Any:
     """
@@ -1718,42 +1363,42 @@ def get_mail_service(
     Args:
         db_path: Path to SQLite database (ignored if use_redis=True)
         use_redis: If True, returns Redis Streams implementation
-        force_redis: If True (or DEPARTMENT_MAIL_FORCE_REDIS is set), Redis is required and fallback raises
         **redis_kwargs: Additional arguments for Redis connection
 
     Returns:
         DepartmentMailService (SQLite) or RedisDepartmentMailService (Redis Streams)
     """
-    global _mail_service
-
-    effective_force_redis = FORCE_REDIS_MAIL if force_redis is None else force_redis
-    config_key = (
-        os.environ.get("DEPARTMENT_MAIL_DB", db_path),
-        _normalize_mail_backend(use_redis),
-        effective_force_redis,
-        redis_kwargs.get("host", DEFAULT_REDIS_HOST),
-        redis_kwargs.get("port", DEFAULT_REDIS_PORT),
-        redis_kwargs.get("db", DEFAULT_REDIS_DB),
-        redis_kwargs.get("password", DEFAULT_REDIS_PASSWORD),
-        redis_kwargs.get("workflow_id"),
-    )
-
-    if (
-        _mail_service is None
-        or getattr(_mail_service, "_quantmind_mail_config", None) != config_key
-    ):
-        if _mail_service is not None:
-            try:
-                _mail_service.close()
-            except Exception:
-                pass
-
-        _mail_service = create_mail_service(
-            db_path=db_path,
-            use_redis=use_redis,
-            require_redis=effective_force_redis,
-            **redis_kwargs,
+    if use_redis:
+        warnings.warn(
+            "SQLite-based DepartmentMailService is deprecated. "
+            "Use RedisDepartmentMailService for reliable message delivery.",
+            DeprecationWarning,
+            stacklevel=2
         )
-        setattr(_mail_service, "_quantmind_mail_config", config_key)
+        return get_redis_mail_service(**redis_kwargs)
+    else:
+        warnings.warn(
+            "SQLite-based DepartmentMailService is deprecated. "
+            "Please migrate to Redis Streams-based implementation.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return DepartmentMailService(db_path=db_path)
 
-    return _mail_service
+
+def create_mail_service(
+    db_path: str = ".quantmind/department_mail.db",
+    use_redis: bool = True,
+    **redis_kwargs,
+) -> Any:
+    """
+    Backward-compatible factory retained for existing department-head imports.
+
+    The Redis/SQLite selection logic is owned by `get_mail_service`; this name
+    remains as a stable import surface for older callers.
+    """
+    return get_mail_service(
+        db_path=db_path,
+        use_redis=use_redis,
+        **redis_kwargs,
+    )

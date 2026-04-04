@@ -13,7 +13,7 @@ Also includes endpoints for:
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.api.pagination import PaginatedResponse, DEFAULT_LIMIT, DEFAULT_OFFSET, MAX_LIMIT
 
@@ -600,6 +600,90 @@ async def manually_quarantine_bot(bot_id: str, reason: str = Query("", descripti
 
 # ========== Bot Limits Endpoints ==========
 
+def _build_bot_limit_status_payload(
+    account_balance: Optional[float] = None,
+    strategy_router: Optional[Any] = None,
+    limiter: Optional[Any] = None,
+    bot_registry_factory: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """
+    Build the legacy bot-limit payload from the current compatibility authority.
+
+    Batch 2 keeps `DynamicBotLimiter` as a compatibility policy surface, but when
+    a live `StrategyRouter` is present, Commander remains the explicit owner of
+    the temporary funded-breadth selection state.
+    """
+    strategy_router = strategy_router if strategy_router is not None else _strategy_router
+
+    from src.router.dynamic_bot_limits import DynamicBotLimiter
+    from src.router.bot_manifest import BotRegistry
+
+    limiter = limiter or DynamicBotLimiter()
+    bot_registry_factory = bot_registry_factory or BotRegistry
+
+    resolved_balance = account_balance
+    if resolved_balance is None and strategy_router is not None:
+        pks = getattr(strategy_router, "progressive_kill_switch", None)
+        if pks and hasattr(pks, "account_monitor") and pks.account_monitor:
+            account_states = pks.account_monitor.get_all_states()
+            if account_states:
+                first_state = list(account_states.values())[0]
+                resolved_balance = first_state.get("balance", 10000.0)
+
+    if resolved_balance is None:
+        resolved_balance = 10000.0
+
+    limit_status = None
+    commander = getattr(strategy_router, "commander", None) if strategy_router is not None else None
+    if commander and hasattr(commander, "_get_legacy_dynamic_limit_status"):
+        limit_status = commander._get_legacy_dynamic_limit_status(account_balance=resolved_balance)
+        resolved_balance = limit_status.get("account_balance", resolved_balance)
+
+    max_bots = limit_status["max_bots"] if limit_status else limiter.get_max_bots(resolved_balance)
+    available_slots = (
+        limit_status["available_slots"]
+        if limit_status is not None
+        else max(0, max_bots)
+    )
+    limit_source = (
+        limit_status["limit_source"]
+        if limit_status is not None
+        else "dynamic_bot_limits_legacy"
+    )
+    tier_info = limiter.get_tier_info(resolved_balance)
+
+    active_bots = 0
+    try:
+        registry = bot_registry_factory()
+        for bot in registry.list_all():
+            if "@dead" not in bot.tags:
+                active_bots += 1
+    except Exception:
+        if commander is not None and hasattr(commander, "active_bots"):
+            active_bots = len(commander.active_bots)
+
+    warnings = []
+    if active_bots >= max_bots:
+        warnings.append(f"Bot limit reached ({active_bots}/{max_bots})")
+    elif active_bots >= max_bots * 0.8:
+        warnings.append(f"Approaching bot limit ({active_bots}/{max_bots})")
+
+    safety_buffer = limiter.calculate_safety_buffer(resolved_balance, active_bots)
+
+    return {
+        "account_balance": resolved_balance,
+        "tier": tier_info.get("tier_label", tier_info.get("tier", "unknown")),
+        "tier_number": tier_info.get("tier"),
+        "tier_range": tier_info.get("range_label", tier_info.get("range", "unknown")),
+        "max_bots": max_bots,
+        "active_bots": active_bots,
+        "available_slots": max(0, min(available_slots, max_bots - active_bots)),
+        "limit_source": limit_source,
+        "safety_buffer_required": safety_buffer,
+        "can_add_bot": active_bots < max_bots,
+        "warnings": warnings,
+    }
+
 @router.get("/bot-limits/status")
 async def get_bot_limits_status(account_balance: Optional[float] = Query(None, description="Account balance")) -> Dict[str, Any]:
     """
@@ -612,59 +696,7 @@ async def get_bot_limits_status(account_balance: Optional[float] = Query(None, d
         Current tier, max bots, active bots, and warnings
     """
     try:
-        from src.router.dynamic_bot_limits import DynamicBotLimiter
-        from src.router.bot_manifest import BotRegistry
-        
-        # Get account balance from router if not provided
-        if account_balance is None and _strategy_router is not None:
-            pks = _strategy_router.progressive_kill_switch
-            if pks and hasattr(pks, 'account_monitor') and pks.account_monitor:
-                account_states = pks.account_monitor.get_all_states()
-                if account_states:
-                    first_state = list(account_states.values())[0]
-                    account_balance = first_state.get('balance', 10000.0)
-        
-        if account_balance is None:
-            account_balance = 10000.0  # Default
-        
-        limiter = DynamicBotLimiter()
-        max_bots = limiter.get_max_bots(account_balance)
-        tier_info = limiter.get_tier_info(account_balance)
-        
-        # Get active bot count
-        active_bots = 0
-        try:
-            registry = BotRegistry()
-            # Count all non-dead bots
-            for bot in registry.list_all():
-                if "@dead" not in bot.tags:
-                    active_bots += 1
-        except Exception:
-            # Fallback
-            if _strategy_router and hasattr(_strategy_router, 'commander'):
-                active_bots = len(_strategy_router.commander.active_bots)
-        
-        # Calculate warnings
-        warnings = []
-        if active_bots >= max_bots:
-            warnings.append(f"Bot limit reached ({active_bots}/{max_bots})")
-        elif active_bots >= max_bots * 0.8:
-            warnings.append(f"Approaching bot limit ({active_bots}/{max_bots})")
-        
-        # Check safety buffer
-        safety_buffer = limiter.calculate_safety_buffer(account_balance, active_bots)
-        
-        return {
-            "account_balance": account_balance,
-            "tier": tier_info.get("tier", "unknown"),
-            "tier_range": tier_info.get("range", "unknown"),
-            "max_bots": max_bots,
-            "active_bots": active_bots,
-            "available_slots": max(0, max_bots - active_bots),
-            "safety_buffer_required": safety_buffer,
-            "can_add_bot": active_bots < max_bots,
-            "warnings": warnings,
-        }
+        return _build_bot_limit_status_payload(account_balance=account_balance)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get bot limits: {e}")
 
@@ -697,10 +729,11 @@ async def get_scanner_status() -> Dict[str, Any]:
     Returns current session, active scanners, and statistics.
     """
     try:
-        from src.router.sessions import SessionDetector, get_current_session
-        
-        current_session = get_current_session()
-        session_info = SessionDetector.get_session_info(datetime.utcnow())
+        from src.router.session_detector import get_current_session_snapshot
+
+        snapshot = get_current_session_snapshot(datetime.now(timezone.utc))
+        current_session = snapshot["current_session"]
+        session_info = snapshot["session_info"]
         
         return {
             "active": True,
@@ -717,7 +750,7 @@ async def get_scanner_status() -> Dict[str, Any]:
                 "ict_setups": True,
             },
             "alerts_count": len(_recent_scanner_alerts),
-            "last_scan": datetime.utcnow().isoformat(),
+            "last_scan": datetime.now(timezone.utc).isoformat(),
         }
     except Exception as e:
         return {

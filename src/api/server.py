@@ -529,7 +529,10 @@ app.include_router(pipeline_status_router)  # Pipeline Status Board (Story 8-7)
 app.include_router(strategy_versions_router)  # Version Control (Story 8-4)
 app.include_router(variant_browser_router)  # Variant Browser (Story 8-8)
 app.include_router(ab_race_router)  # A/B Race Board (Story 8-9)
-app.include_router(race_router)  # Strategy Race Board (Story C3)
+if race_router is not ab_race_router:
+    app.include_router(race_router)  # Strategy Race Board (Story C3)
+else:
+    logger.info("Skipped duplicate race_router include; alias points to ab_race_router")
 app.include_router(provenance_router)  # Provenance Chain (Story 8-9)
 app.include_router(workflow_templates_router)  # Workflow Templates (Story C1)
 app.include_router(loss_propagation_router)  # Loss Propagation (Story 8-9)
@@ -708,7 +711,7 @@ async def startup_event():
         # Wire NewsBlackoutService into ProgressiveKillSwitch (after router is ready)
         try:
             from src.market.news_blackout import NewsBlackoutService
-            from src.api.websocket_endpoints import ws_manager
+            from src.api.websocket_endpoints import manager as ws_manager
 
             news_blackout = NewsBlackoutService()
             news_blackout.set_ws_manager(ws_manager)

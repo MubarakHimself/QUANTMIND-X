@@ -19,9 +19,9 @@ class BrokerAccountsAPIHandler:
     def list_broker_accounts(self) -> List[Dict[str, Any]]:
         """List available broker accounts from the broker registry."""
         # Import here to avoid circular imports
-        from src.api.broker_endpoints import broker_registry, account_switcher
+        from src.api.broker_endpoints import broker_connections, account_switcher
 
-        all_accounts = list(broker_registry.brokers.values()) + list(broker_registry.pending.values())
+        all_accounts = list(broker_connections.brokers.values()) + list(broker_connections.pending.values())
 
         # No mock rows in production paths. Surface an honest empty state instead.
         if not all_accounts:

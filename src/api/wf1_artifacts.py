@@ -209,3 +209,20 @@ def find_strategy_root(strategy_id: str) -> Optional[Path]:
             return root
     return None
 
+
+def find_strategy_root_by_workflow_id(workflow_id: str) -> Optional[Path]:
+    """Locate a WF1 strategy root by workflow id via workflow manifest."""
+    if not workflow_id:
+        return None
+
+    for root in iter_strategy_roots() or []:
+        manifest_path = root / "workflow" / "manifest.json"
+        if not manifest_path.exists():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if manifest.get("workflow_id") == workflow_id:
+            return root
+    return None
