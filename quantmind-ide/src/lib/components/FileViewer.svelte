@@ -7,6 +7,7 @@
     ChevronRight, ChevronDown, X, Download, Copy,
     Maximize2, Minimize2, ZoomIn, ZoomOut, RotateCw
   } from 'lucide-svelte';
+  import { buildApiUrl } from '$lib/api';
 
 
   interface Props {
@@ -40,8 +41,6 @@
   let imageZoom = $state(1);
   let imageRotation = $state(0);
 
-  const API_BASE = 'http://localhost:8000/api';
-
   // File type detection
   const fileTypes = {
     image: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'],
@@ -67,7 +66,7 @@
     if (!file || isImage) return;
     
     try {
-      const endpoint = `${API_BASE}/files/${file.id}/content`;
+      const endpoint = buildApiUrl(`/api/files/${file.id}/content`);
       const response = await fetch(endpoint);
       if (response.ok) {
         const data = await response.json();

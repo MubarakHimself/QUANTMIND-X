@@ -345,7 +345,7 @@
                 {@const SvelteComponent = getStatusIcon(server.status)}
                 <SvelteComponent size={12} />
               {/if}
-              <span class="status-text">{server.status === 'connecting' ? 'Connecting...' : server.status}</span>
+              <span class="status-text">{isConnecting(server.id) ? 'Connecting...' : server.status}</span>
             </div>
           </div>
 

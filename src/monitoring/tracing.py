@@ -28,9 +28,13 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION, DEPLOYMENT_ENVIRONMENT
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.propagate import set_global_textmap
+
+try:
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+except ImportError:  # pragma: no cover - optional dependency
+    FastAPIInstrumentor = None
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +47,7 @@ def get_trace_exporter_endpoint() -> str:
     """Get OTLP exporter endpoint from environment."""
     return os.getenv(
         "OTEL_EXPORTER_OTLP_ENDPOINT",
-        os.getenv("GRAFANA_TEMPO_OTLP_ENDPOINT", "http://localhost:4317")
+        os.getenv("GRAFANA_TEMPO_OTLP_ENDPOINT", "http://otel-collector:4317")
     )
 
 
@@ -110,7 +114,7 @@ def init_tracing(app=None, service_name: Optional[str] = None) -> None:
     _tracer = trace.get_tracer(__name__)
 
     # Auto-instrument FastAPI if app provided
-    if app is not None:
+    if app is not None and FastAPIInstrumentor is not None:
         try:
             FastAPIInstrumentor.instrument_app(
                 app,
@@ -119,6 +123,8 @@ def init_tracing(app=None, service_name: Optional[str] = None) -> None:
             logger.info("FastAPI auto-instrumentation enabled")
         except Exception as e:
             logger.warning(f"Failed to instrument FastAPI: {e}")
+    elif app is not None:
+        logger.warning("FastAPI instrumentation package not installed; skipping auto-instrumentation")
 
     _initialized = True
     logger.info(f"Tracing initialized for service={service_name}, env={environment}")

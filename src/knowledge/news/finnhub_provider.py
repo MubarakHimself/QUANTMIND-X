@@ -53,7 +53,10 @@ class FinnhubProvider(NewsProvider):
     def _fetch_category_sync(self, category: str) -> list:
         """Synchronous Finnhub SDK call — must be wrapped in run_in_executor."""
         client = self._make_client()
-        return client.general_news(category=category, min_id=0) or []
+        # Use min_id=1000 as a lookback threshold — Finnhub keeps news IDs roughly
+        # monotonically increasing; 1000 gives ~24h of lookback which covers weekends
+        # and low-volume periods. Lower min_id = more historical items returned.
+        return client.general_news(category=category, min_id=1000) or []
 
     async def fetch_latest(self, since_utc: datetime) -> List[NewsItem]:
         """
@@ -82,8 +85,6 @@ class FinnhubProvider(NewsProvider):
                 logger.debug(
                     "Finnhub category=%s returned %d items", category, len(raw_items)
                 )
-            except HTTPException:
-                raise
             except Exception as exc:
                 logger.error("FinnhubProvider fetch error (category=%s): %s", category, exc)
                 raise

@@ -64,7 +64,7 @@ class MemoryTierManager:
         # Also include nodes that were recently accessed
         if len(hot_nodes) < limit:
             for node in nodes:
-                last_accessed = self._make_aware(node.last_accessed)
+                last_accessed = self._make_aware(node.last_accessed_utc)
                 if last_accessed and last_accessed >= threshold:
                     if node not in hot_nodes:
                         hot_nodes.append(node)
@@ -155,7 +155,7 @@ class MemoryTierManager:
             return None
 
         node.tier = MemoryTier.HOT
-        node.last_accessed = datetime.now(timezone.utc)
+        node.last_accessed_utc = datetime.now(timezone.utc)
         node.access_count += 1
 
         updated = self.store.update_node(node)
@@ -219,7 +219,7 @@ class MemoryTierManager:
             return None
 
         node.tier = MemoryTier.HOT
-        node.last_accessed = datetime.now(timezone.utc)
+        node.last_accessed_utc = datetime.now(timezone.utc)
         node.access_count += 1
 
         updated = self.store.update_node(node)
@@ -254,7 +254,7 @@ class MemoryTierManager:
         nodes_to_compact = []
         for node in all_nodes:
             # Check if node is old enough (make datetime aware for comparison)
-            created_at = self._make_aware(node.created_at)
+            created_at = self._make_aware(node.created_at_utc)
             is_old = (
                 created_at < threshold_date
                 if created_at

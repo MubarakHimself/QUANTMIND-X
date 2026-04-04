@@ -14,14 +14,70 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from mcp_mt5.paper_trading.deployer import (
-    PaperTradingDeployer,
-    AgentDeploymentRequest,
-    AgentDeploymentResult,
-    PaperAgentStatus,
-    AgentLogsResult,
-)
-from mcp_mt5.paper_trading.models import AgentPerformance
+try:
+    from mcp_mt5.paper_trading.deployer import (
+        PaperTradingDeployer,
+        AgentDeploymentRequest,
+        AgentDeploymentResult,
+        PaperAgentStatus,
+        AgentLogsResult,
+    )
+    from mcp_mt5.paper_trading.models import AgentPerformance
+except ImportError:
+    class AgentDeploymentRequest(BaseModel):
+        strategy_name: str
+        strategy_code: str
+        config: dict = Field(default_factory=dict)
+        mt5_credentials: dict = Field(default_factory=dict)
+        magic_number: int = 0
+        symbol: Optional[str] = None
+        timeframe: Optional[str] = None
+
+    class AgentDeploymentResult(BaseModel):
+        agent_id: str = ""
+        status: str = "unavailable"
+        error: Optional[str] = None
+
+    class PaperAgentStatus(BaseModel):
+        agent_id: str = ""
+        strategy_name: Optional[str] = None
+        symbol: Optional[str] = None
+        timeframe: Optional[str] = None
+        status: str = "unavailable"
+        uptime_seconds: int = 0
+
+    class AgentLogsResult(BaseModel):
+        agent_id: str = ""
+        logs: list[str] = Field(default_factory=list)
+
+    class AgentPerformance(BaseModel):
+        total_trades: int = 0
+        win_rate: float = 0.0
+        total_pnl: float = 0.0
+
+    class PaperTradingDeployer:
+        available = False
+
+        def __init__(self):
+            self.unavailable_reason = (
+                "Paper trading runtime unavailable on this host. "
+                "Install and configure the MT5 paper trading runtime on the target VPS."
+            )
+
+        def list_agents(self):
+            return []
+
+        def get_agent(self, agent_id: str):
+            return None
+
+        def stop_agent(self, agent_id: str) -> bool:
+            return False
+
+        def get_agent_logs(self, agent_id: str, tail_lines: int = 100):
+            return AgentLogsResult(agent_id=agent_id, logs=[])
+
+        def deploy_agent(self, *args, **kwargs):
+            raise RuntimeError(self.unavailable_reason)
 from src.data.brokers.mt5_socket_adapter import MT5SocketAdapter
 from src.api.tick_stream_handler import get_tick_handler
 from src.api.websocket_endpoints import (
@@ -911,14 +967,61 @@ async def get_bot_promotion_status(
 # ============================================================================
 
 # Import enhanced deployer components
-from src.agents.enhanced_paper_trading_deployer import (
-    EnhancedPaperTradingDeployer,
-    EnhancedDeploymentRequest,
-    DeploymentResult,
-    BotFormat,
-    BotSource,
-)
-from src.agents.demo_account_manager import DemoAccountManager
+try:
+    from src.agents.enhanced_paper_trading_deployer import (
+        EnhancedPaperTradingDeployer,
+        EnhancedDeploymentRequest,
+        DeploymentResult,
+        BotFormat,
+        BotSource,
+    )
+    from src.agents.demo_account_manager import DemoAccountManager
+except ImportError:
+    class EnhancedDeploymentRequest(BaseModel):
+        symbol: Optional[str] = None
+
+    class DeploymentResult(BaseModel):
+        bot_id: str = ""
+        status: str = "unavailable"
+        error: Optional[str] = None
+
+    class BotFormat(str):
+        pass
+
+    class BotSource(str):
+        pass
+
+    class EnhancedPaperTradingDeployer:
+        def __init__(self):
+            self.unavailable_reason = (
+                "Enhanced paper trading runtime unavailable on this host. "
+                "Install the MT5 paper trading runtime on the target VPS."
+            )
+
+        def deploy_bot(self, request):
+            raise RuntimeError(self.unavailable_reason)
+
+        def list_bots_by_tag(self):
+            return {}
+
+        def promote_bot(self, bot_id: str):
+            raise RuntimeError(self.unavailable_reason)
+
+    class DemoAccountManager:
+        def list_demo_accounts(self):
+            return []
+
+        def add_demo_account(self, **kwargs):
+            raise RuntimeError(
+                "Demo account manager unavailable on this host. "
+                "Configure MT5 services on the target VPS."
+            )
+
+        def verify_demo_account(self, login: int):
+            raise RuntimeError(
+                "Demo account manager unavailable on this host. "
+                "Configure MT5 services on the target VPS."
+            )
 
 
 def get_enhanced_deployer() -> EnhancedPaperTradingDeployer:

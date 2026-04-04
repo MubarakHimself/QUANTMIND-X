@@ -13,6 +13,7 @@
   import DeptKanbanTile from '$lib/components/shared/DeptKanbanTile.svelte';
   import { canvasContextService } from '$lib/services/canvasContextService';
   import { sharedAssetsStore, selectedAsset, assetCounts } from '$lib/stores/sharedAssets';
+  import type { SharedAsset } from '$lib/api/sharedAssetsApi';
   import type { AssetType } from '$lib/api/sharedAssetsApi';
   import { ArrowLeft } from 'lucide-svelte';
 
@@ -27,8 +28,12 @@
   let selectedType: AssetType | null = $state(null);
 
   // Get store values
+  let sharedAssetsState = $derived($sharedAssetsStore);
   let asset = $derived($selectedAsset);
   let counts = $derived($assetCounts);
+  let flattenedAssets = $derived(
+    Object.values(sharedAssetsState.assets).flat() as SharedAsset[]
+  );
 
   onMount(async () => {
     // Load canvas context
@@ -40,6 +45,32 @@
 
     // Fetch initial asset counts
     await sharedAssetsStore.fetchAssets();
+  });
+
+  $effect(() => {
+    canvasContextService.setRuntimeState('shared-assets', {
+      active_view: currentView,
+      selected_type: selectedType,
+      selected_asset: asset?.id ?? null,
+      counts: {
+        ...counts,
+        total_assets: flattenedAssets.length,
+      },
+      attachable_resources: flattenedAssets.slice(0, 250).map((assetItem) => ({
+        id: assetItem.id,
+        label: assetItem.name,
+        canvas: 'shared-assets',
+        resource_type: assetItem.type,
+        path: assetItem.source_path,
+        description: assetItem.metadata?.description,
+        metadata: {
+          type: assetItem.type,
+          version: assetItem.metadata?.version,
+          usage_count: assetItem.metadata?.usage_count ?? 0,
+          last_updated: assetItem.metadata?.last_updated,
+        },
+      })),
+    });
   });
 
   // Handle type selection from grid

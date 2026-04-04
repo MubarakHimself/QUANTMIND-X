@@ -214,3 +214,6 @@ function createNavigationStore() {
 }
 
 export const navigationStore = createNavigationStore();
+
+// Simple trigger store for settings overlay from nested canvases
+export const settingsTrigger = writable(0);

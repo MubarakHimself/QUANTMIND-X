@@ -102,6 +102,75 @@ class IsingSystem:
         return magnetization, float(energy)
 
 
+@dataclass
+class RegimePersistenceTimer:
+    """Tracks regime persistence before confirmation to prevent whipsaw false flips.
+
+    Before any Layer 2 action is triggered by a regime shift, the new regime
+    must persist for N consecutive bars. Default: 3 M5 bars (15 min) for scalping,
+    2 H1 bars (2 hours) for ORB.
+    """
+    current_regime: str = "ORDERED"
+    persistence_counter: int = 0
+    persistence_target: int = 3
+    last_regime: str = "ORDERED"
+    is_confirmed: bool = True
+
+    # Timeframe-specific persistence targets
+    TARGETS: Dict[str, int] = None
+
+    def __post_init__(self):
+        if RegimePersistenceTimer.TARGETS is None:
+            RegimePersistenceTimer.TARGETS = {"M5": 3, "H1": 2}
+
+    def check_regime_change(self, new_regime: str, timeframe: str = "M5") -> Tuple[bool, str]:
+        """
+        Check if regime has changed and update persistence tracking.
+
+        Args:
+            new_regime: The newly observed regime from detect_regime()
+            timeframe: "M5" (default, target 3 bars) or "H1" (target 2 bars)
+
+        Returns:
+            Tuple of (is_confirmed, current_regime):
+            - is_confirmed: True only if regime has persisted for N bars
+            - current_regime: The confirmed regime (same as new_regime if confirmed, else last confirmed regime)
+        """
+        self.persistence_target = self.TARGETS.get(timeframe, 3)
+
+        if new_regime == self.last_regime:
+            # Same regime observed — increment counter
+            self.persistence_counter += 1
+            if self.persistence_counter >= self.persistence_target:
+                self.is_confirmed = True
+                self.current_regime = new_regime
+        else:
+            # Regime changed — reset and start fresh
+            self.persistence_counter = 1
+            self.last_regime = new_regime
+            self.is_confirmed = False
+            # current_regime stays as the last confirmed regime
+
+        return self.is_confirmed, self.current_regime
+
+    def get_confirmed_regime(self, raw_regime: str, timeframe: str = "M5") -> str:
+        """
+        Convenience method to get the confirmed regime given a raw detection.
+
+        Wraps check_regime_change. Returns the confirmed regime after persistence
+        check, or the last confirmed regime if persistence not yet met.
+
+        Args:
+            raw_regime: Regime from detect_regime()
+            timeframe: "M5" or "H1"
+
+        Returns:
+            The confirmed regime string
+        """
+        _, confirmed = self.check_regime_change(raw_regime, timeframe)
+        return confirmed
+
+
 class IsingRegimeSensor:
     """Ising Model-based regime detector for market phase transitions."""
 
@@ -109,6 +178,7 @@ class IsingRegimeSensor:
         self.config = config or IsingSensorConfig()
         self._cache: Dict[float, Dict] = {}
         self._last_cache_time: float = 0.0
+        self._persistence_timer: RegimePersistenceTimer = RegimePersistenceTimer()
 
     @lru_cache(maxsize=100)
     def _simulate_temperature(self, temp: float) -> Dict:
@@ -211,11 +281,47 @@ class IsingRegimeSensor:
         """Calculate confidence score for regime classification."""
         return abs(magnetization)  # Higher absolute magnetization = higher confidence
 
+    def get_confirmed_regime(
+        self,
+        market_volatility: Optional[float] = None,
+        timeframe: str = "M5"
+    ) -> Dict:
+        """
+        Detect regime and apply persistence filtering to prevent whipsaw false flips.
+
+        This wraps detect_regime() with the RegimePersistenceTimer. A newly detected
+        regime is only confirmed after N consecutive bars (3 for M5, 2 for H1).
+        Until confirmed, the last confirmed regime is returned.
+
+        Args:
+            market_volatility: Optional market volatility context (maps to temperature)
+            timeframe: "M5" (default) or "H1" — controls persistence target
+
+        Returns:
+            Dictionary with regime detection results plus confirmed regime info
+        """
+        raw_result = self.detect_regime(market_volatility)
+        raw_regime = raw_result.get('current_regime', 'ORDERED')
+
+        is_confirmed, confirmed_regime = self._persistence_timer.check_regime_change(
+            raw_regime, timeframe
+        )
+
+        raw_result['is_regime_confirmed'] = is_confirmed
+        raw_result['confirmed_regime'] = confirmed_regime
+        raw_result['persistence_counter'] = self._persistence_timer.persistence_counter
+        raw_result['persistence_target'] = self._persistence_timer.persistence_target
+        raw_result['persistence_timeframe'] = timeframe
+
+        return raw_result
+
     def clear_cache(self) -> None:
         """Clear the simulation cache."""
         self._cache.clear()
         self._simulate_temperature.cache_clear()  # Clear lru_cache
         self._last_cache_time = 0.0
+        # Reset persistence timer on cache clear — new context may have new regime
+        self._persistence_timer = RegimePersistenceTimer()
 
     def is_cache_valid(self, max_age_seconds: float = 300.0) -> bool:
         """Check if cache is still valid based on age."""

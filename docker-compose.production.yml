@@ -5,6 +5,31 @@ version: "3.8"
 # Usage: docker-compose -f docker-compose.production.yml up -d
 
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: quantmind-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - quantmind-network
+    labels:
+      - "com.docker.compose.project=quantmindx"
+      - "service=redis"
+
   # ========== PageIndex Services for Knowledge Base ==========
   pageindex-articles:
     build:
@@ -86,6 +111,8 @@ services:
       - ./logs:/app/logs
       - ./config:/app/config:ro
       - ./workspaces:/app/workspaces
+      - ./data:/app/data           # persistent DB files (graph_memory.db, provider configs)
+      - quantmind-state-data:/app/state
       - claude-mem-data:/home/trader/.claude-mem
       # Mount CLI auth tokens for Gemini and Qwen
       - ~/.gemini:/home/trader/.gemini:ro
@@ -109,6 +136,11 @@ services:
       - PAGEINDEX_ARTICLES_URL=http://pageindex-articles:3000
       - PAGEINDEX_BOOKS_URL=http://pageindex-books:3001
       - PAGEINDEX_LOGS_URL=http://pageindex-logs:3002
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - INTERNAL_API_BASE_URL=${INTERNAL_API_BASE_URL:-http://quantmind-api:8000}
+      - QUANTMIND_MACHINE_KEY_FILE=${QUANTMIND_MACHINE_KEY_FILE:-/app/state/machine.key}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       # Zero-Auth: Claude OAuth (Claude Max subscription — no API key required)
       - CLAUDE_SESSION_TOKEN=${CLAUDE_SESSION_TOKEN:-}
@@ -117,6 +149,18 @@ services:
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-}
       - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
       - CLAUDE_MEM_PORT=37777
+      # Node role — controls which router groups are registered at startup
+      # contabo = agent/compute/memory/settings routers (backend node)
+      # cloudzy = trading/risk routers (trading node)
+      # local = all routers (development)
+      - NODE_ROLE=${NODE_ROLE:-contabo}
+      # Graph memory database path (persistent volume mount)
+      - GRAPH_MEMORY_DB=/app/data/graph_memory.db
+      # LLM Provider API keys (configure via Settings → Providers in the UI)
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY:-}
+      - GLM_API_KEY=${GLM_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
     deploy:
       resources:
         limits:
@@ -131,6 +175,7 @@ services:
     networks:
       - quantmind-network
     depends_on:
+      - redis
       - pageindex-articles
       - pageindex-books
       - pageindex-logs
@@ -299,4 +344,8 @@ volumes:
   prometheus-wal:
     driver: local
   claude-mem-data:
+    driver: local
+  redis-data:
+    driver: local
+  quantmind-state-data:
     driver: local

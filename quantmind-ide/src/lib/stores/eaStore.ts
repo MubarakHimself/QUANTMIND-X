@@ -1,6 +1,7 @@
 // EA Store - Manages Expert Advisor lifecycle state
 import { writable, derived, get } from 'svelte/store';
-import type { Writable } from 'svelte/store';
+import type { Readable, Writable } from 'svelte/store';
+import { apiFetch } from '$lib/api';
 
 // Types
 export interface ExpertAdvisor {
@@ -40,9 +41,6 @@ export interface EAStoreState {
   selectedEA: string | null;
 }
 
-// API base URL
-const API_BASE = 'http://localhost:8000';
-
 // Initial state
 const initialState: EAStoreState = {
   eas: [],
@@ -72,12 +70,10 @@ function createEAStore(): Writable<EAStoreState> & {
     listEAs: async () => {
       update(state => ({ ...state, loading: true, error: null }));
       try {
-        const response = await fetch(`${API_BASE}/api/ea/list`);
-        if (!response.ok) throw new Error('Failed to list EAs');
-        const data = await response.json();
+        const data = await apiFetch<{ items?: ExpertAdvisor[]; eas?: ExpertAdvisor[] }>('/ea/list');
         update(state => ({
           ...state,
-          eas: data.eas || [],
+          eas: data.items || data.eas || [],
           loading: false
         }));
       } catch (error) {
@@ -93,16 +89,10 @@ function createEAStore(): Writable<EAStoreState> & {
     createEA: async (params: EACreateParams) => {
       update(state => ({ ...state, loading: true, error: null }));
       try {
-        const response = await fetch(`${API_BASE}/api/ea/create`, {
+        const data = await apiFetch<any>('/ea/create', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(params)
         });
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.detail || 'Failed to create EA');
-        }
-        const data = await response.json();
         update(state => ({
           ...state,
           eas: [...state.eas, {
@@ -134,16 +124,10 @@ function createEAStore(): Writable<EAStoreState> & {
         error: null
       }));
       try {
-        const response = await fetch(`${API_BASE}/api/ea/validate`, {
+        const data = await apiFetch<any>('/ea/validate', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ea_name: eaName })
         });
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.detail || 'Validation failed');
-        }
-        const data = await response.json();
         update(state => ({
           ...state,
           eas: state.eas.map(ea =>
@@ -177,15 +161,10 @@ function createEAStore(): Writable<EAStoreState> & {
         error: null
       }));
       try {
-        const response = await fetch(`${API_BASE}/api/ea/backtest`, {
+        await apiFetch<any>('/ea/backtest', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(params)
         });
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.detail || 'Backtest failed');
-        }
         update(state => ({
           ...state,
           eas: state.eas.map(ea =>
@@ -211,15 +190,10 @@ function createEAStore(): Writable<EAStoreState> & {
         error: null
       }));
       try {
-        const response = await fetch(`${API_BASE}/api/ea/deploy-paper`, {
+        await apiFetch<any>('/ea/deploy-paper', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(params)
         });
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.detail || 'Deployment failed');
-        }
         update(state => ({
           ...state,
           eas: state.eas.map(ea =>
@@ -242,15 +216,10 @@ function createEAStore(): Writable<EAStoreState> & {
         error: null
       }));
       try {
-        const response = await fetch(`${API_BASE}/api/ea/stop`, {
+        await apiFetch<any>('/ea/stop', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ea_name: eaName, environment })
         });
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.detail || 'Failed to stop EA');
-        }
         update(state => ({
           ...state,
           eas: state.eas.map(ea =>

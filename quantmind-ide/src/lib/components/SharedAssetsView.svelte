@@ -9,6 +9,8 @@
     RefreshCw, Settings as SettingsIcon, FolderOpen, Tag, Clock, Zap, Database
   } from 'lucide-svelte';
   import DatabaseView from './DatabaseView.svelte';
+  import { apiFetch, buildApiUrl } from '$lib/api';
+  import { canvasContextService } from '$lib/services/canvasContextService';
 
   const dispatch = createEventDispatcher();
 
@@ -16,7 +18,7 @@
   interface SharedAsset {
     id: string;
     name: string;
-    category: 'Indicator' | 'Risk' | 'Utils';
+    category: 'Indicator' | 'Risk' | 'Utils' | 'Docs' | 'Books' | 'Articles';
     version: string;
     filesystem_path: string;
     dependencies: string[];
@@ -57,11 +59,14 @@
   // New asset form
   let newAsset = $state({
     name: '',
-    category: 'Indicator' as 'Indicator' | 'Risk' | 'Utils',
+    category: 'Indicator' as 'Indicator' | 'Risk' | 'Utils' | 'Docs' | 'Books' | 'Articles',
     code: '',
     description: '',
-    dependencies: [] as string[]
+    dependencies: [] as string[],
+    author: '',
+    url: ''
   });
+  let selectedUploadFile = $state<File | null>(null);
 
   // Asset history
   let assetHistory: AssetHistory[] = $state([]);
@@ -79,11 +84,8 @@
 
   async function loadAssets() {
     try {
-      const res = await fetch('http://localhost:8000/api/assets/shared');
-      if (res.ok) {
-        assets = await res.json();
-        applyFilters();
-      }
+      assets = await apiFetch<SharedAsset[]>('/assets/shared');
+      applyFilters();
     } catch (e) {
       console.error('Failed to load assets:', e);
       assets = [];
@@ -129,13 +131,9 @@
     if (!confirm(`Are you sure you want to delete "${asset.name}"?`)) return;
 
     try {
-      const res = await fetch(`http://localhost:8000/api/assets/${asset.id}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        assets = assets.filter(a => a.id !== asset.id);
-        applyFilters();
-      }
+      await apiFetch(`/assets/${asset.id}`, { method: 'DELETE' });
+      assets = assets.filter(a => a.id !== asset.id);
+      applyFilters();
     } catch (e) {
       console.error('Failed to delete asset:', e);
       // For development, remove locally
@@ -145,19 +143,49 @@
   }
 
   async function createAsset() {
-    if (!newAsset.name || !newAsset.code) {
-      alert('Please fill in all required fields');
-      return;
-    }
-
     try {
-      const res = await fetch('http://localhost:8000/api/assets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newAsset)
-      });
-      if (res.ok) {
-        const created = await res.json();
+      let created: SharedAsset;
+      if (isFileUploadCategory(newAsset.category)) {
+        if (!selectedUploadFile || !newAsset.name) {
+          alert('Please provide a title and file');
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', selectedUploadFile);
+        formData.append('category', newAsset.category);
+        formData.append('description', newAsset.description);
+        formData.append('title', newAsset.name);
+        if (newAsset.author) formData.append('author', newAsset.author);
+        if (newAsset.url) formData.append('url', newAsset.url);
+
+        const response = await fetch(buildApiUrl('/assets/upload'), {
+          method: 'POST',
+          credentials: 'include',
+          body: formData
+        });
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+        created = await response.json();
+      } else {
+        if (!newAsset.name || !newAsset.code) {
+          alert('Please fill in all required fields');
+          return;
+        }
+
+        created = await apiFetch<SharedAsset>('/assets', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: newAsset.name,
+            category: newAsset.category,
+            code: newAsset.code,
+            description: newAsset.description,
+            dependencies: newAsset.dependencies
+          })
+        });
+      }
+      if (created) {
         assets = [created, ...assets];
         applyFilters();
         addAssetModalOpen = false;
@@ -175,29 +203,30 @@
       category: 'Indicator',
       code: '',
       description: '',
-      dependencies: []
+      dependencies: [],
+      author: '',
+      url: ''
     };
+    selectedUploadFile = null;
+  }
+
+  function isFileUploadCategory(category: SharedAsset['category']) {
+    return category === 'Docs' || category === 'Books' || category === 'Articles';
   }
 
   async function viewHistory(asset: SharedAsset) {
     selectedAsset = asset;
     try {
-      const res = await fetch(`http://localhost:8000/api/assets/${asset.id}/history`);
-      if (res.ok) {
-        assetHistory = await res.json();
-      } else {
-        // If API fails, show only current version
-        assetHistory = [{
-          version: asset.version,
-          checksum: asset.checksum,
-          created_at: asset.updated_at,
-          created_by: asset.created_by,
-          change_description: 'Current version'
-        }];
-      }
+      assetHistory = await apiFetch<AssetHistory[]>(`/assets/${asset.id}/history`);
     } catch (e) {
       console.error('Failed to load asset history:', e);
-      assetHistory = [];
+      assetHistory = [{
+        version: asset.version,
+        checksum: asset.checksum,
+        created_at: asset.updated_at,
+        created_by: asset.created_by,
+        change_description: 'Current version'
+      }];
     }
     historyModalOpen = true;
   }
@@ -206,15 +235,12 @@
     if (!selectedAsset || !confirm(`Roll back "${selectedAsset.name}" to version ${version}?`)) return;
 
     try {
-      const res = await fetch(`http://localhost:8000/api/assets/${selectedAsset.id}/rollback`, {
+      await apiFetch(`/assets/${selectedAsset.id}/rollback`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ version })
       });
-      if (res.ok) {
-        await loadAssets();
-        historyModalOpen = false;
-      }
+      await loadAssets();
+      historyModalOpen = false;
     } catch (e) {
       console.error('Failed to rollback:', e);
     }
@@ -224,7 +250,10 @@
     const colors: Record<string, string> = {
       'Indicator': '#3b82f6',
       'Risk': '#f59e0b',
-      'Utils': '#8b5cf6'
+      'Utils': '#8b5cf6',
+      'Docs': '#14b8a6',
+      'Books': '#22c55e',
+      'Articles': '#f97316'
     };
     return colors[category] || '#6b7280';
   }
@@ -233,7 +262,10 @@
     const colors: Record<string, string> = {
       'Indicator': 'rgba(59, 130, 246, 0.1)',
       'Risk': 'rgba(245, 158, 11, 0.1)',
-      'Utils': 'rgba(139, 92, 246, 0.1)'
+      'Utils': 'rgba(139, 92, 246, 0.1)',
+      'Docs': 'rgba(20, 184, 166, 0.1)',
+      'Books': 'rgba(34, 197, 94, 0.1)',
+      'Articles': 'rgba(249, 115, 22, 0.1)'
     };
     return colors[category] || 'rgba(107, 114, 128, 0.1)';
   }
@@ -266,6 +298,30 @@
     if (asset.created_by === 'user' && permissionSettings.userWrite) return true;
     return false;
   }
+
+  $effect(() => {
+    canvasContextService.setRuntimeState('shared-assets', {
+      active_tab: activeTab,
+      counts: {
+        total_assets: assets.length,
+        filtered_assets: filteredAssets.length,
+      },
+      attachable_resources: assets.slice(0, 150).map((asset) => ({
+        id: asset.id,
+        label: asset.name,
+        canvas: 'shared-assets',
+        resource_type: asset.category.toLowerCase(),
+        path: asset.filesystem_path,
+        description: asset.description,
+        metadata: {
+          category: asset.category,
+          version: asset.version,
+          updated_at: asset.updated_at,
+          checksum: asset.checksum,
+        },
+      })),
+    });
+  });
 </script>
 
 <div class="assets-view">
@@ -348,6 +404,9 @@
         <option value="Indicator">Indicators</option>
         <option value="Risk">Risk</option>
         <option value="Utils">Utilities</option>
+        <option value="Docs">Docs</option>
+        <option value="Books">Books</option>
+        <option value="Articles">Articles</option>
       </select>
     </div>
 
@@ -676,6 +735,9 @@
               <option value="Indicator">Indicator</option>
               <option value="Risk">Risk</option>
               <option value="Utils">Utilities</option>
+              <option value="Docs">Docs</option>
+              <option value="Books">Books</option>
+              <option value="Articles">Articles</option>
             </select>
           </div>
 
@@ -684,29 +746,60 @@
             <textarea id="asset-description-textarea" bind:value={newAsset.description} placeholder="Brief description of the asset..."></textarea>
           </div>
 
-          <div class="form-group">
-            <label for="asset-code-textarea">Source Code</label>
-            <textarea
-              id="asset-code-textarea"
-              bind:value={newAsset.code}
-              class="code-editor"
-              placeholder="// Paste your MQL5 code here..."
-              rows="10"
-            ></textarea>
-          </div>
+          {#if isFileUploadCategory(newAsset.category)}
+            <div class="form-group">
+              <label for="asset-file-input">File</label>
+              <input
+                id="asset-file-input"
+                type="file"
+                onchange={(e) => {
+                  const target = e.currentTarget as HTMLInputElement;
+                  selectedUploadFile = target.files?.[0] ?? null;
+                }}
+              />
+              {#if selectedUploadFile}
+                <span class="helper-text">Selected: {selectedUploadFile.name}</span>
+              {/if}
+            </div>
 
-          <div class="form-group">
-            <label for="asset-dependencies-input">Dependencies (comma-separated)</label>
-            <input
-              id="asset-dependencies-input"
-              type="text"
-              placeholder="e.g., MovingAverage, ATR, Statistics"
-              onchange={(e) => {
-                const target = e.target;
-                newAsset.dependencies = target.value.split(',').map(s => s.trim()).filter(s => s);
-              }}
-            />
-          </div>
+            {#if newAsset.category === 'Books'}
+              <div class="form-group">
+                <label for="asset-author-input">Author</label>
+                <input id="asset-author-input" type="text" bind:value={newAsset.author} placeholder="Optional author" />
+              </div>
+            {/if}
+
+            {#if newAsset.category === 'Articles'}
+              <div class="form-group">
+                <label for="asset-url-input">Source URL</label>
+                <input id="asset-url-input" type="url" bind:value={newAsset.url} placeholder="Optional source URL" />
+              </div>
+            {/if}
+          {:else}
+            <div class="form-group">
+              <label for="asset-code-textarea">Source Code</label>
+              <textarea
+                id="asset-code-textarea"
+                bind:value={newAsset.code}
+                class="code-editor"
+                placeholder="// Paste your MQL5 code here..."
+                rows="10"
+              ></textarea>
+            </div>
+
+            <div class="form-group">
+              <label for="asset-dependencies-input">Dependencies (comma-separated)</label>
+              <input
+                id="asset-dependencies-input"
+                type="text"
+                placeholder="e.g., MovingAverage, ATR, Statistics"
+                onchange={(e) => {
+                  const target = e.target as HTMLInputElement;
+                  newAsset.dependencies = target.value.split(',').map(s => s.trim()).filter(s => s);
+                }}
+              />
+            </div>
+          {/if}
         </div>
 
         <div class="modal-actions">

@@ -205,7 +205,7 @@ class ProviderClient:
 
         url = f"{provider.base_url}/messages"
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
             response = await client.post(url, headers=headers, json=body)
 
         if response.status_code != 200:
@@ -251,7 +251,7 @@ class ProviderClient:
 
         url = f"{provider.base_url}/chat/completions"
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
             response = await client.post(url, headers=headers, json=body)
 
         if response.status_code != 200:
@@ -321,7 +321,7 @@ class ProviderClient:
 
         url = f"{provider.base_url}/chat/completions"
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
             response = await client.post(url, headers=headers, json=body)
 
         if response.status_code != 200:

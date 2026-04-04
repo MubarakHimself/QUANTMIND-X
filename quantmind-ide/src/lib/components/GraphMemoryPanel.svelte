@@ -196,6 +196,20 @@
     }
   }
 
+  async function clearAllMemory() {
+    if (!confirm('Clear ALL memory nodes? This cannot be undone.')) return;
+    try {
+      const result = await graphMemoryApi.clearAllMemoryNodes();
+      searchResults = [];
+      hotNodes = [];
+      warmNodes = [];
+      coldNodes = [];
+      await loadStats();
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Clear failed';
+    }
+  }
+
   async function moveNode(nodeId: string, tier: 'hot' | 'warm' | 'cold') {
     try {
       if (tier === 'hot') await graphMemoryApi.moveNodeToHot(nodeId);
@@ -252,9 +266,19 @@
       <Network class="w-5 h-5 text-cyan-400" />
       <h2 class="text-lg font-semibold">Graph Memory</h2>
     </div>
-    <button onclick={onClose} class="p-1 hover:bg-gray-700 rounded">
-      <X class="w-5 h-5" />
-    </button>
+    <div class="flex items-center gap-2">
+      <button
+        onclick={clearAllMemory}
+        class="flex items-center gap-1 px-2 py-1 text-xs bg-red-900/40 hover:bg-red-900/70 text-red-400 hover:text-red-300 border border-red-800/50 rounded"
+        title="Clear all memory nodes"
+      >
+        <Trash2 class="w-3 h-3" />
+        Clear All
+      </button>
+      <button onclick={onClose} class="p-1 hover:bg-gray-700 rounded">
+        <X class="w-5 h-5" />
+      </button>
+    </div>
   </div>
 
   <!-- Tabs -->

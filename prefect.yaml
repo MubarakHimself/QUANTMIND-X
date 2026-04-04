@@ -1,0 +1,34 @@
+name: quantmindx
+version: 2.0.0
+
+# Work pool for Kamatera T2 (Contabo)
+work_pools:
+  - name: contabo
+    description: Kamatera T2 compute pool for Prefect workers
+    type: universal
+
+# Deployment definitions
+deployments:
+  - name: weekend-compute
+    entrypoint: flows/weekend_compute_flow.py:weekend_compute_flow
+    work_pool_name: contabo
+    schedule:
+      cron: "0 0 * * 6"  # Saturday 00:00 UTC
+      timezone: UTC
+    parameters: {}
+
+  - name: hmm-retraining
+    entrypoint: flows/weekend_compute_flow.py:weekend_compute_flow
+    work_pool_name: contabo
+    schedule:
+      cron: "0 2 * * 6"  # Saturday 02:00 UTC
+      timezone: UTC
+    parameters:
+      task_type: hmm_retraining
+
+  - name: firecrawl-sync
+    entrypoint: scripts/schedule_firecrawl_sync.py:run_firecrawl_sync
+    work_pool_name: contabo
+    schedule:
+      interval: 21600  # 6 hours in seconds
+    parameters: {}

@@ -117,7 +117,7 @@ class AccountMonitor:
 
     # Default thresholds (can be overridden via config)
     MAX_DAILY_LOSS_PCT = 0.03  # 3%
-    MAX_WEEKLY_LOSS_PCT = 0.10  # 10%
+    MAX_WEEKLY_LOSS_PCT = 0.07  # 7%
 
     def __init__(
         self,

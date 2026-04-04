@@ -94,7 +94,8 @@ OPENROUTER_API_KEY=your_key_here
 DATABASE_URL=sqlite:///data/db/quantmind.db
 
 # MT5 Bridge (Windows machine running mt5-bridge)
-MT5_BRIDGE_URL=http://YOUR_MT5_MACHINE_IP:8001
+# Default bridge port is 5005; override with MT5_BRIDGE_PORT on the Windows host if needed.
+MT5_BRIDGE_URL=http://YOUR_MT5_MACHINE_IP:5005
 MT5_BRIDGE_TOKEN=your-secret-token
 
 # HMM Contabo API URL (used by Cloudzy to fetch regime data)
@@ -368,7 +369,8 @@ pip install -r requirements.txt
 python server.py
 ```
 
-The bridge runs at `http://MT5_MACHINE_IP:8001`.
+The bridge runs at `http://MT5_MACHINE_IP:5005` by default.
+If you set `MT5_BRIDGE_PORT` on the Windows host, use that port in `MT5_BRIDGE_URL`.
 
 Set `MT5_BRIDGE_URL` in Cloudzy's `.env` to point to this machine.
 

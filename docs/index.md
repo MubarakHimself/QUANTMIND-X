@@ -1,6 +1,8 @@
 # QUANTMINDX — Documentation Index
 
-**Generated:** 2026-03-11 | **Project:** QUANTMINDX | **Scan Level:** Exhaustive
+**Generated:** 2026-03-11 | **Last Refreshed:** 2026-03-25 | **Project:** QUANTMINDX | **Scan Level:** Exhaustive
+
+> **⚠️ Architecture Reference Updated (2026-03-25):** The authoritative architecture decision document is at `_bmad-output/planning-artifacts/architecture.md`. The planning artifacts (PRD, epics, sprint status) are the source of truth for all implemented features. See §Implementation Summary at the top of that file.
 
 ---
 
@@ -71,6 +73,25 @@ QUANTMINDX is an AI-powered autonomous algorithmic trading platform. It combines
 
 ---
 
+### 7. Implemented Features (2026-03-25) — See Planning Artifacts for Specs
+
+All features below are **fully implemented and tested**. Source of truth: `_bmad-output/implementation-artifacts/sprint-status.yaml`
+
+| Epic | Feature | Spec Location |
+|------|---------|--------------|
+| E14 | **Three-Layer SL/TP** — Layer 1 EA Hard Safety, Layer 2 Tier-1 Position Monitor, Layer 3 CHAOS Kill Switch | `_bmad-output/planning-artifacts/epics.md` (F-01) |
+| E15 | **SVSS** — Shared VWAP/RVOL/MFI/Volume Profile service, jittered TTL cache | `_bmad-output/planning-artifacts/epics.md` (F-03) |
+| E16 | **Session Cycle** — Tilt mechanism (LOCK→SIGNAL→WAIT→RE-RANK→ACTIVATE), 10-window canonical cycle, Inter-Session Cooldown | `_bmad-output/planning-artifacts/epics.md` (F-09) |
+| E17 | **DPR** — Composite 0–100 scoring (WR25%/PnL30%/consistency20%/EV25%), Queue Tier Remix | `_bmad-output/planning-artifacts/epics.md` (F-12) |
+| E18 | **SSL** — Per-bot consecutive loss counter, paper rotation (TIER_1/2), DPR integration | `_bmad-output/planning-artifacts/epics.md` (F-13) |
+| E4 (ext) | **Risk Extensions** — SQS, Correlation Sensor, RVOL Kelly, Session Kelly modifiers, Portfolio math | `_bmad-output/planning-artifacts/epics.md` (F-04 through F-07, F-14) |
+| E8 (ext) | **Alpha Forge Extensions** — Regime pools, HMM WFA, Workflow 3 (Dead Zone), Workflow 4 (Weekend) | `_bmad-output/planning-artifacts/epics.md` (F-02, F-08, F-10, F-11) |
+| E11 (ext) | **FlowForge-Prefect API** — Workflow endpoints, SSE events | `_bmad-output/implementation-artifacts/` story specs |
+
+**Test suite:** 614+ tests across all implemented epics. Run with `pytest tests/` from project root.
+
+---
+
 ## Quick Reference
 
 ### System Ports
@@ -79,7 +100,7 @@ QUANTMINDX is an AI-powered autonomous algorithmic trading platform. It combines
 |---------|------|-------|
 | FastAPI Backend | 8000 | Main API |
 | SvelteKit IDE | 3001 | Web dev mode |
-| MT5 Bridge | 8001 | Windows/Wine only |
+| MT5 Bridge | 5005 | Windows/Wine only; override with `MT5_BRIDGE_PORT` if needed |
 | Feature Server | 3002 | Experimental |
 | Prometheus | 9090 | Metrics |
 | MT5 Prometheus | 9091 | MT5 metrics |

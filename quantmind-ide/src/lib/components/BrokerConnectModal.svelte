@@ -4,6 +4,7 @@
   const bubble = createBubbler();
   import { createEventDispatcher } from 'svelte';
   import { Server, Key, Wallet, Check, X, Loader, Eye, EyeOff } from 'lucide-svelte';
+  import { buildApiUrl } from '$lib/api';
 
   const dispatch = createEventDispatcher();
 
@@ -66,7 +67,7 @@
     connectionStatus = 'connecting';
 
     try {
-      const res = await fetch('http://localhost:8000/api/trading/broker/test', {
+      const res = await fetch(buildApiUrl('/api/trading/broker/test'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -95,7 +96,7 @@
     isConnecting = true;
 
     try {
-      const res = await fetch('http://localhost:8000/api/trading/broker/connect', {
+      const res = await fetch(buildApiUrl('/api/trading/broker/connect'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

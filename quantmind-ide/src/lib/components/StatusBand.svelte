@@ -324,9 +324,7 @@
   }
 
   function showNodeStatus() {
-    // In a full implementation, this would open a node status overlay
-    // For now, we'll just log and could trigger a modal
-    console.log('Node status:', nodeHealth);
+    activeCanvasStore.setActiveCanvas('live-trading');
   }
 
   // Get node status indicator

@@ -15,17 +15,117 @@ Phase 5: Provider Configuration in Settings UI
 import logging
 import uuid
 import time
+import socket
+import ipaddress
+from contextlib import contextmanager
+from urllib.parse import urlparse
 from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from src.database.models import ProviderConfig, get_db_session
+from src.database.models import ProviderConfig, get_db_session, db_session_scope
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/providers", tags=["providers"])
+
+
+@contextmanager
+def _db_session_scope():
+    """
+    Bridge the FastAPI yield dependency and the existing unit tests that patch
+    `get_db_session()` as a normal context manager.
+    """
+    dependency = get_db_session()
+
+    if hasattr(dependency, "__enter__") and hasattr(dependency, "__exit__"):
+        with dependency as session:
+            yield session
+        return
+
+    session = next(dependency)
+    try:
+        yield session
+    finally:
+        dependency.close()
+
+
+# =============================================================================
+# SSRF Protection
+# =============================================================================
+
+# Private and reserved IP ranges to block
+_BLOCKED_IP_RANGES = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),  # AWS metadata
+    ipaddress.ip_network("0.0.0.0/8"),  # Current network
+]
+
+
+def _is_url_safe(url: str) -> tuple[bool, str]:
+    """
+    Validate URL to prevent SSRF attacks.
+
+    Returns (is_safe, error_message).
+    """
+    try:
+        parsed = urlparse(url)
+
+        # Block credential injection via @
+        if "@" in url:
+            return False, "URLs with credentials are not allowed"
+
+        # Only allow http and https
+        if parsed.scheme not in ("http", "https"):
+            return False, "Only http:// and https:// URLs are allowed"
+
+        # Get hostname
+        hostname = parsed.hostname
+        if not hostname:
+            return False, "Invalid URL: no hostname"
+
+        # Block localhost variants
+        hostname_lower = hostname.lower()
+        if hostname_lower in ("localhost", "0.0.0.0", "::1", "::"):
+            return False, "localhost and similar addresses are not allowed"
+
+        # Block bare IPv4 addresses that resolve to blocked ranges
+        try:
+            if not hostname_lower.startswith("[") and "." in hostname_lower:
+                # Try to resolve and check the resolved IP
+                resolved_ip = socket.gethostbyname(hostname_lower)
+                ip = ipaddress.ip_address(resolved_ip)
+
+                for blocked_range in _BLOCKED_IP_RANGES:
+                    if ip in blocked_range:
+                        return False, f"URL host resolves to blocked private/reserved IP: {resolved_ip}"
+        except (socket.gaierror, ValueError):
+            # If resolution fails, check if it's an IP literal
+            try:
+                ip = ipaddress.ip_address(hostname_lower)
+                for blocked_range in _BLOCKED_IP_RANGES:
+                    if ip in blocked_range:
+                        return False, f"URL host is a blocked private/reserved IP: {hostname_lower}"
+            except ValueError:
+                # Not an IP literal, hostname will be resolved later
+                pass
+
+        return True, ""
+
+    except Exception as e:
+        return False, f"URL validation error: {str(e)}"
+
+
+def _validate_url_or_raise(url: str):
+    """Validate URL and raise HTTPException if unsafe."""
+    is_safe, error_msg = _is_url_safe(url)
+    if not is_safe:
+        raise HTTPException(status_code=400, detail=f"URL not allowed for security reasons: {error_msg}")
 
 
 # =============================================================================
@@ -149,15 +249,18 @@ PROVIDER_MODELS = {
     ],
     "deepseek": [
         {"id": "deepseek-chat", "name": "DeepSeek Chat"},
+        {"id": "deepseek-reasoner", "name": "DeepSeek R1 (Math/Reasoning)"},
         {"id": "deepseek-coder", "name": "DeepSeek Coder"},
     ],
     "glm": [
+        {"id": "GLM-5.1", "name": "GLM-5.1"},
+        {"id": "glm-4-plus", "name": "GLM-4 Plus"},
         {"id": "glm-4", "name": "GLM-4"},
         {"id": "glm-4-flash", "name": "GLM-4 Flash"},
-        {"id": "glm-4-plus", "name": "GLM-4 Plus"},
         {"id": "glm-3-turbo", "name": "GLM-3 Turbo"},
     ],
     "minimax": [
+        {"id": "MiniMax-M2.7", "name": "MiniMax M2.7"},
         {"id": "MiniMax-M2.5", "name": "MiniMax M2.5"},
         {"id": "MiniMax-M2.1", "name": "MiniMax M2.1"},
         {"id": "MiniMax-M2", "name": "MiniMax M2"},
@@ -190,8 +293,8 @@ PROVIDER_BASE_URLS = {
     "openai": "https://api.openai.com/v1",
     "openrouter": "https://openrouter.ai/api/v1",
     "deepseek": "https://api.deepseek.com/v1",
-    "glm": "https://open.bigmodel.cn/api/paas/v4",
-    "minimax": "https://api.minimax.chat/v1",
+    "glm": "https://api.z.ai/api/anthropic",
+    "minimax": "https://api.minimax.io/anthropic",
     "google": "https://generativelanguage.googleapis.com/v1",
     "azure": "",  # Custom per deployment
     "cohere": "https://api.cohere.ai/v1",
@@ -220,11 +323,12 @@ async def list_providers():
     Returns providers with masked API keys and config status.
     """
     try:
-        with get_db_session() as db:
+        with _db_session_scope() as db:
             providers = db.query(ProviderConfig).all()
 
             result = []
             for p in providers:
+                ml = p.model_list_json or []
                 result.append({
                     "id": p.id,
                     "provider_type": p.provider_type,
@@ -232,7 +336,9 @@ async def list_providers():
                     "base_url": p.base_url,
                     "is_active": p.is_active,
                     "tier_assignment": p.tier_assignment_dict,
-                    "model_count": len(p.model_list_json),
+                    "model_list": ml,
+                    "primary_model": ml[0].get("id") or ml[0].get("model_id", "") if ml else "",
+                    "model_count": len(ml),
                     "created_at_utc": p.created_at_utc.isoformat() if p.created_at_utc else None,
                     "updated_at": p.updated_at.isoformat() if p.updated_at else None,
                 })
@@ -255,9 +361,9 @@ async def save_provider(config: ProviderConfigRequest):
     """
     # provider_type is required for POST (create new)
     if not config.provider_type:
-        raise HTTPException(status_code=400, detail="provider_type is required")
+        raise HTTPException(status_code=422, detail="provider_type is required")
     try:
-        with get_db_session() as db:
+        with _db_session_scope() as db:
             # Check if provider with this type exists
             existing = db.query(ProviderConfig).filter(
                 ProviderConfig.provider_type == config.provider_type
@@ -345,7 +451,7 @@ async def update_provider(provider_id: str, config: ProviderConfigRequest):
     Only provided fields are updated. If api_key is absent, existing key is preserved.
     """
     try:
-        with get_db_session() as db:
+        with _db_session_scope() as db:
             provider = db.query(ProviderConfig).filter(ProviderConfig.id == provider_id).first()
 
             if not provider:
@@ -391,7 +497,7 @@ async def delete_provider(provider_id: str):
     Delete provider configuration by ID.
     """
     try:
-        with get_db_session() as db:
+        with _db_session_scope() as db:
             provider = db.query(ProviderConfig).filter(ProviderConfig.id == provider_id).first()
 
             if not provider:
@@ -426,6 +532,9 @@ async def test_provider(test_req: ProviderTestRequest):
 
     Returns success status, latency, and model count.
     """
+    if not test_req.api_key:
+        raise HTTPException(status_code=400, detail="api_key is required")
+
     result = await _test_provider_internal(test_req)
     return result
 
@@ -442,6 +551,11 @@ async def _test_provider_internal(test_req: ProviderTestRequest) -> Dict[str, An
 
     if not base_url:
         return {"success": False, "error": "Base URL not configured"}
+
+    # SECURITY: Validate URL before making any HTTP request (SSRF protection)
+    is_safe, error_msg = _is_url_safe(base_url)
+    if not is_safe:
+        return {"success": False, "error": f"URL not allowed for security reasons: {error_msg}"}
 
     start_time = time.time()
 
@@ -529,7 +643,7 @@ async def get_available_providers():
     have an API key configured and are enabled, plus available models.
     """
     try:
-        with get_db_session() as db:
+        with _db_session_scope() as db:
             configured_providers = db.query(ProviderConfig).all()
 
             # Create a lookup dict by type
@@ -551,7 +665,9 @@ async def get_available_providers():
                         "display_name": p.display_name or display_name,
                         "has_api_key": has_key,
                         "is_active": p.is_active,
+                        "enabled": p.is_active,
                         "available": has_key and p.is_active,
+                        "name": p.provider_type,
                         "models": models if has_key and p.is_active else [],
                         "tier_assignment": p.tier_assignment_dict,
                         "model_count": len(p.model_list_json) if has_key and p.is_active else 0,
@@ -564,7 +680,9 @@ async def get_available_providers():
                         "display_name": display_name,
                         "has_api_key": False,
                         "is_active": False,
+                        "enabled": False,
                         "available": False,
+                        "name": provider_id,
                         "models": [],
                         "tier_assignment": {},
                         "model_count": 0,
@@ -582,7 +700,9 @@ async def get_available_providers():
                     "display_name": name,
                     "has_api_key": False,
                     "is_active": False,
+                    "enabled": False,
                     "available": False,
+                    "name": pid,
                     "models": [],
                     "tier_assignment": {},
                     "model_count": 0,
@@ -598,7 +718,7 @@ async def get_provider(provider_id: str):
     Get a specific provider by ID.
     """
     try:
-        with get_db_session() as db:
+        with _db_session_scope() as db:
             provider = db.query(ProviderConfig).filter(ProviderConfig.id == provider_id).first()
 
             if not provider:

@@ -264,8 +264,8 @@ class GraphMemoryTools:
             "department": node.department,
             "agent_id": node.agent_id,
             "session_id": node.session_id,
-            "created_at": node.created_at.isoformat() if node.created_at else None,
-            "updated_at": node.updated_at.isoformat() if node.updated_at else None,
+            "created_at": node.created_at_utc.isoformat() if node.created_at_utc else None,
+            "updated_at": node.updated_at_utc.isoformat() if node.updated_at_utc else None,
             "access_count": node.access_count,
         }
 

@@ -23,7 +23,6 @@ from src.agents.departments.department_mail import (
     DepartmentMessage,
     MessageType,
     Priority,
-    get_mail_service,
 )
 from src.agents.departments.types import Department
 from src.api.pagination import PaginatedResponse, DEFAULT_LIMIT, DEFAULT_OFFSET, MAX_LIMIT
@@ -156,6 +155,12 @@ def _validate_priority(priority: str) -> Priority:
 
 # ============== Endpoints ==============
 
+def _get_mail_svc():
+    """Lazy shared mail service selection with Redis fallback."""
+    from src.agents.departments.department_mail import get_mail_service
+
+    return get_mail_service()
+
 @router.post("/send", response_model=MessageResponse)
 async def send_message(request: SendMessageRequest):
     """
@@ -174,7 +179,7 @@ async def send_message(request: SendMessageRequest):
     - high: Important but not critical
     - urgent: Requires immediate attention
     """
-    mail_service = get_mail_service()
+    mail_service = _get_mail_svc()
 
     # Validate inputs
     from_dept = _validate_department(request.from_dept)
@@ -208,7 +213,7 @@ async def get_inbox(
 
     Returns messages addressed to the department, sorted by timestamp (newest first).
     """
-    mail_service = get_mail_service()
+    mail_service = _get_mail_svc()
 
     # Validate department
     dept = _validate_department(department)
@@ -249,7 +254,7 @@ async def get_all_inboxes(
 
     Returns all messages addressed to any department, sorted by timestamp (newest first).
     """
-    mail_service = get_mail_service()
+    mail_service = _get_mail_svc()
 
     # Get all messages
     all_messages = mail_service.list_messages(limit=10000)
@@ -280,7 +285,7 @@ async def get_sent_messages(
 
     Returns messages sent by departments, sorted by timestamp (newest first).
     """
-    mail_service = get_mail_service()
+    mail_service = _get_mail_svc()
 
     # Get all messages
     all_messages = mail_service.list_messages(limit=10000)
@@ -318,7 +323,7 @@ async def mark_all_read(
     """
     Mark all messages as read for a department (or all if no department specified).
     """
-    mail_service = get_mail_service()
+    mail_service = _get_mail_svc()
 
     if department:
         _validate_department(department)
@@ -345,7 +350,7 @@ async def get_message(message_id: str):
 
     Returns the full message details including body.
     """
-    mail_service = get_mail_service()
+    mail_service = _get_mail_svc()
 
     message = mail_service.get_message(message_id)
     if message is None:
@@ -364,7 +369,7 @@ async def mark_message_read(message_id: str):
 
     Updates the message's read status to true.
     """
-    mail_service = get_mail_service()
+    mail_service = _get_mail_svc()
 
     # Check message exists
     message = mail_service.get_message(message_id)
@@ -391,7 +396,7 @@ async def get_stats():
 
     Returns counts by department, type, priority, and recent activity.
     """
-    mail_service = get_mail_service()
+    mail_service = _get_mail_svc()
     stats = mail_service.get_stats()
 
     return StatsResponse(**stats)
@@ -413,7 +418,7 @@ async def list_messages(
     Supports filtering by department, type, priority, and read status.
     Results are paginated with limit/offset.
     """
-    mail_service = get_mail_service()
+    mail_service = _get_mail_svc()
 
     # Validate filters
     msg_type = _validate_message_type(type) if type else None
@@ -456,7 +461,7 @@ async def reply_to_message(
 
     Creates a new message with reversed from/to departments.
     """
-    mail_service = get_mail_service()
+    mail_service = _get_mail_svc()
 
     # Validate
     _validate_department(from_dept)
@@ -488,7 +493,7 @@ async def purge_old_messages(
 
     Returns count of deleted messages.
     """
-    mail_service = get_mail_service()
+    mail_service = _get_mail_svc()
 
     deleted_count = mail_service.purge_old_messages(days=days)
 
@@ -504,7 +509,7 @@ async def purge_old_messages(
 @router.get("/health")
 async def health_check():
     """Health check endpoint."""
-    mail_service = get_mail_service()
+    mail_service = _get_mail_svc()
 
     # Quick database check
     stats = mail_service.get_stats()

@@ -15,8 +15,10 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from sqlalchemy.orm import Session
 
 from src.database.models import NotificationConfig
@@ -27,6 +29,19 @@ from src.database.engine import get_session
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
+
+
+def _get_notification_dir() -> Path:
+    """Resolve the writable notification log directory."""
+    configured = os.getenv("QUANTMIND_DATA_DIR")
+    if configured:
+        return Path(configured) / "notifications"
+
+    container_data_dir = Path("/app/data")
+    if container_data_dir.exists():
+        return container_data_dir / "notifications"
+
+    return Path(__file__).resolve().parents[2] / "data" / "notifications"
 
 
 # =============================================================================
@@ -52,10 +67,9 @@ async def send_notification(subject: str, body: str, event_type: str = "system_n
 
     # Log to console/file for now (can be enhanced with email/telegram later)
     try:
-        from pathlib import Path
         import json
 
-        notif_dir = Path("/data/notifications")
+        notif_dir = _get_notification_dir()
         notif_dir.mkdir(parents=True, exist_ok=True)
 
         notif_file = notif_dir / f"notif_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}.json"

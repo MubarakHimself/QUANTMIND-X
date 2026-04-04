@@ -6,6 +6,13 @@
   import "highlight.js/styles/github-dark.css";
   import { API_CONFIG } from "../config/api";
   import {
+    buildApiUrl,
+    getKnowledge,
+    getStrategies as fetchStrategies,
+    getSystemStatus,
+    getBots as fetchBots,
+  } from "../api";
+  import {
     BookOpen,
     Boxes,
     Bot,
@@ -79,7 +86,7 @@
   import ArticleViewer from "./ArticleViewer.svelte";
   import PaperTradingPanel from "./PaperTradingPanel.svelte";
   import GitHubEASync from "./GitHubEASync.svelte";
-  import { navigationStore } from "../stores/navigationStore";
+  import { navigationStore, settingsTrigger } from "../stores/navigationStore";
 
   import VideoIngestModal from "./VideoIngestModal.svelte";
   import RunBacktestModal from "./RunBacktestModal.svelte";
@@ -217,9 +224,7 @@
 
   async function loadBacktests() {
     try {
-      const res = await fetch(
-        "http://localhost:8000/api/analytics/backtests?limit=20",
-      );
+      const res = await fetch(buildApiUrl("/api/analytics/backtests?limit=20"));
       if (res.ok) {
         backtestHistory = await res.json();
       }
@@ -230,9 +235,7 @@
 
   async function loadRunDetails(runId: string) {
     try {
-      const res = await fetch(
-        `http://localhost:8000/api/analytics/trades?run_id=${runId}`,
-      );
+      const res = await fetch(buildApiUrl(`/api/analytics/trades?run_id=${runId}`));
       if (res.ok) {
         const trades = await res.json();
         // Set the selected run for MonteCarloVisualization
@@ -318,7 +321,7 @@
 
         // Single unified endpoint
         const res = await fetch(
-          "http://localhost:8000/api/ide/knowledge/upload",
+          buildApiUrl("/api/ide/knowledge/upload"),
           {
             method: "POST",
             body: formData,
@@ -395,7 +398,7 @@
       formData.append("category", "notes");
 
       const res = await fetch(
-        "http://localhost:8000/api/ide/knowledge/upload/note",
+        buildApiUrl("/api/ide/knowledge/upload/note"),
         {
           method: "POST",
           body: formData,
@@ -442,7 +445,7 @@
     // Fetch article content from API
     try {
       const contentRes = await fetch(
-        `http://localhost:8000/api/knowledge/${encodeURIComponent(article.id || article.path)}/content`,
+        buildApiUrl(`/api/knowledge/${encodeURIComponent(article.id || article.path)}/content`),
       );
       if (contentRes.ok) {
         const contentData = await contentRes.json();
@@ -472,7 +475,7 @@
     // Load related articles based on category/tags
     try {
       const res = await fetch(
-        `http://localhost:8000/api/knowledge/related?id=${article.id}&limit=5`,
+        buildApiUrl(`/api/knowledge/related?id=${article.id}&limit=5`),
       );
       if (res.ok) {
         relatedArticles = await res.json();
@@ -532,48 +535,44 @@
 
   onMount(async () => {
     await loadData();
-    // Initialize navigation with the current view
-    navigationStore.navigateToView(
-      activeView,
-      viewConfig[activeView]?.title || "Explorer",
-    );
+    // Always reset to EA view on mount to avoid persisting "settings" across page loads
+    navigationStore.navigateToView("ea", "EA Management");
+    // Force-close settings if it was somehow left open (handles hydration edge cases)
+    if (settingsViewComponent) {
+      settingsViewComponent.hide();
+    }
+    // Mark mount complete — after this, only user-initiated navigation to settings should open it
+    settingsMounted = true;
+    // Reset the flag so only explicit user clicks open settings
+    userNavigatedToSettings = false;
   });
 
   async function loadData() {
     try {
-      // Load articles for Knowledge Hub
-      const articlesRes = await fetch("http://localhost:8000/api/knowledge");
-      if (articlesRes.ok) {
-        articles = await articlesRes.json();
-        console.log(
-          "[MainContent] Loaded articles:",
-          articles.length,
-          articles,
-        );
-        updateCategoryCounts();
-        applyArticleFilter();
-        console.log(
-          "[MainContent] After filter, filteredArticles:",
-          filteredArticles.length,
-        );
-      } else {
-        console.error(
-          "[MainContent] Failed to load articles, status:",
-          articlesRes.status,
-        );
-      }
+      const [knowledge, strategyList, tradingStatus, tradingBots] =
+        await Promise.all([
+          getKnowledge(),
+          fetchStrategies(),
+          getSystemStatus(),
+          fetchBots(),
+        ]);
 
-      // Load strategies for EA Management
-      const strategiesRes = await fetch("http://localhost:8000/api/strategies");
-      if (strategiesRes.ok) strategies = await strategiesRes.json();
+      articles = knowledge;
+      console.log(
+        "[MainContent] Loaded articles:",
+        articles.length,
+        articles,
+      );
+      updateCategoryCounts();
+      applyArticleFilter();
+      console.log(
+        "[MainContent] After filter, filteredArticles:",
+        filteredArticles.length,
+      );
 
-      // Load trading status
-      const statusRes = await fetch("http://localhost:8000/api/trading/status");
-      if (statusRes.ok) systemStatus = await statusRes.json();
-
-      // Load bots
-      const botsRes = await fetch("http://localhost:8000/api/trading/bots");
-      if (botsRes.ok) bots = await botsRes.json();
+      strategies = strategyList;
+      systemStatus = tradingStatus;
+      bots = tradingBots;
     } catch (e) {
       console.error("Failed to load data:", e);
     }
@@ -721,7 +720,7 @@
     try {
       // Fetch content from API
       const contentRes = await fetch(
-        `http://localhost:8000/api/knowledge/${encodeURIComponent(item.id || item.path)}/content`,
+        buildApiUrl(`/api/knowledge/${encodeURIComponent(item.id || item.path)}/content`),
       );
       let content = "";
 
@@ -732,7 +731,7 @@
         // Try alternative endpoint for assets
         try {
           const assetRes = await fetch(
-            `http://localhost:8000/api/assets/${item.id}/content`,
+            buildApiUrl(`/api/assets/${item.id}/content`),
           );
           if (assetRes.ok) {
             const assetData = await assetRes.json();
@@ -929,7 +928,7 @@
     if (!videoIngestUrl || !videoIngestName) return;
 
     try {
-      const res = await fetch("http://localhost:8000/api/videoIngest/process", {
+      const res = await fetch(buildApiUrl("/api/videoIngest/process"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: videoIngestUrl, strategy_name: videoIngestName }),
@@ -948,7 +947,7 @@
   }
 
   async function handleTagChange(botId: string, newTag: string) {
-    await fetch("http://localhost:8000/api/trading/bots/control", {
+    await fetch(buildApiUrl("/api/trading/bots/control"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -969,7 +968,7 @@
         "⚠️ KILL SWITCH: This will stop ALL trading immediately. Are you sure?",
       )
     ) {
-      await fetch("http://localhost:8000/api/trading/kill", { method: "POST" });
+      await fetch(buildApiUrl("/api/trading/kill"), { method: "POST" });
     }
   }
 
@@ -1117,18 +1116,72 @@
   // Settings visibility state
   let settingsVisible = false;
   let settingsViewComponent: SettingsView;
+  let isClosingSettings = false;
+  let settingsMounted = false;
+  let userNavigatedToSettings = false;
+  let handledSettingsTrigger = 0;
+  let previousViewBeforeSettings = {
+    id: "ea",
+    name: "EA Management",
+  };
 
-  // Listen for settings trigger
-  $: if (activeView === "settings" && settingsViewComponent) {
+  function showSettingsOverlay() {
+    if (!settingsViewComponent) return;
+    settingsVisible = true;
     settingsViewComponent.show();
   }
 
+  // React to sidebar settings trigger from WorkshopCanvas
+  $: if (settingsMounted && settingsViewComponent && $settingsTrigger > handledSettingsTrigger) {
+    handledSettingsTrigger = $settingsTrigger;
+    showSettingsOverlay();
+  }
+
+  // Called by parent before navigating to settings view
+  export function onSettingsNavigationRequest() {
+    if ($navigationStore.currentView !== "settings") {
+      previousViewBeforeSettings = {
+        id: $navigationStore.currentView,
+        name: $navigationStore.currentViewName,
+      };
+    }
+    showSettingsOverlay();
+  }
+
+  // Auto-show settings overlay when user navigates to settings view (after mount)
+  $: if (
+    settingsMounted &&
+    $navigationStore.currentView === "settings" &&
+    settingsViewComponent &&
+    !isClosingSettings &&
+    !settingsVisible
+  ) {
+    showSettingsOverlay();
+  }
+
+  // On mount: reset to EA view and force-close settings to handle hydration
+  onMount(async () => {
+    await loadData();
+    // Always reset to EA view on mount to avoid persisting "settings" across page loads
+    navigationStore.navigateToView("ea", "EA Management");
+    // Force-close settings if it was somehow left open (handles hydration edge cases)
+    if (settingsViewComponent) {
+      settingsViewComponent.hide();
+    }
+    settingsVisible = false;
+    settingsMounted = true;
+  });
+
   function closeSettings() {
     settingsVisible = false;
-    // Navigate back to EA view
-    navigationStore.navigateToView("ea", "EA Management");
-    // Emit event to parent to update activeView
-    dispatch("viewChange", { view: "ea" });
+    isClosingSettings = true;
+    if ($navigationStore.currentView === "settings") {
+      navigationStore.navigateToView(
+        previousViewBeforeSettings.id,
+        previousViewBeforeSettings.name,
+      );
+    }
+    setTimeout(() => { isClosingSettings = false; }, 100);
   }
 
   // Enhanced markdown renderer with syntax highlighting
@@ -1257,7 +1310,7 @@
 
     try {
       const res = await fetch(
-        `http://localhost:8000/api/knowledge/${viewingArticle.id}`,
+        buildApiUrl(`/api/knowledge/${viewingArticle.id}`),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1578,7 +1631,7 @@
           <LiveTradingView />
         {:else if activeView === "paper-trading"}
           <!-- Paper Trading View -->
-          <PaperTradingPanel baseUrl="http://localhost:8000" />
+          <PaperTradingPanel baseUrl={API_CONFIG.API_URL} />
         {:else if activeView === "router"}
           <!-- Strategy Router View -->
           <StrategyRouterView />

@@ -27,6 +27,7 @@ from src.risk.integrations.mt5 import (
     MT5CacheError,
     MT5Cache,
     create_mt5_client,
+    get_mt5_client,
 )
 
 # Backward compatibility: MT5AccountClient is now MT5Client
@@ -51,4 +52,5 @@ __all__ = [
     'MT5Cache',
     'CachedValue',
     'create_mt5_client',
+    'get_mt5_client',
 ]

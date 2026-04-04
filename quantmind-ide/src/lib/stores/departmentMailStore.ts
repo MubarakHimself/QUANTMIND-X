@@ -6,8 +6,7 @@
  */
 
 import { writable, derived, get } from 'svelte/store';
-
-const API_BASE = '/api/departments/mail';
+import { apiFetch } from '$lib/api';
 
 // Types
 export type MessageType = 'dispatch' | 'result' | 'question' | 'status' | 'error' | 'approval_request' | 'approval_approved' | 'approval_rejected';
@@ -176,12 +175,7 @@ export async function fetchDepartmentMail(department: Department): Promise<void>
   error.set(null);
 
   try {
-    const response = await fetch(`${API_BASE}/inbox/${department}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch mail: ${response.statusText}`);
-    }
-
-    const data = await response.json();
+    const data = await apiFetch<{ messages?: DepartmentMailMessage[] }>(`/departments/mail/inbox/${department}`);
     const messages: DepartmentMailMessage[] = data.messages || [];
 
     mailMessages.update((state) => {
@@ -208,13 +202,7 @@ export async function fetchDepartmentMail(department: Department): Promise<void>
 
 export async function markMessageRead(messageId: string): Promise<void> {
   try {
-    const response = await fetch(`${API_BASE}/${messageId}/read`, {
-      method: 'POST',
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to mark message as read: ${response.statusText}`);
-    }
+    await apiFetch(`/departments/mail/${messageId}/read`, { method: 'POST' });
 
     // Update local state
     mailMessages.update((state) => {
@@ -252,19 +240,10 @@ export async function delegateToFloor(
   error.set(null);
 
   try {
-    const response = await fetch(`http://localhost:8000/api/trading-floor/delegate`, {
+    const data = await apiFetch<DelegationResponse>('/trading-floor/delegate', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(request),
     });
-
-    if (!response.ok) {
-      throw new Error(`Delegation failed: ${response.statusText}`);
-    }
-
-    const data: DelegationResponse = await response.json();
 
     // Refresh mail for the target department if delegation was successful
     if (data.status === 'success' && data.dispatch?.to_department) {

@@ -1,4 +1,4 @@
-// Claude Code Native Agent Client
+// Claude Agent SDK Client
 export {
   AgentClient,
   getAgentClient,
@@ -27,7 +27,10 @@ export {
   type StreamStateMap,
 } from './agentStreamStore';
 
-// Skills System
+// Agent Manager
+export { agentManager } from './agentManager';
+
+// Skills System (no langchain — uses Zod + Claude backend)
 export {
   skillRegistry,
   executeSkill,
@@ -40,5 +43,5 @@ export {
   type SkillResult,
   type SkillExample,
   type SkillContext,
-  type AgentType
+  type AgentType,
 } from './skills';

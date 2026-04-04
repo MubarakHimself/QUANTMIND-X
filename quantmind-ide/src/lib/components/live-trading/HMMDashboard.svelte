@@ -141,7 +141,7 @@
         class:loading={isSyncing}
         onclick={handleSync}
         disabled={isSyncing}
-        title="Sync from Contabo"
+        title="Sync from node_backend"
       >
         <Cloud size={16} class={isSyncing ? 'spinning' : ''} />
         <span>Sync</span>
@@ -263,7 +263,7 @@
       </button>
     </div>
     <p class="training-hint">
-      Train the HMM model on the latest market data from Contabo.
+      Train the HMM model on the latest market data from node_backend.
     </p>
   </div>
 

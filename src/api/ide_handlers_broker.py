@@ -23,32 +23,9 @@ class BrokerAccountsAPIHandler:
 
         all_accounts = list(broker_registry.brokers.values()) + list(broker_registry.pending.values())
 
-        # If no accounts in registry, return mock data for development
+        # No mock rows in production paths. Surface an honest empty state instead.
         if not all_accounts:
-            return [
-                {
-                    "broker_id": "icmarkets_raw",
-                    "broker_name": "IC Markets Raw",
-                    "account_id": "123456",
-                    "server": "ICMarkets-Demo",
-                    "account_type": "raw",
-                    "balance": 10000.0,
-                    "equity": 10000.0,
-                    "currency": "USD",
-                    "connected": True,
-                },
-                {
-                    "broker_id": "icmarkets_standard",
-                    "broker_name": "IC Markets Standard",
-                    "account_id": "789012",
-                    "server": "ICMarkets-Demo",
-                    "account_type": "standard",
-                    "balance": 5000.0,
-                    "equity": 5000.0,
-                    "currency": "USD",
-                    "connected": False,
-                },
-            ]
+            return []
 
         # Convert BrokerInfo objects to dict format expected by frontend
         result = []

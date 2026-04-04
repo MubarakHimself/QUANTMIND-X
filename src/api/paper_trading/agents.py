@@ -9,13 +9,29 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from .runtime import (
+    PaperTradingUnavailableDeployer,
+    ensure_paper_trading_runtime,
+    is_paper_trading_runtime_available,
+)
+
 logger = logging.getLogger(__name__)
 
 
 def get_deployer():
     """Dependency injection for PaperTradingDeployer."""
-    from mcp_mt5.paper_trading.deployer import PaperTradingDeployer
-    return PaperTradingDeployer()
+    try:
+        from mcp_mt5.paper_trading.deployer import PaperTradingDeployer
+    except ImportError as e:
+        logger.warning("PaperTradingDeployer unavailable: %s", e)
+        return PaperTradingUnavailableDeployer(
+            "Paper trading runtime unavailable on this host. "
+            "Install and configure the MT5 paper trading runtime on the target VPS."
+        )
+
+    deployer = PaperTradingDeployer()
+    setattr(deployer, "available", True)
+    return deployer
 
 
 def get_enhanced_deployer():
@@ -78,6 +94,7 @@ def setup_agent_routes(router: APIRouter):
         """
         Get status of a specific paper trading agent.
         """
+        ensure_paper_trading_runtime(deployer)
         agent = deployer.get_agent(agent_id)
         if agent is None:
             raise HTTPException(status_code=404, detail="Agent not found")
@@ -91,6 +108,7 @@ def setup_agent_routes(router: APIRouter):
         """
         Stop a paper trading agent.
         """
+        ensure_paper_trading_runtime(deployer)
         success = deployer.stop_agent(agent_id)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to stop agent")
@@ -113,6 +131,7 @@ def setup_agent_routes(router: APIRouter):
         """
         Get logs from a paper trading agent.
         """
+        ensure_paper_trading_runtime(deployer)
         try:
             logs = deployer.get_agent_logs(agent_id, tail_lines)
             return logs
@@ -132,6 +151,8 @@ def setup_agent_routes(router: APIRouter):
         Get performance metrics for a paper trading agent.
         """
         from .models import AgentPerformanceResponse
+
+        ensure_paper_trading_runtime(deployer)
 
         # Check if agent exists
         agent = deployer.get_agent(agent_id)
@@ -182,6 +203,8 @@ def setup_agent_routes(router: APIRouter):
         """
         Get validation status for a paper trading agent.
         """
+        ensure_paper_trading_runtime(deployer)
+
         # Check if agent exists
         agent = deployer.get_agent(agent_id)
         if agent is None:

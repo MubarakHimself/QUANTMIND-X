@@ -14,7 +14,7 @@
     Search,
     ArrowLeft
   } from 'lucide-svelte';
-  import { API_BASE } from '$lib/constants';
+  import { buildApiUrl } from '$lib/api';
   import { goto } from '$app/navigation';
 
   // Types
@@ -67,12 +67,10 @@
   let statusFilter = $state('');
   let isLoading = $state(true);
 
-  const apiBase = API_BASE || 'http://localhost:8000';
-
   // Fetch status
   async function fetchStatus() {
     try {
-      const response = await fetch(`${apiBase}/api/github/status`);
+      const response = await fetch(buildApiUrl('/api/github/status'));
       if (response.ok) {
         status = await response.json();
       }
@@ -88,7 +86,7 @@
       if (statusFilter) params.append('status', statusFilter);
       params.append('limit', '100');
 
-      const response = await fetch(`${apiBase}/api/github/eas?${params}`);
+      const response = await fetch(buildApiUrl(`/api/github/eas?${params}`));
       if (response.ok) {
         eas = await response.json();
       }
@@ -103,7 +101,7 @@
     syncResult = null;
 
     try {
-      const response = await fetch(`${apiBase}/api/github/sync`, {
+      const response = await fetch(buildApiUrl('/api/github/sync'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ force: true })
@@ -136,7 +134,7 @@
     isImporting = true;
 
     try {
-      const response = await fetch(`${apiBase}/api/github/import`, {
+      const response = await fetch(buildApiUrl('/api/github/import'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

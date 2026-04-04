@@ -1,31 +1,108 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
   import {
     Key, RefreshCw, Trash2, AlertCircle, Plus,
-    Save, Server, Check, X, Zap, ShieldCheck, Cloud, Video
+    Save, Server, Check, X, Zap, ShieldCheck, Cloud, Video,
+    Brain, Sparkles, Globe, Cpu, MessageSquare
   } from 'lucide-svelte';
   import { apiFetch } from '$lib/api';
+  import { settingsStore } from '$lib/stores/settingsStore';
+
+  // Icon per provider — must match Lucide exports above
+  const PROVIDER_ICONS: Record<string, typeof Brain> = {
+    anthropic: Sparkles,
+    openai: Brain,
+    openrouter: Globe,
+    deepseek: Cpu,
+    glm: MessageSquare,
+    minimax: Zap,
+    google: Cloud,
+    qwen: Video,
+    cohere: MessageSquare,
+    mistral: Cloud,
+  };
 
   const DEFAULT_PROVIDERS = [
-    { id: 'anthropic', name: 'Anthropic (Claude)', base_url: 'https://api.anthropic.com/v1' },
+    { id: 'anthropic', name: 'Anthropic (Claude)', base_url: 'https://api.anthropic.com' },
     { id: 'openai', name: 'OpenAI', base_url: 'https://api.openai.com/v1' },
     { id: 'openrouter', name: 'OpenRouter', base_url: 'https://openrouter.ai/api/v1' },
     { id: 'deepseek', name: 'DeepSeek', base_url: 'https://api.deepseek.com/v1' },
-    { id: 'glm', name: 'GLM (Zhipu)', base_url: 'https://open.bigmodel.cn/api/paas/v4' },
-    { id: 'minimax', name: 'MiniMax', base_url: 'https://api.minimax.chat/v1' },
+    { id: 'glm', name: 'Zhipu AI (GLM)', base_url: 'https://api.z.ai/api/anthropic' },
+    { id: 'minimax', name: 'MiniMax', base_url: 'https://api.minimax.io/anthropic' },
     { id: 'google', name: 'Google Gemini', base_url: 'https://generativelanguage.googleapis.com/v1' },
+    { id: 'qwen', name: 'Qwen / Alibaba', base_url: 'https://dashscope.aliyuncs.com/api/v1' },
     { id: 'cohere', name: 'Cohere', base_url: 'https://api.cohere.ai/v1' },
     { id: 'mistral', name: 'Mistral AI', base_url: 'https://api.mistral.ai/v1' },
   ];
+
+  interface ProviderModel { id: string; name: string; }
 
   interface Provider {
     id: string;
     provider_type: string;
     display_name: string;
     base_url: string;
+    api_key?: string;
     is_active: boolean;
     model_count: number;
+    model_list?: ProviderModel[];
+    primary_model?: string;
   }
+
+  // Known models per provider type (mirrors backend PROVIDER_MODELS)
+  const PROVIDER_MODELS_MAP: Record<string, ProviderModel[]> = {
+    anthropic: [
+      { id: 'claude-opus-4-6-20250514', name: 'Claude Opus 4.6' },
+      { id: 'claude-sonnet-4-6-20250514', name: 'Claude Sonnet 4.6' },
+      { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' },
+      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet' },
+      { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus' },
+    ],
+    openai: [
+      { id: 'gpt-4o', name: 'GPT-4o' },
+      { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
+      { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
+      { id: 'gpt-4', name: 'GPT-4' },
+      { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' },
+    ],
+    openrouter: [
+      { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet (OR)' },
+      { id: 'anthropic/claude-3-opus', name: 'Claude 3 Opus (OR)' },
+      { id: 'google/gemini-pro-1.5', name: 'Gemini Pro 1.5 (OR)' },
+      { id: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B (OR)' },
+      { id: 'mistralai/mistral-7b-instruct', name: 'Mistral 7B (OR)' },
+    ],
+    deepseek: [
+      { id: 'deepseek-chat', name: 'DeepSeek Chat' },
+      { id: 'deepseek-reasoner', name: 'DeepSeek R1 (Reasoning)' },
+      { id: 'deepseek-coder', name: 'DeepSeek Coder' },
+    ],
+    glm: [
+      { id: 'GLM-5.1', name: 'GLM-5.1' },
+      { id: 'glm-4-plus', name: 'GLM-4 Plus' },
+      { id: 'glm-4', name: 'GLM-4' },
+      { id: 'glm-4-flash', name: 'GLM-4 Flash' },
+    ],
+    minimax: [
+      { id: 'MiniMax-M2.7', name: 'MiniMax M2.7' },
+      { id: 'MiniMax-M2.5', name: 'MiniMax M2.5' },
+      { id: 'MiniMax-M2.1', name: 'MiniMax M2.1' },
+    ],
+    google: [
+      { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash Exp' },
+      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
+      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
+    ],
+    cohere: [
+      { id: 'command-r-plus', name: 'Command R+' },
+      { id: 'command-r', name: 'Command R' },
+    ],
+    mistral: [
+      { id: 'mistral-large-latest', name: 'Mistral Large' },
+      { id: 'mistral-small-latest', name: 'Mistral Small' },
+    ],
+  };
 
   let providers: Provider[] = $state([]);
   let editingProvider: string | null = $state(null);
@@ -40,7 +117,8 @@
     provider_type: 'anthropic',
     base_url: 'https://api.anthropic.com/v1',
     api_key: '',
-    display_name: ''
+    display_name: '',
+    primary_model: 'claude-sonnet-4-6-20250514'
   });
 
   let showDeleteConfirm = $state(false);
@@ -136,7 +214,7 @@
 
   function methodLabel(method: string): string {
     if (method === 'oauth' || method === 'browser_oauth') return 'Browser OAuth';
-    if (method === 'adc') return 'ADC (GCP)';
+    if (method === 'adc') return 'Google ADC';
     if (method === 'api_key') return 'API Key';
     return 'Not configured';
   }
@@ -146,7 +224,13 @@
     error = null;
     try {
       const data = await apiFetch<{ providers: Provider[] }>('/providers');
-      providers = data.providers || [];
+      // Pull stored api_keys from settings store to pre-fill (backend doesn't return them)
+      const storedKeys = get(settingsStore).apiKeys;
+      providers = (data.providers || []).map(p => ({
+        ...p,
+        api_key: (storedKeys as unknown as Record<string, string>)[p.provider_type] || p.api_key || '',
+        primary_model: p.primary_model || (PROVIDER_MODELS_MAP[p.provider_type]?.[0]?.id ?? '')
+      }));
     } catch (e) {
       error = 'Failed to load providers';
       console.error(e);
@@ -168,6 +252,21 @@
 
   function startEditing(providerType: string) {
     editingProvider = providerType;
+    // If provider not yet in DB, inject a temporary object so the edit form has something to bind to
+    if (!providers.find(p => p.provider_type === providerType)) {
+      const def = DEFAULT_PROVIDERS.find(p => p.id === providerType);
+      providers = [...providers, {
+        id: '',
+        provider_type: providerType,
+        display_name: def?.name || providerType,
+        base_url: def?.base_url || '',
+        api_key: '',
+        is_active: false,
+        model_count: 0,
+        model_list: PROVIDER_MODELS_MAP[providerType] || [],
+        primary_model: PROVIDER_MODELS_MAP[providerType]?.[0]?.id ?? ''
+      }];
+    }
   }
 
   function cancelEditing() {
@@ -180,14 +279,49 @@
     const provider = providers.find(p => p.provider_type === providerType);
     if (!provider) { isSaving = false; return; }
     try {
-      await apiFetch(`/providers/${provider.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          provider_type: providerType,
-          base_url: provider.base_url,
-          is_active: provider.is_active
-        })
-      });
+      // Build model_list with selected primary model first
+      const knownModels = PROVIDER_MODELS_MAP[providerType] || [];
+      const primaryModelId = provider.primary_model || knownModels[0]?.id || '';
+      const orderedModels = primaryModelId
+        ? [
+            ...knownModels.filter(m => m.id === primaryModelId),
+            ...knownModels.filter(m => m.id !== primaryModelId)
+          ]
+        : knownModels;
+      if (provider.id) {
+        await apiFetch(`/providers/${provider.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            provider_type: providerType,
+            base_url: provider.base_url,
+            api_key: provider.api_key || undefined,
+            is_active: provider.is_active,
+            model_list: orderedModels.length ? orderedModels : undefined
+          })
+        });
+      } else {
+        await apiFetch('/providers', {
+          method: 'POST',
+          body: JSON.stringify({
+            provider_type: providerType,
+            display_name: provider.display_name,
+            base_url: provider.base_url,
+            api_key: provider.api_key,
+            is_active: true,
+            model_list: orderedModels.length ? orderedModels : undefined
+          })
+        });
+      }
+      // Sync API key to settings store
+      if (provider.api_key) {
+        settingsStore.updateAPIKeys({ [providerType]: provider.api_key });
+      }
+      // Hot-refresh: invalidate router cache so new key takes effect immediately
+      try {
+        await apiFetch('/providers/refresh', { method: 'POST' });
+      } catch (e) {
+        console.warn('Provider router hot-refresh failed:', e);
+      }
       editingProvider = null;
       await loadProviders();
     } catch (e) {
@@ -199,14 +333,17 @@
   }
 
   async function testProvider(providerId: string) {
-    const provider = providers.find(p => p.provider_type === providerId);
+    const provider = providers.find(p => p.id === providerId);
     if (!provider) return;
     isTesting[providerId] = true;
     testResults[providerId] = { success: false };
     try {
       const result = await apiFetch<{ success: boolean; latency_ms?: number; error?: string }>(
-        `/providers/${provider.id}/test`,
-        { method: 'POST' }
+        `/providers/test`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ provider_type: providerId })
+        }
       );
       testResults[providerId] = result;
     } catch (e) {
@@ -227,6 +364,11 @@
       const provider = providers.find(p => p.provider_type === deletingProviderId);
       if (provider) {
         await apiFetch(`/providers/${provider.id}`, { method: 'DELETE' });
+        try {
+          await apiFetch('/providers/refresh', { method: 'POST' });
+        } catch (e) {
+          console.warn('Provider router hot-refresh failed:', e);
+        }
         await loadProviders();
       }
     } catch (e) {
@@ -243,6 +385,11 @@
     error = null;
     try {
       const defP = DEFAULT_PROVIDERS.find(p => p.id === newProviderForm.provider_type);
+      const knownModels = PROVIDER_MODELS_MAP[newProviderForm.provider_type] || [];
+      const primaryId = newProviderForm.primary_model || knownModels[0]?.id || '';
+      const orderedModels = primaryId
+        ? [...knownModels.filter(m => m.id === primaryId), ...knownModels.filter(m => m.id !== primaryId)]
+        : knownModels;
       await apiFetch('/providers', {
         method: 'POST',
         body: JSON.stringify({
@@ -250,11 +397,18 @@
           display_name: newProviderForm.display_name || defP?.name || newProviderForm.provider_type,
           base_url: newProviderForm.base_url,
           api_key: newProviderForm.api_key,
-          is_active: true
+          is_active: true,
+          model_list: orderedModels.length ? orderedModels : undefined
         })
       });
+      // Hot-refresh: invalidate router cache so new provider takes effect immediately
+      try {
+        await apiFetch('/providers/refresh', { method: 'POST' });
+      } catch (e) {
+        console.warn('Provider router hot-refresh failed:', e);
+      }
       showAddModal = false;
-      newProviderForm = { provider_type: 'anthropic', base_url: 'https://api.anthropic.com/v1', api_key: '', display_name: '' };
+      newProviderForm = { provider_type: 'anthropic', base_url: 'https://api.anthropic.com/v1', api_key: '', display_name: '', primary_model: '' };
       await loadProviders();
     } catch (e) {
       error = 'Failed to add provider';
@@ -266,13 +420,22 @@
 
   function openAddModal() {
     const first = DEFAULT_PROVIDERS[0];
-    newProviderForm = { provider_type: first.id, base_url: first.base_url, api_key: '', display_name: '' };
+    newProviderForm = {
+      provider_type: first.id,
+      base_url: first.base_url,
+      api_key: '',
+      display_name: '',
+      primary_model: PROVIDER_MODELS_MAP[first.id]?.[0]?.id ?? ''
+    };
     showAddModal = true;
   }
 
   function onProviderTypeChange() {
     const def = DEFAULT_PROVIDERS.find(p => p.id === newProviderForm.provider_type);
-    if (def) newProviderForm.base_url = def.base_url;
+    if (def) {
+      newProviderForm.base_url = def.base_url;
+      newProviderForm.primary_model = PROVIDER_MODELS_MAP[def.id]?.[0]?.id ?? '';
+    }
   }
 
   onMount(() => { loadProviders(); loadZeroAuthStatus(); });
@@ -423,10 +586,11 @@
     {#each DEFAULT_PROVIDERS as defP}
       {@const provider = providers.find(p => p.provider_type === defP.id)}
       {@const configured = provider?.is_active}
+      {@const IconComponent = PROVIDER_ICONS[defP.id] || Server}
       <div class="provider-card" class:configured class:editing={editingProvider === defP.id}>
         <div class="provider-header">
           <div class="provider-info">
-            <Server size={16} />
+            <IconComponent size={16} />
             <span class="provider-name">{defP.name}</span>
           </div>
           <div class="provider-status">
@@ -442,12 +606,34 @@
         </div>
 
         {#if editingProvider === defP.id && provider}
+          {@const availableModels = PROVIDER_MODELS_MAP[defP.id] || []}
           <div class="provider-fields">
             <div class="form-group">
               <label>Base URL</label>
-              <input type="text" class="text-input" bind:value={provider.base_url} placeholder="API base URL" />
+              <input type="text" class="text-input" bind:value={provider.base_url} placeholder="https://api.example.com/v1" />
             </div>
             <div class="form-group">
+              <label>API Key</label>
+              <input type="password" class="text-input" bind:value={provider.api_key} placeholder="sk-..." autocomplete="off" />
+            </div>
+            {#if availableModels.length > 0}
+              <div class="form-group">
+                <label>Primary Model</label>
+                <select class="text-input" bind:value={provider.primary_model}>
+                  {#each availableModels as m}
+                    <option value={m.id}>{m.name}</option>
+                  {/each}
+                </select>
+                <small class="field-hint">The model used by default for this provider.</small>
+              </div>
+            {:else}
+              <div class="form-group">
+                <label>Primary Model</label>
+                <input type="text" class="text-input" bind:value={provider.primary_model} placeholder="e.g. gpt-4o or claude-sonnet-4-6" />
+                <small class="field-hint">Custom model ID — check your provider's docs.</small>
+              </div>
+            {/if}
+            <div class="form-group toggle-group">
               <label class="toggle-label">
                 <input type="checkbox" bind:checked={provider.is_active} />
                 <span>Active</span>
@@ -455,7 +641,10 @@
             </div>
           </div>
         {:else if provider}
-          <div class="provider-url">{provider.base_url}</div>
+          <div class="provider-url">
+            {provider.base_url}
+            {#if provider.primary_model}<span class="model-badge">{provider.primary_model}</span>{/if}
+          </div>
         {:else}
           <div class="provider-url muted">{defP.base_url}</div>
         {/if}
@@ -525,6 +714,18 @@
         <div class="form-group">
           <label>API Key</label>
           <input type="password" class="text-input" bind:value={newProviderForm.api_key} placeholder="sk-..." />
+        </div>
+        <div class="form-group">
+          <label>Primary Model</label>
+          {#if (PROVIDER_MODELS_MAP[newProviderForm.provider_type] || []).length > 0}
+            <select class="text-input" bind:value={newProviderForm.primary_model}>
+              {#each PROVIDER_MODELS_MAP[newProviderForm.provider_type] || [] as m}
+                <option value={m.id}>{m.name}</option>
+              {/each}
+            </select>
+          {:else}
+            <input type="text" class="text-input" bind:value={newProviderForm.primary_model} placeholder="e.g. gpt-4o" />
+          {/if}
         </div>
       </div>
       <div class="modal-footer">
@@ -675,12 +876,36 @@
 
   .provider-url.muted { opacity: 0.5; }
 
+  .model-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 6px;
+    background: rgba(0, 212, 255, 0.12);
+    border: 1px solid rgba(0, 212, 255, 0.25);
+    border-radius: 4px;
+    color: rgba(0, 212, 255, 0.8);
+    font-size: 10px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  .field-hint {
+    display: block;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.35);
+    margin-top: 3px;
+  }
+
   .provider-fields {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1.5fr 1fr 1fr auto;
     gap: 12px;
     margin-bottom: 10px;
     align-items: end;
+  }
+
+  .provider-fields .toggle-group {
+    display: flex;
+    align-items: center;
   }
 
   .form-group { display: flex; flex-direction: column; gap: 5px; }

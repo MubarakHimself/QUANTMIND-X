@@ -95,6 +95,7 @@
 
   // Check if selected message is an approval request that can be acted upon
   let canApprove = $derived(selectedMsg?.type === 'approval_request' && selectedMsg?.gate_id);
+  let activeMessages = $derived(viewMode === 'sent' ? sent : inbox);
 
   // Departments for filtering
   const departments = ['development', 'research', 'risk', 'trading', 'portfolio'];
@@ -136,6 +137,10 @@
 
   function handleCloseMessage() {
     selectedMsg = null;
+  }
+
+  function getBodyPreview(body: string): string {
+    return body.length > 180 ? `${body.slice(0, 180)}...` : body;
   }
 
   function formatTimestamp(timestamp: string): string {
@@ -294,192 +299,6 @@
         <RefreshCw size={24} class="spinning" />
         <span>Loading messages...</span>
       </div>
-    {:else if selectedMsg}
-      <!-- Message Detail View -->
-      <div class="message-detail">
-        <div class="detail-header">
-          <button class="back-btn" onclick={handleCloseMessage}>
-            <ChevronRight size={16} />
-            Back
-          </button>
-          <div class="detail-meta">
-            <span class="priority-badge {getPriorityBadgeClass(selectedMsg.priority)}">
-              {selectedMsg.priority}
-            </span>
-            <span class="type-badge">
-              {selectedMsg.type}
-            </span>
-          </div>
-        </div>
-
-        <div class="detail-subject">{selectedMsg.subject}</div>
-
-        <div class="detail-parties">
-          <div class="party from">
-            <span class="label">From:</span>
-            <span class="dept-badge" style="--dept-color: {DEPARTMENT_COLORS[selectedMsg.from]}">
-              {selectedMsg.from}
-            </span>
-          </div>
-          <div class="party to">
-            <span class="label">To:</span>
-            <span class="dept-badge" style="--dept-color: {DEPARTMENT_COLORS[selectedMsg.to]}">
-              {selectedMsg.to}
-            </span>
-          </div>
-        </div>
-
-        <!-- Approval Info Section -->
-        {#if isApprovalMessage(selectedMsg)}
-          <div class="approval-info">
-            <div class="approval-header">
-              <span class="approval-label">Approval Details</span>
-              <span class="approval-status" class:pending={selectedMsg.type === 'approval_request'} class:approved={selectedMsg.type === 'approval_approved'} class:rejected={selectedMsg.type === 'approval_rejected'}>
-                {selectedMsg.type === 'approval_request' ? 'Pending' : selectedMsg.type === 'approval_approved' ? 'Approved' : 'Rejected'}
-              </span>
-            </div>
-            {#if selectedMsg.from_stage && selectedMsg.to_stage}
-              <div class="approval-stages">
-                <span class="stage from-stage">{selectedMsg.from_stage}</span>
-                <span class="stage-arrow">→</span>
-                <span class="stage to-stage">{selectedMsg.to_stage}</span>
-              </div>
-            {/if}
-            {#if selectedMsg.workflow_id}
-              <div class="approval-workflow">
-                <span class="label">Workflow:</span>
-                <span class="value">{selectedMsg.workflow_id}</span>
-              </div>
-            {/if}
-            {#if selectedMsg.gate_id}
-              <div class="approval-gate-id">
-                <span class="label">Gate ID:</span>
-                <code class="value">{selectedMsg.gate_id}</code>
-              </div>
-            {/if}
-          </div>
-        {/if}
-
-        <div class="detail-body">
-          {selectedMsg.body}
-        </div>
-
-        <!-- Approval Actions -->
-        {#if canApprove}
-          <div class="approval-actions">
-            <div class="approver-input">
-              <label for="approver-name">Your name:</label>
-              <input
-                id="approver-name"
-                type="text"
-                bind:value={approverName}
-                placeholder="Enter your name"
-              />
-            </div>
-            <div class="approval-notes">
-              <label for="approval-notes">Notes (optional):</label>
-              <textarea
-                id="approval-notes"
-                bind:value={approvalNotes}
-                placeholder="Add approval notes..."
-                rows="2"
-              ></textarea>
-            </div>
-            <div class="action-buttons">
-              <button class="approve-btn" onclick={handleApprove} disabled={approvingGate || !approverName}>
-                <ThumbsUp size={14} />
-                {approvingGate ? 'Approving...' : 'Approve'}
-              </button>
-              <button class="reject-btn" onclick={handleReject} disabled={approvingGate || !approverName}>
-                <ThumbsDown size={14} />
-                {approvingGate ? 'Rejecting...' : 'Reject'}
-              </button>
-            </div>
-          </div>
-        {/if}
-
-        <div class="detail-footer">
-          <span class="timestamp">
-            <Clock size={12} />
-            {formatTimestamp(selectedMsg.timestamp)}
-          </span>
-          {#if selectedMsg.read}
-            <span class="read-status">
-              <CheckCircle size={12} />
-              Read
-            </span>
-          {/if}
-        </div>
-      </div>
-    {:else if viewMode === 'inbox'}
-      <!-- Inbox List -->
-      <div class="message-list">
-        {#if inbox.length === 0}
-          <div class="empty-state">
-            <Inbox size={32} />
-            <p>No messages in inbox</p>
-          </div>
-        {:else}
-          {#each inbox as message (message.id)}
-            <button
-              class="message-item"
-              class:unread={!message.read}
-              onclick={() => handleSelectMessage(message)}
-            >
-              <div class="item-indicator" style="background-color: {DEPARTMENT_COLORS[message.from]}"></div>
-              <div class="item-content">
-                <div class="item-header">
-                  <span class="from-dept" style="color: {DEPARTMENT_COLORS[message.from]}">
-                    {message.from}
-                  </span>
-                  <span class="to-arrow">→</span>
-                  <span class="to-dept" style="color: {DEPARTMENT_COLORS[message.to]}">
-                    {message.to}
-                  </span>
-                  <span class="timestamp">{formatTimestamp(message.timestamp)}</span>
-                </div>
-                <div class="item-subject">{message.subject}</div>
-                <div class="item-footer">
-                  <span class="priority-dot {getPriorityBadgeClass(message.priority)}"></span>
-                  <span class="message-type">{message.type}</span>
-                </div>
-              </div>
-              {#if !message.read}
-                <div class="unread-dot"></div>
-              {/if}
-            </button>
-          {/each}
-        {/if}
-      </div>
-    {:else if viewMode === 'sent'}
-      <!-- Sent List -->
-      <div class="message-list">
-        {#if sent.length === 0}
-          <div class="empty-state">
-            <Send size={32} />
-            <p>No sent messages</p>
-          </div>
-        {:else}
-          {#each sent as message (message.id)}
-            <div class="message-item sent-item">
-              <div class="item-indicator" style="background-color: {DEPARTMENT_COLORS[message.to]}"></div>
-              <div class="item-content">
-                <div class="item-header">
-                  <span class="to-dept" style="color: {DEPARTMENT_COLORS[message.to]}">
-                    To: {message.to}
-                  </span>
-                  <span class="timestamp">{formatTimestamp(message.timestamp)}</span>
-                </div>
-                <div class="item-subject">{message.subject}</div>
-                <div class="item-footer">
-                  <span class="priority-dot {getPriorityBadgeClass(message.priority)}"></span>
-                  <span class="message-type">{message.type}</span>
-                </div>
-              </div>
-            </div>
-          {/each}
-        {/if}
-      </div>
     {:else if viewMode === 'stats'}
       <!-- Stats View -->
       <div class="stats-view">
@@ -530,6 +349,185 @@
               </div>
             {/each}
           </div>
+        </div>
+      </div>
+    {:else}
+      <div class="message-workspace">
+        <div class="message-list-panel">
+          <div class="list-panel-header">
+            <span>{viewMode === 'sent' ? 'Sent Messages' : 'Inbox Messages'}</span>
+            <span class="list-count">{activeMessages.length}</span>
+          </div>
+
+          <div class="message-list">
+            {#if activeMessages.length === 0}
+              <div class="empty-state">
+                {#if viewMode === 'sent'}
+                  <Send size={32} />
+                  <p>No sent messages</p>
+                {:else}
+                  <Inbox size={32} />
+                  <p>No messages in inbox</p>
+                {/if}
+              </div>
+            {:else}
+              {#each activeMessages as message (message.id)}
+                <button
+                  class="message-item"
+                  class:unread={!message.read}
+                  class:selected={selectedMsg?.id === message.id}
+                  onclick={() => handleSelectMessage(message)}
+                >
+                  <div class="item-indicator" style="background-color: {DEPARTMENT_COLORS[viewMode === 'sent' ? message.to : message.from]}"></div>
+                  <div class="item-content">
+                    <div class="item-header">
+                      <span class="from-dept" style="color: {DEPARTMENT_COLORS[message.from]}">
+                        {message.from}
+                      </span>
+                      <span class="to-arrow">→</span>
+                      <span class="to-dept" style="color: {DEPARTMENT_COLORS[message.to]}">
+                        {message.to}
+                      </span>
+                      <span class="timestamp">{formatTimestamp(message.timestamp)}</span>
+                    </div>
+                    <div class="item-subject">{message.subject}</div>
+                    <div class="item-preview">{getBodyPreview(message.body)}</div>
+                    <div class="item-footer">
+                      <span class="priority-dot {getPriorityBadgeClass(message.priority)}"></span>
+                      <span class="message-type">{getTypeLabel(message.type)}</span>
+                    </div>
+                  </div>
+                  {#if !message.read}
+                    <div class="unread-dot"></div>
+                  {/if}
+                </button>
+              {/each}
+            {/if}
+          </div>
+        </div>
+
+        <div class="message-detail-panel">
+          {#if selectedMsg}
+            <div class="message-detail">
+              <div class="detail-header">
+                <button class="back-btn" onclick={handleCloseMessage}>
+                  <ChevronRight size={16} />
+                  Clear
+                </button>
+                <div class="detail-meta">
+                  <span class="priority-badge {getPriorityBadgeClass(selectedMsg.priority)}">
+                    {selectedMsg.priority}
+                  </span>
+                  <span class="type-badge">
+                    {getTypeLabel(selectedMsg.type)}
+                  </span>
+                </div>
+              </div>
+
+              <div class="detail-subject">{selectedMsg.subject}</div>
+
+              <div class="detail-parties">
+                <div class="party from">
+                  <span class="label">From:</span>
+                  <span class="dept-badge" style="--dept-color: {DEPARTMENT_COLORS[selectedMsg.from]}">
+                    {selectedMsg.from}
+                  </span>
+                </div>
+                <div class="party to">
+                  <span class="label">To:</span>
+                  <span class="dept-badge" style="--dept-color: {DEPARTMENT_COLORS[selectedMsg.to]}">
+                    {selectedMsg.to}
+                  </span>
+                </div>
+              </div>
+
+              {#if isApprovalMessage(selectedMsg)}
+                <div class="approval-info">
+                  <div class="approval-header">
+                    <span class="approval-label">Approval Details</span>
+                    <span class="approval-status" class:pending={selectedMsg.type === 'approval_request'} class:approved={selectedMsg.type === 'approval_approved'} class:rejected={selectedMsg.type === 'approval_rejected'}>
+                      {selectedMsg.type === 'approval_request' ? 'Pending' : selectedMsg.type === 'approval_approved' ? 'Approved' : 'Rejected'}
+                    </span>
+                  </div>
+                  {#if selectedMsg.from_stage && selectedMsg.to_stage}
+                    <div class="approval-stages">
+                      <span class="stage from-stage">{selectedMsg.from_stage}</span>
+                      <span class="stage-arrow">→</span>
+                      <span class="stage to-stage">{selectedMsg.to_stage}</span>
+                    </div>
+                  {/if}
+                  {#if selectedMsg.workflow_id}
+                    <div class="approval-workflow">
+                      <span class="label">Workflow:</span>
+                      <span class="value">{selectedMsg.workflow_id}</span>
+                    </div>
+                  {/if}
+                  {#if selectedMsg.gate_id}
+                    <div class="approval-gate-id">
+                      <span class="label">Gate ID:</span>
+                      <code class="value">{selectedMsg.gate_id}</code>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+
+              <div class="detail-body">
+                {selectedMsg.body}
+              </div>
+
+              {#if canApprove}
+                <div class="approval-actions">
+                  <div class="approver-input">
+                    <label for="approver-name">Your name:</label>
+                    <input
+                      id="approver-name"
+                      type="text"
+                      bind:value={approverName}
+                      placeholder="Enter your name"
+                    />
+                  </div>
+                  <div class="approval-notes">
+                    <label for="approval-notes">Notes (optional):</label>
+                    <textarea
+                      id="approval-notes"
+                      bind:value={approvalNotes}
+                      placeholder="Add approval notes..."
+                      rows="2"
+                    ></textarea>
+                  </div>
+                  <div class="action-buttons">
+                    <button class="approve-btn" onclick={handleApprove} disabled={approvingGate || !approverName}>
+                      <ThumbsUp size={14} />
+                      {approvingGate ? 'Approving...' : 'Approve'}
+                    </button>
+                    <button class="reject-btn" onclick={handleReject} disabled={approvingGate || !approverName}>
+                      <ThumbsDown size={14} />
+                      {approvingGate ? 'Rejecting...' : 'Reject'}
+                    </button>
+                  </div>
+                </div>
+              {/if}
+
+              <div class="detail-footer">
+                <span class="timestamp">
+                  <Clock size={12} />
+                  {formatTimestamp(selectedMsg.timestamp)}
+                </span>
+                {#if selectedMsg.read}
+                  <span class="read-status">
+                    <CheckCircle size={12} />
+                    Read
+                  </span>
+                {/if}
+              </div>
+            </div>
+          {:else}
+            <div class="empty-detail">
+              <Mail size={30} />
+              <h4>No message selected</h4>
+              <p>Select a message to inspect the full body, routing, and approval metadata without leaving the inbox.</p>
+            </div>
+          {/if}
         </div>
       </div>
     {/if}
@@ -756,6 +754,43 @@
     gap: 0.375rem;
   }
 
+  .message-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(320px, 1.15fr);
+    gap: 0.875rem;
+    min-height: 100%;
+  }
+
+  .message-list-panel,
+  .message-detail-panel {
+    min-width: 0;
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid var(--border-color, #1e293b);
+    border-radius: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  .list-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.625rem;
+    border-bottom: 1px solid var(--border-color, #1e293b);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary, #94a3b8);
+  }
+
+  .list-count {
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    background: var(--bg-input, #0f172a);
+    color: var(--text-primary, #e2e8f0);
+    font-size: 0.6875rem;
+  }
+
   .message-item {
     display: flex;
     align-items: stretch;
@@ -772,6 +807,12 @@
   .message-item:hover {
     background: var(--bg-hover, #334155);
     border-color: var(--accent-primary, #3b82f6);
+  }
+
+  .message-item.selected {
+    border-color: var(--accent-primary, #3b82f6);
+    background: color-mix(in srgb, var(--accent-primary, #3b82f6) 10%, var(--bg-tertiary, #1e293b));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-primary, #3b82f6) 35%, transparent);
   }
 
   .message-item.unread {
@@ -824,6 +865,17 @@
     margin-bottom: 0.25rem;
   }
 
+  .item-preview {
+    margin-bottom: 0.375rem;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: var(--text-muted, #64748b);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
   .item-footer {
     display: flex;
     align-items: center;
@@ -858,10 +910,8 @@
 
   /* Message Detail */
   .message-detail {
-    padding: 0.75rem;
-    background: var(--bg-tertiary, #1e293b);
-    border-radius: 0.5rem;
-    border: 1px solid var(--border-color, #334155);
+    height: 100%;
+    padding: 0.25rem;
   }
 
   .detail-header {
@@ -992,6 +1042,30 @@
 
   .read-status {
     color: #22c55e;
+  }
+
+  .empty-detail {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    text-align: center;
+    color: var(--text-muted, #64748b);
+    padding: 2rem;
+  }
+
+  .empty-detail h4 {
+    margin: 0;
+    color: var(--text-primary, #e2e8f0);
+    font-size: 0.95rem;
+  }
+
+  .empty-detail p {
+    margin: 0;
+    max-width: 30rem;
+    line-height: 1.6;
   }
 
   /* Stats View */
@@ -1316,5 +1390,11 @@
   .reject-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  @media (max-width: 1100px) {
+    .message-workspace {
+      grid-template-columns: 1fr;
+    }
   }
 </style>

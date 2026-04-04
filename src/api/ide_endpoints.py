@@ -29,6 +29,35 @@ logger = logging.getLogger(__name__)
 # Ensure data directories exist
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+DEFAULT_CORS_ORIGINS = [
+    # Tauri local development
+    "tauri://localhost",
+    "tauri://127.0.0.1",
+    # Vite/React development servers
+    "http://localhost:1420",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:5174",
+    "http://localhost:4173",
+    # IP-based local development
+    "http://127.0.0.1:1420",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    "http://127.0.0.1:4173",
+    "http://127.0.0.1:4174",
+    # Production URLs
+    "https://app.quantmindx.com",
+    "https://www.quantmindx.com",
+    "https://quantmindx.com",
+    # Allow local network access for development
+    "http://192.168.1.100:1420",
+    "http://192.168.1.100:5173",
+    "http://192.168.1.100:3000",
+    "http://192.168.1.100:3001",
+]
+
 
 def create_ide_api_app():
     """Create FastAPI app with all IDE endpoints."""
@@ -59,31 +88,15 @@ def create_ide_api_app():
     if cors_origins_env:
         # Parse comma-separated origins from environment
         cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+        if "*" in cors_origins:
+            logger.warning(
+                "CORS_ALLOWED_ORIGINS contains '*', which is invalid with allow_credentials=True. "
+                "Falling back to explicit development/production origins."
+            )
+            cors_origins = DEFAULT_CORS_ORIGINS
     else:
         # Default allowed origins for development and production
-        cors_origins = [
-            # Tauri local development
-            "tauri://localhost",
-            "tauri://127.0.0.1",
-            # Vite/React development servers
-            "http://localhost:1420",
-            "http://localhost:5173",
-            "http://localhost:3000",
-            "http://localhost:5174",
-            "http://localhost:4173",
-            # IP-based local development
-            "http://127.0.0.1:1420",
-            "http://127.0.0.1:5173",
-            "http://127.0.0.1:3000",
-            # Production URLs
-            "https://app.quantmindx.com",
-            "https://www.quantmindx.com",
-            "https://quantmindx.com",
-            # Allow local network access for development
-            "http://192.168.1.100:1420",
-            "http://192.168.1.100:5173",
-            "http://192.168.1.100:3000",
-        ]
+        cors_origins = DEFAULT_CORS_ORIGINS
 
     app.add_middleware(
         CORSMiddleware,
@@ -116,8 +129,17 @@ def create_ide_api_app():
     return app
 
 
+def _normalized_node_role() -> str:
+    """Resolve NODE_ROLE with legacy aliases normalized."""
+    import os
+
+    role = os.getenv("NODE_ROLE", "local").strip().lower()
+    return {"cloudzy": "node_trading", "contabo": "node_backend"}.get(role, role)
+
+
 def _register_ide_routers(app: "FastAPI"):
     """Register all IDE endpoint routers."""
+    node_role = _normalized_node_role()
 
     # Import routers from modular files
     try:
@@ -146,13 +168,14 @@ def _register_ide_routers(app: "FastAPI"):
     except ImportError as e:
         logger.warning(f"Video ingest endpoints not available: {e}")
 
-    try:
-        from src.api.ide_trading import broker_router, bots_router, bots_control_router
-        app.include_router(broker_router)
-        app.include_router(bots_router)
-        app.include_router(bots_control_router)
-    except ImportError as e:
-        logger.warning(f"Trading endpoints not available: {e}")
+    if node_role in {"local", "node_trading"}:
+        try:
+            from src.api.ide_trading import broker_router, bots_router, bots_control_router
+            app.include_router(broker_router)
+            app.include_router(bots_router)
+            app.include_router(bots_control_router)
+        except ImportError as e:
+            logger.warning(f"Trading endpoints not available: {e}")
 
     try:
         from src.api.ide_ea import router as ea_router
@@ -160,11 +183,12 @@ def _register_ide_routers(app: "FastAPI"):
     except ImportError as e:
         logger.warning(f"EA endpoints not available: {e}")
 
-    try:
-        from src.api.ide_mt5 import router as mt5_router
-        app.include_router(mt5_router)
-    except ImportError as e:
-        logger.warning(f"MT5 endpoints not available: {e}")
+    if node_role in {"local", "node_trading"}:
+        try:
+            from src.api.ide_mt5 import router as mt5_router
+            app.include_router(mt5_router)
+        except ImportError as e:
+            logger.warning(f"MT5 endpoints not available: {e}")
 
     try:
         from src.api.ide_backtest import router as backtest_router

@@ -106,8 +106,8 @@
   // Get skill info for display
   function getSkillInfo(): { name: string; time: string } | null {
     if (!isSkillResult()) return null;
-    const skillName = message.metadata?.skillName || message.metadata?.skillId || 'Unknown Skill';
-    const execTime = message.metadata?.executionTime;
+    const skillName = (message.metadata?.skillName as string) || (message.metadata?.skillId as string) || 'Unknown Skill';
+    const execTime = message.metadata?.executionTime as number | undefined;
     const timeStr = execTime ? `${Math.round(execTime)}ms` : null;
     return { name: skillName, time: timeStr || '' };
   }

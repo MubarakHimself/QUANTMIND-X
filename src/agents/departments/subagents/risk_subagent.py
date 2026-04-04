@@ -130,11 +130,11 @@ class RiskSubAgent:
     def _initialize_llm(self) -> None:
         """Initialize LLM client for risk analysis."""
         try:
-            from anthropic import Anthropic
-            self._llm_client = Anthropic()
-            logger.info("RiskSubAgent: LLM client initialized")
-        except ImportError:
-            logger.warning("RiskSubAgent: Anthropic SDK not available")
+            from src.agents.departments.subagents.llm_utils import get_subagent_client
+            self._llm_client, self._llm_model = get_subagent_client()
+            logger.info(f"RiskSubAgent: LLM client initialized (model={self._llm_model})")
+        except Exception as e:
+            logger.warning(f"RiskSubAgent: LLM init failed: {e}")
 
     def _call_llm(
         self,
@@ -156,7 +156,7 @@ class RiskSubAgent:
 
         try:
             response = self._llm_client.messages.create(
-                model="claude-3-5-haiku-20241022",  # Use Haiku for cost efficiency
+                model=self._llm_model,
                 max_tokens=2000,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],

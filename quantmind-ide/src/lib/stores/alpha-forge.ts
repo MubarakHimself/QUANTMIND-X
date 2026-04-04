@@ -7,6 +7,7 @@
 
 import { writable, derived, get } from 'svelte/store';
 import type { Readable, Writable } from 'svelte/store';
+import { apiFetch } from '$lib/api';
 
 // =============================================================================
 // Types
@@ -202,10 +203,7 @@ export const alphaForgeStore = {
       if (activeOnly) params.set('active_only', 'true');
       params.set('limit', '50');
 
-      const response = await fetch(`/api/pipeline/status?${params}`);
-      if (!response.ok) throw new Error('Failed to fetch pipeline status');
-
-      const data: PipelineStatusResponse = await response.json();
+      const data = await apiFetch<PipelineStatusResponse>(`/pipeline/status?${params}`);
 
       pipelineState.update((s) => ({
         ...s,
@@ -227,10 +225,7 @@ export const alphaForgeStore = {
    */
   async fetchPendingApprovals(): Promise<void> {
     try {
-      const response = await fetch('/api/pipeline/pending-approvals');
-      if (!response.ok) throw new Error('Failed to fetch pending approvals');
-
-      const data: PendingApproval = await response.json();
+      const data = await apiFetch<PendingApproval>('/pipeline/pending-approvals');
 
       pipelineState.update((s) => ({
         ...s,
@@ -251,10 +246,7 @@ export const alphaForgeStore = {
     pipelineState.update((s) => ({ ...s, loading: true }));
 
     try {
-      const response = await fetch(`/api/pipeline/status/${strategyId}`);
-      if (!response.ok) throw new Error('Failed to fetch pipeline run');
-
-      const data = await response.json();
+      const data = await apiFetch<{ run: PipelineRun }>(`/pipeline/status/${strategyId}`);
       const run = data.run as PipelineRun;
 
       pipelineState.update((s) => ({

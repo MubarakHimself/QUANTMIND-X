@@ -101,25 +101,6 @@
     <div class="alert-success"><Check size={14} /> <span>{success}</span></div>
   {/if}
 
-  <!-- Prop Firm Preset -->
-  <div class="settings-section">
-    <div class="section-title">Prop Firm Preset</div>
-    <div class="preset-grid">
-      {#each Object.entries(PROP_FIRM_PRESETS) as [key, preset]}
-        <button
-          class="preset-btn"
-          class:active={riskSettings.propFirmPreset === key}
-          onclick={() => handlePresetChange(key as keyof typeof PROP_FIRM_PRESETS)}
-        >
-          <span class="preset-name">{preset.name}</span>
-          {#if key !== 'custom'}
-            <span class="preset-detail">DL: {preset.dailyLoss}% / TD: {preset.totalLoss}%</span>
-          {/if}
-        </button>
-      {/each}
-    </div>
-  </div>
-
   <!-- Risk Limits -->
   <div class="settings-section">
     <div class="section-title">Risk Limits</div>
@@ -173,7 +154,7 @@
           type="number"
           min="0"
           max="100"
-          step="5"
+          step="0.5"
           class="number-input"
           bind:value={riskSettings.houseMoneyThreshold}
         />
@@ -205,6 +186,25 @@
         <span class="zone-label">Guardian</span>
         <span class="zone-amount">∞</span>
       </div>
+    </div>
+  </div>
+
+  <!-- Strategy Mode (deprioritized — ORB/Scalping focus) -->
+  <div class="settings-section" style="opacity: 0.6;">
+    <div class="section-title">Strategy Mode</div>
+    <div class="preset-grid">
+      {#each Object.entries(PROP_FIRM_PRESETS) as [key, preset]}
+        <button
+          class="preset-btn"
+          class:active={riskSettings.propFirmPreset === key}
+          onclick={() => handlePresetChange(key as keyof typeof PROP_FIRM_PRESETS)}
+        >
+          <span class="preset-name">{preset.name}</span>
+          {#if key !== 'custom'}
+            <span class="preset-detail">DL: {preset.dailyLoss}% / TD: {preset.totalLoss}%</span>
+          {/if}
+        </button>
+      {/each}
     </div>
   </div>
 

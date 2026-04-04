@@ -8,6 +8,7 @@ Orchestrates the complete compilation workflow including:
 - Escalation to FloorManager on failure
 """
 import logging
+import platform
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -378,7 +379,13 @@ Auto-correction attempts exhausted. Manual intervention required.
 
 def get_compilation_service() -> MQL5CompilationService:
     """Factory function to get a configured compilation service."""
-    return MQL5CompilationService()
+    if platform.system() == "Windows":
+        from src.mql5.compiler.docker_compiler import WindowsMetaEditorCompiler
+        backend = WindowsMetaEditorCompiler()
+    else:
+        from src.mql5.compiler.docker_compiler import DockerMQL5Compiler
+        backend = DockerMQL5Compiler()
+    return MQL5CompilationService(compiler=backend)
 
 
 @dataclass

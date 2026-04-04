@@ -3,6 +3,7 @@ import { writable, derived } from 'svelte/store';
 import type { Writable } from 'svelte/store';
 import { streamToStore, agentStreamStore, type TaskStreamState } from './agentStreamStore';
 import { streamAgent, type AgentMessage, type AgentContext, type AgentResult } from './claudeCodeAgent';
+import { buildApiUrl } from '$lib/api';
 
 // Agent state schema
 export const AgentStateSchema = z.object({
@@ -21,7 +22,14 @@ export interface StreamingAgentState {
 }
 
 // Create the streaming agent store
-function createStreamingAgentStore(): Writable<StreamingAgentState> {
+interface StreamingAgentStore extends Writable<StreamingAgentState> {
+  streamInvoke(agentType: string, message: string, context?: AgentContext): Promise<TaskStreamState | null>;
+  clear(): void;
+  setError(error: string): void;
+  reset(): void;
+}
+
+function createStreamingAgentStore(): StreamingAgentStore {
   const { subscribe, set, update } = writable<StreamingAgentState>({
     activeTask: null,
     isStreaming: false,
@@ -91,6 +99,14 @@ function createStreamingAgentStore(): Writable<StreamingAgentState> {
         error,
         isStreaming: false,
       }));
+    },
+
+    reset() {
+      set({
+        activeTask: null,
+        isStreaming: false,
+        error: null,
+      });
     },
 
     set,
@@ -274,9 +290,10 @@ When analyzing:
     // For now, use the backend API with provider information
     // Later will be replaced with LangGraph.js implementation
     try {
-      const res = await fetch('http://localhost:8000/api/chat', {
+      const res = await fetch(buildApiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           message,
           agent: agentType,

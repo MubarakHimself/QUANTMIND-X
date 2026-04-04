@@ -144,6 +144,8 @@ class ConnectionManager:
 
 # Global connection manager
 manager = ConnectionManager(heartbeat_interval=30)
+# Backward-compatible alias for older imports during startup wiring.
+ws_manager = manager
 
 
 # Chart streaming state
@@ -168,7 +170,7 @@ def create_websocket_endpoints(app):
     # Heartbeat is lazy-initialized on first WebSocket connection
     # This avoids "no running event loop" error at import time
 
-    @app.websocket("/ws")
+    @app.websocket("/ws/main")
     async def websocket_endpoint(websocket: WebSocket):  # type: ignore
         """
         Main WebSocket endpoint for UI updates.
@@ -1183,6 +1185,7 @@ __all__ = [
     'broadcast_market_opportunity',
     'broadcast_approval_gate',
     'manager',
+    'ws_manager',
     # Story 3-1 additions
     'broadcast_position_update',
     'broadcast_pnl_update',
@@ -1192,4 +1195,5 @@ __all__ = [
     'get_trading_broadcaster',
     'broadcast_bot_status_change',
     'broadcast_regime_change',
+    'get_manager',
 ]

@@ -1,0 +1,4 @@
+{
+  "instruments": ["EURUSD", "GBPUSD", "USDJPY", "USDCAD", "XAUUSD"],
+  "note": "Start with 5 instruments. Expand after first batch passes SIT gate."
+}

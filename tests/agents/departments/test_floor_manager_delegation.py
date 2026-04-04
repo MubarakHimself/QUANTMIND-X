@@ -8,6 +8,8 @@ Tests for handling dispatch requests from Copilot and delegating to departments.
 import pytest
 import tempfile
 import os
+import asyncio
+from unittest.mock import AsyncMock
 
 
 class TestHandleDispatch:
@@ -249,5 +251,81 @@ class TestCopilotDelegationWorkflow:
 
             messages = manager.mail_service.check_inbox("risk")
             assert len(messages) == 1
+
+            manager.close()
+
+
+class TestFloorManagerChatDelegationGate:
+    """Regression tests for chat delegation gating."""
+
+    def test_chat_uses_llm_for_non_delegatable_prompt(self):
+        """Conversational prompts should stay on Floor Manager LLM."""
+        from src.agents.departments.floor_manager import FloorManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "test_mail.db")
+            manager = FloorManager(mail_db_path=db_path)
+
+            manager._invoke_llm = AsyncMock(return_value="direct floor manager reply")
+            manager._delegate_to_department_head = AsyncMock(
+                return_value={"status": "success", "content": "delegated"}
+            )
+
+            result = asyncio.run(manager.chat("stream check please"))
+
+            assert result["status"] == "success"
+            assert result["content"] == "direct floor manager reply"
+            manager._invoke_llm.assert_called_once()
+            manager._delegate_to_department_head.assert_not_called()
+
+            manager.close()
+
+    def test_chat_does_not_delegate_check_queries(self):
+        """Read/query prompts should not be delegated by keyword side effects."""
+        from src.agents.departments.floor_manager import FloorManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "test_mail.db")
+            manager = FloorManager(mail_db_path=db_path)
+
+            manager._invoke_llm = AsyncMock(return_value="workflow status summary")
+            manager._delegate_to_department_head = AsyncMock(
+                return_value={"status": "success", "content": "delegated"}
+            )
+
+            result = asyncio.run(manager.chat("check active workflows"))
+
+            assert result["status"] == "success"
+            assert result["content"] == "workflow status summary"
+            manager._invoke_llm.assert_called_once()
+            manager._delegate_to_department_head.assert_not_called()
+
+            manager.close()
+
+    def test_chat_delegates_on_explicit_dispatch(self):
+        """Explicit delegation instructions should route to department head."""
+        from src.agents.departments.floor_manager import FloorManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "test_mail.db")
+            manager = FloorManager(mail_db_path=db_path)
+
+            manager._invoke_llm = AsyncMock(return_value="direct floor manager reply")
+            manager._delegate_to_department_head = AsyncMock(
+                return_value={
+                    "status": "success",
+                    "content": "research task accepted",
+                    "delegated_department": "research",
+                }
+            )
+
+            result = asyncio.run(
+                manager.chat("Delegate this to research and analyze EURUSD trend")
+            )
+
+            assert result["status"] == "success"
+            assert result["content"] == "research task accepted"
+            manager._delegate_to_department_head.assert_called_once()
+            manager._invoke_llm.assert_not_called()
 
             manager.close()

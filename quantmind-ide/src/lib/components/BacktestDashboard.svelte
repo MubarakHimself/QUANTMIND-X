@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { fade, slide } from 'svelte/transition';
+  import { API_CONFIG } from '../config/api';
   import {
     WebSocketClient,
     createBacktestClient
@@ -13,7 +14,7 @@
     baseUrl?: string;
   }
 
-  let { baseUrl = 'http://localhost:8000' }: Props = $props();
+  let { baseUrl = API_CONFIG.API_URL }: Props = $props();
 
   // Types
   interface BacktestMetrics {

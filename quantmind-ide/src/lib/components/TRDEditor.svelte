@@ -10,6 +10,7 @@
     Zap, Shield, DollarSign, Activity, BarChart3, Layers,
     ArrowLeft, ArrowRight, Maximize2, Minimize2, ToggleLeft, ToggleRight
   } from 'lucide-svelte';
+  import { buildApiUrl } from '$lib/api';
 
   const dispatch = createEventDispatcher();
 
@@ -258,7 +259,7 @@
 
   async function loadTRD(id: string) {
     try {
-      const res = await fetch(`http://localhost:8000/api/trd/${id}`);
+      const res = await fetch(buildApiUrl(`/api/trd/${id}`));
       if (res.ok) {
         trdData = await res.json();
       }
@@ -272,8 +273,8 @@
 
     try {
       const url = trdId
-        ? `http://localhost:8000/api/trd/${trdId}`
-        : 'http://localhost:8000/api/trd';
+        ? buildApiUrl(`/api/trd/${trdId}`)
+        : buildApiUrl('/api/trd');
       const method = trdId ? 'PUT' : 'POST';
 
       const res = await fetch(url, {

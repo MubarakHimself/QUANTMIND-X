@@ -59,6 +59,10 @@ Usage:
     init_tracing(app)
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Core functions for metrics server
 from src.monitoring.prometheus_exporter import (
     start_metrics_server,
@@ -103,14 +107,6 @@ from src.monitoring.prometheus_exporter import (
     system_info,
 )
 
-# Grafana Cloud pusher
-from src.monitoring.grafana_cloud_pusher import (
-    GrafanaCloudPusher,
-    get_grafana_cloud_pusher,
-    start_grafana_cloud_push,
-    stop_grafana_cloud_push,
-)
-
 # JSON logging for Promtail/Loki
 from src.monitoring.json_logging import (
     configure_api_logging,
@@ -121,35 +117,131 @@ from src.monitoring.json_logging import (
     setup_json_file_handler,
 )
 
-# OpenTelemetry Tracing
-from src.monitoring.tracing import (
-    init_tracing,
-    get_tracer,
-    get_current_trace_id,
-    get_current_span_id,
-    create_trading_span,
-    add_trace_context_to_log,
-    is_tracing_enabled,
-)
+try:
+    from src.monitoring.grafana_cloud_pusher import (
+        GrafanaCloudPusher,
+        get_grafana_cloud_pusher,
+        start_grafana_cloud_push,
+        stop_grafana_cloud_push,
+    )
+except Exception as exc:
+    logger.warning("Grafana Cloud monitoring disabled: %s", exc)
+    GrafanaCloudPusher = None
 
-# Custom instrumentation
-from src.monitoring.instrumentation import (
-    trace_strategy_routing,
-    trace_regime_detection,
-    trace_trade_execution,
-    trace_position_close,
-    trace_mt5_operation,
-    trace_agent_task,
-    trace_department_operation,
-    trace_workflow_stage,
-    trace_sse_stream,
-    trace_db_query,
-    inject_trace_context_to_websocket,
-    extract_trace_context_from_websocket,
-    create_websocket_span,
-    add_sse_trace_headers,
-    traced_function,
-)
+    def get_grafana_cloud_pusher():
+        return None
+
+    def start_grafana_cloud_push(*args, **kwargs):
+        return False
+
+    def stop_grafana_cloud_push(*args, **kwargs):
+        return False
+
+
+try:
+    from src.monitoring.tracing import (
+        init_tracing,
+        get_tracer,
+        get_current_trace_id,
+        get_current_span_id,
+        create_trading_span,
+        add_trace_context_to_log,
+        is_tracing_enabled,
+    )
+except Exception as exc:
+    logger.warning("Tracing disabled: %s", exc)
+
+    def init_tracing(*args, **kwargs):
+        return None
+
+    def get_tracer(*args, **kwargs):
+        return None
+
+    def get_current_trace_id():
+        return None
+
+    def get_current_span_id():
+        return None
+
+    def create_trading_span(*args, **kwargs):
+        return None
+
+    def add_trace_context_to_log(*args, **kwargs):
+        return None
+
+    def is_tracing_enabled():
+        return False
+
+
+try:
+    from src.monitoring.instrumentation import (
+        trace_strategy_routing,
+        trace_regime_detection,
+        trace_trade_execution,
+        trace_position_close,
+        trace_mt5_operation,
+        trace_agent_task,
+        trace_department_operation,
+        trace_workflow_stage,
+        trace_sse_stream,
+        trace_db_query,
+        inject_trace_context_to_websocket,
+        extract_trace_context_from_websocket,
+        create_websocket_span,
+        add_sse_trace_headers,
+        traced_function,
+    )
+except Exception as exc:
+    logger.warning("Tracing instrumentation disabled: %s", exc)
+
+    def _passthrough_decorator(func=None, *args, **kwargs):
+        if func is None:
+            return lambda wrapped: wrapped
+        return func
+
+    def trace_strategy_routing(*args, **kwargs):
+        return None
+
+    def trace_regime_detection(*args, **kwargs):
+        return None
+
+    def trace_trade_execution(*args, **kwargs):
+        return None
+
+    def trace_position_close(*args, **kwargs):
+        return None
+
+    def trace_mt5_operation(*args, **kwargs):
+        return None
+
+    def trace_agent_task(*args, **kwargs):
+        return None
+
+    def trace_department_operation(*args, **kwargs):
+        return None
+
+    def trace_workflow_stage(*args, **kwargs):
+        return None
+
+    def trace_sse_stream(*args, **kwargs):
+        return None
+
+    def trace_db_query(*args, **kwargs):
+        return None
+
+    def inject_trace_context_to_websocket(*args, **kwargs):
+        return None
+
+    def extract_trace_context_from_websocket(*args, **kwargs):
+        return {}
+
+    def create_websocket_span(*args, **kwargs):
+        return None
+
+    def add_sse_trace_headers(*args, **kwargs):
+        return {}
+
+    traced_function = _passthrough_decorator
 
 __all__ = [
     # Server functions

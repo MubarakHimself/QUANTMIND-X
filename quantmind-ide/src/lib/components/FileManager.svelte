@@ -12,6 +12,7 @@
   import FileViewer from './FileViewer.svelte';
   import FileEditor from './FileEditor.svelte';
   import { fileHistoryManager } from '../services/fileHistoryManager';
+  import { buildApiUrl } from '$lib/api';
 
   const dispatch = createEventDispatcher();
 
@@ -57,8 +58,6 @@
   let showEditor = $state(false);
   let isEditing = false;
 
-  const API_BASE = 'http://localhost:8000/api';
-
   // Icons for different file types
   const fileIcons: Record<string, any> = {
     mq5: FileCode,
@@ -88,7 +87,7 @@
   async function loadFileTree() {
     isLoading = true;
     try {
-      const response = await fetch(`${API_BASE}/files/tree`);
+      const response = await fetch(buildApiUrl('/api/files/tree'));
       if (response.ok) {
         fileTree = await response.json();
         expandToPath(currentPath);
@@ -140,7 +139,7 @@
   async function loadFileContent(node: FileNode) {
     if (!node.metadata?.content) {
       try {
-        const response = await fetch(`${API_BASE}/files/${node.id}/content`);
+        const response = await fetch(buildApiUrl(`/api/files/${node.id}/content`));
         if (response.ok) {
           const data = await response.json();
           node.metadata = { ...node.metadata, content: data.content };

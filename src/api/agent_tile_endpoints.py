@@ -122,10 +122,12 @@ def _row_to_tile(row: tuple) -> dict:
 def list_tiles(
     canvas: Optional[str] = None,
     department: Optional[str] = None,
+    limit: int = 100,
 ):
     """List tiles, optionally filtered by canvas and/or department.
 
-    Returns the 100 most recent tiles.
+    Returns the most recent tiles (default 100, configurable via limit param).
+    Returns a flat array — the Svelte UI expects AgentTile[] directly.
     """
     with sqlite3.connect(DB_PATH) as conn:
         q = "SELECT * FROM tiles WHERE 1=1"
@@ -136,9 +138,10 @@ def list_tiles(
         if department:
             q += " AND department=?"
             params.append(department)
-        q += " ORDER BY created_at DESC LIMIT 100"
+        q += " ORDER BY created_at DESC LIMIT ?"
+        params.append(min(limit, 500))
         rows = conn.execute(q, params).fetchall()
-    return {"tiles": [_row_to_tile(r) for r in rows]}
+    return [_row_to_tile(r) for r in rows]
 
 
 @router.post("/")

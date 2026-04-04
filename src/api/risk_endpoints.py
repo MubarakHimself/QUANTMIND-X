@@ -11,6 +11,7 @@ Story: 4-2-risk-parameters-prop-firm-registry-apis
 """
 
 import logging
+import os
 from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
@@ -35,6 +36,7 @@ from src.database.models import (
     AccountType,
     get_db_session,
 )
+from src.events.regime import RegimeType
 
 router = APIRouter(prefix="/api/risk", tags=["risk"])
 
@@ -658,17 +660,182 @@ except ImportError:
 # Import physics sensors
 try:
     from src.risk.physics import IsingRegimeSensor, ChaosSensor, HMMRegimeSensor
+    from src.risk.physics.msgarch import MSGARCHSensor
+    from src.risk.physics.bocpd import BOCPDDetector
+    from src.risk.physics.ensemble import EnsembleVoter
     SENSORS_AVAILABLE = True
 except ImportError:
     SENSORS_AVAILABLE = False
     IsingRegimeSensor = None
     ChaosSensor = None
     HMMRegimeSensor = None
+    MSGARCHSensor = None
+    BOCPDDetector = None
+    EnsembleVoter = None
 
 # Global sensor instances (lazy initialization)
 _ising_sensor: Optional[IsingRegimeSensor] = None
 _chaos_sensor: Optional[ChaosSensor] = None
 _hmm_sensor: Optional[HMMRegimeSensor] = None
+_msgarch_sensor: Optional["MSGARCHSensor"] = None
+_bocpd_detector: Optional["BOCPDDetector"] = None
+_ensemble_voter: Optional["EnsembleVoter"] = None
+
+# Model directory paths from environment
+_HMM_MODEL_DIR = os.environ.get("HMM_MODEL_DIR", "/data/hmm/models")
+_MSGARCH_MODEL_DIR = os.environ.get("MSGARCH_MODEL_DIR", "/data/msgarch/models")
+_BOCPD_MODEL_DIR = os.environ.get("BOCPD_MODEL_DIR", "/data/bocpd/models")
+
+
+def _find_latest_model(model_dir: str, pattern: str = "*.pkl") -> Optional[str]:
+    """Find the latest model file in a directory matching the given pattern."""
+    from pathlib import Path
+    path = Path(model_dir)
+    if not path.exists():
+        return None
+    files = sorted(path.glob(pattern), key=lambda x: x.stat().st_mtime, reverse=True)
+    if not files:
+        return None
+    return str(files[0])
+
+
+def _find_latest_json(model_dir: str) -> Optional[str]:
+    """Find the latest JSON file in a directory (for BOCPD)."""
+    from pathlib import Path
+    path = Path(model_dir)
+    if not path.exists():
+        return None
+    files = sorted(path.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True)
+    if not files:
+        return None
+    return str(files[0])
+
+
+def _fetch_mt5_candles(symbol: str = "EURUSD", timeframe: str = "M5",
+                       count: int = 200) -> Optional["pd.DataFrame"]:
+    """Fetch recent OHLCV candles from MT5 terminal.
+
+    Requires MT5 to be installed and initialized on the VPS/node.
+    Falls back to None when MT5 is not available (e.g., local dev).
+
+    Args:
+        symbol: Trading symbol (default: EURUSD)
+        timeframe: Timeframe - M1, M5, M15, H1, H4, D1 (default: M5)
+        count: Number of candles to fetch (default: 200 for feature extraction)
+
+    Returns:
+        DataFrame with OHLCV columns or None if MT5 unavailable
+    """
+    import pandas as pd
+
+    timeframe_map = {
+        "M1": 1, "M5": 5, "M15": 15, "M30": 30,
+        "H1": 16385, "H4": 16386, "D1": 16387,
+        "W1": 32769,
+    }
+
+    mt5_tf = timeframe_map.get(timeframe, 5)
+
+    try:
+        import MetaTrader5 as mt5
+        if not mt5.initialize():
+            logger.warning("MT5 initialize() failed")
+            return None
+
+        rates = mt5.copy_rates_from_pos(symbol, mt5_tf, 0, count)
+        mt5.shutdown()
+
+        if rates is None or len(rates) < 50:
+            logger.warning(f"MT5 returned insufficient candles for {symbol}: {len(rates) if rates is not None else 0}")
+            return None
+
+        df = pd.DataFrame(rates)
+        df['time'] = pd.to_datetime(df['time'], unit='s')
+        df = df.rename(columns={
+            'open': 'open', 'high': 'high', 'low': 'low',
+            'close': 'close', 'tick_volume': 'volume'
+        })
+        df = df[['time', 'open', 'high', 'low', 'close', 'volume']]
+        logger.debug(f"Fetched {len(df)} candles from MT5 for {symbol}")
+        return df
+
+    except Exception as e:
+        logger.warning(f"MT5 candle fetch failed: {e}")
+        return None
+
+
+def _extract_features_from_candles(df: "pd.DataFrame") -> "np.ndarray":
+    """Extract 10-feature vector from OHLCV DataFrame for model predictions.
+
+    Uses the same feature extraction as HMM training so features are
+    compatible with all trained models.
+
+    Args:
+        df: DataFrame with OHLCV columns
+
+    Returns:
+        2D numpy array (1 row, 10 features) suitable for model.predict_regime()
+    """
+    from src.risk.physics.hmm.trainer import extract_features_vectorized
+    features = extract_features_vectorized(df)
+    # Return the last row (most recent) as 2D array
+    return features[-1:, :] if features.ndim == 2 else features.reshape(1, -1)
+
+
+# HMM regime → RegimeType mapping (HMM uses 4-state forex regimes)
+_HMM_TO_REGIME_TYPE: Dict[str, str] = {
+    "TRENDING_LOW_VOL": "TREND_BULL",
+    "TRENDING_HIGH_VOL": "TREND_BEAR",
+    "RANGING_LOW_VOL": "RANGE_STABLE",
+    "RANGING_HIGH_VOL": "RANGE_VOLATILE",
+}
+
+
+def _map_hmm_regime_to_regime_type(hmm_regime: str) -> str:
+    """Map HMM sensor regime string to RegimeType enum value.
+
+    HMM regimes: TRENDING_LOW_VOL, TRENDING_HIGH_VOL, RANGING_LOW_VOL, RANGING_HIGH_VOL
+    RegimeType: TREND_BULL, TREND_BEAR, RANGE_STABLE, RANGE_VOLATILE, etc.
+    """
+    return _HMM_TO_REGIME_TYPE.get(hmm_regime, "CHAOS")
+
+
+class ProductionEnsembleVoter(EnsembleVoter):
+    """Ensemble voter with HMM regime type mapping for production.
+
+    Overrides _extract_regime_type to correctly map HMM's
+    TRENDING_LOW_VOL/etc. regime strings to RegimeType enum values.
+    """
+
+    def _extract_regime_type(self, output: Any) -> str:
+        """Extract and map RegimeType from HMM or other model output."""
+        if isinstance(output, dict):
+            raw = output.get("regime_type") or output.get("regime")
+        elif isinstance(output, str):
+            raw = output
+        else:
+            raw = getattr(output, "regime_type", None) or getattr(output, "regime", None)
+
+        if raw is None:
+            return "CHAOS"
+
+        raw_str = str(raw).upper()
+
+        # Already a valid RegimeType?
+        try:
+            RegimeType[raw_str]
+            return raw_str
+        except KeyError:
+            pass
+
+        # Map HMM-style regimes
+        if raw_str in _HMM_TO_REGIME_TYPE:
+            mapped = _HMM_TO_REGIME_TYPE[raw_str]
+            logger.debug(f"HMM regime {raw_str} → {mapped}")
+            return mapped
+
+        logger.warning(f"Unknown regime type: {raw}, falling back to CHAOS")
+        return "CHAOS"
 
 
 def _get_ising_sensor() -> IsingRegimeSensor:
@@ -699,13 +866,56 @@ def _get_hmm_sensor() -> Optional[HMMRegimeSensor]:
     return _hmm_sensor
 
 
-# Regime types as defined in the architecture
-class RegimeType(str):
-    TREND = "TREND"
-    RANGE = "RANGE"
-    BREAKOUT = "BREAKOUT"
-    CHAOS = "CHAOS"
-    UNKNOWN = "UNKNOWN"
+def _get_msgarch_sensor() -> Optional["MSGARCHSensor"]:
+    """Get or create MS-GARCH sensor instance, loading latest model."""
+    global _msgarch_sensor
+    if _msgarch_sensor is None and SENSORS_AVAILABLE:
+        try:
+            model_path = _find_latest_model(_MSGARCH_MODEL_DIR, "*.pkl")
+            if model_path:
+                _msgarch_sensor = MSGARCHSensor(model_path=model_path)
+                logger.info(f"Loaded MS-GARCH model: {model_path}")
+            else:
+                logger.warning("No MS-GARCH model found")
+        except Exception as e:
+            logger.warning(f"MS-GARCH sensor initialization failed: {e}")
+            _msgarch_sensor = None
+    return _msgarch_sensor
+
+
+def _get_bocpd_detector() -> Optional["BOCPDDetector"]:
+    """Get or create BOCPD detector instance, loading latest calibration."""
+    global _bocpd_detector
+    if _bocpd_detector is None and SENSORS_AVAILABLE:
+        try:
+            model_path = _find_latest_json(_BOCPD_MODEL_DIR)
+            if model_path:
+                _bocpd_detector = BOCPDDetector.load(model_path=model_path)
+                logger.info(f"Loaded BOCPD detector: {model_path}")
+            else:
+                logger.warning("No BOCPD calibration found, using defaults")
+                _bocpd_detector = BOCPDDetector()
+        except Exception as e:
+            logger.warning(f"BOCPD detector initialization failed: {e}")
+            _bocpd_detector = BOCPDDetector()
+    return _bocpd_detector
+
+
+def _get_ensemble_voter() -> Optional["ProductionEnsembleVoter"]:
+    """Get or create Ensemble voter instance combining all sensors."""
+    global _ensemble_voter
+    if _ensemble_voter is None and SENSORS_AVAILABLE:
+        try:
+            _ensemble_voter = ProductionEnsembleVoter(
+                hmm_sensor=_get_hmm_sensor(),
+                msgarch_sensor=_get_msgarch_sensor(),
+                bocpd_detector=_get_bocpd_detector(),
+            )
+            logger.info("ProductionEnsembleVoter initialized with all sensors")
+        except Exception as e:
+            logger.warning(f"EnsembleVoter initialization failed: {e}")
+            _ensemble_voter = None
+    return _ensemble_voter
 
 
 class StrategyStatus(str):
@@ -782,11 +992,49 @@ class PhysicsKellyOutput(BaseModel):
     kelly_fraction_setting: float = Field(0.5, description="Configured Kelly fraction setting")
 
 
+class PhysicsMSGARCHOutput(BaseModel):
+    """MS-GARCH volatility regime output"""
+    vol_state: Optional[str] = Field(None, description="Volatility regime state: LOW_VOL, HIGH_VOL, MED_VOL")
+    sigma_forecast: Optional[float] = Field(None, description="Conditional volatility forecast")
+    regime_type: Optional[str] = Field(None, description="Regime type classification")
+    confidence: float = Field(0.0, description="Regime classification confidence (0-1)")
+    transition_probs: Optional[Dict[str, float]] = Field(None, description="Regime transition probabilities")
+    model_version: Optional[str] = Field(None, description="Loaded model version")
+    alert: str = Field(..., description="Alert state: normal, warning, critical")
+
+
+class PhysicsBOCPDOutput(BaseModel):
+    """BOCPD changepoint detection output"""
+    changepoint_prob: float = Field(0.0, description="Bayesian changepoint probability (0-1)")
+    is_changepoint: bool = Field(False, description="Whether a changepoint is currently detected")
+    current_run_length: int = Field(0, description="Estimated bars since last changepoint")
+    regime_type: str = Field("STABLE", description="Regime type: STABLE or TRANSITION")
+    confidence: float = Field(0.0, description="Confidence in the regime type (0-1)")
+    hazard_lambda: Optional[float] = Field(None, description="Hazard rate lambda parameter")
+    alert: str = Field(..., description="Alert state: normal, warning, critical")
+
+
+class PhysicsEnsembleOutput(BaseModel):
+    """Ensemble voter output combining HMM + MS-GARCH + BOCPD"""
+    regime_type: Optional[str] = Field(None, description="Ensemble consensus regime type")
+    confidence: float = Field(0.0, description="Ensemble confidence (0-1)")
+    is_transition: bool = Field(False, description="Whether BOCPD detected a regime transition")
+    sigma_forecast: Optional[float] = Field(None, description="Volatility forecast from MS-GARCH")
+    ensemble_agreement: float = Field(0.0, description="Model agreement fraction (0-1)")
+    weights_used: Optional[Dict[str, float]] = Field(None, description="Adaptive weights per model")
+    model_count: int = Field(0, description="Number of models contributing to vote")
+    sources: Optional[Dict[str, Any]] = Field(None, description="Per-model outputs")
+    alert: str = Field(..., description="Alert state: normal, warning, critical")
+
+
 class PhysicsResponse(BaseModel):
     """Response model for GET /api/risk/physics"""
     ising: PhysicsIsingOutput = Field(..., description="Ising Model sensor outputs")
     lyapunov: PhysicsLyapunovOutput = Field(..., description="Lyapunov exponent outputs")
     hmm: PhysicsHMMOutput = Field(..., description="HMM regime sensor outputs")
+    msgarch: PhysicsMSGARCHOutput = Field(..., description="MS-GARCH volatility regime outputs")
+    bocpd: PhysicsBOCPDOutput = Field(..., description="BOCPD changepoint detection outputs")
+    ensemble: PhysicsEnsembleOutput = Field(..., description="Ensemble voter outputs")
     kelly: PhysicsKellyOutput = Field(..., description="Kelly Engine outputs")
 
 
@@ -913,49 +1161,13 @@ async def get_router_state():
                             eligible_regimes=eligible_regimes
                         ))
 
-                # If no registered bots, return demo data
-                if not strategies:
-                    strategies = _get_demo_strategy_states()
         except Exception as e:
             logger.warning(f"Could not get router state: {e}")
-            strategies = _get_demo_strategy_states()
-    else:
-        # Return demo data if router not available
-        strategies = _get_demo_strategy_states()
+            strategies = []
 
     logger.info(f"Router state response: {len(strategies)} strategies")
 
     return RouterStateResponse(strategies=strategies)
-
-
-def _get_demo_strategy_states() -> List[StrategyStateItem]:
-    """Return demo strategy states for testing when router unavailable."""
-    return [
-        StrategyStateItem(
-            strategy_id="trend-follower-001",
-            status=StrategyStatus.ACTIVE.value,
-            pause_reason=None,
-            eligible_regimes=[RegimeType.TREND, RegimeType.BREAKOUT]
-        ),
-        StrategyStateItem(
-            strategy_id="range-trader-002",
-            status=StrategyStatus.PAUSED.value,
-            pause_reason=PauseReason.REGIME_MISMATCH.value,
-            eligible_regimes=[RegimeType.RANGE]
-        ),
-        StrategyStateItem(
-            strategy_id="breakout-scalper-003",
-            status=StrategyStatus.ACTIVE.value,
-            pause_reason=None,
-            eligible_regimes=[RegimeType.BREAKOUT, RegimeType.TREND]
-        ),
-        StrategyStateItem(
-            strategy_id="volatility-adaptor-004",
-            status=StrategyStatus.PAUSED.value,
-            pause_reason=PauseReason.CALENDAR_RULE.value,
-            eligible_regimes=[RegimeType.TREND, RegimeType.RANGE, RegimeType.BREAKOUT, RegimeType.CHAOS]
-        ),
-    ]
 
 
 # =============================================================================
@@ -965,44 +1177,87 @@ def _get_demo_strategy_states() -> List[StrategyStateItem]:
 @router.get("/physics", response_model=PhysicsResponse)
 async def get_physics_outputs():
     """
-    Get physics sensor outputs.
+    Get physics sensor outputs from PRODUCTION models.
 
-    AC #3: Returns { ising, lyapunov, hmm } with their outputs and alert states.
+    All models (HMM, MS-GARCH, BOCPD, Ensemble) receive real features
+    extracted from live MT5 OHLCV candles. Falls back to error states
+    when MT5 is unavailable (e.g., local dev without MT5 connection).
 
-    - Ising: magnetization, correlation_matrix, alert
-    - Lyapunov: exponent_value, divergence_rate, alert
-    - HMM: current_state, transition_probabilities, alert
+    Returns: { ising, lyapunov, hmm, msgarch, bocpd, ensemble, kelly }
     """
-    # Get Ising sensor output
+    import numpy as np
+
+    # ------------------------------------------------------------------
+    # Fetch real OHLCV candles from MT5 (production data source)
+    # Falls back to None when MT5 is unavailable
+    # ------------------------------------------------------------------
+    candles_df = _fetch_mt5_candles(symbol="EURUSD", timeframe="M5", count=200)
+    mt5_connected = candles_df is not None
+
+    # Extract real 10-feature vector from candles when available
+    features_10d: Optional[np.ndarray] = None
+    if candles_df is not None:
+        try:
+            features_10d = _extract_features_from_candles(candles_df)
+            # Feature 0 = log_return, needed for all models
+            log_return = float(features_10d[0, 0]) if features_10d is not None else 0.0
+        except Exception as e:
+            logger.warning(f"Feature extraction failed: {e}")
+            features_10d = None
+
+    logger.info(
+        "Physics outputs: mt5=%s, features_10d=%s, log_return=%s",
+        mt5_connected,
+        "real" if features_10d is not None else "unavailable",
+        float(features_10d[0, 0]) if features_10d is not None else "N/A",
+    )
+
+    if features_10d is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Live MT5 candle features unavailable; physics outputs cannot be computed on this host.",
+        )
+
+    model_features = features_10d
+
+    # ------------------------------------------------------------------
+    # Ising sensor — uses market_volatility param, not candle features
+    # ------------------------------------------------------------------
     ising_alert = AlertState.NORMAL
     ising_magnetization = 0.0
 
     if SENSORS_AVAILABLE and _get_ising_sensor() is not None:
         try:
             sensor = _get_ising_sensor()
-            result = sensor.detect_regime(market_volatility=0.15)
+            # Compute real volatility from candles if available
+            market_vol = 0.15
+            if candles_df is not None and 'close' in candles_df.columns:
+                returns = candles_df['close'].pct_change().dropna()
+                market_vol = float(returns.std()) if len(returns) > 0 else 0.15
+            result = sensor.detect_regime(market_volatility=market_vol)
             ising_magnetization = result.get('magnetization', 0.0)
 
-            # Determine alert based on magnetization
             abs_mag = abs(ising_magnetization)
             if abs_mag >= 0.8:
-                ising_alert = AlertState.NORMAL  # Strong signal
+                ising_alert = AlertState.NORMAL
             elif abs_mag >= 0.3:
-                ising_alert = AlertState.WARNING  # Transitioning
+                ising_alert = AlertState.WARNING
             else:
-                ising_alert = AlertState.CRITICAL  # Unclear/noise
+                ising_alert = AlertState.CRITICAL
 
-            logger.info(f"Ising sensor: magnetization={ising_magnetization}, alert={ising_alert}")
+            logger.info(f"Ising: mag={ising_magnetization:.4f}, vol={market_vol:.4f}, alert={ising_alert}")
         except Exception as e:
-            logger.warning(f"Could not get Ising sensor output: {e}")
+            logger.warning(f"Ising sensor error: {e}")
 
     ising_output = PhysicsIsingOutput(
         magnetization=ising_magnetization,
-        correlation_matrix=None,  # Would require price data to compute
-        alert=ising_alert.value
+        correlation_matrix=None,
+        alert=ising_alert
     )
 
-    # Get Lyapunov/Chaos sensor output
+    # ------------------------------------------------------------------
+    # Lyapunov/Chaos sensor — uses real returns from candles
+    # ------------------------------------------------------------------
     lyapunov_alert = AlertState.NORMAL
     lyapunov_exponent = 0.0
     divergence_rate = None
@@ -1010,14 +1265,14 @@ async def get_physics_outputs():
     if SENSORS_AVAILABLE and _get_chaos_sensor() is not None:
         try:
             sensor = _get_chaos_sensor()
-            # For demo, create synthetic returns to get a reading
-            import numpy as np
-            synthetic_returns = np.random.randn(100) * 0.01
-            result = sensor.analyze_chaos(synthetic_returns)
+            if candles_df is not None and 'close' in candles_df.columns:
+                returns = candles_df['close'].pct_change().dropna().values[-100:]
+            else:
+                returns = np.random.randn(100) * 0.01
+            result = sensor.analyze_chaos(returns)
             lyapunov_exponent = result.lyapunov_exponent
             divergence_rate = result.divergence_rate if hasattr(result, 'divergence_rate') else None
 
-            # Determine alert based on lyapunov exponent
             if lyapunov_exponent < 0.2:
                 lyapunov_alert = AlertState.NORMAL
             elif lyapunov_exponent < 0.5:
@@ -1025,64 +1280,205 @@ async def get_physics_outputs():
             else:
                 lyapunov_alert = AlertState.CRITICAL
 
-            logger.info(f"Lyapunov sensor: exponent={lyapunov_exponent}, alert={lyapunov_alert}")
+            logger.info(f"Lyapunov: exp={lyapunov_exponent:.4f}, alert={lyapunov_alert}")
         except Exception as e:
-            logger.warning(f"Could not get Lyapunov sensor output: {e}")
+            logger.warning(f"Lyapunov sensor error: {e}")
 
     lyapunov_output = PhysicsLyapunovOutput(
         exponent_value=lyapunov_exponent,
         divergence_rate=divergence_rate,
-        alert=lyapunov_alert.value
+        alert=lyapunov_alert
     )
 
-    # Get HMM sensor output
+    # ------------------------------------------------------------------
+    # HMM sensor — uses real 10-feature vector from candles
+    # ------------------------------------------------------------------
     hmm_alert = AlertState.NORMAL
     hmm_state = None
     hmm_transitions = None
 
     hmm_sensor = _get_hmm_sensor()
-    if hmm_sensor is not None:
+    if hmm_sensor is not None and model_features is not None:
         try:
-            # Try to get current state
-            if hasattr(hmm_sensor, 'get_current_state'):
-                hmm_state = hmm_sensor.get_current_state()
-
-            # Try to get state distribution as proxy for transition probabilities
+            reading = hmm_sensor.predict_regime(model_features)
+            # reading.regime is like "TRENDING_LOW_VOL" — map to RegimeType string
+            raw_regime = getattr(reading, 'regime', None) or getattr(reading, 'state', None)
+            hmm_state = _map_hmm_regime_to_regime_type(str(raw_regime)) if raw_regime is not None else None
+            if hasattr(reading, 'state_probabilities') and reading.state_probabilities:
+                hmm_transitions = {str(k): float(v) for k, v in reading.state_probabilities.items()}
+            hmm_alert = AlertState.WARNING  # Shadow mode
+            logger.info(f"HMM: raw={raw_regime}, mapped={hmm_state}, conf={reading.confidence:.2f}")
+        except Exception as e:
+            logger.warning(f"HMM sensor error: {e}")
+            hmm_alert = AlertState.WARNING
+    elif hmm_sensor is not None:
+        # HMM available but no MT5 — use cached state distribution
+        try:
             if hasattr(hmm_sensor, 'get_state_distribution'):
                 state_dist = hmm_sensor.get_state_distribution()
                 if state_dist:
                     hmm_transitions = {str(k): v for k, v in state_dist.items()}
-
-            # HMM is in shadow mode per story notes - always show as warning
-            hmm_alert = AlertState.WARNING
-
-            logger.info(f"HMM sensor: state={hmm_state}, alert={hmm_alert}")
-        except Exception as e:
-            logger.warning(f"Could not get HMM sensor output: {e}")
+        except Exception:
+            pass
+        hmm_alert = AlertState.WARNING
 
     hmm_output = PhysicsHMMOutput(
         current_state=hmm_state,
         transition_probabilities=hmm_transitions,
-        is_shadow_mode=True,  # HMM is in shadow mode per story requirements
-        alert=hmm_alert.value
+        is_shadow_mode=True,
+        alert=hmm_alert
     )
 
-    # Get Kelly Engine output
-    # For dashboard, we show simulated values based on market conditions
-    # In production, this would come from the Kelly Engine
-    kelly_fraction = 0.5  # Default half-Kelly
+    # ------------------------------------------------------------------
+    # MS-GARCH sensor — uses real log return feature [0] from candles
+    # ------------------------------------------------------------------
+    msgarch_alert = AlertState.NORMAL
+    msgarch_output = PhysicsMSGARCHOutput(alert=msgarch_alert)
+
+    if SENSORS_AVAILABLE:
+        try:
+            sensor = _get_msgarch_sensor()
+            if sensor is not None and sensor.is_model_loaded():
+                info = sensor.get_model_info()
+                # MS-GARCH: feature[0] = log_return
+                ms_features = model_features.copy()
+                if features_10d is None:
+                    ms_features[0, 0] = np.random.randn(1)[0] * 0.01
+                prediction = sensor.predict_regime(ms_features)
+
+                vol_state = prediction.get("vol_state", "MED_VOL")
+                sigma = prediction.get("sigma_forecast", 0.0)
+                regime_type = prediction.get("regime_type", "RANGE_STABLE")
+                confidence = prediction.get("confidence", 0.0)
+                trans_probs = prediction.get("transition_probs", {})
+
+                if vol_state in ("LOW_VOL",):
+                    msgarch_alert = AlertState.NORMAL
+                elif vol_state in ("HIGH_VOL",):
+                    msgarch_alert = AlertState.WARNING
+                else:
+                    msgarch_alert = AlertState.WARNING
+
+                msgarch_output = PhysicsMSGARCHOutput(
+                    vol_state=vol_state,
+                    sigma_forecast=sigma,
+                    regime_type=regime_type,
+                    confidence=confidence,
+                    transition_probs=trans_probs,
+                    model_version=info.get("version"),
+                    alert=msgarch_alert
+                )
+                logger.info(f"MS-GARCH: vol_state={vol_state}, sigma={sigma:.6f}")
+        except Exception as e:
+            logger.warning(f"MS-GARCH sensor error: {e}")
+
+    # ------------------------------------------------------------------
+    # BOCPD detector — uses real log return feature [0] from candles
+    # ------------------------------------------------------------------
+    bocpd_alert = AlertState.NORMAL
+    bocpd_output = PhysicsBOCPDOutput(alert=bocpd_alert)
+
+    if SENSORS_AVAILABLE:
+        try:
+            detector = _get_bocpd_detector()
+            if detector is not None:
+                info = detector.get_model_info()
+                # BOCPD: feature[0] = log_return, feature[7] = susceptibility
+                boc_features = model_features.copy()
+                if features_10d is None:
+                    boc_features[0, 0] = np.random.randn(1)[0] * 0.01
+                    boc_features[0, 7] = 0.0
+                prediction = detector.predict_regime(boc_features)
+
+                cp_prob = prediction.get("changepoint_prob", 0.0)
+                is_cp = prediction.get("is_changepoint", False)
+                run_length = prediction.get("current_run_length", 0)
+                regime_type = prediction.get("regime_type", "STABLE")
+                confidence = prediction.get("confidence", 0.0)
+
+                if cp_prob < 0.1:
+                    bocpd_alert = AlertState.NORMAL
+                elif cp_prob < 0.3:
+                    bocpd_alert = AlertState.WARNING
+                else:
+                    bocpd_alert = AlertState.CRITICAL
+
+                hazard_lambda = None
+                if isinstance(info.get("hazard"), dict):
+                    hazard_lambda = info["hazard"].get("lambda")
+                elif hasattr(info.get("hazard"), "get_params"):
+                    hazard_lambda = info["hazard"].get_params().get("lambda")
+
+                bocpd_output = PhysicsBOCPDOutput(
+                    changepoint_prob=cp_prob,
+                    is_changepoint=is_cp,
+                    current_run_length=run_length,
+                    regime_type=regime_type,
+                    confidence=confidence,
+                    hazard_lambda=hazard_lambda,
+                    alert=bocpd_alert
+                )
+                logger.info(f"BOCPD: cp_prob={cp_prob:.4f}, is_changepoint={is_cp}")
+        except Exception as e:
+            logger.warning(f"BOCPD detector error: {e}")
+
+    # ------------------------------------------------------------------
+    # Ensemble voter — uses real features from candles
+    # ------------------------------------------------------------------
+    ensemble_alert = AlertState.NORMAL
+    ensemble_output = PhysicsEnsembleOutput(alert=ensemble_alert)
+
+    if SENSORS_AVAILABLE:
+        try:
+            voter = _get_ensemble_voter()
+            if voter is not None and voter.is_model_loaded():
+                prediction = voter.predict_regime(model_features)
+
+                regime_type = prediction.get("regime_type", "UNKNOWN")
+                confidence = prediction.get("confidence", 0.0)
+                is_transition = prediction.get("is_transition", False)
+                sigma = prediction.get("sigma_forecast")
+                agreement = prediction.get("ensemble_agreement", 0.0)
+                weights = prediction.get("weights_used", {})
+                model_count = prediction.get("model_count", 0)
+                sources = prediction.get("sources", {})
+
+                if is_transition or confidence < 0.3:
+                    ensemble_alert = AlertState.CRITICAL
+                elif confidence < 0.6:
+                    ensemble_alert = AlertState.WARNING
+                else:
+                    ensemble_alert = AlertState.NORMAL
+
+                ensemble_output = PhysicsEnsembleOutput(
+                    regime_type=regime_type,
+                    confidence=confidence,
+                    is_transition=is_transition,
+                    sigma_forecast=sigma,
+                    ensemble_agreement=agreement,
+                    weights_used=weights,
+                    model_count=model_count,
+                    sources=sources,
+                    alert=ensemble_alert
+                )
+                logger.info(f"Ensemble: regime={regime_type}, conf={confidence:.2f}, transition={is_transition}")
+        except Exception as e:
+            logger.warning(f"Ensemble voter error: {e}")
+
+    # ------------------------------------------------------------------
+    # Kelly Engine — driven by real sensor states
+    # ------------------------------------------------------------------
+    kelly_fraction = 0.5
     kelly_multiplier = 1.0
     house_of_money = False
 
-    # Determine house_of_money based on other sensor states
-    # If all sensors are in NORMAL state, we're in favorable conditions
     if ising_alert == AlertState.NORMAL and lyapunov_alert == AlertState.NORMAL:
         house_of_money = True
-        kelly_multiplier = 1.2  # Boost multiplier in favorable conditions
+        kelly_multiplier = 1.2
     elif ising_alert == AlertState.WARNING or lyapunov_alert == AlertState.WARNING:
-        kelly_multiplier = 0.8  # Reduce in transitional states
+        kelly_multiplier = 0.8
     else:
-        kelly_multiplier = 0.5  # Significant reduction in critical conditions
+        kelly_multiplier = 0.5
 
     kelly_output = PhysicsKellyOutput(
         fraction=kelly_fraction,
@@ -1091,15 +1487,21 @@ async def get_physics_outputs():
         kelly_fraction_setting=kelly_fraction
     )
 
-    logger.info(f"Physics outputs: ising={ising_alert.value}, lyapunov={lyapunov_alert.value}, hmm={hmm_alert.value}, kelly={kelly_fraction}")
+    logger.info(
+        f"Physics: ising={ising_alert}, lyapunov={lyapunov_alert}, "
+        f"hmm={hmm_alert}, msgarch={msgarch_alert}, bocpd={bocpd_alert}, "
+        f"ensemble={ensemble_alert}, mt5={'ON' if mt5_connected else 'OFF'}"
+    )
 
     return PhysicsResponse(
         ising=ising_output,
         lyapunov=lyapunov_output,
         hmm=hmm_output,
+        msgarch=msgarch_output,
+        bocpd=bocpd_output,
+        ensemble=ensemble_output,
         kelly=kelly_output
     )
-
 
 # =============================================================================
 # Compliance & Circuit Breaker Endpoints (Story 4.6)
@@ -1141,7 +1543,6 @@ async def get_compliance_status():
     { account_tags: [{ tag, circuit_breaker_state, drawdown_pct, daily_halt_triggered }],
       islamic: { countdown_seconds, force_close_at } }
     """
-    import random
     from datetime import timedelta
 
     # Get current UTC time
@@ -1165,28 +1566,15 @@ async def get_compliance_status():
     is_within_60min = 0 <= countdown_seconds <= 3600
     is_within_30min = 0 <= countdown_seconds <= 1800
 
-    # Generate demo account tag compliance data
-    account_tags = []
-    for tag in _demo_account_tags:
-        # Simulate random states for demo
-        drawdown = round(random.uniform(0, 15), 2)
-        cb_states = ["normal", "warning", "triggered"]
-        weights = [0.7, 0.2, 0.1]
-        cb_state = random.choices(cb_states, weights=weights)[0]
-
-        account_tags.append(AccountTagCompliance(
-            tag=tag,
-            circuit_breaker_state=cb_state,
-            drawdown_pct=drawdown,
-            daily_halt_triggered=drawdown > 5.0,
-            paused_strategies=random.randint(0, 3) if cb_state != "normal" else 0,
-            last_check_utc=now
-        ))
+    # No synthetic compliance state in production mode.
+    account_tags: List[AccountTagCompliance] = []
 
     # Determine overall status
     if any(t.circuit_breaker_state == "triggered" or t.daily_halt_triggered for t in account_tags):
         overall_status = "critical"
-    elif any(t.circuit_breaker_state == "warning" for t in account_tags) or is_within_30min:
+    elif is_within_30min:
+        overall_status = "critical"
+    elif any(t.circuit_breaker_state == "warning" for t in account_tags) or is_within_60min:
         overall_status = "warning"
     else:
         overall_status = "compliant"
@@ -1197,7 +1585,7 @@ async def get_compliance_status():
         is_within_60min_window=is_within_60min,
         is_within_30min_window=is_within_30min,
         current_time_utc=now,
-        active_positions_count=random.randint(0, 5) if is_within_60min else 0
+        active_positions_count=0
     )
 
     logger.info(f"Compliance status: {overall_status}, accounts: {len(account_tags)}, islamic countdown: {countdown_seconds}s")
@@ -1234,14 +1622,13 @@ async def get_islamic_status():
     is_within_60min = 0 <= countdown_seconds <= 3600
     is_within_30min = 0 <= countdown_seconds <= 1800
 
-    import random
     return IslamicComplianceStatus(
         countdown_seconds=countdown_seconds if countdown_seconds > 0 else 0,
         force_close_at=force_close if is_within_60min else None,
         is_within_60min_window=is_within_60min,
         is_within_30min_window=is_within_30min,
         current_time_utc=now,
-        active_positions_count=random.randint(0, 5) if is_within_60min else 0
+        active_positions_count=0
     )
 
 
@@ -1263,27 +1650,12 @@ async def get_calendar_blackout():
     AC #3: Returns { events: [{ event_name, impact, datetime_utc, blackout_minutes }],
                     blackouts: [{ start_utc, end_utc, affected_strategies }] }
     """
-    import random
-
     # Get high-impact events
     high_impact_events = [e for e in _calendar_events if e.impact == NewsImpact.HIGH]
     high_impact_events.sort(key=lambda e: e.event_time)
 
-    # Generate demo blackout windows
-    blackouts = []
-    for tag in _demo_account_tags:
-        if random.random() > 0.5:  # 50% chance of active blackout
-            from datetime import timedelta
-            blackout_start = datetime.now(timezone.utc) - timedelta(hours=1)
-            blackout_end = datetime.now(timezone.utc) + timedelta(hours=random.randint(1, 3))
-
-            blackouts.append({
-                "start_utc": blackout_start.isoformat(),
-                "end_utc": blackout_end.isoformat(),
-                "affected_strategies": [f"strategy-{random.randint(1, 5)}" for _ in range(random.randint(1, 3))],
-                "account_tag": tag,
-                "reason": "high_impact_news"
-            })
+    # No synthetic blackout windows in production mode.
+    blackouts: List[Dict[str, Any]] = []
 
     logger.info(f"Calendar blackout: {len(high_impact_events)} events, {len(blackouts)} active blackouts")
 

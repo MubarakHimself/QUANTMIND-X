@@ -2,6 +2,8 @@
 import { writable, derived, get } from 'svelte/store';
 import type { Readable, Writable } from 'svelte/store';
 import { settingsManager } from '$lib/services/settingsManager';
+import { API_CONFIG } from '$lib/config/api';
+import { apiFetch } from '$lib/api';
 
 // Re-export types from settingsTypes
 export type {
@@ -36,7 +38,8 @@ import type {
   AgentPermissions,
   SettingsStoreState,
   ModelProvider,
-  ModelConfig
+  ModelConfig,
+  ConnectionSettings
 } from './settingsTypes';
 
 // Default settings
@@ -50,7 +53,10 @@ const defaultGeneralSettings: GeneralSettings = {
   showTimestamps: true,
   compactMode: false,
   notifications: true,
-  soundEffects: false
+  soundEffects: false,
+  emailAlerts: false,
+  webhookUrl: '',
+  notificationFrequency: 'immediate'
 };
 
 const defaultAPIKeys: APIKeys = {
@@ -92,36 +98,68 @@ const defaultSkills: AgentSkills = {
 
 // Default model config
 const defaultModelConfig: ModelConfig = {
-  provider: 'anthropic',
+  provider: '',
   baseUrl: '',
   apiKey: '',
-  model: 'claude-sonnet-4-20250514',
-  availableModels: [
-    { id: 'claude-opus-4-20250514', name: 'Claude Opus 4', tier: 'opus' },
-    { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', tier: 'sonnet' },
-    { id: 'claude-haiku-3-20240307', name: 'Claude Haiku 3.5', tier: 'haiku' }
-  ]
+  model: '',
+  availableModels: []
 };
+
+// Default connection settings
+const defaultConnections: ConnectionSettings = {
+  t1Url: API_CONFIG.T1_API_URL,
+  t2Url: API_CONFIG.T2_API_URL
+};
+
+const CANONICAL_SETTINGS_AGENTS = [
+  'research',
+  'development',
+  'trading',
+  'risk',
+  'portfolio',
+  'floor_manager'
+] as const satisfies AgentType[];
+
+const LEGACY_AGENT_ALIASES: Partial<Record<AgentType, AgentType>> = {
+  copilot: 'floor_manager',
+  quantcode: 'development',
+  analyst: 'research'
+};
+
+function normalizeSettingsAgentKey(agent: AgentType): AgentType {
+  return LEGACY_AGENT_ALIASES[agent] ?? agent;
+}
+
+const defaultSkillsByAgent = {
+  research: { ...defaultSkills },
+  development: { ...defaultSkills },
+  trading: { ...defaultSkills },
+  risk: { ...defaultSkills },
+  portfolio: { ...defaultSkills },
+  floor_manager: { ...defaultSkills }
+} as Record<AgentType, AgentSkills>;
+
+const defaultPermissionsByAgent = {
+  research: { ...defaultPermissions },
+  development: { ...defaultPermissions },
+  trading: { ...defaultPermissions },
+  risk: { ...defaultPermissions },
+  portfolio: { ...defaultPermissions },
+  floor_manager: { ...defaultPermissions }
+} as Record<AgentType, AgentPermissions>;
 
 // Initial state
 const initialState: SettingsStoreState = {
   general: defaultGeneralSettings,
   apiKeys: defaultAPIKeys,
   mcpServers: [],
-  skills: {
-    copilot: { ...defaultSkills },
-    quantcode: { ...defaultSkills },
-    analyst: { ...defaultSkills }
-  },
+  skills: defaultSkillsByAgent,
   rules: [],
   memories: defaultMemoryConfig,
   workflows: [],
-  permissions: {
-    copilot: { ...defaultPermissions },
-    quantcode: { ...defaultPermissions },
-    analyst: { ...defaultPermissions }
-  },
+  permissions: defaultPermissionsByAgent,
   modelConfig: defaultModelConfig,
+  connections: defaultConnections,
   isLoading: false,
   isDirty: false,
   error: null
@@ -139,9 +177,38 @@ function createSettingsStore() {
       update(state => ({ ...state, isLoading: true }));
       try {
         const settings = await settingsManager.loadSettings();
+        const incomingSkills = (settings.skills ?? {}) as Partial<Record<AgentType, AgentSkills>>;
+        const incomingPermissions = (settings.permissions ?? {}) as Partial<Record<AgentType, AgentPermissions>>;
+
+        const mergedSkills = CANONICAL_SETTINGS_AGENTS.reduce((acc, agentKey) => {
+          const defaults = defaultSkillsByAgent[agentKey];
+          const incoming = Object.entries(incomingSkills).find(([agent]) => normalizeSettingsAgentKey(agent as AgentType) === agentKey)?.[1];
+          acc[agentKey] = incoming
+            ? {
+                ...defaults,
+                ...incoming,
+                skills: incoming.skills ?? defaults.skills,
+                lastUpdated: incoming.lastUpdated ?? defaults.lastUpdated
+              }
+            : { ...defaults };
+          return acc;
+        }, {} as Record<AgentType, AgentSkills>);
+
+        const mergedPermissions = CANONICAL_SETTINGS_AGENTS.reduce((acc, agentKey) => {
+          const defaults = defaultPermissionsByAgent[agentKey];
+          const incoming = Object.entries(incomingPermissions).find(([agent]) => normalizeSettingsAgentKey(agent as AgentType) === agentKey)?.[1];
+          acc[agentKey] = {
+            ...defaults,
+            ...(incoming ?? {})
+          };
+          return acc;
+        }, {} as Record<AgentType, AgentPermissions>);
+
         set({
           ...initialState,
           ...settings,
+          skills: mergedSkills,
+          permissions: mergedPermissions,
           isLoading: false,
           isDirty: false
         });
@@ -298,20 +365,26 @@ function createSettingsStore() {
       }));
     },
 
+    // Update connection settings
+    updateConnections(updates: Partial<ConnectionSettings>) {
+      update(state => ({
+        ...state,
+        connections: { ...state.connections, ...updates },
+        isDirty: true
+      }));
+    },
+
     // Load available models from backend
     async loadAvailableModels() {
       try {
-        const res = await fetch('/api/agent-config/available-models');
-        if (res.ok) {
-          const data = await res.json();
-          update(state => ({
-            ...state,
-            modelConfig: {
-              ...state.modelConfig,
-              availableModels: Object.values(data.providers || {}).flatMap((p: any) => p.models || [])
-            }
-          }));
-        }
+        const data = await apiFetch<{ providers?: Record<string, { models?: any[] }> }>('/agent-config/available-models');
+        update(state => ({
+          ...state,
+          modelConfig: {
+            ...state.modelConfig,
+            availableModels: Object.values(data.providers || {}).flatMap((p) => p.models || [])
+          }
+        }));
       } catch (error) {
         console.error('Failed to load available models:', error);
       }

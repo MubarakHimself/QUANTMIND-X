@@ -10,6 +10,7 @@ Reference: Story 11-3-node-sequential-update-automatic-rollback
 import logging
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
@@ -21,6 +22,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/node-update", tags=["node-update"])
 
 
+def _get_data_dir() -> Path:
+    """Resolve the writable data directory for deployment metadata."""
+    configured = os.getenv("QUANTMIND_DATA_DIR")
+    if configured:
+        return Path(configured)
+
+    container_data_dir = Path("/app/data")
+    if container_data_dir.exists():
+        return container_data_dir
+
+    return Path(__file__).resolve().parents[2] / "data"
+
+
 # ============================================================================
 # Models
 # ============================================================================
@@ -30,6 +44,9 @@ class NodeName(str, Enum):
     contabo = "contabo"
     cloudzy = "cloudzy"
     desktop = "desktop"
+    # Generic aliases (preferred)
+    node_backend = "node_backend"  # alias for contabo
+    node_trading = "node_trading"  # alias for cloudzy
 
 
 class UpdateStatus(str, Enum):
@@ -101,8 +118,7 @@ def is_valid_deploy_window() -> bool:
 def get_current_version() -> str:
     """Get current application version."""
     try:
-        from pathlib import Path
-        version_file = Path("/data/version.txt")
+        version_file = _get_data_dir() / "version.txt"
         if version_file.exists():
             return version_file.read_text().strip()
     except Exception:
@@ -145,11 +161,18 @@ def check_node_health(node_url: str, timeout: int = 30) -> Dict[str, Any]:
 
 def get_node_url(node: str) -> Optional[str]:
     """Get URL for a node."""
+    desktop_url = (
+        os.getenv("DESKTOP_URL")
+        or os.getenv("API_BASE_URL")
+        or os.getenv("QUANTMIND_API_URL")
+        or os.getenv("INTERNAL_API_BASE_URL")
+        or "http://127.0.0.1:8000"
+    )
     # In production, load from config
     node_urls = {
         "contabo": os.getenv("CONTABO_URL", "https://contabo.quantmindx.com"),
         "cloudzy": os.getenv("CLOUDZY_URL", "https://cloudzy.quantmindx.com"),
-        "desktop": os.getenv("DESKTOP_URL", "http://localhost:8000")
+        "desktop": desktop_url.rstrip("/"),
     }
     return node_urls.get(node)
 
@@ -242,8 +265,7 @@ async def update_nodes(
         # Update node (in production, this would trigger actual update)
         try:
             # Simulate update
-            from pathlib import Path
-            version_file = Path(f"/data/versions/{node_name}.txt")
+            version_file = _get_data_dir() / "versions" / f"{node_name}.txt"
             version_file.parent.mkdir(parents=True, exist_ok=True)
             version_file.write_text(target_version)
 

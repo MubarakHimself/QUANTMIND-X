@@ -116,7 +116,7 @@ class CheckpointManager:
             enable_compression: Enable gzip compression for checkpoints
         """
         self.checkpoint_dir = checkpoint_dir or Path(
-            os.getenv("CHECKPOINT_DIR", "/app/checkpoints")
+            os.getenv("CHECKPOINT_DIR", str(Path.home() / ".quantmind" / "checkpoints"))
         )
         self.checkpoint_interval = checkpoint_interval_seconds
         self.max_checkpoints = max_checkpoints

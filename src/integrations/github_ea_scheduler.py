@@ -17,7 +17,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 
 from src.integrations.github_ea_sync import GitHubEASync, get_github_ea_sync
-from src.database.models import get_db_session
+from src.database.models import db_session_scope
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ class GitHubEAScheduler:
         logger.info("Starting scheduled GitHub EA sync...")
         
         try:
-            with get_db_session() as db:
+            with db_session_scope() as db:
                 result = self.sync_service.full_sync(db)
             
             self._last_sync_result = result
@@ -175,7 +175,7 @@ class GitHubEAScheduler:
         logger.info("Triggering manual GitHub EA sync...")
         
         try:
-            with get_db_session() as db:
+            with db_session_scope() as db:
                 result = self.sync_service.full_sync(db)
             
             self._last_sync_result = result

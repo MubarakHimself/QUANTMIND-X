@@ -1,6 +1,10 @@
 # QUANTMINDX — System Architecture
 
-**Generated:** 2026-03-11
+**Generated:** 2026-03-11 | **Last Updated:** 2026-03-25
+
+> **⚠️ The authoritative architecture decision document is:** `_bmad-output/planning-artifacts/architecture.md`
+>
+> That file contains all architectural decisions (§1–§21), the §Implementation Summary documenting what was built, performance budgets (NFR-P2 ≤3s P&L lag, NFR-P4 ≤200ms canvas transitions), and the complete feature → epic mapping. This file (`docs/architecture.md`) is the **system reference** — a generated overview of the current codebase structure.
 
 ---
 
@@ -210,11 +214,11 @@ See [Component Inventory](./component-inventory.md) for full component list.
 
 ## Part 7: MT5 Bridge (`mt5-bridge/`)
 
-Thin FastAPI service bridging QUANTMINDX to MetaTrader 5 SDK.
+Thin FastAPI service bridging QUANTMINDX to the MetaTrader 5 Python SDK.
 
-- **Port:** 8001
-- **Endpoints:** `POST /trade`, `GET /positions`, `GET /account`, `GET /history`
-- **Auth:** Bearer token (`MT5_BRIDGE_TOKEN` env var)
+- **Port:** 5005 by default (`MT5_BRIDGE_PORT` override supported)
+- **Endpoints:** `GET /health`, `GET /status`, `GET /account`, `POST /trade`
+- **Auth:** Bearer token (`Authorization: Bearer ...`) with `X-Token` compatibility (`MT5_BRIDGE_TOKEN` env var)
 - **Metrics:** Prometheus metrics on port 9091
 - **Platform:** Windows/Wine (MetaTrader 5 only runs on Windows)
 
@@ -240,7 +244,7 @@ Extensions exposing capabilities to AI agents via the Model Context Protocol.
 |------|----|--------|
 | SvelteKit IDE | FastAPI | HTTP REST (port 8000) |
 | SvelteKit IDE | FastAPI | WebSocket (port 8000) |
-| FastAPI | MT5 Bridge | HTTP REST (port 8001) |
+| FastAPI | MT5 Bridge | HTTP REST (port 5005 by default) |
 | FastAPI | Contabo HMM | HTTP REST (VPS URL) |
 | Department Heads | Floor Manager | SQLite message bus |
 | Agents | StrategyRouter | In-process function calls |

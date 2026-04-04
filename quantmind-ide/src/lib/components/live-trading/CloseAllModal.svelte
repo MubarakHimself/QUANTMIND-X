@@ -10,6 +10,7 @@
 
   interface Props {
     positions: PositionInfo[];
+    positionCount?: number;
     botId?: string;
     onClose: () => void;
     onSuccess?: (result: CloseAllResult) => void;
@@ -24,7 +25,7 @@
     current_pnl: number;
   }
 
-  let { positions, botId, onClose, onSuccess }: Props = $props();
+  let { positions, positionCount = 0, botId, onClose, onSuccess }: Props = $props();
 
   let confirmed = $state(false);
   let loading = $derived($closeLoading);
@@ -89,6 +90,8 @@
         return '#888';
     }
   }
+
+  let effectivePositionCount = $derived(positionCount || positions.length);
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
@@ -162,21 +165,27 @@
         <div class="warning-icon">
           <AlertTriangle size={20} />
         </div>
-        <span>This will attempt to close {positions.length} position{positions.length !== 1 ? 's' : ''}</span>
+        <span>This will attempt to close {effectivePositionCount} position{effectivePositionCount !== 1 ? 's' : ''}</span>
       </div>
 
       <div class="positions-preview">
         <h4>Positions to Close</h4>
-        <div class="positions-list">
-          {#each positions as pos}
-            <div class="position-item">
-              <span class="pos-symbol">{pos.symbol}</span>
-              <span class="pos-pnl" class:positive={pos.current_pnl > 0} class:negative={pos.current_pnl < 0}>
-                {formatPnl(pos.current_pnl)}
-              </span>
-            </div>
-          {/each}
-        </div>
+        {#if positions.length > 0}
+          <div class="positions-list">
+            {#each positions as pos}
+              <div class="position-item">
+                <span class="pos-symbol">{pos.symbol}</span>
+                <span class="pos-pnl" class:positive={pos.current_pnl > 0} class:negative={pos.current_pnl < 0}>
+                  {formatPnl(pos.current_pnl)}
+                </span>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <div class="positions-unavailable">
+            Position-level preview is unavailable from the live backend on this node. The close request still runs against the real trading API.
+          </div>
+        {/if}
       </div>
 
       <div class="confirmation-step">
@@ -346,6 +355,15 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+  }
+
+  .positions-unavailable {
+    font-size: 13px;
+    line-height: 1.5;
+    color: #9aa4b2;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 12px;
   }
 
   .position-item {

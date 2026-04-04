@@ -22,11 +22,12 @@ import threading
 import time
 from typing import Optional, List, Tuple
 
-import requests
 from prometheus_client import CollectorRegistry, REGISTRY
 from prometheus_client.metrics_core import CounterMetricFamily, GaugeMetricFamily, SummaryMetricFamily, HistogramMetricFamily, UntypedMetricFamily
 
 logger = logging.getLogger(__name__)
+_REQUESTS_MODULE = None
+_REQUESTS_IMPORT_ERROR: Optional[Exception] = None
 
 # Try to import snappy for compression
 try:
@@ -247,6 +248,10 @@ class GrafanaCloudPusher:
         if not SNAPPY_AVAILABLE:
             logger.error("Cannot push metrics: python-snappy not installed")
             return False
+
+        requests_module = _get_requests_module()
+        if requests_module is None:
+            return False
         
         try:
             # Construct the remote write URL
@@ -265,7 +270,7 @@ class GrafanaCloudPusher:
             }
             
             # Push to Grafana Cloud with HTTP basic authentication
-            response = requests.post(
+            response = requests_module.post(
                 url,
                 data=metrics_data,
                 headers=headers,
@@ -283,10 +288,10 @@ class GrafanaCloudPusher:
                 )
                 return False
                 
-        except requests.exceptions.Timeout:
+        except requests_module.exceptions.Timeout:
             logger.warning("Timeout pushing metrics to Grafana Cloud")
             return False
-        except requests.exceptions.RequestException as e:
+        except requests_module.exceptions.RequestException as e:
             logger.warning(f"Error pushing metrics to Grafana Cloud: {e}")
             return False
         except Exception as e:
@@ -346,6 +351,28 @@ class GrafanaCloudPusher:
 
 # Global pusher instance
 _global_pusher: Optional[GrafanaCloudPusher] = None
+
+
+def _get_requests_module():
+    """Import requests lazily so broken local packages do not break startup."""
+    global _REQUESTS_MODULE, _REQUESTS_IMPORT_ERROR
+
+    if _REQUESTS_MODULE is not None:
+        return _REQUESTS_MODULE
+
+    if _REQUESTS_IMPORT_ERROR is not None:
+        logger.warning("Requests unavailable for Grafana Cloud push: %s", _REQUESTS_IMPORT_ERROR)
+        return None
+
+    try:
+        import requests as requests_module
+    except Exception as exc:
+        _REQUESTS_IMPORT_ERROR = exc
+        logger.warning("Requests unavailable for Grafana Cloud push: %s", exc)
+        return None
+
+    _REQUESTS_MODULE = requests_module
+    return _REQUESTS_MODULE
 
 
 def get_grafana_cloud_pusher() -> GrafanaCloudPusher:

@@ -95,3 +95,88 @@ def mock_approval_gate():
             }
         }
     return _make_gate
+
+
+# =============================================================================
+# Epic 8.10-8.13 Integration Test Fixtures
+# =============================================================================
+
+@pytest.fixture
+def sample_regime_report():
+    """Sample regime report from Sentinel."""
+    from src.router.sentinel import RegimeReport
+    return RegimeReport(
+        regime="TREND_STABLE",
+        chaos_score=0.2,
+        timestamp=datetime.now(timezone.utc)
+    )
+
+
+@pytest.fixture
+def sample_trade_outcomes():
+    """Sample trade outcomes for HMM lag buffer testing."""
+    return [
+        {
+            "trade_id": "T001",
+            "bot_id": "SCALP_L_001",
+            "close_date": datetime.now(timezone.utc),
+            "outcome": "WIN",
+            "pnl": 150.0,
+            "holding_time_minutes": 45,
+            "regime_at_entry": "TREND_STABLE"
+        },
+        {
+            "trade_id": "T002",
+            "bot_id": "SCALP_L_001",
+            "close_date": datetime.now(timezone.utc),
+            "outcome": "LOSS",
+            "pnl": -75.0,
+            "holding_time_minutes": 30,
+            "regime_at_entry": "TREND_STABLE"
+        },
+    ]
+
+
+@pytest.fixture
+def sample_dpr_scores():
+    """Sample DPR scores for queue remix/rerank testing."""
+    from src.router.dpr_scoring_engine import DprScore, DprComponents
+
+    return [
+        DprScore(
+            bot_id="bot-t1-1",
+            composite_score=85.0,
+            components=DprComponents(0.75, 500, 0.85, 1.5),
+            rank=1,
+            tier="T1",
+            session_specialist=False,
+            session_concern=False,
+            consecutive_negative_ev=0
+        ),
+        DprScore(
+            bot_id="bot-t2-1",
+            composite_score=65.0,
+            components=DprComponents(0.60, 200, 0.65, 0.9),
+            rank=2,
+            tier="T2",
+            session_specialist=False,
+            session_concern=False,
+            consecutive_negative_ev=0
+        ),
+        DprScore(
+            bot_id="bot-t3-1",
+            composite_score=35.0,
+            components=DprComponents(0.35, -100, 0.40, 0.3),
+            rank=3,
+            tier="T3",
+            session_specialist=False,
+            session_concern=True,
+            consecutive_negative_ev=5
+        ),
+    ]
+
+
+@pytest.fixture
+def mock_datetime_utc():
+    """Mock datetime for deterministic UTC testing."""
+    return datetime(2026, 3, 24, 12, 0, 0, tzinfo=timezone.utc)

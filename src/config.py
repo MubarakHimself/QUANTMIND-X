@@ -99,6 +99,17 @@ def get_redis_url() -> str:
     return get_settings().redis_url
 
 
+def get_internal_api_base_url() -> str:
+    """Get internal API base URL for backend-to-backend calls."""
+    return (
+        os.getenv("INTERNAL_API_BASE_URL")
+        or os.getenv("NODE_BACKEND_URL")
+        or os.getenv("API_BASE_URL")
+        or os.getenv("QUANTMIND_API_URL")
+        or "http://127.0.0.1:8000"
+    ).rstrip("/")
+
+
 def get_zmq_endpoint() -> str:
     """Get ZMQ endpoint from environment or default."""
     return get_settings().zmq_endpoint

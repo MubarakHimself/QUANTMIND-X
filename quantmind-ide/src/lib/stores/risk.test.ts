@@ -15,6 +15,7 @@ import {
 	kellyData,
 	physicsLoading,
 	physicsError,
+	physicsUnavailableReason,
 	physicsLastUpdated,
 	complianceStore,
 	complianceData,
@@ -42,6 +43,7 @@ import {
 	type BacktestSummary,
 	type BacktestDetail
 } from './risk';
+import { buildApiUrl } from '$lib/api';
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -99,7 +101,7 @@ describe('Physics Sensor Store', () => {
 			await physicsSensorStore.fetch();
 
 			// Assert
-			expect(global.fetch).toHaveBeenCalledWith('/api/risk/physics');
+			expect(global.fetch).toHaveBeenCalledWith(buildApiUrl('/api/risk/physics'), { credentials: 'include' });
 		});
 
 		it('should update store with fetched data on success', async () => {
@@ -150,6 +152,22 @@ describe('Physics Sensor Store', () => {
 			// Assert
 			const error = get(physicsError);
 			expect(error).toContain('500');
+		});
+
+		it('should surface honest host unavailability separately for 503 physics responses', async () => {
+			(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+				ok: false,
+				status: 503,
+				statusText: 'Service Unavailable',
+				json: async () => ({
+					detail: 'Live MT5 candle features unavailable; physics outputs cannot be computed on this host.'
+				})
+			});
+
+			await physicsSensorStore.fetch();
+
+			expect(get(physicsError)).toBeNull();
+			expect(get(physicsUnavailableReason)).toContain('Live MT5 candle features unavailable');
 		});
 
 		it('should set error state when fetch throws', async () => {
@@ -401,7 +419,7 @@ describe('Compliance Store (Story 4-6)', () => {
 
 			await complianceStore.fetch();
 
-			expect(global.fetch).toHaveBeenCalledWith('/api/risk/compliance');
+			expect(global.fetch).toHaveBeenCalledWith(buildApiUrl('/api/risk/compliance'), { credentials: 'include' });
 		});
 
 		it('should update store with compliance data', async () => {
@@ -493,7 +511,7 @@ describe('PropFirm Store (Story 4-6)', () => {
 
 			await propFirmStore.fetch();
 
-			expect(global.fetch).toHaveBeenCalledWith('/api/risk/prop-firms');
+			expect(global.fetch).toHaveBeenCalledWith(buildApiUrl('/api/risk/prop-firms'), { credentials: 'include' });
 		});
 
 		it('should update store with prop firm data', async () => {
@@ -570,7 +588,7 @@ describe('Calendar Gate Store (Story 4-6)', () => {
 
 			await calendarGateStore.fetch();
 
-			expect(global.fetch).toHaveBeenCalledWith('/api/risk/calendar/blackout');
+			expect(global.fetch).toHaveBeenCalledWith(buildApiUrl('/api/risk/calendar/blackout'), { credentials: 'include' });
 		});
 
 		it('should update store with calendar gate data', async () => {
@@ -653,7 +671,7 @@ describe('Backtest Store (Story 4-6)', () => {
 
 			await backtestStore.fetchList();
 
-			expect(global.fetch).toHaveBeenCalledWith('/api/backtests');
+			expect(global.fetch).toHaveBeenCalledWith(buildApiUrl('/api/backtests'), { credentials: 'include' });
 		});
 
 		it('should update store with backtest list', async () => {

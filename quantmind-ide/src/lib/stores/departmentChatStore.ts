@@ -7,6 +7,7 @@
 
 import { writable, derived, get } from 'svelte/store';
 import type { Readable, Writable } from 'svelte/store';
+import { buildApiUrl } from '$lib/api';
 
 // Department types
 export type DepartmentId = 'development' | 'research' | 'risk' | 'trading' | 'portfolio';
@@ -82,6 +83,7 @@ export interface DepartmentChatHistory {
   lastMessageAt: Date | null;
   unreadCount: number;
   isTyping: boolean;
+  sessionId: string | null;  // Persists session for message history continuity
 }
 
 // Task delegation status
@@ -114,6 +116,7 @@ const createInitialChats = (): Map<DepartmentId, DepartmentChatHistory> => {
       lastMessageAt: null,
       unreadCount: 0,
       isTyping: false,
+      sessionId: null,
     });
   });
   return chats;
@@ -126,9 +129,6 @@ const initialState: DepartmentChatStoreState = {
   isLoading: false,
   error: null,
 };
-
-// API base URL
-const API_BASE = 'http://localhost:8000/api';
 
 // Create the store
 function createDepartmentChatStore() {
@@ -229,12 +229,34 @@ function createDepartmentChatStore() {
         // Set typing indicator
         this.setTyping(departmentId, true);
 
-        // Call API to send message to department
-        const response = await fetch(`${API_BASE}/chat/departments/${departmentId}/message`, {
+        // Get existing session_id for this department (preserves history continuity)
+        const currentSessionId = get(departmentChatStore).chats.get(departmentId)?.sessionId ?? null;
+
+        // Add streaming placeholder message
+        const streamingMsgId = generateMessageId();
+        update((state) => {
+          const chat = state.chats.get(departmentId);
+          if (chat) {
+            chat.messages = [...chat.messages, {
+              id: streamingMsgId,
+              role: 'department' as const,
+              content: '',
+              timestamp: new Date(),
+              department: departmentId,
+              metadata: { status: 'in_progress' as const },
+            }];
+          }
+          return { ...state, chats: new Map(state.chats) };
+        });
+
+        // Call API with streaming enabled
+        const response = await fetch(buildApiUrl(`/chat/departments/${departmentId}/message`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: content,
+            stream: true,
+            ...(currentSessionId ? { session_id: currentSessionId } : {}),
           }),
         });
 
@@ -242,28 +264,66 @@ function createDepartmentChatStore() {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
-        const data = await response.json();
+        // Parse SSE stream
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let fullContent = '';
+        let sessionIdFromStream: string | null = null;
+        let lineBuffer = '';
+
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            lineBuffer += decoder.decode(value, { stream: true });
+            const lines = lineBuffer.split('\n');
+            lineBuffer = lines.pop() || '';
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              try {
+                const event = JSON.parse(line.slice(6));
+                const delta = typeof event.delta === 'string' ? event.delta : event.content;
+                if (event.type === 'content' && delta) {
+                  fullContent += delta;
+                  // Update streaming message in real-time
+                  update((state) => {
+                    const chat = state.chats.get(departmentId);
+                    if (chat) {
+                      chat.messages = chat.messages.map(m =>
+                        m.id === streamingMsgId ? { ...m, content: fullContent } : m
+                      );
+                    }
+                    return { ...state, chats: new Map(state.chats) };
+                  });
+                } else if (event.type === 'done' && event.session_id) {
+                  sessionIdFromStream = event.session_id;
+                }
+              } catch {
+                // ignore parse errors
+              }
+            }
+          }
+        }
 
         const assistantMessage: DepartmentMessage = {
-          id: generateMessageId(),
+          id: streamingMsgId,
           role: 'department',
-          content: data.reply || data.result || 'Task completed.',
+          content: fullContent || 'Task completed.',
           timestamp: new Date(),
           department: departmentId,
-          metadata: {
-            taskType: data.task_type,
-            status: data.status || 'completed',
-            duration: data.duration,
-          },
+          metadata: { status: 'completed' },
         };
 
-        // Add response to history
+        // Finalise message in store
         update((state) => {
           const chat = state.chats.get(departmentId);
           if (chat) {
-            chat.messages = [...chat.messages, assistantMessage];
+            chat.messages = chat.messages.map(m =>
+              m.id === streamingMsgId ? assistantMessage : m
+            );
             chat.lastMessageAt = new Date();
             chat.isTyping = false;
+            if (sessionIdFromStream) chat.sessionId = sessionIdFromStream;
           }
           return { ...state, chats: new Map(state.chats), isLoading: false };
         });
@@ -316,7 +376,7 @@ function createDepartmentChatStore() {
       });
 
       try {
-        const response = await fetch(`${API_BASE}/trading-floor/delegate`, {
+        const response = await fetch(buildApiUrl('/trading-floor/delegate'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

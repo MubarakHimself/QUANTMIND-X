@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, createEventDispatcher } from 'svelte';
   import { API_CONFIG } from '$lib/config/api';
 
   interface Props {
@@ -7,7 +7,7 @@
     currentModel?: string;
   }
 
-  let { agentId, currentModel = 'sonnet' }: Props = $props();
+  let { agentId, currentModel = '' }: Props = $props();
 
   interface Model {
     id: string;
@@ -17,7 +17,8 @@
 
   interface ProviderInfo {
     id: string;
-    name: string;
+    name?: string;
+    provider_type?: string;
     display_name: string;
     has_api_key: boolean;
     enabled: boolean;
@@ -32,14 +33,16 @@
   }
 
   let providerGroups: ProviderGroup[] = $state([]);
+  let selectedProvider = $state('');
   let selectedModel = $state(currentModel);
   let loading = $state(true);
+  const dispatch = createEventDispatcher<{ modelchange: { model: string; provider?: string } }>();
 
   const API_BASE = API_CONFIG.API_BASE;
 
   onMount(async () => {
     try {
-      const url = `${API_BASE}/api/providers/available`;
+      const url = `${API_BASE}/providers/available`;
 
       const response = await fetch(url);
 
@@ -65,8 +68,12 @@
       for (const provider of providers) {
         // Only include providers that have API key configured and are enabled
         if (provider.available && provider.models && provider.models.length > 0) {
+          const providerKey = provider.provider_type || provider.name || provider.id;
+          if (!providerKey) {
+            continue;
+          }
           groups.push({
-            name: provider.name,
+            name: providerKey,
             displayName: provider.display_name,
             models: provider.models
           });
@@ -75,63 +82,98 @@
 
       providerGroups = groups;
 
-      // Set selected model to first available or default
-      const allModels = providerGroups.flatMap(g => g.models);
+      if (groups.length > 0) {
+        const matchingProvider = currentModel
+          ? groups.find((group) => group.models.some((model) => model.id === currentModel))
+          : undefined;
+        selectedProvider = matchingProvider?.name || groups[0].name;
+      }
+
+      // Set selected model to the current configured value when present, otherwise first available.
+      const allModels = groups.flatMap(g => g.models);
       if (allModels.length > 0 && !allModels.find(m => m.id === selectedModel)) {
-        selectedModel = allModels[0].id;
+        const providerModels = groups.find((group) => group.name === selectedProvider)?.models ?? [];
+        selectedModel = providerModels[0]?.id || allModels[0].id;
       }
     } catch (e) {
       console.error('Failed to fetch models:', e);
-      // Fallback to basic models
-      providerGroups = [
-        {
-          name: 'anthropic',
-          displayName: 'Anthropic',
-          models: [
-            { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', tier: 'sonnet' },
-            { id: 'claude-haiku-3-20240307', name: 'Claude Haiku 3.5', tier: 'haiku' },
-          ]
-        }
-      ];
-      selectedModel = providerGroups[0].models[0].id;
+      // Production-safe behavior: no synthetic model fallbacks.
+      providerGroups = [];
+      selectedProvider = '';
     }
     loading = false;
   });
+
+  // Get models for the currently selected provider
+  let currentProviderModels = $derived(
+    providerGroups.find(p => p.name === selectedProvider)?.models ?? []
+  );
 
   async function updateModel() {
     try {
       await fetch(`${API_BASE}/agent-config/${agentId}/model`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: selectedModel })
+        body: JSON.stringify({ model: selectedModel, provider: selectedProvider || undefined })
       });
+      dispatch('modelchange', { model: selectedModel, provider: selectedProvider || undefined });
     } catch (e) {
       console.error('Failed to update model:', e);
+    }
+  }
+
+  function handleProviderChange() {
+    // Reset model to first available from new provider
+    const providerModels = providerGroups.find(p => p.name === selectedProvider)?.models ?? [];
+    if (providerModels.length > 0) {
+      selectedModel = providerModels[0].id;
     }
   }
 </script>
 
 {#if loading}
-  <select class="model-selector" disabled>
-    <option>Loading...</option>
-  </select>
+  <div class="model-selector-row">
+    <select class="model-selector" disabled>
+      <option>Loading...</option>
+    </select>
+  </div>
+{:else if providerGroups.length === 0}
+  <div class="model-selector-row">
+    <span class="no-providers">No providers configured</span>
+  </div>
 {:else}
-  <select
-    bind:value={selectedModel}
-    onchange={updateModel}
-    class="model-selector"
-  >
-    {#each providerGroups as group}
-      <optgroup label={group.displayName}>
-        {#each group.models as model}
-          <option value={model.id}>{model.name}</option>
-        {/each}
-      </optgroup>
-    {/each}
-  </select>
+  <div class="model-selector-row">
+    <!-- Provider dropdown -->
+    <select
+      bind:value={selectedProvider}
+      onchange={handleProviderChange}
+      class="model-selector provider-select"
+    >
+      {#each providerGroups as group}
+        <option value={group.name}>{group.displayName}</option>
+      {/each}
+    </select>
+
+    <!-- Model dropdown (filtered by selected provider) -->
+    <select
+      bind:value={selectedModel}
+      onchange={updateModel}
+      class="model-selector model-select"
+    >
+      {#each currentProviderModels as model}
+        <option value={model.id}>{model.name}</option>
+      {/each}
+    </select>
+  </div>
 {/if}
 
 <style>
+  .model-selector-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 0.5rem;
+  }
+
   .model-selector {
     padding: 4px 8px;
     border-radius: 4px;
@@ -140,7 +182,15 @@
     border: 1px solid var(--border-color, #333);
     font-size: 12px;
     cursor: pointer;
-    min-width: 120px;
+  }
+
+  .provider-select {
+    min-width: 100px;
+  }
+
+  .model-select {
+    flex: 1;
+    min-width: 140px;
   }
 
   .model-selector:hover {
@@ -152,14 +202,15 @@
     cursor: not-allowed;
   }
 
-  :global(.model-selector optgroup) {
-    font-weight: 600;
-    color: var(--text-secondary, #a0a0a0);
-  }
-
   :global(.model-selector option) {
     padding: 4px 8px;
     background: var(--bg-secondary, #1e1e1e);
     color: var(--text-primary, #e0e0e0);
+  }
+
+  .no-providers {
+    font-size: 12px;
+    color: var(--text-muted, #888);
+    padding: 4px 8px;
   }
 </style>

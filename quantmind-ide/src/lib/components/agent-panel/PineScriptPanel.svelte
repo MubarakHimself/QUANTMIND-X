@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { Code, Copy, Check, AlertCircle, Loader, Send, ArrowRight, FileCode } from 'lucide-svelte';
-  import { API_BASE } from '$lib/constants';
+  import { buildApiUrl } from '$lib/api';
 
   // State
   let strategyDescription = $state('');
@@ -13,9 +13,6 @@
   let errors: string[] = $state([]);
   let copiedToClipboard = $state(false);
   let copyButtonText = $state('Copy to TradingView');
-
-  // API base URL
-  const apiBase = API_BASE || 'http://localhost:8000';
 
   // Generate Pine Script from natural language
   async function generatePineScript() {
@@ -36,8 +33,8 @@
 
     try {
       const endpoint = mode === 'convert' 
-        ? `${apiBase}/api/chat/pinescript/convert`
-        : `${apiBase}/api/chat/pinescript`;
+        ? buildApiUrl('/api/chat/pinescript/convert')
+        : buildApiUrl('/api/chat/pinescript');
 
       const body = mode === 'convert'
         ? { mql5_code: mql5Source }

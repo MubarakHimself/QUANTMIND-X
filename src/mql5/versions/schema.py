@@ -41,6 +41,7 @@ class EAVersion(BaseModel):
         variant_type: Classification (vanilla/spiced/mode_b/mode_c)
         improvement_cycle: Workflow iteration number
         artifacts: Linked artifacts (mq5, ex5, TRD, backtests)
+        parent_id: ID of parent version this was spawned from (for genealogy tracking)
     """
     id: str
     strategy_id: str
@@ -53,6 +54,7 @@ class EAVersion(BaseModel):
     variant_type: VariantType = VariantType.VANILLA
     improvement_cycle: int = 0
     artifacts: EAVersionArtifacts = Field(default_factory=EAVersionArtifacts)
+    parent_id: Optional[str] = Field(default=None, description="ID of parent version (for genealogy tree)")
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage."""
@@ -68,6 +70,7 @@ class EAVersion(BaseModel):
             "variant_type": self.variant_type.value,
             "improvement_cycle": self.improvement_cycle,
             "artifacts": self.artifacts.model_dump(),
+            "parent_id": self.parent_id,
         }
 
     @classmethod
@@ -97,6 +100,7 @@ class EAVersion(BaseModel):
             variant_type=VariantType(data.get("variant_type", "vanilla")),
             improvement_cycle=data.get("improvement_cycle", 0),
             artifacts=artifacts,
+            parent_id=data.get("parent_id"),
         )
 
 

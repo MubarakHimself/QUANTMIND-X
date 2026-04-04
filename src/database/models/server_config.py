@@ -22,6 +22,9 @@ class ServerType(str, Enum):
     CLOUDZY = "cloudzy"
     CONTABO = "contabo"
     MT5 = "mt5"
+    # Generic aliases (preferred)
+    NODE_TRADING = "node_trading"  # alias for CLOUDZY
+    NODE_BACKEND = "node_backend"  # alias for CONTABO
 
 
 class ServerConfig(Base):

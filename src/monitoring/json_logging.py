@@ -86,25 +86,34 @@ def setup_json_file_handler(
     Returns:
         Configured FileHandler or None if setup fails
     """
-    try:
-        # Ensure log directory exists
-        log_path = Path(log_dir)
-        log_path.mkdir(parents=True, exist_ok=True)
-        
-        # Create file handler
-        full_path = log_path / log_file
-        handler = logging.FileHandler(str(full_path))
-        handler.setLevel(log_level)
-        
-        # Set JSON formatter
-        formatter = JsonFormatter(service_name=service_name)
-        handler.setFormatter(formatter)
-        
-        return handler
-    except Exception as e:
-        # Fallback to stderr if file logging fails
-        logging.error(f"Failed to set up JSON file handler: {e}")
-        return None
+    candidate_dirs = []
+    if os.getenv("APP_LOGS_DIR"):
+        candidate_dirs.append(os.getenv("APP_LOGS_DIR"))
+    if log_dir not in candidate_dirs:
+        candidate_dirs.append(log_dir)
+
+    local_fallback = Path("data/logs")
+    if str(local_fallback) not in candidate_dirs:
+        candidate_dirs.append(str(local_fallback))
+
+    last_error = None
+    for candidate in candidate_dirs:
+        try:
+            log_path = Path(candidate)
+            log_path.mkdir(parents=True, exist_ok=True)
+
+            full_path = log_path / log_file
+            handler = logging.FileHandler(str(full_path))
+            handler.setLevel(log_level)
+
+            formatter = JsonFormatter(service_name=service_name)
+            handler.setFormatter(formatter)
+            return handler
+        except Exception as e:
+            last_error = e
+
+    logging.error(f"Failed to set up JSON file handler: {last_error}")
+    return None
 
 
 def configure_service_logging(

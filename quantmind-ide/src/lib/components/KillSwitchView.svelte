@@ -3,6 +3,7 @@
 
   const bubble = createBubbler();
   import { onMount, onDestroy } from "svelte";
+  import { apiFetch } from '$lib/api';
 
   // Simple toast notification system
   let toastMessage = $state("");
@@ -45,20 +46,20 @@
     bot_id: string;
     bot_name: string;
     status: BotStatus;
-    strategy: KillSwitchStrategy;
-    today_pnl: number;
+    strategy: KillSwitchStrategy | null;
+    today_pnl: number | null;
     loss_count: number;
     max_losses: number;
-    positions_open: number;
+    positions_open: number | null;
   }
 
   interface KillSwitchEvent {
     id: string;
     timestamp: string;
     trigger_reason: TriggerReason;
-    strategy_used: string;
+    strategy_used: string | null;
     positions_closed: number;
-    total_pnl_preserved: number;
+    total_pnl_preserved: number | null;
   }
 
   interface KillZoneConfig {
@@ -98,8 +99,8 @@
   });
 
   // Computed metrics
-  let totalPositions = $derived(bots.reduce((sum, bot) => sum + bot.positions_open, 0));
-  let totalDailyPnL = $derived(bots.reduce((sum, bot) => sum + bot.today_pnl, 0));
+  let totalPositions = $derived(bots.reduce((sum, bot) => sum + (bot.positions_open ?? 0), 0));
+  let totalDailyPnL = $derived(bots.reduce((sum, bot) => sum + (bot.today_pnl ?? 0), 0));
   let activeBots = $derived(bots.filter((b) => b.status === "active").length);
   let circuitBreakerTripped = $derived(bots.some((b) => b.loss_count >= b.max_losses));
   let dailyDrawdown = $derived(Math.min(0, totalDailyPnL));
@@ -198,12 +199,13 @@
   async function killBot(botId: string) {
     const bot = bots.find((b) => b.bot_id === botId);
     if (!bot) return;
+    const strategy = bot.strategy ?? selectedStrategy;
 
     showConfirmDialog(
       `Kill ${bot.bot_name}?`,
-      `This will close all ${bot.positions_open} positions for ${bot.bot_name} using ${strategies[bot.strategy].name} strategy.`,
+      `This will close all ${bot.positions_open ?? 0} positions for ${bot.bot_name} using ${strategies[strategy].name} strategy.`,
       async () => {
-        await executeKillSwitch(botId, bot.strategy);
+        await executeKillSwitch(botId, strategy);
         showToast(`Kill switch activated for ${bot.bot_name}`);
       },
     );
@@ -234,6 +236,14 @@
       style: "currency",
       currency: "USD",
     }).format(value);
+  }
+
+  function formatOptionalCurrency(value: number | null | undefined): string {
+    return typeof value === "number" ? formatCurrency(value) : "Unavailable";
+  }
+
+  function formatOptionalCount(value: number | null | undefined): string {
+    return typeof value === "number" ? String(value) : "—";
   }
 
   function formatDate(isoString: string): string {
@@ -280,10 +290,7 @@
 
   async function loadBotData() {
     try {
-      const res = await fetch('http://localhost:8000/api/kill-switch/bots');
-      if (res.ok) {
-        bots = await res.json();
-      }
+      bots = await apiFetch('/kill-switch/bots');
     } catch (e) {
       console.error('Failed to load bot data:', e);
     }
@@ -291,10 +298,7 @@
 
   async function loadKillSwitchHistory() {
     try {
-      const res = await fetch('http://localhost:8000/api/kill-switch/history');
-      if (res.ok) {
-        killSwitchHistory = await res.json();
-      }
+      killSwitchHistory = await apiFetch('/kill-switch/history');
     } catch (e) {
       console.error('Failed to load kill switch history:', e);
     }
@@ -552,7 +556,7 @@
               </td>
               <td class="py-3 px-4">
                 <select
-                  value={bot.strategy}
+                  value={bot.strategy ?? selectedStrategy}
                   onchange={(e) =>
                     updateBotStrategy(bot.bot_id, e.currentTarget.value)}
                   class="px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-700 text-sm"
@@ -564,10 +568,10 @@
               </td>
               <td
                 class="py-3 px-4 text-right font-mono"
-                class:text-green-600={bot.today_pnl >= 0}
-                class:text-red-600={bot.today_pnl < 0}
+                class:text-green-600={typeof bot.today_pnl === "number" && bot.today_pnl >= 0}
+                class:text-red-600={typeof bot.today_pnl === "number" && bot.today_pnl < 0}
               >
-                {formatCurrency(bot.today_pnl)}
+                {formatOptionalCurrency(bot.today_pnl)}
               </td>
               <td class="py-3 px-4 text-center">
                 <div
@@ -587,7 +591,7 @@
                 </div>
               </td>
               <td class="py-3 px-4 text-center">
-                <span class="font-mono">{bot.positions_open}</span>
+                <span class="font-mono">{formatOptionalCount(bot.positions_open)}</span>
               </td>
               <td class="py-3 px-4">
                 <div class="flex items-center gap-2">
@@ -772,7 +776,7 @@
                     {event.trigger_reason.replace("_", " ")} Trigger
                   </h3>
                   <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                    Strategy: {event.strategy_used}
+                    Strategy: {event.strategy_used ?? "Unrecorded"}
                   </p>
                   <div class="flex gap-4 mt-2 text-sm">
                     <span>
@@ -784,11 +788,13 @@
                     <span>
                       <span class="text-gray-500">P&L Preserved:</span>
                       <span
-                        class="font-medium ml-1 {event.total_pnl_preserved >= 0
+                        class="font-medium ml-1 {typeof event.total_pnl_preserved === 'number' && event.total_pnl_preserved >= 0
                           ? 'text-green-600'
-                          : 'text-red-600'}"
+                          : typeof event.total_pnl_preserved === 'number'
+                            ? 'text-red-600'
+                            : 'text-gray-500'}"
                       >
-                        {formatCurrency(event.total_pnl_preserved)}
+                        {formatOptionalCurrency(event.total_pnl_preserved)}
                       </span>
                     </span>
                   </div>

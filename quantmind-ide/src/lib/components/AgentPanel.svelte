@@ -17,6 +17,7 @@
   const bubble = createBubbler();
   import { createEventDispatcher, onMount, tick } from 'svelte';
   import { Bot, Code, Wand2, Settings, History, Server, X, ChevronLeft, ChevronRight, Send, Paperclip, Loader, Key, FileText, Slash, ChevronDown, Plus, Trash2, Eye, EyeOff, Edit3, Clock, List, FolderOpen } from 'lucide-svelte';
+  import { buildApiUrl } from '$lib/api';
   
   const dispatch = createEventDispatcher();
   interface Props {
@@ -277,9 +278,10 @@
     await scrollToBottom();
     
     try {
-      const res = await fetch('http://localhost:8000/api/chat', {
+      const res = await fetch(buildApiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           message: userMsg,
           agent: activeAgent,

@@ -391,7 +391,7 @@ function createSessionStore() {
         const result = await updateSession(sessionId, updates);
         if (result.success) {
           // Reload the session to get updated data
-          await getSessionStore().loadSession(sessionId);
+          await sessionStore.loadSession(sessionId);
         }
         update(s => ({ ...s, loading: false }));
       } catch (e) {
@@ -431,7 +431,7 @@ function createSessionStore() {
       try {
         const result = await addMessage(sessionId, role, content);
         // Reload session to get updated history
-        await getSessionStore().loadSession(sessionId);
+        await sessionStore.loadSession(sessionId);
         return result;
       } catch (e) {
         throw e;

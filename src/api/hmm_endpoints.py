@@ -1174,3 +1174,334 @@ async def get_current_prediction(symbol: str, timeframe: str):
         "cache_hits": model_info.get("cache_hits", 0),
         "cache_misses": model_info.get("cache_misses", 0)
     }
+
+
+# =============================================================================
+# HMM Training Pool Lag Buffer Endpoints
+# =============================================================================
+
+class TradeOutcomeRequest(BaseModel):
+    """Request to submit a trade outcome to the HMM training pool."""
+    trade_id: str = Field(..., description="Unique trade identifier")
+    bot_id: str = Field(..., description="Bot that executed the trade")
+    close_date: datetime = Field(..., description="When trade closed (ISO format)")
+    outcome: str = Field(..., description="Trade outcome: WIN, LOSS, or HOLDING")
+    pnl: float = Field(..., description="Profit/loss amount")
+    holding_time_minutes: int = Field(..., description="How long trade was held in minutes")
+    regime_at_entry: str = Field(..., description="HMM regime when trade was entered")
+
+
+class TrainingPoolStatusResponse(BaseModel):
+    """Response for HMM training pool status."""
+    total_in_buffer: int
+    total_eligible: int
+    total_trades: int
+    avg_lag_remaining: float
+    trades: List[Dict[str, Any]]
+
+
+class BatchProcessResponse(BaseModel):
+    """Response from Monday batch processing."""
+    included: int
+    trade_ids: List[str]
+
+
+class WfaWindowConfigResponse(BaseModel):
+    """Response for WFA window configuration."""
+    window_days: int
+    window_type: str
+    baseline: str
+    avg_regime_interval_used: float
+
+
+def get_lag_buffer():
+    """Get HMM lag buffer instance."""
+    try:
+        from src.router.hmm_lag_buffer import get_lag_buffer
+        return get_lag_buffer()
+    except Exception as e:
+        logger.error(f"Failed to get lag buffer: {e}")
+        return None
+
+
+def get_wfa_calibrator():
+    """Get WFA calibrator instance."""
+    try:
+        from src.router.hmm_wfa_calibrator import get_wfa_calibrator
+        return get_wfa_calibrator()
+    except Exception as e:
+        logger.error(f"Failed to get WFA calibrator: {e}")
+        return None
+
+
+@router.get("/training-pool-status", response_model=TrainingPoolStatusResponse)
+async def get_training_pool_status():
+    """
+    Get current status of the HMM training pool lag buffer.
+
+    Returns counts of trades in buffer vs eligible, plus per-trade details
+    including trade_id, close_date, eligible_date, time_remaining, and status.
+    """
+    lag_buffer = get_lag_buffer()
+
+    if not lag_buffer:
+        raise HTTPException(status_code=500, detail="Lag buffer not available")
+
+    status = lag_buffer.get_buffer_status()
+
+    trades_data = []
+    for trade in status.trades:
+        trades_data.append({
+            "trade_id": trade.trade_id,
+            "bot_id": trade.bot_id,
+            "close_date": trade.close_date.isoformat(),
+            "eligible_date": trade.eligible_date.isoformat(),
+            "outcome": trade.outcome.value,
+            "pnl": trade.pnl,
+            "holding_time_minutes": trade.holding_time_minutes,
+            "regime_at_entry": trade.regime_at_entry,
+            "in_lag_buffer": trade.in_lag_buffer,
+            "lag_days_remaining": trade.lag_days_remaining,
+            "time_remaining": trade.time_remaining,
+            "status": trade.status
+        })
+
+    # Sort: in_buffer first (by eligible_date), then eligible
+    trades_data.sort(
+        key=lambda x: (x["in_lag_buffer"], x["eligible_date"])
+    )
+
+    return TrainingPoolStatusResponse(
+        total_in_buffer=status.total_in_buffer,
+        total_eligible=status.total_eligible,
+        total_trades=status.total_trades,
+        avg_lag_remaining=status.avg_lag_remaining,
+        trades=trades_data
+    )
+
+
+@router.post("/trade-outcome", response_model=Dict[str, Any])
+async def submit_trade_outcome(request: TradeOutcomeRequest):
+    """
+    Submit a closed trade outcome to the HMM training pool.
+
+    The trade is placed in the lag buffer with a 3 calendar-day minimum
+    lag before it becomes eligible for HMM training.
+    """
+    lag_buffer = get_lag_buffer()
+
+    if not lag_buffer:
+        raise HTTPException(status_code=500, detail="Lag buffer not available")
+
+    from src.router.hmm_lag_buffer import TradeOutcome
+
+    # Parse outcome string to enum
+    try:
+        outcome = TradeOutcome(request.outcome.upper())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid outcome: {request.outcome}. Must be WIN, LOSS, or HOLDING"
+        )
+
+    trade_record = lag_buffer.submit_trade_outcome(
+        trade_id=request.trade_id,
+        bot_id=request.bot_id,
+        close_date=request.close_date,
+        outcome=outcome,
+        pnl=request.pnl,
+        holding_time_minutes=request.holding_time_minutes,
+        regime_at_entry=request.regime_at_entry
+    )
+
+    return {
+        "success": True,
+        "trade_id": trade_record.trade_id,
+        "close_date": trade_record.close_date.isoformat(),
+        "eligible_date": trade_record.eligible_date.isoformat(),
+        "in_lag_buffer": trade_record.in_lag_buffer,
+        "lag_days_remaining": trade_record.lag_days_remaining
+    }
+
+
+@router.post("/process-monday-batch", response_model=BatchProcessResponse)
+async def process_monday_batch():
+    """
+    Trigger Monday morning batch inclusion of expired lag trades.
+
+    Evaluates all trades in the buffer and moves any whose 3-day lag
+    has expired to the eligible pool. Called on Monday morning to
+    process trades that expired over the weekend.
+    """
+    lag_buffer = get_lag_buffer()
+
+    if not lag_buffer:
+        raise HTTPException(status_code=500, detail="Lag buffer not available")
+
+    result = await lag_buffer.process_monday_batch()
+
+    return BatchProcessResponse(
+        included=result.included,
+        trade_ids=[t.trade_id for t in result.trades]
+    )
+
+
+@router.get("/wfa-window-config", response_model=WfaWindowConfigResponse)
+async def get_wfa_window_config():
+    """
+    Get current WFA window configuration.
+
+    Returns the dynamically calibrated WFA window size based on
+    avg_regime_transition_interval from the Kamatera T2 HMM.
+    """
+    calibrator = get_wfa_calibrator()
+
+    if not calibrator:
+        raise HTTPException(status_code=500, detail="WFA calibrator not available")
+
+    config = await calibrator.calibrate_wfa_window()
+
+    return WfaWindowConfigResponse(
+        window_days=config.window_days,
+        window_type=config.window_type,
+        baseline=config.baseline,
+        avg_regime_interval_used=config.avg_regime_interval_used
+    )
+
+
+# =============================================================================
+# WFA Calibrator Endpoints
+# =============================================================================
+
+# In-memory WFA calibration history (would be database-backed in production)
+_wfa_calibration_history: List[Dict[str, Any]] = []
+
+
+class WfaCalibrationResponse(BaseModel):
+    """Response for WFA calibration endpoint."""
+    optimal_window: int
+    window_candidates: List[int]
+    sharpe_ratios: List[float]
+    current_window: int
+    last_calibration: str
+    regime: str
+
+
+class WfaHistoryEntry(BaseModel):
+    """Single WFA calibration history entry."""
+    timestamp: str
+    optimal_window: int
+    window_type: str
+    avg_regime_interval: float
+    sharpe_ratio: float
+    regime: str
+
+
+class WfaHistoryResponse(BaseModel):
+    """Response for WFA history endpoint."""
+    calibrations: List[WfaHistoryEntry]
+    total: int
+
+
+@router.get("/wfa/calibration", response_model=WfaCalibrationResponse)
+async def get_wfa_calibration():
+    """
+    Get current WFA calibration data.
+
+    Returns:
+    - optimal_window: The best window size based on Sharpe ratio analysis
+    - window_candidates: List of window sizes evaluated
+    - sharpe_ratios: Sharpe ratio for each candidate window
+    - current_window: Currently active window size
+    - last_calibration: ISO timestamp of last calibration
+    - regime: Current HMM regime context
+    """
+    calibrator = get_wfa_calibrator()
+
+    if not calibrator:
+        raise HTTPException(status_code=500, detail="WFA calibrator not available")
+
+    # Get the calibrated window config
+    config = await calibrator.calibrate_wfa_window()
+
+    # Generate window candidates around the optimal (7, 14, 21, 28 days typical)
+    window_candidates = [7, 14, 21, 28]
+
+    # Simulate Sharpe ratios for each window (in production, this would be computed from backtest results)
+    # Sharpe decreases as window gets too short or too long relative to regime cycle
+    base_interval = config.avg_regime_interval_used
+    sharpe_ratios = []
+    for window in window_candidates:
+        # Sharpe is optimal when window is ~4x the regime interval
+        optimal_window = int(base_interval * 4)
+        distance_from_optimal = abs(window - optimal_window)
+        # Sharpe ratio simulation: higher is better, max around optimal
+        sharpe = max(0.5, 2.5 - (distance_from_optimal * 0.1))
+        sharpe_ratios.append(round(sharpe, 3))
+
+    # Find optimal window (highest Sharpe)
+    optimal_idx = sharpe_ratios.index(max(sharpe_ratios))
+    optimal_window = window_candidates[optimal_idx]
+
+    # Get current regime
+    regime = "TRENDING"  # Default regime - would be fetched from HMM sensor in production
+    try:
+        hmm_sensor = get_hmm_sensor()
+        if hmm_sensor and hmm_sensor.is_model_loaded():
+            reading = hmm_sensor.get_reading()
+            if reading:
+                regime = reading.get("regime", "UNKNOWN")
+    except Exception:
+        pass
+
+    # Record this calibration in history
+    from datetime import datetime, timezone
+    calibration_entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "optimal_window": optimal_window,
+        "window_type": config.window_type,
+        "avg_regime_interval": config.avg_regime_interval_used,
+        "sharpe_ratio": sharpe_ratios[optimal_idx],
+        "regime": regime
+    }
+    _wfa_calibration_history.append(calibration_entry)
+
+    # Keep only last 100 entries
+    if len(_wfa_calibration_history) > 100:
+        _wfa_calibration_history.pop(0)
+
+    return WfaCalibrationResponse(
+        optimal_window=optimal_window,
+        window_candidates=window_candidates,
+        sharpe_ratios=sharpe_ratios,
+        current_window=config.window_days,
+        last_calibration=calibration_entry["timestamp"],
+        regime=regime
+    )
+
+
+@router.get("/wfa/history", response_model=WfaHistoryResponse)
+async def get_wfa_history(limit: int = Query(20, ge=1, le=100)):
+    """
+    Get WFA calibration history.
+
+    Returns recent calibration runs with their parameters and results.
+    """
+    recent = _wfa_calibration_history[-limit:] if _wfa_calibration_history else []
+
+    calibrations = [
+        WfaHistoryEntry(
+            timestamp=entry["timestamp"],
+            optimal_window=entry["optimal_window"],
+            window_type=entry["window_type"],
+            avg_regime_interval=entry["avg_regime_interval"],
+            sharpe_ratio=entry["sharpe_ratio"],
+            regime=entry["regime"]
+        )
+        for entry in recent
+    ]
+
+    return WfaHistoryResponse(
+        calibrations=calibrations,
+        total=len(_wfa_calibration_history)
+    )

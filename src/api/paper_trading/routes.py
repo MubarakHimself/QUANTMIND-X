@@ -28,6 +28,7 @@ from .models import (
     ActiveAgentItem,
     ActiveAgentsResponse,
 )
+from .runtime import is_paper_trading_runtime_available
 
 
 # Import and setup route modules
@@ -59,6 +60,9 @@ async def list_active_agents(
 
     Used by the Trading Canvas paper trading tile (Story 12-4).
     """
+    if not is_paper_trading_runtime_available(deployer):
+        return ActiveAgentsResponse(items=[])
+
     try:
         all_agents = deployer.list_agents()
     except Exception as e:

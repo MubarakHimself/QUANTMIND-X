@@ -34,6 +34,17 @@ See [progress.md](/home/mubarkahimself/Desktop/QUANTMINDX/docs/handoffs/2026-03-
 
 Current high-signal state:
 - after any future compaction, resume by re-reading this handoff set first, then continue from `progress.md`
+- 2026-04-03 Minimax/provider contract follow-up is now live and browser-verified:
+  - Workshop model picker now hydrates from DB-backed `/api/providers/available` model lists
+  - picker defaults to `MiniMax` when available and no longer collapses to empty due env-only model checks
+  - provider payload now includes compatibility keys (`name`, `enabled`) to support mixed frontend consumers
+- 2026-04-03 stream reliability follow-up is now live:
+  - floor-manager and department SSE handlers now guarantee a final assistant reply even when upstream stream emits only thinking/status events
+  - AgentPanel no longer terminates those sessions with `No response received.` in the verified trading-panel flow
+- 2026-04-03 Claude Agent SDK docs were re-checked via Context7 (`/websites/platform_claude_en_agent-sdk`) and current runtime now stays aligned on:
+  - Anthropic-compatible base URL behavior (`ANTHROPIC_BASE_URL`)
+  - stream-event handling patterns for content/tool/status projection
+  - model/session option envelope usage
 - 2026-04-03 AgentPanel right-rail resize slice is now shipped and Chrome-verified:
   - per-canvas width memory + persistence
   - keyboard-accessible resize handle
@@ -416,7 +427,24 @@ Current high-signal state:
     - `/api/canvas-context/resources/manifest`
     - `/api/canvas-context/resources/read/{resource_id}`
   - tracked follow-up:
-    - Settings modal close trap still observed during navigation and remains queued.
+    - full cross-canvas navigation verification still pending (mail/kanban/resource projection end-to-end)
+
+- 2026-04-03 Claude Agent SDK contract alignment via Context7:
+  - Context7 docs used: `/websites/platform_claude_en_agent-sdk`
+    - validated `ANTHROPIC_API_KEY` + `ANTHROPIC_BASE_URL` guidance
+    - validated streaming termination event (`message_stop`)
+  - backend stream alignment:
+    - [floor_manager.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/floor_manager.py) now emits done on `message_stop`
+  - backend fallback alignment (all department-head legacy branches):
+    - [research_head.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/research_head.py)
+    - [development_head.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/development_head.py)
+    - [portfolio_head.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/portfolio_head.py)
+    - [risk_head.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/risk_head.py)
+    - [execution_head.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/execution_head.py)
+    - each now resolves `MINIMAX_*` first, then `ANTHROPIC_*`, with Minimax model defaults
+  - settings modal trap resolved:
+    - [SettingsView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/SettingsView.svelte)
+    - close action verified in Chrome after pointer-handling fix
 
 ## Deferred Context Reads
 

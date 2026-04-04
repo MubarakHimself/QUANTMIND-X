@@ -59,7 +59,7 @@ OPENROUTER_API_KEY=your_key_here
 DATABASE_URL=sqlite:///data/db/quantmind.db
 
 # MT5 Bridge
-MT5_BRIDGE_URL=http://localhost:8001
+MT5_BRIDGE_URL=http://localhost:5005
 MT5_BRIDGE_TOKEN=secret-token-change-me
 
 # Contabo HMM API (optional)
@@ -134,7 +134,7 @@ npm run tauri:dev
 cd mt5-bridge
 pip install -r requirements.txt
 python3 server.py
-# → http://localhost:8001
+# → http://localhost:5005
 ```
 
 ### Feature Server

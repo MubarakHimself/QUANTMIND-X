@@ -41,7 +41,8 @@ class EnhancedKellyConfig:
 
     # Safety Overrides
     allow_zero_position: bool = False  # Return min lot if sizing fails
-    fallback_risk_pct: float = 0.01    # Fallback when insufficient history
+    # F-14 correction: fallback_risk_pct is 2% (was incorrectly 1%)
+    fallback_risk_pct: float = 0.02    # Fallback when insufficient history
 
     # Portfolio Integration
     enable_portfolio_scaling: bool = True  # Scale down when multiple bots active

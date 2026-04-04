@@ -11,12 +11,27 @@ Key features:
 - Systemic risk detection based on maximum eigenvalue
 - Denoising capabilities
 - Caching for performance optimization
+- Pairwise correlation penalty computation for portfolio sizing
 """
 
 import numpy as np
 from scipy.linalg import eigh
-from typing import Tuple
+from typing import Tuple, Optional, Dict, Any
 from functools import lru_cache
+import logging
+
+from ..correlation_cache import CorrelationCache
+
+logger = logging.getLogger(__name__)
+
+
+# Regime to timeframe mapping
+REGIME_TO_TIMEFRAME = {
+    'scalping': 'M5',  # M5 for scalping regime
+    'ORB': 'H1',       # H1 for ORB regime
+    'M5': 'M5',
+    'H1': 'H1',
+}
 
 
 class CorrelationSensor:
@@ -42,17 +57,20 @@ class CorrelationSensor:
     MIN_PERIODS = 20
     REGULARIZATION_EPSILON = 1e-6
 
-    def __init__(self, cache_size: int = 100, normalize_returns: bool = True):
+    def __init__(self, cache_size: int = 100, normalize_returns: bool = True, redis_client=None):
         """
         Initialize the CorrelationSensor.
 
         Args:
             cache_size (int): Size of the LRU cache for storing results (default: 100)
             normalize_returns (bool): Whether to normalize returns before analysis (default: True)
+            redis_client: Optional Redis client for distributed caching
         """
         self.cache_size = cache_size
         self.normalize_returns = normalize_returns
         self._cache = lru_cache(maxsize=cache_size)(self.detect_systemic_risk)
+        self._correlation_cache = CorrelationCache(redis_client)
+        self._last_matrix_computation: Dict[str, float] = {}
 
     def _validate_input(self, returns_matrix: np.ndarray) -> None:
         """
@@ -283,6 +301,8 @@ class CorrelationSensor:
     def clear_cache(self) -> None:
         """Clear the LRU cache."""
         self._cache.cache_clear()
+        self._correlation_cache.invalidate()
+        self._last_matrix_computation.clear()
 
     def get_reading(self) -> float:
         """
@@ -298,3 +318,169 @@ class CorrelationSensor:
         """
         # Return moderate correlation level as default when no data available
         return 0.4
+
+    def _select_timeframe(self, regime: str) -> str:
+        """
+        Select the appropriate timeframe for correlation matrix based on regime.
+
+        Args:
+            regime: Strategy regime ('scalping' -> M5, 'ORB' -> H1)
+
+        Returns:
+            Timeframe string ('M5' or 'H1')
+        """
+        return REGIME_TO_TIMEFRAME.get(regime, 'M5')
+
+    def _compute_correlation_matrix(
+        self,
+        timeframe: str,
+        returns_data: Optional[np.ndarray] = None
+    ) -> Optional[np.ndarray]:
+        """
+        Compute correlation matrix for the given timeframe.
+
+        This method computes the correlation matrix from price data.
+        In production, this would fetch from MT5 ZMQ tick feed or price database.
+
+        Args:
+            timeframe: 'M5' or 'H1'
+            returns_data: Optional numpy array of returns data.
+                         If None, uses cached matrix or generates demo data.
+
+        Returns:
+            2D correlation matrix as numpy array, or None if insufficient data
+        """
+        # Check if we should recalculate
+        if not self._correlation_cache.should_recalculate(timeframe):
+            cached = self._correlation_cache.get_correlation_matrix(timeframe)
+            if cached is not None:
+                return np.array(cached.matrix)
+
+        # Use provided data or generate demo data for demonstration
+        if returns_data is None:
+            # In production, this would fetch actual returns from price feed
+            # For now, return None to indicate no data available
+            logger.debug(f"No returns data provided for {timeframe}, using demo fallback")
+            return None
+
+        # Calculate correlation matrix
+        n_assets, t_periods = returns_data.shape
+
+        if n_assets < self.MIN_ASSETS or t_periods < self.MIN_PERIODS:
+            logger.warning(
+                f"Insufficient data for correlation: {n_assets} assets, {t_periods} periods"
+            )
+            return None
+
+        # Normalize returns
+        normalized = self._normalize_returns(returns_data)
+
+        # Calculate correlation matrix
+        correlation_matrix = self._calculate_correlation_matrix(normalized)
+
+        # Cache the result
+        self._correlation_cache.set_correlation_matrix(
+            timeframe=timeframe,
+            matrix=correlation_matrix.tolist(),
+            sample_count=t_periods
+        )
+
+        return correlation_matrix
+
+    def get_pairwise_penalty(
+        self,
+        bot_i: str,
+        bot_j: str,
+        regime: str,
+        correlation_matrix: Optional[np.ndarray] = None,
+        bot_index_map: Optional[Dict[str, int]] = None
+    ) -> float:
+        """
+        Calculate correlation penalty for a pair of bots using RMT formula.
+
+        Formula: correlation_penalty(i,j) = max(0, C_ij - 0.5) / (1 - 0.5)
+
+        Where C_ij is the correlation between bot i and bot j.
+
+        Examples:
+            C_ij = 0.7 -> penalty = (0.7 - 0.5) / 0.5 = 0.4
+            C_ij = 0.9 -> penalty = (0.9 - 0.5) / 0.5 = 0.8
+            C_ij = 0.5 -> penalty = 0 (no penalty)
+            C_ij < 0.5 -> penalty = 0
+
+        Args:
+            bot_i: Identifier for first bot
+            bot_j: Identifier for second bot
+            regime: Strategy regime ('scalping' or 'ORB')
+            correlation_matrix: Optional pre-computed correlation matrix
+            bot_index_map: Optional mapping of bot_id to matrix index
+
+        Returns:
+            Correlation penalty factor (0.0 to 1.0)
+        """
+        timeframe = self._select_timeframe(regime)
+
+        # Get or compute correlation matrix
+        if correlation_matrix is None:
+            correlation_matrix = self._compute_correlation_matrix(timeframe)
+
+        if correlation_matrix is None:
+            # No data available - return no penalty (safe default)
+            logger.debug("No correlation data available, returning penalty = 0")
+            return 0.0
+
+        # Get correlation value between bots
+        if bot_index_map is not None:
+            if bot_i not in bot_index_map or bot_j not in bot_index_map:
+                logger.warning(f"Bot not found in index map: {bot_i} or {bot_j}")
+                return 0.0
+            i_idx = bot_index_map[bot_i]
+            j_idx = bot_index_map[bot_j]
+        else:
+            # Default: use bot_id hash to create consistent indices
+            # This is a fallback for demo/testing purposes
+            i_idx = hash(bot_i) % len(correlation_matrix)
+            j_idx = hash(bot_j) % len(correlation_matrix)
+
+        # Bounds check
+        if i_idx >= len(correlation_matrix) or j_idx >= len(correlation_matrix):
+            logger.warning(f"Index out of bounds: i={i_idx}, j={j_idx}, matrix_size={len(correlation_matrix)}")
+            return 0.0
+
+        # Get correlation coefficient
+        c_ij = correlation_matrix[i_idx, j_idx]
+
+        # Apply RMT formula: penalty = max(0, C_ij - 0.5) / (1 - 0.5)
+        # Simplified: penalty = max(0, (C_ij - 0.5) / 0.5) = max(0, 2 * (C_ij - 0.5))
+        penalty = max(0.0, (c_ij - 0.5) / 0.5)
+
+        # Clamp to [0, 1] range
+        penalty = min(1.0, max(0.0, penalty))
+
+        logger.debug(
+            f"Pairwise penalty for {bot_i}-{bot_j}: C_ij={c_ij:.4f}, penalty={penalty:.4f}"
+        )
+
+        return penalty
+
+    def get_penalty(
+        self,
+        bot_i: str,
+        bot_j: str,
+        regime: str
+    ) -> float:
+        """
+        Get correlation penalty for a pair of bots (convenience method).
+
+        This is the main API method for getting correlation penalties
+        to wire into the Governor.
+
+        Args:
+            bot_i: Identifier for first bot
+            bot_j: Identifier for second bot
+            regime: Strategy regime ('scalping' or 'ORB')
+
+        Returns:
+            Correlation penalty factor (0.0 to 1.0)
+        """
+        return self.get_pairwise_penalty(bot_i, bot_j, regime)

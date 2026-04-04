@@ -91,6 +91,7 @@
     mailEntries: MailEntry[];
     mailLoading: boolean;
     mailError: string | null;
+    selectedMailId: string | null;
     renamingSessionId: string | null;
     renameSessionTitle: string;
     panelWidth: number;
@@ -174,6 +175,7 @@
       mailEntries: [],
       mailLoading: false,
       mailError: null,
+      selectedMailId: null,
       renamingSessionId: null,
       renameSessionTitle: '',
       panelWidth: 380,
@@ -195,6 +197,7 @@
       mailEntries,
       mailLoading,
       mailError,
+      selectedMailId,
       renamingSessionId,
       renameSessionTitle,
       panelWidth,
@@ -215,6 +218,7 @@
     mailEntries = state.mailEntries;
     mailLoading = state.mailLoading;
     mailError = state.mailError;
+    selectedMailId = state.selectedMailId;
     renamingSessionId = state.renamingSessionId;
     renameSessionTitle = state.renameSessionTitle;
     panelWidth = state.panelWidth;
@@ -238,6 +242,7 @@
   let mailEntries = $state<MailEntry[]>([]);
   let mailLoading = $state(false);
   let mailError = $state<string | null>(null);
+  let selectedMailId = $state<string | null>(null);
   let renamingSessionId = $state<string | null>(null);
   let renameSessionTitle = $state('');
   let activeCanvasStateKey = $state('');
@@ -265,7 +270,7 @@
 
   // ─── Canvas context attachment options ───────────────────────────────────────
 
-  // Full list of canvas context options (shown in Workshop/Copilot for full context)
+  // Full list of canvas context options (shown in orchestration canvases for full context)
   const allCanvasContextOptions: CanvasContextOption[] = [
     { id: 'live-trading', label: 'Live Trading context' },
     { id: 'research',    label: 'Research context' },
@@ -277,10 +282,24 @@
     { id: 'flowforge', label: 'FlowForge context' },
   ];
 
+  const GLOBAL_CONTEXT_CANVASES = new Set(['workshop', 'flowforge']);
+
+  function getNaturalSearchCanvases(canvasId: string): string[] {
+    if (GLOBAL_CONTEXT_CANVASES.has(canvasId)) {
+      return allCanvasContextOptions.map((option) => option.id);
+    }
+
+    const scoped = new Set<string>([canvasId]);
+    if (canvasId !== 'shared-assets') {
+      scoped.add('shared-assets');
+    }
+    return Array.from(scoped);
+  }
+
   // Filtered options: show only current department when in a department canvas,
-  // show all departments when in Workshop/FlowForge (Copilot context)
+  // show all departments when in Workshop/FlowForge (orchestration context)
   let canvasContextOptions = $derived(
-    isWorkshop
+    GLOBAL_CONTEXT_CANVASES.has(activeCanvas)
       ? allCanvasContextOptions
       : (() => {
           const primary = allCanvasContextOptions.filter((opt) => opt.id === activeCanvas);
@@ -725,6 +744,7 @@
     if (!departmentId || departmentId === 'floor-manager') {
       mailEntries = [];
       mailError = null;
+      selectedMailId = null;
       return;
     }
     mailLoading = true;
@@ -736,12 +756,36 @@
       }
       const data = await response.json() as { messages?: MailEntry[] };
       mailEntries = data.messages ?? [];
+      if (!mailEntries.some((entry) => entry.id === selectedMailId)) {
+        selectedMailId = mailEntries[0]?.id ?? null;
+      }
     } catch (error) {
       mailError = error instanceof Error ? error.message : 'Failed to load mail';
       mailEntries = [];
+      selectedMailId = null;
     } finally {
       mailLoading = false;
     }
+  }
+
+  function selectMailEntry(entryId: string) {
+    selectedMailId = entryId;
+  }
+
+  function clearSelectedMail() {
+    selectedMailId = null;
+  }
+
+  function getSelectedMailEntry(): MailEntry | null {
+    return mailEntries.find((entry) => entry.id === selectedMailId) ?? null;
+  }
+
+  function formatMailTimestamp(timestamp: string): string {
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) {
+      return timestamp;
+    }
+    return date.toLocaleString();
   }
 
   function subAgentStatusColor(status: 'running' | 'idle' | 'blocked'): string {
@@ -999,9 +1043,7 @@
       activeCanvasContext = canvasContextService.getCanvasContext(activeCanvas) ?? canvasContextService.getCurrentContext();
     }
 
-    const searchCanvases = canvasContextOptions.length > 0
-      ? canvasContextOptions.map((option) => option.id)
-      : [activeCanvas];
+    const searchCanvases = getNaturalSearchCanvases(activeCanvas);
     const naturalResourceHints = await canvasContextService.searchAttachableResources(
       rawMessage,
       searchCanvases,
@@ -1099,9 +1141,13 @@
             natural_resource_search: true,
           },
           session_type: 'interactive_session',
-          workspace_resource_hints: naturalResourceHints.map((resource) =>
-            canvasContextService.buildResourceAttachmentContext(resource),
-          ),
+          workspace_resource_hints: naturalResourceHints
+            .filter((resource) =>
+              GLOBAL_CONTEXT_CANVASES.has(activeCanvas)
+              || resource.canvas === activeCanvas
+              || resource.canvas === 'shared-assets',
+            )
+            .map((resource) => canvasContextService.buildResourceAttachmentContext(resource)),
           ...(modelPreference.model ? { model: modelPreference.model } : {}),
           ...(modelPreference.provider ? { provider: modelPreference.provider } : {}),
         },
@@ -1186,6 +1232,24 @@
                 continue;
               }
 
+              if (eventType === 'status') {
+                const phase = String(event.phase ?? 'status');
+                const status = String(event.status ?? 'progress');
+                const statusMessage = String(event.message ?? '');
+                const toolMsg: AgentMessage = {
+                  id: crypto.randomUUID(),
+                  type: 'tool',
+                  content: `${phase} · ${status}${statusMessage ? ` · ${statusMessage}` : ''}`,
+                  timestamp: new Date().toISOString(),
+                };
+                sessions = sessions.map((session) =>
+                  session.id === targetSessionId
+                    ? { ...session, messages: [...session.messages, toolMsg] }
+                    : session,
+                );
+                continue;
+              }
+
               if (eventType === 'done') {
                 const sid = event.session_id;
                 if (typeof sid === 'string' && sid) {
@@ -1195,7 +1259,7 @@
               }
 
               if (eventType === 'error') {
-                throw new Error(String(event.error ?? 'Streaming error'));
+                throw new Error(String(event.error ?? event.content ?? 'Streaming error'));
               }
             }
           }
@@ -1746,13 +1810,45 @@
         {:else if mailEntries.length === 0}
           <div class="tab-view-note">No mail for this department.</div>
         {:else}
-          {#each mailEntries as entry (entry.id)}
-            <div class="agent-row">
-              <span class="agent-role">{entry.from_dept} · {entry.type}</span>
-              <span class="agent-status">{entry.priority}</span>
+          <div class="mail-workspace">
+            <div class="mail-list">
+              {#each mailEntries as entry (entry.id)}
+                <button
+                  class="mail-row"
+                  class:selected={selectedMailId === entry.id}
+                  class:unread={!entry.read}
+                  onclick={() => selectMailEntry(entry.id)}
+                >
+                  <div class="mail-row-top">
+                    <span class="mail-row-from">{entry.from_dept} · {entry.type}</span>
+                    <span class="mail-row-priority">{entry.priority}</span>
+                  </div>
+                  <div class="mail-row-subject">{entry.subject}</div>
+                  <div class="mail-row-preview">{entry.body}</div>
+                </button>
+              {/each}
             </div>
-            <div class="tab-view-note">{entry.subject}</div>
-          {/each}
+
+            <div class="mail-detail">
+              {#if getSelectedMailEntry()}
+                <div class="mail-detail-header">
+                  <div class="mail-detail-kicker">{getSelectedMailEntry()?.from_dept} → {departmentId}</div>
+                  <button class="mail-detail-clear" onclick={clearSelectedMail}>Clear</button>
+                </div>
+                <div class="mail-detail-subject">{getSelectedMailEntry()?.subject}</div>
+                <div class="mail-detail-meta">
+                  <span>{getSelectedMailEntry()?.type}</span>
+                  <span>{getSelectedMailEntry()?.priority}</span>
+                  <span>{formatMailTimestamp(getSelectedMailEntry()?.timestamp ?? '')}</span>
+                </div>
+                <div class="mail-detail-body">{getSelectedMailEntry()?.body}</div>
+              {:else}
+                <div class="mail-detail-empty">
+                  Select a message to inspect the full body and routing metadata.
+                </div>
+              {/if}
+            </div>
+          </div>
         {/if}
       </div>
     {/if}
@@ -2141,6 +2237,143 @@
 
   .tab-view-note strong {
     color: var(--color-text-secondary);
+  }
+
+  .mail-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.25fr);
+    gap: 10px;
+    min-height: 0;
+    flex: 1;
+  }
+
+  .mail-list,
+  .mail-detail {
+    min-height: 0;
+    overflow-y: auto;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .mail-row {
+    width: 100%;
+    text-align: left;
+    padding: 9px 10px;
+    border: none;
+    border-bottom: 1px solid var(--color-border-subtle);
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    transition: background 150ms ease, border-color 150ms ease;
+  }
+
+  .mail-row:hover,
+  .mail-row.selected {
+    background: color-mix(in srgb, var(--ap-dept-accent) 10%, transparent);
+  }
+
+  .mail-row.unread .mail-row-subject {
+    color: var(--color-text-primary);
+  }
+
+  .mail-row-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .mail-row-from,
+  .mail-row-priority,
+  .mail-detail-kicker,
+  .mail-detail-meta {
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .mail-row-from {
+    color: var(--ap-dept-accent);
+  }
+
+  .mail-row-priority,
+  .mail-detail-meta {
+    color: var(--color-text-muted);
+  }
+
+  .mail-row-subject,
+  .mail-detail-subject {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    line-height: 1.4;
+  }
+
+  .mail-row-preview {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .mail-detail {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .mail-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .mail-detail-kicker {
+    color: var(--ap-dept-accent);
+  }
+
+  .mail-detail-clear {
+    border: 1px solid var(--color-border-subtle);
+    background: transparent;
+    color: var(--color-text-muted);
+    border-radius: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .mail-detail-clear:hover {
+    color: var(--color-text-primary);
+    border-color: color-mix(in srgb, var(--ap-dept-accent) 35%, var(--color-border-subtle));
+  }
+
+  .mail-detail-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .mail-detail-body,
+  .mail-detail-empty {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+
+  .mail-detail-empty {
+    color: var(--color-text-muted);
   }
 
   /* ── Agents tab ── */

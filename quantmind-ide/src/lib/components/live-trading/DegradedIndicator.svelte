@@ -2,15 +2,15 @@
   /**
    * DegradedIndicator - Degraded Mode Badge Component
    *
-   * Shows amber "Contabo offline — retrying" label when Contabo is unreachable.
-   * Does NOT block Cloudzy-dependent functionality.
+   * Shows amber "node_backend offline — retrying" label when node_backend is unreachable.
+   * Does NOT block node_trading-dependent functionality.
    *
    * Uses pulse animation for attention-grabbing effect.
    */
 
   import { WifiOff, RefreshCw } from 'lucide-svelte';
 
-  export let message = 'Contabo offline — retrying';
+  export let message = 'node_backend offline — retrying';
   export let showRetry = true;
 </script>
 

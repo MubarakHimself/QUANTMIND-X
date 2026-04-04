@@ -28,6 +28,18 @@ from .cache import MT5Cache
 logger = logging.getLogger(__name__)
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _default_simulated_fallback() -> bool:
+    """Simulated MT5 fallback must be explicit; production defaults to off."""
+    return _env_flag("MT5_ALLOW_SIMULATED_FALLBACK", default=False)
+
+
 # Environment Configuration
 USE_DEMO_TICKS = os.environ.get('USE_DEMO_TICKS', 'false').lower() == 'true'
 MT5_DEMO_LOGIN = os.environ.get('MT5_DEMO_LOGIN', '')
@@ -137,7 +149,7 @@ class MT5Client:
     def __init__(
         self,
         config_path: Optional[str] = None,
-        fallback_to_simulated: bool = True,
+        fallback_to_simulated: Optional[bool] = None,
         cache_ttl: float = 10.0,
         use_demo_ticks: Optional[bool] = None
     ):
@@ -152,7 +164,11 @@ class MT5Client:
                            connection for tick data. If None, uses env var.
         """
         self.config_path = config_path
-        self.fallback_to_simulated = fallback_to_simulated
+        self.fallback_to_simulated = (
+            _default_simulated_fallback()
+            if fallback_to_simulated is None
+            else fallback_to_simulated
+        )
         self.cache_ttl = cache_ttl
         self.account_manager = None
         self.is_connected = False
@@ -176,15 +192,15 @@ class MT5Client:
         except ImportError as e:
             logger.warning(f"Could not import mcp_metatrader5: {e}")
             self._account_manager_internal = None
-            if not fallback_to_simulated:
+            if not self.fallback_to_simulated:
                 logger.error("MT5 integration not available and fallback disabled")
             else:
-                logger.info("Using simulated data for testing")
+                logger.warning("Using simulated MT5 fallback; disable in production")
 
         # Create AccountManager
         self.account_manager = AccountManager(
             self._account_manager_internal,
-            fallback_to_simulated
+            self.fallback_to_simulated
         )
 
         # Log demo tick configuration
@@ -563,7 +579,7 @@ class MT5Client:
 
 def create_mt5_client(
     config_path: Optional[str] = None,
-    fallback_to_simulated: bool = True,
+    fallback_to_simulated: Optional[bool] = None,
     cache_ttl: float = 10.0
 ) -> MT5Client:
     """
@@ -582,3 +598,25 @@ def create_mt5_client(
         fallback_to_simulated=fallback_to_simulated,
         cache_ttl=cache_ttl
     )
+
+
+_MT5_CLIENT_SINGLETON: Optional[MT5Client] = None
+
+
+def get_mt5_client(
+    config_path: Optional[str] = None,
+    fallback_to_simulated: Optional[bool] = None,
+    cache_ttl: float = 10.0,
+    reset: bool = False,
+) -> MT5Client:
+    """Legacy singleton accessor used by router/API compat call sites."""
+    global _MT5_CLIENT_SINGLETON
+
+    if reset or _MT5_CLIENT_SINGLETON is None:
+        _MT5_CLIENT_SINGLETON = create_mt5_client(
+            config_path=config_path,
+            fallback_to_simulated=fallback_to_simulated,
+            cache_ttl=cache_ttl,
+        )
+
+    return _MT5_CLIENT_SINGLETON

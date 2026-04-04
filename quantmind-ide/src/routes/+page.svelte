@@ -8,6 +8,7 @@
   import { activeCanvasStore } from "$lib/stores/canvasStore";
   import { navigationStore } from "$lib/stores/navigationStore";
   import { onMount } from "svelte";
+  import { getCanvasCollapsed, setCanvasCollapsed } from "$lib/components/shell/agentPanelState";
 
   // Initialize wallpaper
   onMount(async () => {
@@ -28,11 +29,53 @@
   });
 
   let agentPanelCollapsed = $state(false);
+  let agentPanelCollapsedByCanvas = $state<Record<string, boolean>>({});
   let currentCanvas = $derived($activeCanvasStore);
+  let agentPanelCollapseCanvasKey = $state($activeCanvasStore);
+  let mainContentRef: MainContent;
 
   // Agent panel only shown on dept canvases that have active sub-agents
-  const AGENT_PANEL_CANVASES = new Set(['research', 'development', 'risk', 'trading', 'portfolio']);
+  const AGENT_PANEL_CANVASES = new Set(['research', 'development', 'risk', 'trading', 'portfolio', 'flowforge']);
   let showAgentPanel = $derived(AGENT_PANEL_CANVASES.has(currentCanvas));
+
+  $effect(() => {
+    if (agentPanelCollapseCanvasKey !== currentCanvas) {
+      return;
+    }
+
+    const currentStoredValue = getCanvasCollapsed(agentPanelCollapsedByCanvas, currentCanvas);
+    if (currentStoredValue === agentPanelCollapsed) {
+      return;
+    }
+
+    agentPanelCollapsedByCanvas = setCanvasCollapsed(
+      agentPanelCollapsedByCanvas,
+      currentCanvas,
+      agentPanelCollapsed
+    );
+  });
+
+  $effect(() => {
+    if (agentPanelCollapseCanvasKey === currentCanvas) {
+      return;
+    }
+
+    const previousStoredValue = getCanvasCollapsed(agentPanelCollapsedByCanvas, agentPanelCollapseCanvasKey);
+    if (previousStoredValue !== agentPanelCollapsed) {
+      agentPanelCollapsedByCanvas = setCanvasCollapsed(
+        agentPanelCollapsedByCanvas,
+        agentPanelCollapseCanvasKey,
+        agentPanelCollapsed
+      );
+    }
+
+    const nextCollapsed = getCanvasCollapsed(agentPanelCollapsedByCanvas, currentCanvas);
+    if (nextCollapsed !== agentPanelCollapsed) {
+      agentPanelCollapsed = nextCollapsed;
+    }
+
+    agentPanelCollapseCanvasKey = currentCanvas;
+  });
 
   let openFiles: Array<{
     id: string;
@@ -43,7 +86,7 @@
   let activeTabId = $state("");
 
   function handleOpenSettings() {
-    navigationStore.navigateToView('settings', 'Settings');
+    mainContentRef?.onSettingsNavigationRequest();
   }
 
   function handleOpenFile(event: CustomEvent) {
@@ -81,6 +124,7 @@
   <StatusBand />
   <ActivityBar />
   <MainContent
+    bind:this={mainContentRef}
     {openFiles}
     {activeTabId}
     on:openFile={handleOpenFile}

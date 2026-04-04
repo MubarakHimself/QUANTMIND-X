@@ -8,6 +8,7 @@
     ChevronDown, RefreshCw, Plus, Eye, Edit, Trash2, BookOpen,
     Clock, Hash, FolderOpen, X, AlertCircle, CheckCircle, Zap
   } from 'lucide-svelte';
+  import { buildApiUrl } from '$lib/api';
 
   // Types
   interface MemoryEntry {
@@ -76,8 +77,6 @@
     tags: [] as string[]
   });
 
-  const API_BASE = 'http://localhost:8000/api';
-
   // Lifecycle
   onMount(() => {
     loadDepartmentMemory();
@@ -90,9 +89,9 @@
 
     try {
       const [memRes, logsRes, statsRes] = await Promise.all([
-        fetch(`${API_BASE}/memory/${selectedDepartment}`),
-        fetch(`${API_BASE}/memory/${selectedDepartment}/logs`),
-        fetch(`${API_BASE}/memory/${selectedDepartment}/stats`)
+        fetch(buildApiUrl(`/api/memory/${selectedDepartment}`)),
+        fetch(buildApiUrl(`/api/memory/${selectedDepartment}/logs`)),
+        fetch(buildApiUrl(`/api/memory/${selectedDepartment}/stats`))
       ]);
 
       if (!memRes.ok || !logsRes.ok || !statsRes.ok) {
@@ -122,7 +121,7 @@
     }
 
     try {
-      const res = await fetch(`${API_BASE}/memory/${selectedDepartment}`, {
+      const res = await fetch(buildApiUrl(`/api/memory/${selectedDepartment}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newMemory)
@@ -150,7 +149,7 @@
     }
 
     try {
-      const res = await fetch(`${API_BASE}/memory/${selectedDepartment}/search?q=${encodeURIComponent(searchQuery)}`);
+      const res = await fetch(buildApiUrl(`/api/memory/${selectedDepartment}/search?q=${encodeURIComponent(searchQuery)}`));
       if (!res.ok) throw new Error('Search failed');
       const data = await res.json();
       memories = data.results || [];

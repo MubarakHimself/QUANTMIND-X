@@ -28,6 +28,35 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_CORS_ORIGINS = [
+    # Tauri local development
+    "tauri://localhost",
+    "tauri://127.0.0.1",
+    # Vite/React development servers
+    "http://localhost:1420",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:5174",
+    "http://localhost:4173",
+    # IP-based local development
+    "http://127.0.0.1:1420",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    "http://127.0.0.1:4173",
+    "http://127.0.0.1:4174",
+    # Production URLs
+    "https://app.quantmindx.com",
+    "https://www.quantmindx.com",
+    "https://quantmindx.com",
+    # Allow local network access for development
+    "http://192.168.1.100:1420",
+    "http://192.168.1.100:5173",
+    "http://192.168.1.100:3000",
+    "http://192.168.1.100:3001",
+]
+
 
 # =============================================================================
 # Data Models for API Requests/Responses
@@ -669,31 +698,15 @@ def create_phase5_api_app():
     if cors_origins_env:
         # Parse comma-separated origins from environment
         cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+        if "*" in cors_origins:
+            logger.warning(
+                "CORS_ALLOWED_ORIGINS contains '*', which is invalid with allow_credentials=True. "
+                "Falling back to explicit development/production origins."
+            )
+            cors_origins = DEFAULT_CORS_ORIGINS
     else:
         # Default allowed origins for development and production
-        cors_origins = [
-            # Tauri local development
-            "tauri://localhost",
-            "tauri://127.0.0.1",
-            # Vite/React development servers
-            "http://localhost:1420",
-            "http://localhost:5173",
-            "http://localhost:3000",
-            "http://localhost:5174",
-            "http://localhost:4173",
-            # IP-based local development
-            "http://127.0.0.1:1420",
-            "http://127.0.0.1:5173",
-            "http://127.0.0.1:3000",
-            # Production URLs
-            "https://app.quantmindx.com",
-            "https://www.quantmindx.com",
-            "https://quantmindx.com",
-            # Allow local network access for development
-            "http://192.168.1.100:1420",
-            "http://192.168.1.100:5173",
-            "http://192.168.1.100:3000",
-        ]
+        cors_origins = DEFAULT_CORS_ORIGINS
 
     app.add_middleware(
         CORSMiddleware,

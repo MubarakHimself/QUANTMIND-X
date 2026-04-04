@@ -7,6 +7,7 @@
 
 import { z } from 'zod';
 import type { Skill, SkillContext } from './index';
+import { buildApiUrl } from '../../api';
 
 // ============================================================================
 // STRATEGY ANALYSIS SKILLS
@@ -52,7 +53,7 @@ const analyzeBacktest: Skill = {
   defaultEnabled: true,
   execute: async ({ backtestId, metrics, includeCharts, compareWith }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/analysis/backtest', {
+      const response = await fetch(buildApiUrl('/api/analysis/backtest'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ backtestId, metrics, includeCharts, compareWith })
@@ -126,7 +127,7 @@ const compareStrategies: Skill = {
   defaultEnabled: true,
   execute: async ({ strategies, metrics, symbol, timeframe, period }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/analysis/compare', {
+      const response = await fetch(buildApiUrl('/api/analysis/compare'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ strategies, metrics, symbol, timeframe, period })
@@ -171,8 +172,8 @@ const parseVideoIngest: Skill = {
   agents: ['analyst'],
   category: 'video_ingest',
   schema: z.object({
-    videoIngestContent: z.string().describe('VideoIngest document    extractSections: z.array(z.string content as text'),
-()).default(['strategy', 'entry', 'exit', 'risk', 'indicators']).describe('Sections to extract'),
+    videoIngestContent: z.string().describe('VideoIngest document content as text'),
+    extractSections: z.array(z.string()).default(['strategy', 'entry', 'exit', 'risk', 'indicators']).describe('Sections to extract'),
     validateSyntax: z.boolean().default(true).describe('Validate VideoIngest syntax and structure')
   }),
   examples: [
@@ -206,7 +207,7 @@ const parseVideoIngest: Skill = {
   defaultEnabled: true,
   execute: async ({ videoIngestContent, extractSections, validateSyntax }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/video-ingest/parse', {
+      const response = await fetch(buildApiUrl('/api/video-ingest/parse'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: videoIngestContent, sections: extractSections, validate: validateSyntax })
@@ -267,7 +268,7 @@ const validateVideoIngest: Skill = {
   defaultEnabled: true,
   execute: async ({ videoIngestContent, specVersion, strictMode }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/video-ingest/validate', {
+      const response = await fetch(buildApiUrl('/api/video-ingest/validate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: videoIngestContent, version: specVersion, strict: strictMode })
@@ -348,7 +349,7 @@ const generateTRD: Skill = {
   defaultEnabled: true,
   execute: async ({ videoIngestData, includeCode, includeTests, targetPlatform }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/trd/generate', {
+      const response = await fetch(buildApiUrl('/api/trd/generate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ videoIngestData, includeCode, includeTests, targetPlatform })
@@ -421,7 +422,7 @@ const evaluatePerformance: Skill = {
   defaultEnabled: true,
   execute: async ({ equityCurve, returns, benchmarkReturns, riskFreeRate, confidenceLevel }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/analysis/performance', {
+      const response = await fetch(buildApiUrl('/api/analysis/performance'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ equityCurve, returns, benchmarkReturns, riskFreeRate, confidenceLevel })
@@ -489,7 +490,7 @@ const generateOptimizationReport: Skill = {
   defaultEnabled: true,
   execute: async ({ optimizationId, topResults, includeCharts, format }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/analysis/optimization-report', {
+      const response = await fetch(buildApiUrl('/api/analysis/optimization-report'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ optimizationId, topResults, includeCharts, format })

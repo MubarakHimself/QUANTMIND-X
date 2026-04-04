@@ -1,16 +1,14 @@
 <script lang="ts">
   import { run } from 'svelte/legacy';
 
-  import { createEventDispatcher, onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import {
-    Server, Zap, Activity, TrendingUp, AlertTriangle, Shield,
-    Clock, DollarSign, BarChart3, Layers, Eye, EyeOff,
-    RefreshCw, Play, Pause, SkipForward, FastForward,
-    ChevronRight, ChevronDown, X, Check, AlertCircle,
-    ArrowUpDown, Target, Award, Trophy, Gauge, MonitorPlay,
-    Globe, Currency, Package, Settings as SettingsIcon, Scale,
-    Calculator, TrendingUp as TrendingUpIcon, Brain
+    Trophy,
+    Settings as SettingsIcon,
+    Scale,
+    Calculator,
   } from 'lucide-svelte';
+  import { buildApiUrl } from '$lib/api';
 
   // Import new components
   import RouterHeader from './RouterHeader.svelte';
@@ -21,117 +19,75 @@
   import CorrelationsTab from './CorrelationsTab.svelte';
   import SettingsTab from './SettingsTab.svelte';
   import HmmTrainingStatus from './HmmTrainingStatus.svelte';
+  type RouterMode = 'auction' | 'priority' | 'round-robin';
 
-  const dispatch = createEventDispatcher();
+  interface RouterStateShape {
+    active: boolean;
+    mode: RouterMode;
+    auctionInterval: number;
+    lastAuction: string | null;
+    queuedSignals: number;
+    activeAuctions: number;
+  }
 
-  // Router State
-  let routerState = $state({
-    active: true,
-    mode: 'auction' as 'auction' | 'priority' | 'round-robin',
-    auctionInterval: 5000, // ms
-    lastAuction: null as Date | null,
-    queuedSignals: [] as Array<any>,
-    activeAuctions: [] as Array<any>
-  });
-
-  // Track initial load to avoid saving on first render
-  let initialLoadComplete = $state(false);
-
-  // Track previous values to detect changes
-  let previousMode = $state(routerState.mode);
-  let previousAuctionInterval = $state(routerState.auctionInterval);
-
-  // Market State
-  let marketState = {
+  interface MarketStateShape {
     regime: {
-      quality: 0.82,
-      trend: 'bullish' as 'bullish' | 'bearish' | 'ranging',
-      chaos: 18.5,
-      volatility: 'medium' as 'low' | 'medium' | 'high'
-    },
-    symbols: [
-      { symbol: 'EURUSD', price: 1.0876, change: +0.12, spread: 1.2 },
-      { symbol: 'GBPUSD', price: 1.2654, change: -0.08, spread: 1.5 },
-      { symbol: 'USDJPY', price: 149.85, change: +0.25, spread: 0.8 }
-    ]
-  };
+      quality: number;
+      trend: string;
+      chaos: number;
+      volatility: string;
+    } | null;
+    symbols: Array<{
+      symbol: string;
+      price: number;
+      change: number;
+      spread: number;
+    }>;
+    unavailableReason: string | null;
+  }
 
-  // Bots/Strategies
-  let bots = [
-    {
-      id: 'ict-eur',
-      name: 'ICT Scalper',
-      symbol: 'EURUSD',
-      status: 'ready' as 'idle' | 'ready' | 'paused' | 'quarantined',
-      signalStrength: 0.85,
-      conditions: ['fvg', 'order_block', 'london_session'],
-      score: 8.5,
-      lastSignal: new Date(Date.now() - 120000)
-    },
-    {
-      id: 'smc-gbp',
-      name: 'SMC Reversal',
-      symbol: 'GBPUSD',
-      status: 'ready',
-      signalStrength: 0.72,
-      conditions: ['choch', 'bos', 'session_filter'],
-      score: 7.2,
-      lastSignal: new Date(Date.now() - 300000)
-    },
-    {
-      id: 'breakthrough-eur',
-      name: 'Breakthrough Hunter',
-      symbol: 'EURUSD',
-      status: 'idle',
-      signalStrength: 0.0,
-      conditions: ['breakout', 'volume_confirm'],
-      score: 0,
-      lastSignal: null
-    }
-  ];
+  interface BotShape {
+    id: string;
+    name: string;
+    symbol: string;
+    status: 'idle' | 'ready' | 'paused' | 'quarantined';
+    signalStrength: number;
+    conditions: string[];
+    score: number;
+    lastSignal: Date | null;
+  }
 
-  // Auction Queue
-  let auctionQueue = $state([
-    {
-      id: 'auction-1',
-      timestamp: new Date(),
-      participants: ['ict-eur', 'smc-gbp'],
-      winner: 'ict-eur',
-      winningScore: 8.5,
-      status: 'completed'
-    }
-  ]);
+  interface AuctionShape {
+    id: string;
+    timestamp: Date;
+    participants: string[];
+    winner: string;
+    winningScore: number;
+    status: string;
+  }
 
-  // Rankings
-  let rankings = {
-    daily: [
-      { botId: 'ict-eur', name: 'ICT Scalper', profit: 245.80, trades: 12, winRate: 75 },
-      { botId: 'smc-gbp', name: 'SMC Reversal', profit: 128.50, trades: 8, winRate: 62.5 },
-      { botId: 'breakthrough-eur', name: 'Breakthrough', profit: 0, trades: 0, winRate: 0 }
-    ],
-    weekly: [
-      { botId: 'ict-eur', name: 'ICT Scalper', profit: 1245.60, trades: 58, winRate: 70.7 },
-      { botId: 'smc-gbp', name: 'SMC Reversal', profit: 678.30, trades: 42, winRate: 64.3 },
-      { botId: 'breakthrough-eur', name: 'Breakthrough', profit: 234.20, trades: 15, winRate: 66.7 }
-    ]
-  };
+  interface RankingShape {
+    botId: string;
+    name: string;
+    profit: number;
+    trades: number;
+    winRate: number;
+  }
 
-  // Correlations
-  let correlations = [
-    { pair: 'EURUSD/GBPUSD', value: 0.72, status: 'warning' as 'ok' | 'warning' | 'danger' },
-    { pair: 'EURUSD/USDJPY', value: -0.45, status: 'ok' },
-    { pair: 'GBPUSD/USDJPY', value: -0.38, status: 'ok' }
-  ];
+  interface CorrelationShape {
+    pair: string;
+    value: number;
+    status: 'ok' | 'warning' | 'danger';
+  }
 
-  // House Money State
-  let houseMoney = {
-    dailyProfit: 374.30,
-    threshold: 0.5,
-    houseMoneyAmount: 187.15,
-    mode: 'aggressive' as 'conservative' | 'normal' | 'aggressive'
-  };
+  interface HouseMoneyShape {
+    dailyProfit: number | null;
+    threshold: number | null;
+    houseMoneyAmount: number | null;
+    mode: 'conservative' | 'normal' | 'aggressive' | null;
+    unavailableReason: string | null;
+  }
 
-  // Kelly Criterion State
   interface KellyData {
     kellyFraction: number;
     halfKelly: number;
@@ -142,19 +98,56 @@
     suggestedFraction: number;
   }
 
-  let kellyData: Record<string, KellyData> = {
-    'ict-eur': { kellyFraction: 0.125, halfKelly: 0.0625, winRate: 0.72, avgWin: 45.20, avgLoss: 22.80, expectedValue: 16.22, suggestedFraction: 0.08 },
-    'smc-gbp': { kellyFraction: 0.085, halfKelly: 0.0425, winRate: 0.65, avgWin: 38.50, avgLoss: 25.40, expectedValue: 9.84, suggestedFraction: 0.06 },
-    'breakthrough-eur': { kellyFraction: 0.042, halfKelly: 0.021, winRate: 0.58, avgWin: 52.30, avgLoss: 41.20, expectedValue: 3.86, suggestedFraction: 0.03 }
-  };
+  interface KellyEngineShape {
+    fraction: number;
+    multiplier: number;
+    houseOfMoney: boolean;
+    configuredFraction: number;
+  }
 
-  let kellyHistory: Array<{date: string, botId: string, fraction: number, result: number}> = [
-    { date: '2024-01-10', botId: 'ict-eur', fraction: 0.125, result: 245.80 },
-    { date: '2024-01-09', botId: 'smc-gbp', fraction: 0.085, result: 128.50 },
-    { date: '2024-01-08', botId: 'ict-eur', fraction: 0.125, result: 312.40 }
-  ];
+  let routerState = $state<RouterStateShape>({
+    active: true,
+    mode: 'auction',
+    auctionInterval: 5000,
+    lastAuction: null,
+    queuedSignals: 0,
+    activeAuctions: 0
+  });
 
-  // HMM Training State
+  let initialLoadComplete = $state(false);
+  let previousMode = $state(routerState.mode);
+  let previousAuctionInterval = $state(routerState.auctionInterval);
+
+  let marketState = $state<MarketStateShape>({
+    regime: null,
+    symbols: [],
+    unavailableReason: 'Loading live market data...'
+  });
+
+  let bots = $state<BotShape[]>([]);
+
+  let auctionQueue = $state<AuctionShape[]>([]);
+
+  let rankings = $state<{ daily: RankingShape[]; weekly: RankingShape[] }>({
+    daily: [],
+    weekly: []
+  });
+
+  let correlations = $state<CorrelationShape[]>([]);
+
+  let houseMoney = $state<HouseMoneyShape>({
+    dailyProfit: null,
+    threshold: null,
+    houseMoneyAmount: null,
+    mode: null,
+    unavailableReason: 'Loading house-money state...'
+  });
+
+  let kellyData = $state<Record<string, KellyData>>({});
+  let kellyHistory = $state<Array<{ date: string; botId: string; fraction: number; result: number }>>([]);
+  let kellyEngine = $state<KellyEngineShape | null>(null);
+  let kellyStatusMessage = $state('Loading Kelly engine state...');
+
   let hmmTraining = $state({
     isTraining: false,
     jobId: '',
@@ -173,6 +166,226 @@
     forceRetrain: false
   };
 
+  async function parseError(response: Response): Promise<string> {
+    try {
+      const data = await response.json();
+      return data.detail || data.message || `${response.status} ${response.statusText}`;
+    } catch {
+      return `${response.status} ${response.statusText}`;
+    }
+  }
+
+  async function fetchJson<T>(endpoint: string, options?: RequestInit): Promise<T> {
+    const response = await fetch(buildApiUrl(endpoint), {
+      credentials: 'include',
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options?.headers || {})
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(await parseError(response));
+    }
+
+    return response.json() as Promise<T>;
+  }
+
+  function normalizeTrend(value: unknown): string {
+    const trend = String(value ?? 'unknown').toLowerCase();
+    if (trend.includes('bull')) return 'bullish';
+    if (trend.includes('bear')) return 'bearish';
+    if (trend.includes('range')) return 'ranging';
+    return trend;
+  }
+
+  function normalizeVolatility(value: unknown): string {
+    const volatility = String(value ?? 'unknown').toLowerCase();
+    if (['low', 'medium', 'high'].includes(volatility)) {
+      return volatility;
+    }
+    return volatility;
+  }
+
+  function parseAuctionRecord(raw: any): AuctionShape {
+    return {
+      id: String(raw?.id ?? `auction-${Date.now()}`),
+      timestamp: raw?.timestamp ? new Date(raw.timestamp) : new Date(),
+      participants: Array.isArray(raw?.participants) ? raw.participants.map(String) : [],
+      winner: String(raw?.winner ?? ''),
+      winningScore: Number(raw?.winningScore ?? 0),
+      status: String(raw?.status ?? 'completed')
+    };
+  }
+
+  async function loadCoreRouterState() {
+    try {
+      const data = await fetchJson<RouterStateShape>('/api/router/state');
+      routerState = {
+        active: Boolean(data.active),
+        mode: data.mode,
+        auctionInterval: Number(data.auctionInterval ?? 5000),
+        lastAuction: data.lastAuction ?? null,
+        queuedSignals: Number(data.queuedSignals ?? 0),
+        activeAuctions: Number(data.activeAuctions ?? 0)
+      };
+      if (!initialLoadComplete) {
+        initialLoadComplete = true;
+      }
+    } catch (e) {
+      console.error('Failed to load router state:', e);
+    }
+  }
+
+  async function loadMarketState() {
+    try {
+      const data = await fetchJson<any>('/api/router/market');
+      marketState = {
+        regime: data?.regime
+          ? {
+              quality: Number(data.regime.quality ?? 0),
+              trend: normalizeTrend(data.regime.trend),
+              chaos: Number(data.regime.chaos ?? 0),
+              volatility: normalizeVolatility(data.regime.volatility)
+            }
+          : null,
+        symbols: Array.isArray(data?.symbols)
+          ? data.symbols.map((symbol: any) => ({
+              symbol: String(symbol.symbol ?? 'UNKNOWN'),
+              price: Number(symbol.price ?? 0),
+              change: Number(symbol.change ?? 0),
+              spread: Number(symbol.spread ?? 0)
+            }))
+          : [],
+        unavailableReason: null
+      };
+    } catch (e) {
+      marketState = {
+        regime: null,
+        symbols: [],
+        unavailableReason: e instanceof Error ? e.message : 'Market data unavailable'
+      };
+    }
+  }
+
+  async function loadBots() {
+    try {
+      const data = await fetchJson<{ items?: any[] }>('/api/router/bots?limit=100');
+      bots = Array.isArray(data?.items)
+        ? data.items.map((bot) => ({
+            id: String(bot.id ?? ''),
+            name: String(bot.name ?? bot.id ?? 'Unknown Bot'),
+            symbol: String(bot.symbol ?? 'UNKNOWN'),
+            status: (bot.status ?? 'idle') as BotShape['status'],
+            signalStrength: Number(bot.signalStrength ?? 0),
+            conditions: Array.isArray(bot.conditions) ? bot.conditions.map(String) : [],
+            score: Number(bot.score ?? 0),
+            lastSignal: bot.lastSignal ? new Date(bot.lastSignal) : null
+          }))
+        : [];
+    } catch (e) {
+      console.error('Failed to load router bots:', e);
+      bots = [];
+    }
+  }
+
+  async function loadAuctions() {
+    try {
+      const data = await fetchJson<{ items?: any[] }>('/api/router/auctions?limit=20');
+      auctionQueue = Array.isArray(data?.items) ? data.items.map(parseAuctionRecord) : [];
+    } catch (e) {
+      console.error('Failed to load auctions:', e);
+      auctionQueue = [];
+    }
+  }
+
+  async function loadRankings() {
+    const loadPeriod = async (period: 'daily' | 'weekly'): Promise<RankingShape[]> => {
+      try {
+        const data = await fetchJson<any[]>(`/api/router/rankings?period=${period}`);
+        return Array.isArray(data)
+          ? data.map((item) => ({
+              botId: String(item.botId ?? item.bot_id ?? item.id ?? ''),
+              name: String(item.name ?? item.botId ?? item.bot_id ?? 'Unknown Strategy'),
+              profit: Number(item.profit ?? item.pnl ?? 0),
+              trades: Number(item.trades ?? 0),
+              winRate: Number(item.winRate ?? item.win_rate ?? 0)
+            }))
+          : [];
+      } catch (e) {
+        console.error(`Failed to load ${period} rankings:`, e);
+        return [];
+      }
+    };
+
+    const [daily, weekly] = await Promise.all([loadPeriod('daily'), loadPeriod('weekly')]);
+    rankings = { daily, weekly };
+  }
+
+  async function loadCorrelations() {
+    try {
+      const data = await fetchJson<any[]>('/api/router/correlations');
+      correlations = Array.isArray(data)
+        ? data.map((item) => {
+            const value = Number(item.value ?? item.correlation ?? 0);
+            return {
+              pair: String(item.pair ?? item.symbols?.join('/') ?? 'Unknown pair'),
+              value,
+              status: (item.status ?? getCorrelationStatus(value)) as CorrelationShape['status']
+            };
+          })
+        : [];
+    } catch (e) {
+      console.error('Failed to load correlations:', e);
+      correlations = [];
+    }
+  }
+
+  async function loadHouseMoney() {
+    try {
+      const data = await fetchJson<any>('/api/router/house-money');
+      houseMoney = {
+        dailyProfit: Number(data.dailyProfit ?? 0),
+        threshold: Number(data.threshold ?? 0),
+        houseMoneyAmount: Number(data.houseMoneyAmount ?? 0),
+        mode: (data.mode ?? 'normal') as HouseMoneyShape['mode'],
+        unavailableReason: null
+      };
+    } catch (e) {
+      houseMoney = {
+        dailyProfit: null,
+        threshold: null,
+        houseMoneyAmount: null,
+        mode: null,
+        unavailableReason: e instanceof Error ? e.message : 'House-money state unavailable'
+      };
+    }
+  }
+
+  async function loadKellyState() {
+    try {
+      const data = await fetchJson<any>('/api/risk/physics');
+      if (data?.kelly) {
+        kellyEngine = {
+          fraction: Number(data.kelly.fraction ?? 0),
+          multiplier: Number(data.kelly.multiplier ?? 1),
+          houseOfMoney: Boolean(data.kelly.house_of_money),
+          configuredFraction: Number(data.kelly.kelly_fraction_setting ?? 0)
+        };
+        kellyStatusMessage = 'Live Kelly engine connected. Per-bot Kelly history is not exposed by the backend yet.';
+      } else {
+        kellyEngine = null;
+        kellyStatusMessage = 'Kelly engine data is unavailable.';
+      }
+    } catch (e) {
+      kellyEngine = null;
+      kellyStatusMessage = e instanceof Error ? e.message : 'Kelly engine data unavailable';
+    }
+    kellyData = {};
+    kellyHistory = [];
+  }
+
   async function startHMMTraining() {
     hmmTraining.isTraining = true;
     hmmTraining.progress = 0;
@@ -180,7 +393,7 @@
     hmmTraining.jobId = '';
 
     try {
-      const res = await fetch('http://localhost:8000/api/hmm/train', {
+      const res = await fetch(buildApiUrl('/api/hmm/train'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -213,7 +426,7 @@
   async function pollTrainingStatus(jobId: string) {
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(`http://localhost:8000/api/hmm/train/${jobId}/status`);
+        const res = await fetch(buildApiUrl(`/api/hmm/train/${jobId}/status`));
         if (res.ok) {
           const status = await res.json();
           hmmTraining.progress = status.progress;
@@ -253,7 +466,7 @@
     mt5Error = '';
     
     try {
-      const res = await fetch('http://localhost:8000/api/mt5/test', {
+      const res = await fetch(buildApiUrl('/api/mt5/test'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(mt5Config)
@@ -275,7 +488,7 @@
 
   async function saveMt5Config() {
     try {
-      await fetch('http://localhost:8000/api/mt5/config', {
+      await fetch(buildApiUrl('/api/mt5/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(mt5Config)
@@ -285,7 +498,6 @@
     }
   }
 
-  // Kelly Rankings
   let kellyRankings = $derived(Object.entries(kellyData)
     .map(([botId, data]) => ({
       botId,
@@ -299,18 +511,12 @@
     }))
     .sort((a, b) => parseFloat(b.kellyScore) - parseFloat(a.kellyScore)));
 
-  // View state
   let activeTab: 'auction' | 'rankings' | 'kelly' | 'correlations' | 'settings' = $state('auction');
   let autoRefresh = true;
   let refreshInterval: number | null = null;
 
   onMount(() => {
-    loadRouterState();
-    if (autoRefresh) {
-      refreshInterval = window.setInterval(() => {
-        loadRouterState();
-      }, 5000);
-    }
+    void loadRouterState();
   });
 
   onDestroy(() => {
@@ -320,30 +526,26 @@
   });
 
   async function loadRouterState() {
-    try {
-      const res = await fetch('http://localhost:8000/api/router/state');
-      if (res.ok) {
-        const data = await res.json();
-        routerState = { ...routerState, ...data };
-        // Mark initial load complete after first fetch
-        if (!initialLoadComplete) {
-          initialLoadComplete = true;
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load router state:', e);
-    }
+    await Promise.allSettled([
+      loadCoreRouterState(),
+      loadMarketState(),
+      loadBots(),
+      loadAuctions(),
+      loadRankings(),
+      loadCorrelations(),
+      loadHouseMoney(),
+      loadKellyState()
+    ]);
   }
 
   async function toggleRouter() {
-    routerState.active = !routerState.active;
+    const nextActive = !routerState.active;
 
     try {
-      await fetch('http://localhost:8000/api/router/toggle', {
+      await fetchJson(`/api/router/toggle?active=${nextActive}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ active: routerState.active })
       });
+      routerState.active = nextActive;
     } catch (e) {
       console.error('Failed to toggle router:', e);
     }
@@ -351,16 +553,15 @@
 
   async function saveRouterSettings() {
     try {
-      await fetch('http://localhost:8000/api/router/settings', {
+      await fetch(buildApiUrl('/api/router/settings'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           active: routerState.active,
           mode: routerState.mode,
           auctionInterval: routerState.auctionInterval,
-          lastAuction: routerState.lastAuction?.toISOString() || null,
-          queuedSignals: routerState.queuedSignals.length,
-          activeAuctions: routerState.activeAuctions.length
+          lastAuction: routerState.lastAuction,
+          queuedSignals: routerState.queuedSignals,
+          activeAuctions: routerState.activeAuctions
         })
       });
     } catch (e) {
@@ -379,13 +580,13 @@
 
   async function runAuction() {
     try {
-      const res = await fetch('http://localhost:8000/api/router/auction', {
+      const result = await fetchJson<{ auction?: any }>('/api/router/auction', {
         method: 'POST'
       });
-      if (res.ok) {
-        const result = await res.json();
-        auctionQueue = [result, ...auctionQueue].slice(0, 10);
+      if (result.auction) {
+        auctionQueue = [parseAuctionRecord(result.auction), ...auctionQueue].slice(0, 10);
       }
+      await loadCoreRouterState();
     } catch (e) {
       console.error('Failed to run auction:', e);
     }
@@ -413,14 +614,6 @@
     return 'ok';
   }
 
-  function formatCurrency(value: number) {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2
-    }).format(value);
-  }
-
   function timeAgo(date: Date | null) {
     if (!date) return 'Never';
     const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
@@ -428,6 +621,19 @@
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
     return `${Math.floor(seconds / 3600)}h ago`;
   }
+
+  run(() => {
+    if (refreshInterval) {
+      clearInterval(refreshInterval);
+      refreshInterval = null;
+    }
+
+    if (autoRefresh && typeof window !== 'undefined') {
+      refreshInterval = window.setInterval(() => {
+        void loadRouterState();
+      }, 5000);
+    }
+  });
 </script>
 
 <div class="router-view">
@@ -492,6 +698,8 @@
         {bots}
         {kellyRankings}
         {kellyHistory}
+        {kellyEngine}
+        statusMessage={kellyStatusMessage}
       />
 
     {:else if activeTab === 'correlations'}

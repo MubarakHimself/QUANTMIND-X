@@ -30,7 +30,7 @@
 
   // State
   let message = $state("");
-  let textareaElement: HTMLTextAreaElement = $state();
+  let textareaElement = $state<HTMLTextAreaElement | null>(null);
   let showModelDropdown = $state(false);
   let showSlashCommands = $state(false);
   let slashCommandFilter = $state("");

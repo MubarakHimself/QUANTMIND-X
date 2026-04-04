@@ -7,12 +7,13 @@ Supports memory operations (retain, recall, reflect, link) and tier management.
 
 import logging
 from typing import Optional, List, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.memory.graph.facade import GraphMemoryFacade, get_graph_memory
+from src.memory.graph.types import MemoryNodeType, MemoryCategory, MemoryNode
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +24,28 @@ _facade: Optional[GraphMemoryFacade] = None
 
 
 def _get_facade() -> GraphMemoryFacade:
-    """Get or create the graph memory facade singleton."""
+    """Get or create the graph memory facade singleton, running migrations on first use."""
     global _facade
     if _facade is None:
         import os
+        from src.memory.graph.migration import migrate_graph_memory_db
         db_path = os.environ.get("GRAPH_MEMORY_DB", "data/graph_memory.db")
+        # Run all schema migrations before opening facade
+        if os.path.exists(db_path):
+            migrate_graph_memory_db(db_path)
         _facade = get_graph_memory(db_path=db_path)
     return _facade
+
+
+def _serialize_node_timestamp(node: Any, field: str) -> str:
+    """Serialize timestamp fields across legacy and UTC-normalized node schemas."""
+    primary = getattr(node, f"{field}_utc", None)
+    if primary is not None:
+        return primary.isoformat() if hasattr(primary, "isoformat") else str(primary)
+    legacy = getattr(node, field, None)
+    if legacy is not None:
+        return legacy.isoformat() if hasattr(legacy, "isoformat") else str(legacy)
+    return ""
 
 
 # =============================================================================
@@ -180,8 +196,8 @@ async def recall_memories(request: RecallRequest):
                 importance=node.importance,
                 tags=node.tags,
                 tier=node.tier.value if hasattr(node.tier, 'value') else str(node.tier),
-                created_at=node.created_at.isoformat() if hasattr(node.created_at, 'isoformat') else str(node.created_at),
-                updated_at=node.updated_at.isoformat() if hasattr(node.updated_at, 'isoformat') else str(node.updated_at),
+                created_at=_serialize_node_timestamp(node, "created_at"),
+                updated_at=_serialize_node_timestamp(node, "updated_at"),
                 access_count=node.access_count,
                 relevance_score=node.relevance_score,
             ))
@@ -305,8 +321,8 @@ async def get_hot_nodes(limit: int = Query(50, ge=1, le=100)):
                 importance=n.importance,
                 tags=n.tags,
                 tier=n.tier.value if hasattr(n.tier, 'value') else str(n.tier),
-                created_at=n.created_at.isoformat() if hasattr(n.created_at, 'isoformat') else str(n.created_at),
-                updated_at=n.updated_at.isoformat() if hasattr(n.updated_at, 'isoformat') else str(n.updated_at),
+                created_at=_serialize_node_timestamp(n, "created_at"),
+                updated_at=_serialize_node_timestamp(n, "updated_at"),
                 access_count=n.access_count,
                 relevance_score=n.relevance_score,
             )
@@ -336,8 +352,8 @@ async def get_warm_nodes(limit: int = Query(100, ge=1, le=200)):
                 importance=n.importance,
                 tags=n.tags,
                 tier=n.tier.value if hasattr(n.tier, 'value') else str(n.tier),
-                created_at=n.created_at.isoformat() if hasattr(n.created_at, 'isoformat') else str(n.created_at),
-                updated_at=n.updated_at.isoformat() if hasattr(n.updated_at, 'isoformat') else str(n.updated_at),
+                created_at=_serialize_node_timestamp(n, "created_at"),
+                updated_at=_serialize_node_timestamp(n, "updated_at"),
                 access_count=n.access_count,
                 relevance_score=n.relevance_score,
             )
@@ -367,8 +383,8 @@ async def get_cold_nodes(limit: int = Query(100, ge=1, le=200)):
                 importance=n.importance,
                 tags=n.tags,
                 tier=n.tier.value if hasattr(n.tier, 'value') else str(n.tier),
-                created_at=n.created_at.isoformat() if hasattr(n.created_at, 'isoformat') else str(n.created_at),
-                updated_at=n.updated_at.isoformat() if hasattr(n.updated_at, 'isoformat') else str(n.updated_at),
+                created_at=_serialize_node_timestamp(n, "created_at"),
+                updated_at=_serialize_node_timestamp(n, "updated_at"),
                 access_count=n.access_count,
                 relevance_score=n.relevance_score,
             )
@@ -445,4 +461,98 @@ async def delete_node(node_id: str):
         raise
     except Exception as e:
         logger.error(f"Error deleting node: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/all")
+async def clear_all_nodes():
+    """Delete all memory nodes across all tiers."""
+    try:
+        facade = _get_facade()
+        all_nodes = facade.store.query_nodes(limit=10000)
+        deleted = 0
+        for node in all_nodes:
+            try:
+                facade.delete_node(node.id)
+                deleted += 1
+            except Exception:
+                pass
+        return {"success": True, "deleted": deleted}
+    except Exception as e:
+        logger.error(f"Error clearing all nodes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Opinion Nodes
+# =============================================================================
+
+
+class OpinionCreateRequest(BaseModel):
+    """Request model for creating a user opinion node."""
+    content: str = Field(..., min_length=1, max_length=10000)
+    confidence: float = Field(default=0.7, ge=0.0, le=1.0)
+
+
+class OpinionNodeOut(BaseModel):
+    """Response model for an opinion node."""
+    id: str
+    content: str
+    confidence: Optional[float]
+    created_at: str
+
+
+@router.get("/opinions", response_model=List[OpinionNodeOut])
+async def list_opinion_nodes(limit: int = Query(50, ge=1, le=200)):
+    """
+    GET /api/graph-memory/opinions
+
+    Returns all OPINION nodes ordered by recency.
+    """
+    try:
+        facade = _get_facade()
+        nodes = facade.store.query_nodes(
+            node_type=MemoryNodeType.OPINION,
+            limit=limit,
+        )
+        return [
+            OpinionNodeOut(
+                id=str(n.id),
+                content=n.content,
+                confidence=n.confidence,
+                created_at=n.created_at_utc.isoformat() if hasattr(n, 'created_at_utc') and n.created_at_utc else (
+                    n.created_at.isoformat() if hasattr(n, 'created_at') and n.created_at else ""
+                ),
+            )
+            for n in nodes
+        ]
+    except Exception as e:
+        logger.error(f"Error listing opinion nodes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/opinions", response_model=dict)
+async def create_opinion_node(request: OpinionCreateRequest):
+    """
+    POST /api/graph-memory/opinions
+
+    Create a new user-written opinion node.
+    Body: {content: str, confidence: float (0.0-1.0)}
+    """
+    try:
+        facade = _get_facade()
+        node = MemoryNode(
+            node_type=MemoryNodeType.OPINION,
+            category=MemoryCategory.SUBJECTIVE,
+            title=request.content[:60] + ("\u2026" if len(request.content) > 60 else ""),
+            content=request.content,
+            confidence=request.confidence,
+            importance=request.confidence,
+            agent_id="user",
+            tags=["user-opinion"],
+        )
+        created = facade.store.create_node(node)
+        return {"success": True, "node_id": str(created.id)}
+    except Exception as e:
+        logger.error(f"Error creating opinion node: {e}")
         raise HTTPException(status_code=500, detail=str(e))

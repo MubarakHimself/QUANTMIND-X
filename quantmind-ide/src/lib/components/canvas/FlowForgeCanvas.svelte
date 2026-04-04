@@ -21,29 +21,41 @@
     KANBAN_COLUMNS,
     type PrefectWorkflow,
     type WorkflowState,
+    type WorkflowsByState,
   } from '$lib/stores/flowforge';
   import { canvasContextService } from '$lib/services/canvasContextService';
   import PrefectKanbanCard from '$lib/components/flowforge/PrefectKanbanCard.svelte';
   import FlowForgeNodeGraph from '$lib/components/flowforge/FlowForgeNodeGraph.svelte';
   import WorkflowKillSwitchModal from '$lib/components/flowforge/WorkflowKillSwitchModal.svelte';
-  import { RefreshCw, GitBranch, Search, ArrowLeft, Layers, Code2, LayoutGrid, Brain, Play, X, CheckCircle, AlertCircle, Loader2, Clock } from 'lucide-svelte';
+  import { RefreshCw, GitBranch, Search, ArrowLeft, Layers, Code2, LayoutGrid, Play, X, CheckCircle, AlertCircle, Loader2, Clock } from 'lucide-svelte';
   import DepartmentKanban from '$lib/components/department-kanban/DepartmentKanban.svelte';
   import DeptKanbanTile from '$lib/components/shared/DeptKanbanTile.svelte';
-  import CopilotPanel from '$lib/components/trading-floor/CopilotPanel.svelte';
   import { submitVideoJob, getJobStatus, getAuthStatus } from '$lib/api/videoIngestApi';
   import { activeCanvasStore } from '$lib/stores/canvasStore';
+  import { API_CONFIG } from '$lib/config/api';
 
   // =============================================================================
   // Prefect store subscriptions (PRESERVED — do not remove)
   // =============================================================================
-  let workflowsByState = $derived($flowForgeStore.workflowsByState);
-  let loading = $derived($flowForgeStore.flowforgeLoading);
-  let error = $derived($flowForgeStore.flowforgeError);
   let showNodeGraph = $derived($flowForgeStore.showNodeGraph);
   let selectedWorkflowForNodeGraph = $derived($flowForgeStore.selectedWorkflowForNodeGraph);
+  let loading = $derived($flowForgeStore.loading);
+  let workflowBoard = $state<WorkflowsByState>({
+    PENDING: [],
+    RUNNING: [],
+    PENDING_REVIEW: [],
+    DONE: [],
+    CANCELLED: [],
+    EXPIRED_REVIEW: [],
+  });
+  let workflowBoardTotal = $derived(
+    KANBAN_COLUMNS.reduce((count, column) => count + (workflowBoard[column.id]?.length ?? 0), 0)
+  );
+  let workflowBoardLoading = $state(false);
+  let workflowBoardError = $state<string | null>(null);
 
-  // Sub-page routing — three tabs
-  type FlowForgeSubPage = 'prefect' | 'dept-kanban' | 'floor-manager';
+  // Sub-page routing — two tabs (Floor Manager uses shell AgentPanel on right sidebar)
+  type FlowForgeSubPage = 'prefect' | 'dept-kanban';
   let activeTab = $state<FlowForgeSubPage>('prefect');
 
   // Modal state
@@ -74,7 +86,7 @@
   let launching = $state(false);
   let launchError = $state<string | null>(null);
   let jobs = $state<VideoJob[]>([]);
-  let authStatus = $state<'checking' | 'ready' | 'error'>('checking');
+  let authStatus = $state<'checking' | 'ready' | 'unconfigured' | 'unreachable'>('checking');
 
   // Poll interval handle
   let jobPollInterval: ReturnType<typeof setInterval> | null = null;
@@ -95,23 +107,67 @@
   let schedulerTriggering = $state(false);
   let schedulerPollInterval: ReturnType<typeof setInterval> | null = null;
 
+  function getFlowForgeApiUrl(path: string): string {
+    return `${API_CONFIG.API_URL}${path}`;
+  }
+
   // Derived: whether any batch has jobs in COMPLETED state
   let anyBatchComplete = $derived(jobs.some(j => j.status === 'COMPLETED'));
 
   // Derived: whether URL looks like a playlist
   let isPlaylistUrl = $derived(launchUrl.includes('playlist') || launchUrl.includes('list='));
 
+  $effect(() => {
+    const workflowResources = KANBAN_COLUMNS.flatMap((column) =>
+      (workflowBoard[column.id] ?? []).map((workflow) => ({
+        id: workflow.id,
+        label: workflow.name,
+        canvas: 'flowforge',
+        resource_type: 'workflow-card',
+        metadata: {
+          state: workflow.state,
+          column: column.id,
+          department: workflow.department,
+          started_at: workflow.started_at,
+        },
+      })),
+    ).slice(0, 100);
+
+    const jobResources = jobs.slice(0, 50).map((job) => ({
+      id: job.id,
+      label: job.title || job.id,
+      canvas: 'flowforge',
+      resource_type: 'video-job',
+      metadata: {
+        status: job.status,
+        progress: job.progress,
+        alphaForgeStage: job.alphaForgeStage,
+        source: job.source,
+      },
+    }));
+
+    canvasContextService.setRuntimeState('flowforge', {
+      active_tab: activeTab,
+      workflow_board_total: workflowBoardTotal,
+      workflow_board_loading: workflowBoardLoading,
+      workflow_board_error: workflowBoardError,
+      scheduler_status: schedulerStatus,
+      attachable_resources: [...workflowResources, ...jobResources],
+    });
+  });
+
   // =============================================================================
   // onMount — canvas init + Prefect auto-refresh + auth check + job poll
   // =============================================================================
   onMount(() => {
     canvasContextService.loadCanvasContext('flowforge')
-      .then(() => flowForgeStore.fetchWorkflows())
+      .then(() => Promise.allSettled([flowForgeStore.fetchWorkflows(), loadWorkflowBoard()]))
       .catch((e) => console.error('Failed to load FlowForge canvas:', e));
 
     // Auto-refresh Prefect workflows every 30 seconds
     refreshInterval = setInterval(() => {
       flowForgeStore.fetchWorkflows();
+      loadWorkflowBoard();
     }, 30000);
 
     // Check video ingest auth on mount
@@ -143,9 +199,9 @@
     authStatus = 'checking';
     try {
       const status = await getAuthStatus();
-      authStatus = (status.gemini || status.qwen) ? 'ready' : 'error';
+      authStatus = (status.openrouter || status.gemini || status.qwen) ? 'ready' : 'unconfigured';
     } catch {
-      authStatus = 'error';
+      authStatus = 'unreachable';
     }
   }
 
@@ -154,14 +210,14 @@
   // =============================================================================
   async function loadSchedulerStatus() {
     try {
-      const res = await fetch('/api/autonomous-scheduler/status');
+      const res = await fetch(getFlowForgeApiUrl('/api/autonomous-scheduler/status'));
       if (res.ok) schedulerStatus = await res.json();
     } catch { /* scheduler offline — graceful */ }
   }
 
   async function loadScheduledRuns() {
     try {
-      const res = await fetch('/api/autonomous-scheduler/runs');
+      const res = await fetch(getFlowForgeApiUrl('/api/autonomous-scheduler/runs'));
       if (!res.ok) return;
       const runs = await res.json();
       // Convert to VideoJob format, only add ones not already in jobs list
@@ -187,7 +243,7 @@
     if (!schedulerStatus) return;
     schedulerLoading = true;
     try {
-      await fetch('/api/autonomous-scheduler/config', {
+      await fetch(getFlowForgeApiUrl('/api/autonomous-scheduler/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: !schedulerStatus.enabled }),
@@ -199,7 +255,7 @@
   async function handleSchedulerTrigger() {
     schedulerTriggering = true;
     try {
-      const res = await fetch('/api/autonomous-scheduler/trigger', { method: 'POST' });
+      const res = await fetch(getFlowForgeApiUrl('/api/autonomous-scheduler/trigger'), { method: 'POST' });
       if (res.ok) {
         await loadScheduledRuns();
         await loadSchedulerStatus();
@@ -217,22 +273,24 @@
   // Launch workflow
   // =============================================================================
   async function handleLaunch() {
-    if (!launchUrl.trim() || launching) return;
+    if (!launchUrl.trim() || launching || authStatus !== 'ready') return;
     launchError = null;
     launching = true;
     try {
       const isPlaylist = isPlaylistUrl;
       const response = await submitVideoJob(launchUrl.trim(), undefined, isPlaylist);
-      const newJob: VideoJob = {
-        id: response.job_id,
+      const submittedAt = new Date();
+      const jobIds = response.job_ids?.length ? response.job_ids : [response.job_id];
+      const newJobs: VideoJob[] = jobIds.map((jobId, index) => ({
+        id: jobId,
         url: launchUrl.trim(),
-        title: undefined,
+        title: jobIds.length > 1 ? `Playlist item ${index + 1}` : undefined,
         status: 'PENDING',
         progress: 0,
-        submittedAt: new Date(),
+        submittedAt: new Date(submittedAt.getTime() + index),
         alphaForgeStage: 'video',
-      };
-      jobs = [newJob, ...jobs];
+      }));
+      jobs = [...newJobs, ...jobs];
       launchUrl = '';
     } catch (err: unknown) {
       launchError = err instanceof Error ? err.message : 'Failed to submit job. Check backend connection.';
@@ -309,7 +367,7 @@
   // Prefect handlers (PRESERVED)
   // =============================================================================
   async function handleRefresh() {
-    await flowForgeStore.fetchWorkflows();
+    await Promise.allSettled([flowForgeStore.fetchWorkflows(), loadWorkflowBoard()]);
   }
 
   function handleWorkflowClick(workflow: PrefectWorkflow) {
@@ -351,8 +409,26 @@
     return icons[state];
   }
 
-  function getColumnCount(state: WorkflowState): number {
-    return workflowsByState[state]?.length || 0;
+  async function loadWorkflowBoard() {
+    workflowBoardLoading = true;
+    workflowBoardError = null;
+    try {
+      const response = await fetch(getFlowForgeApiUrl('/api/prefect/workflows'));
+      if (!response.ok) throw new Error('Failed to fetch workflows');
+      const data = await response.json();
+      workflowBoard = {
+        PENDING: data.by_state?.PENDING ?? [],
+        RUNNING: data.by_state?.RUNNING ?? [],
+        PENDING_REVIEW: data.by_state?.PENDING_REVIEW ?? [],
+        DONE: data.by_state?.DONE ?? [],
+        CANCELLED: data.by_state?.CANCELLED ?? [],
+        EXPIRED_REVIEW: data.by_state?.EXPIRED_REVIEW ?? [],
+      };
+    } catch (err: unknown) {
+      workflowBoardError = err instanceof Error ? err.message : 'Failed to fetch workflows';
+    } finally {
+      workflowBoardLoading = false;
+    }
   }
 
   // =============================================================================
@@ -451,32 +527,23 @@
         <Layers size={14} />
         <span>Dept Tasks</span>
       </button>
-      <button
-        class="tab-btn"
-        class:active={activeTab === 'floor-manager'}
-        onclick={() => activeTab = 'floor-manager'}
-      >
-        <Brain size={14} />
-        <span>Floor Manager</span>
-      </button>
     </div>
 
-    {#if activeTab === 'floor-manager'}
-      <!-- Floor Manager Chat Tab -->
-      <div class="floor-manager-tab">
-        <CopilotPanel isCopilot={false} />
-      </div>
-
-    {:else if activeTab === 'prefect'}
+    {#if activeTab === 'prefect'}
       <!-- ================================================================
            Workflows Tab — Workflow Launcher + Job Tracker
            ================================================================ -->
 
       <!-- Auth warning banner -->
-      {#if authStatus === 'error'}
+      {#if authStatus === 'unconfigured'}
         <div class="auth-warning-banner">
           <AlertCircle size={14} />
           <span>Video ingest provider not configured — check Settings → Providers</span>
+        </div>
+      {:else if authStatus === 'unreachable'}
+        <div class="auth-warning-banner">
+          <AlertCircle size={14} />
+          <span>Video ingest backend unavailable — check API routing and server health</span>
         </div>
       {/if}
 
@@ -496,6 +563,16 @@
                 <CheckCircle size={11} />
                 <span>Provider ready</span>
               </span>
+            {:else if authStatus === 'unconfigured'}
+              <span class="auth-badge auth-error">
+                <AlertCircle size={11} />
+                <span>No provider configured</span>
+              </span>
+            {:else if authStatus === 'unreachable'}
+              <span class="auth-badge auth-error">
+                <AlertCircle size={11} />
+                <span>Backend unavailable</span>
+              </span>
             {/if}
           </div>
 
@@ -506,12 +583,12 @@
               placeholder="YouTube video or playlist URL…"
               bind:value={launchUrl}
               onkeydown={handleLaunchKeydown}
-              disabled={launching || authStatus === 'checking'}
+              disabled={launching || authStatus !== 'ready'}
             />
             <button
               class="launch-btn"
               onclick={handleLaunch}
-              disabled={!launchUrl.trim() || launching || authStatus === 'checking'}
+              disabled={!launchUrl.trim() || launching || authStatus !== 'ready'}
             >
               {#if launching}
                 <span class="btn-spinner"><Loader2 size={14} /></span>
@@ -712,6 +789,54 @@
             <span>Improvement Loop (WF2) will trigger automatically when batch completes</span>
           </div>
         {/if}
+
+        <section class="kanban-section">
+          <div class="kanban-section-header">
+            <span class="kanban-section-title">Workflow Board</span>
+            <span class="kanban-section-subtitle">Real workflow runs from the backend persistence layer</span>
+          </div>
+
+          {#if workflowBoardLoading}
+            <div class="kanban-status loading">
+              <Loader2 size={14} />
+              <span>Loading workflows…</span>
+            </div>
+          {:else if workflowBoardError}
+            <div class="kanban-status error">
+              <AlertCircle size={14} />
+              <span>{workflowBoardError}</span>
+            </div>
+          {:else if workflowBoardTotal === 0}
+            <div class="kanban-status empty">
+              <span>No persisted workflows yet.</span>
+            </div>
+          {:else}
+            <div class="kanban-grid">
+              {#each KANBAN_COLUMNS as column}
+                <section class="kanban-column">
+                  <div class="kanban-column-header">
+                    <span class="kanban-column-title">{column.label}</span>
+                    <span class="kanban-column-count">{workflowBoard[column.id]?.length ?? 0}</span>
+                  </div>
+
+                  <div class="kanban-column-body">
+                    {#if workflowBoard[column.id]?.length}
+                      {#each workflowBoard[column.id] as workflow (workflow.id)}
+                        <PrefectKanbanCard
+                          workflow={workflow}
+                          onClick={handleWorkflowClick}
+                          onKillSwitch={column.id === 'RUNNING' ? handleKillSwitch : undefined}
+                        />
+                      {/each}
+                    {:else}
+                      <div class="kanban-column-empty">No workflows</div>
+                    {/if}
+                  </div>
+                </section>
+              {/each}
+            </div>
+          {/if}
+        </section>
       </div>
 
       <!-- Node Graph Modal — stays on Workflows tab -->
@@ -891,21 +1016,6 @@
     color: #06b6d4;
   }
 
-  /* Floor Manager tab — fill remaining canvas body height */
-  .floor-manager-tab {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .floor-manager-tab :global(.copilot-panel),
-  .floor-manager-tab :global(.floor-manager-panel) {
-    flex: 1;
-    min-height: 0;
-  }
-
   /* =========================================================================
      Auth warning banner
      ========================================================================= */
@@ -988,6 +1098,12 @@
     background: rgba(0, 200, 150, 0.12);
     color: #00c896;
     border: 1px solid rgba(0, 200, 150, 0.2);
+  }
+
+  .auth-badge.auth-error {
+    background: rgba(240, 165, 0, 0.12);
+    color: #f0a500;
+    border: 1px solid rgba(240, 165, 0, 0.2);
   }
 
   .launcher-input-row {
@@ -1422,6 +1538,130 @@
   .wf2-banner :global(svg) {
     color: #475569;
     flex-shrink: 0;
+  }
+
+  .kanban-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .kanban-section-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .kanban-section-title {
+    font-family: var(--font-ambient, 'JetBrains Mono', monospace);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #64748b;
+  }
+
+  .kanban-section-subtitle {
+    font-size: 12px;
+    color: #475569;
+  }
+
+  .kanban-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: var(--font-ambient, 'JetBrains Mono', monospace);
+  }
+
+  .kanban-status.loading {
+    background: rgba(8, 13, 20, 0.7);
+    border: 1px solid rgba(0, 212, 255, 0.12);
+    color: #94a3b8;
+  }
+
+  .kanban-status.error {
+    background: rgba(255, 59, 59, 0.08);
+    border: 1px solid rgba(255, 59, 59, 0.18);
+    color: #ff8a8a;
+  }
+
+  .kanban-status.empty {
+    background: rgba(8, 13, 20, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    color: #64748b;
+  }
+
+  .kanban-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .kanban-column {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: rgba(8, 13, 20, 0.62);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    padding: 12px;
+  }
+
+  .kanban-column-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .kanban-column-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #cbd5e1;
+  }
+
+  .kanban-column-count {
+    font-size: 10px;
+    font-family: var(--font-ambient, 'JetBrains Mono', monospace);
+    color: #94a3b8;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 999px;
+    padding: 2px 8px;
+  }
+
+  .kanban-column-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 92px;
+  }
+
+  .kanban-column-empty {
+    border: 1px dashed rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 14px 10px;
+    text-align: center;
+    color: #475569;
+    font-size: 11px;
+    font-family: var(--font-ambient, 'JetBrains Mono', monospace);
+  }
+
+  @media (max-width: 1200px) {
+    .kanban-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 760px) {
+    .kanban-grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   /* Autonomous Scheduler Section */

@@ -58,6 +58,7 @@ export interface VideoJob {
  * Auth status for video ingest providers
  */
 export interface VideoIngestAuth {
+  openrouter: boolean;
   gemini: boolean;
   qwen: boolean;
   checked: boolean;
@@ -124,6 +125,7 @@ export const isProcessing = writable(false);
  * Authentication status for video ingest providers
  */
 export const authStatus = writable<VideoIngestAuth>({
+  openrouter: false,
   gemini: false,
   qwen: false,
   checked: false
@@ -298,6 +300,7 @@ export async function loadAuthStatus(): Promise<void> {
   try {
     const status: VideoIngestAuthStatus = await getAuthStatus();
     authStatus.set({
+      openrouter: status.openrouter ?? false,
       gemini: status.gemini,
       qwen: status.qwen,
       checked: true
@@ -306,6 +309,7 @@ export async function loadAuthStatus(): Promise<void> {
     const message = error instanceof Error ? error.message : 'Failed to get auth status';
     errorMessage.set(message);
     authStatus.set({
+      openrouter: false,
       gemini: false,
       qwen: false,
       checked: true

@@ -14,12 +14,14 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 import logging
 import os
+import re
+from pathlib import Path
 
 from src.agents.skills.skill_manager import get_skill_manager, SkillManager
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/skills", tags=["skills"])
+router = APIRouter(prefix="/api/settings/skills", tags=["skills"])
 
 # =============================================================================
 # Request/Response Models
@@ -93,8 +95,31 @@ def _ensure_skills_dir() -> None:
 
 
 def _get_skill_md_path(skill_name: str) -> str:
-    """Get the file path for a skill.md file."""
-    return os.path.join(SKILLS_DIR, f"{skill_name}.md")
+    """Get the file path for a skill.md file.
+
+    Security: Sanitizes skill_name to prevent path traversal and validates
+    the resolved path stays within the allowed SKILLS_DIR.
+    """
+    # Sanitize: only allow alphanumeric, underscores, and hyphens
+    sanitized = re.sub(r'[^a-zA-Z0-9_\-]', '', skill_name)
+    if not sanitized or sanitized != skill_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Skill name contains invalid characters. Only alphanumeric, underscores, and hyphens are allowed."
+        )
+
+    # Build path and validate it stays within SKILLS_DIR
+    skill_path = Path(SKILLS_DIR) / f"{sanitized}.md"
+    resolved_path = skill_path.resolve()
+    allowed_dir = Path(SKILLS_DIR).resolve()
+
+    if not resolved_path.is_relative_to(allowed_dir):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Skill path outside allowed directory. Path traversal attempt detected."
+        )
+
+    return str(resolved_path)
 
 
 # =============================================================================
@@ -324,4 +349,5 @@ def _format_dict_as_yaml(d: Dict[str, Any], indent: int = 2) -> str:
 # Router Registration Note
 # =============================================================================
 # This router is registered in server.py with:
-# app.include_router(skills_router, prefix="/api")
+# app.include_router(skills_router)
+# Routes are served at /api/settings/skills (prefix baked into the router)

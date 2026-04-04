@@ -89,6 +89,7 @@ class VideoIngestProcessResponse(BaseModel):
     job_id: str
     status: str
     strategy_folder: Optional[str] = None
+    job_ids: Optional[list[str]] = None
 
 
 async def process_video_async(url: str, strategy_name: str = "video_ingest", is_playlist: bool = False) -> dict:
@@ -144,6 +145,12 @@ async def process_video_ingest(request: VideoIngestProcessRequest):
         return VideoIngestProcessResponse(**result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/start", response_model=VideoIngestProcessResponse)
+async def start_video_ingest(request: VideoIngestProcessRequest):
+    """Compatibility alias for older UI callers."""
+    return await process_video_ingest(request)
 
 
 @router.get("/jobs/{job_id}")

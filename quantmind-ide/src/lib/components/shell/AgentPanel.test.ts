@@ -354,6 +354,8 @@ describe('AgentPanel — Workshop canvas hidden (AC #9)', () => {
 });
 
 describe('AgentPanel — SSE EventSource lifecycle (AC #11, #19)', () => {
+  const apiBase = 'http://localhost:8000';
+
   let mockEventSource: {
     url: string;
     onmessage: ((e: MessageEvent) => void) | null;
@@ -381,25 +383,24 @@ describe('AgentPanel — SSE EventSource lifecycle (AC #11, #19)', () => {
 
   it('opens SSE EventSource to agent stream URL on session create', () => {
     const sessionId = crypto.randomUUID();
-    const baseUrl = 'http://localhost:8001';
-    const source = new EventSource(`${baseUrl}/api/agents/stream?session=${sessionId}`);
-    expect(mockEventSource.url).toBe(`${baseUrl}/api/agents/stream?session=${sessionId}`);
+    const source = new EventSource(`${apiBase}/api/agents/stream?session=${sessionId}`);
+    expect(mockEventSource.url).toBe(`${apiBase}/api/agents/stream?session=${sessionId}`);
   });
 
   it('EventSource URL contains correct session id', () => {
     const sessionId = 'test-session-abc';
-    new EventSource(`http://localhost:8001/api/agents/stream?session=${sessionId}`);
+    new EventSource(`${apiBase}/api/agents/stream?session=${sessionId}`);
     expect(mockEventSource.url).toContain(`session=${sessionId}`);
   });
 
   it('EventSource URL does NOT use WebSocket protocol', () => {
-    const url = 'http://localhost:8001/api/agents/stream?session=123';
+    const url = `${apiBase}/api/agents/stream?session=123`;
     expect(url).not.toMatch(/^ws/);
   });
 
   it('calls eventSource.close() on destroy', () => {
     const sessionId = 'destroy-test';
-    const source = new EventSource(`http://localhost:8001/api/agents/stream?session=${sessionId}`);
+    const source = new EventSource(`${apiBase}/api/agents/stream?session=${sessionId}`);
     // Simulate onDestroy
     mockEventSource.close();
     expect(mockEventSource.close).toHaveBeenCalledTimes(1);
@@ -409,11 +410,11 @@ describe('AgentPanel — SSE EventSource lifecycle (AC #11, #19)', () => {
     let eventSourceRef: typeof mockEventSource | null = null;
 
     // First session
-    eventSourceRef = new EventSource('http://localhost:8001/api/agents/stream?session=1') as unknown as typeof mockEventSource;
+    eventSourceRef = new EventSource(`${apiBase}/api/agents/stream?session=1`) as unknown as typeof mockEventSource;
 
     // Opening second session closes first
     eventSourceRef?.close();
-    const secondSource = new EventSource('http://localhost:8001/api/agents/stream?session=2');
+    const secondSource = new EventSource(`${apiBase}/api/agents/stream?session=2`);
 
     expect(mockEventSource.close).toHaveBeenCalledTimes(1);
   });

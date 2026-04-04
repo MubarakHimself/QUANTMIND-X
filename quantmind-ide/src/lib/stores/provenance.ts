@@ -4,6 +4,7 @@
  * State management for EA provenance tracking.
  */
 import { writable } from 'svelte/store';
+import { apiFetch } from '$lib/api';
 
 export interface ProvenanceNode {
   stage: string;
@@ -40,17 +41,11 @@ function createProvenanceStore() {
     update(state => ({ ...state, loading: true, error: null }));
 
     try {
-      const url = versionTag
-        ? `/api/strategies/${strategyId}/versions/${versionTag}/provenance`
-        : `/api/strategies/${strategyId}/provenance`;
+      const endpoint = versionTag
+        ? `/strategies/${strategyId}/versions/${versionTag}/provenance`
+        : `/strategies/${strategyId}/provenance`;
 
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error(`Failed to load provenance: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await apiFetch<ProvenanceChain>(endpoint);
 
       update(state => ({
         ...state,
@@ -70,17 +65,10 @@ function createProvenanceStore() {
     update(state => ({ ...state, loading: true, error: null }));
 
     try {
-      const response = await fetch('/api/strategies/provenance/query', {
+      const data = await apiFetch<{ chain: ProvenanceChain; answer: string | null }>('/strategies/provenance/query', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ strategy_id: strategyId, query }),
       });
-
-      if (!response.ok) {
-        throw new Error(`Failed to query provenance: ${response.statusText}`);
-      }
-
-      const data = await response.json();
 
       update(state => ({
         ...state,

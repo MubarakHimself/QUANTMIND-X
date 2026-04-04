@@ -45,6 +45,7 @@ class VariantInfo(BaseModel):
     is_active: bool = Field(default=False, description="Is this the active variant")
     backtest: Optional[BacktestSummary] = None
     promotion_status: str = Field(default="development", description="Pipeline stage")
+    parent_id: Optional[str] = Field(default=None, description="Parent version ID for genealogy")
 
 
 class StrategyVariants(BaseModel):
@@ -151,6 +152,7 @@ def _load_variants_from_storage() -> List[StrategyVariants]:
                     is_active=True,
                     backtest=None,  # Real backtest data not wired yet
                     promotion_status=_get_promotion_status(v.improvement_cycle),
+                    parent_id=v.parent_id,
                 )
                 variants.append(variant_info)
                 variant_counts[variant_type.value] = 1

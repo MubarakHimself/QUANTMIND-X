@@ -152,6 +152,65 @@ services:
     - ./docker/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
     - ./logs:/app/logs:ro
     - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  prefect-server:
+    command: prefect server start --host 0.0.0.0
+    container_name: quantmind-prefect-server
+    environment:
+      - QUANTMIND_ENV=production
+      - PREFECT_HOME=/root/.prefect
+      - PREFECT_API_DATABASE_CONNECTION_URL=sqlite+aiosqlite:///./prefect.db
+    healthcheck:
+      interval: 30s
+      retries: 3
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:4200/api/health
+      timeout: 10s
+    image: prefecthq/prefect:2-latest
+    labels:
+      - com.docker.compose.project=quantmindx
+      - service=prefect-server
+    networks:
+      - quantmind-network
+    ports:
+      - "4200:4200"
+    restart: unless-stopped
+    volumes:
+      - ./data/prefect:/root/.prefect
+      - ./flows:/flows:ro
+    working_dir: /root/.prefect
+
+  prefect-worker:
+    command: prefect worker start --pool contabo
+    container_name: quantmind-prefect-worker
+    depends_on:
+      - prefect-server
+    environment:
+      - QUANTMIND_ENV=production
+      - PREFECT_API_URL=http://prefect-server:4200/api
+      - PREFECT_HOME=/root/.prefect
+    healthcheck:
+      interval: 30s
+      retries: 3
+      test:
+        - CMD-SHELL
+        - ps -ef | grep '[p]refect worker start --pool contabo' >/dev/null
+      timeout: 10s
+    image: prefecthq/prefect:2-latest
+    labels:
+      - com.docker.compose.project=quantmindx
+      - service=prefect-worker
+    networks:
+      - quantmind-network
+    restart: unless-stopped
+    volumes:
+      - ./data/prefect:/root/.prefect
+      - ./flows:/flows:ro
+    working_dir: /root/.prefect
+
 version: '3.8'
 volumes:
   prometheus-wal:

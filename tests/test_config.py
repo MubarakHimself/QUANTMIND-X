@@ -46,3 +46,23 @@ def test_config_defaults():
     from src.config import get_database_url, get_redis_url
     assert get_database_url() == 'sqlite:///data/quantmind.db'
     assert get_redis_url() == 'redis://localhost:6379'
+
+
+def test_internal_api_base_url_prefers_internal_env(monkeypatch):
+    monkeypatch.setenv('INTERNAL_API_BASE_URL', 'https://internal.quantmindx.local')
+    monkeypatch.setenv('API_BASE_URL', 'https://public.quantmindx.local')
+
+    from src.config import get_internal_api_base_url
+
+    assert get_internal_api_base_url() == 'https://internal.quantmindx.local'
+
+
+def test_internal_api_base_url_falls_back_to_public_env(monkeypatch):
+    monkeypatch.delenv('INTERNAL_API_BASE_URL', raising=False)
+    monkeypatch.delenv('NODE_BACKEND_URL', raising=False)
+    monkeypatch.setenv('API_BASE_URL', 'https://public.quantmindx.local/')
+    monkeypatch.delenv('QUANTMIND_API_URL', raising=False)
+
+    from src.config import get_internal_api_base_url
+
+    assert get_internal_api_base_url() == 'https://public.quantmindx.local'

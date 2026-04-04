@@ -21,20 +21,24 @@
   </div>
 
   <div class="correlations-grid">
-    {#each correlations as corr}
-      <div class="corr-card status-{corr.status}">
-        <div class="corr-pair">
-          <Layers size={16} />
-          <span>{corr.pair}</span>
+    {#if correlations.length > 0}
+      {#each correlations as corr}
+        <div class="corr-card status-{corr.status}">
+          <div class="corr-pair">
+            <Layers size={16} />
+            <span>{corr.pair}</span>
+          </div>
+          <div class="corr-value">
+            <span class="value" style="color: {getScoreColor(Math.abs(corr.value) * 10)}">
+              {corr.value > 0 ? '+' : ''}{corr.value.toFixed(2)}
+            </span>
+            <span class="label">{corr.status}</span>
+          </div>
         </div>
-        <div class="corr-value">
-          <span class="value" style="color: {getScoreColor(Math.abs(corr.value) * 10)}">
-            {corr.value > 0 ? '+' : ''}{corr.value.toFixed(2)}
-          </span>
-          <span class="label">{corr.status}</span>
-        </div>
-      </div>
-    {/each}
+      {/each}
+    {:else}
+      <div class="empty-state">No live correlation data is available.</div>
+    {/if}
   </div>
 
   <div class="correlation-info">
@@ -147,5 +151,14 @@
 
   .correlation-info p {
     margin: 0;
+  }
+
+  .empty-state {
+    grid-column: 1 / -1;
+    padding: 20px 16px;
+    border: 1px dashed var(--color-border-subtle);
+    border-radius: 10px;
+    color: var(--color-text-muted);
+    font-size: 12px;
   }
 </style>

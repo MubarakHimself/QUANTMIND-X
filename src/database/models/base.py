@@ -41,6 +41,22 @@ def get_db_session():
         session.close()
 
 
+@contextmanager
+def db_session_scope() -> Generator[Session, None, None]:
+    """
+    Synchronous context-manager wrapper for code paths that are not using
+    FastAPI dependency injection.
+
+    Use this instead of `with get_db_session()`; `get_db_session()` is a
+    yield-based dependency function and is not a normal context manager.
+    """
+    session = get_session()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
 class TradingMode(PyEnum):
     """Trading mode enum for demo/live distinction."""
     DEMO = "demo"

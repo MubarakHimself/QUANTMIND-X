@@ -40,9 +40,9 @@ class ProgressiveConfig:
     tier2_max_failed_bots: int = 3
     tier2_max_family_loss_pct: float = 0.20
 
-    # Tier 3: Account-Level
-    tier3_max_daily_loss_pct: float = 0.03
-    tier3_max_weekly_loss_pct: float = 0.10
+    # Tier 3: Account-Level (3/5/7 Risk Framework)
+    tier3_max_daily_loss_pct: float = 0.03   # 3% daily
+    tier3_max_weekly_loss_pct: float = 0.05  # 5% weekly
     tier3_email_alerts: bool = True
     tier3_sms_alerts: bool = False
 
@@ -99,7 +99,7 @@ def load_progressive_config(config_path: str = "config/trading_system.yaml") -> 
         # Tier 3
         tier3 = progressive.get('tier3', {})
         config.tier3_max_daily_loss_pct = tier3.get('max_daily_loss_pct', 0.03)
-        config.tier3_max_weekly_loss_pct = tier3.get('max_weekly_loss_pct', 0.10)
+        config.tier3_max_weekly_loss_pct = tier3.get('max_weekly_loss_pct', 0.07)
         config.tier3_email_alerts = tier3.get('email_alerts', True)
         config.tier3_sms_alerts = tier3.get('sms_alerts', False)
 

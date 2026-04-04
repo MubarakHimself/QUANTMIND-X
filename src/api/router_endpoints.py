@@ -128,10 +128,11 @@ async def save_router_settings(settings: RouterState) -> Dict[str, Any]:
 async def get_market_state() -> Dict[str, Any]:
     """Get current market state including regime and symbols."""
     if _strategy_router is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Router not configured"
-        )
+        return {
+            "regime": None,
+            "symbols": [],
+            "unavailable_reason": "Router not configured",
+        }
 
     status = _strategy_router.get_status()
     sentinel = status.get("sentinel", {})
@@ -158,10 +159,16 @@ async def get_market_state() -> Dict[str, Any]:
         pass
 
     if not symbols:
-        raise HTTPException(
-            status_code=503,
-            detail="Market data not available. MT5 adapter not connected."
-        )
+        return {
+            "regime": {
+                "quality": sentinel.get("regime_quality", 0.0),
+                "trend": sentinel.get("current_regime", "UNKNOWN"),
+                "chaos": sentinel.get("chaos", 0.0),
+                "volatility": sentinel.get("volatility", "UNKNOWN")
+            },
+            "symbols": [],
+            "unavailable_reason": "Market data not available. MT5 adapter not connected.",
+        }
 
     return {
         "regime": {
@@ -170,7 +177,8 @@ async def get_market_state() -> Dict[str, Any]:
             "chaos": sentinel.get("chaos", 0.0),
             "volatility": sentinel.get("volatility", "UNKNOWN")
         },
-        "symbols": symbols
+        "symbols": symbols,
+        "unavailable_reason": None,
     }
 
 @router.get("/bots", response_model=PaginatedResponse[BotSignal])

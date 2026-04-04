@@ -117,6 +117,23 @@ class TestNodeUpdateModels:
         assert status.valid is True
         assert "Friday" in status.window_start
 
+    def test_get_current_version_uses_quantmind_data_dir(self, monkeypatch, tmp_path):
+        from src.api.node_update_endpoints import get_current_version
+
+        monkeypatch.setenv("QUANTMIND_DATA_DIR", str(tmp_path))
+        (tmp_path / "version.txt").write_text("2.4.1")
+
+        assert get_current_version() == "2.4.1"
+
+    def test_get_node_url_prefers_public_or_internal_api_base(self, monkeypatch):
+        from src.api.node_update_endpoints import get_node_url
+
+        monkeypatch.setenv("API_BASE_URL", "https://app.quantmindx.com")
+        monkeypatch.setenv("INTERNAL_API_BASE_URL", "https://internal.quantmindx.local")
+        monkeypatch.delenv("DESKTOP_URL", raising=False)
+
+        assert get_node_url("desktop") == "https://app.quantmindx.com"
+
 
 class TestNodeUpdateEndpoints:
     """Test node update REST endpoints."""
@@ -160,3 +177,17 @@ class TestNodeUpdateEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert data["run_id"] == "some-run-id"
+
+    def test_update_persists_version_under_quantmind_data_dir(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("QUANTMIND_DATA_DIR", str(tmp_path))
+
+        with patch("src.api.node_update_endpoints.is_valid_deploy_window", return_value=True), \
+             patch("src.api.node_update_endpoints.check_node_health", return_value={"status": "healthy"}), \
+             patch("src.api.node_update_endpoints.get_node_url", return_value="https://node.quantmindx.test"):
+            response = self.client.post(
+                "/api/node-update/update",
+                json={"version": "3.0.0", "nodes": ["contabo"]},
+            )
+
+        assert response.status_code == 200
+        assert (tmp_path / "versions" / "contabo.txt").read_text() == "3.0.0"

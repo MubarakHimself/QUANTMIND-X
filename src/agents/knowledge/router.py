@@ -17,6 +17,15 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
+def _get_default_pageindex_urls() -> Dict[str, str]:
+    """Resolve PageIndex URLs from the current environment."""
+    return {
+        "articles": os.environ.get("PAGEINDEX_ARTICLES_URL", "http://pageindex-articles:3000"),
+        "books": os.environ.get("PAGEINDEX_BOOKS_URL", "http://pageindex-books:3001"),
+        "logs": os.environ.get("PAGEINDEX_LOGS_URL", "http://pageindex-logs:3002"),
+    }
+
+
 class PageIndexClient:
     """HTTP client for PageIndex services."""
     
@@ -41,9 +50,10 @@ class PageIndexClient:
             logs_url: Optional override for logs service URL
         """
         # Set public attributes with parameter overrides or environment defaults
-        self.articles_url = articles_url or os.environ.get("PAGEINDEX_ARTICLES_URL", "http://localhost:3000")
-        self.books_url = books_url or os.environ.get("PAGEINDEX_BOOKS_URL", "http://localhost:3001")
-        self.logs_url = logs_url or os.environ.get("PAGEINDEX_LOGS_URL", "http://localhost:3002")
+        defaults = _get_default_pageindex_urls()
+        self.articles_url = articles_url or defaults["articles"]
+        self.books_url = books_url or defaults["books"]
+        self.logs_url = logs_url or defaults["logs"]
         
         # Maintain base_urls dict for internal use
         self.base_urls = {

@@ -6,6 +6,10 @@ on:
     workflows: ["*"]
     types: [completed]
 
+concurrency:
+  group: deploy-contabo
+  cancel-in-progress: true
+
 permissions:
   contents: read
   actions: read
@@ -14,6 +18,10 @@ permissions:
 env:
   WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
   COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+  DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+  DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+  DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+  DEPLOY_HEALTHCHECK_URL: ${{ vars.DEPLOY_HEALTHCHECK_URL }}
 
 jobs:
   # ── Gate: only proceed if ALL CI workflows passed ──────────────────────
@@ -29,6 +37,7 @@ jobs:
       github.event.workflow_run.name == 'Dependency Audit'
     outputs:
       all_passed: ${{ steps.check-ci.outputs.all_passed }}
+      deploy_sha: ${{ steps.check-ci.outputs.deploy_sha }}
       trigger_workflow: ${{ github.event.workflow_run.name }}
     steps:
       - name: Check all CI statuses
@@ -57,8 +66,8 @@ jobs:
             fi
           done
 
-          echo "all_passed=$ALL_PASSED"
-          echo "deploy_sha=$COMMIT_SHA"
+          echo "all_passed=$ALL_PASSED" >> "$GITHUB_OUTPUT"
+          echo "deploy_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
 
   # ── Deploy — only runs when gate passes ────────────────────────────────
   deploy:
@@ -70,30 +79,34 @@ jobs:
     steps:
       - name: Configure SSH
         run: |
+          test -n "${DEPLOY_HOST}" || { echo "DEPLOY_HOST is not configured"; exit 1; }
           mkdir -p ~/.ssh
           install -m 600 /dev/null ~/.ssh/id_ed25519
-          echo "${{ secrets.CONTABO_SSH_KEY }}" | base64 -d >> ~/.ssh/id_ed25519
-          ssh-keyscan -H 155.133.27.86 >> ~/.ssh/known_hosts 2>/dev/null
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" | base64 -d >> ~/.ssh/id_ed25519
+          ssh-keyscan -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Deploy to Contabo
         env:
           DEPLOY_SHA: ${{ needs.gate.outputs.deploy_sha }}
         run: |
+          test -n "${DEPLOY_USER}" || { echo "DEPLOY_USER is not configured"; exit 1; }
+          test -n "${DEPLOY_PATH}" || { echo "DEPLOY_PATH is not configured"; exit 1; }
           ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-              -i ~/.ssh/id_ed25519 root@155.133.27.86 << 'DEPLOY_SCRIPT'
+              -i ~/.ssh/id_ed25519 "${DEPLOY_USER}@${DEPLOY_HOST}" << 'DEPLOY_SCRIPT'
             set -e
 
-            cd /opt/quantmindx
+            cd "${DEPLOY_PATH}"
 
             # Save previous commit for rollback
-            git rev-parse HEAD > /tmp/prev_commit.txt
+            git rev-parse HEAD > /tmp/quantmindx-prev-commit.txt
 
             # Pull the specific commit that passed CI
-            git fetch origin $DEPLOY_SHA
-            git reset --hard $DEPLOY_SHA
+            git fetch origin "$DEPLOY_SHA"
+            git checkout --force "$DEPLOY_SHA"
 
-            # Restart systemd API service
-            systemctl restart quantmind-api
+            # Reconcile the Docker-based production topology in place
+            docker compose -f docker-compose.production.yml -f docker-compose.contabo.yml pull || true
+            docker compose -f docker-compose.production.yml -f docker-compose.contabo.yml up -d --build --remove-orphans
 
             echo "Deployed: $(git rev-parse --short $DEPLOY_SHA)"
           DEPLOY_SCRIPT
@@ -101,8 +114,11 @@ jobs:
       - name: Health check
         run: |
           echo "Waiting for API to restart..."
+          if [ -z "${DEPLOY_HEALTHCHECK_URL}" ]; then
+            DEPLOY_HEALTHCHECK_URL="http://${DEPLOY_HOST}:8000/health"
+          fi
           for i in $(seq 1 30); do
-            if curl -sf http://155.133.27.86:8000/health > /dev/null 2>&1; then
+            if curl -sf "${DEPLOY_HEALTHCHECK_URL}" > /dev/null 2>&1; then
               echo "Health check passed!"
               exit 0
             fi
@@ -115,12 +131,13 @@ jobs:
         if: failure()
         run: |
           echo "Deploy failed — rolling back..."
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 root@155.133.27.86 << 'ROLLBACK_SCRIPT'
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 "${DEPLOY_USER}@${DEPLOY_HOST}" << 'ROLLBACK_SCRIPT'
             set -e
-            cd /opt/quantmindx
-            PREV_COMMIT=$(cat /tmp/prev_commit.txt)
+            cd "${DEPLOY_PATH}"
+            PREV_COMMIT=$(cat /tmp/quantmindx-prev-commit.txt)
             echo "Rolling back to: $PREV_COMMIT"
-            git reset --hard "$PREV_COMMIT"
-            systemctl restart quantmind-api
+            git fetch origin "$PREV_COMMIT"
+            git checkout --force "$PREV_COMMIT"
+            docker compose -f docker-compose.production.yml -f docker-compose.contabo.yml up -d --build --remove-orphans
             echo "Rollback complete"
           ROLLBACK_SCRIPT

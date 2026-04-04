@@ -1,0 +1,221 @@
+# Session Template Configuration
+# Story 16.2: Session Template Class — Configurable 10-Window Canonical Cycle
+#
+# This file defines the 10 canonical windows in the 24-hour trading cycle.
+# RVOL sizing: Universal — applies in all active windows
+# Premium Kelly boost: Tokyo-London Overlap, London Open, London-NY Overlap
+# Dead Zone: 16:00-22:00 GMT — no trading, intelligence/ranking only
+
+name: "default"
+description: "Default 10-window canonical session cycle"
+dead_zone_start: 16
+dead_zone_end: 22
+premium_kelly_multiplier: 1.4
+
+windows:
+  Sydney Open:
+    name: "Sydney Open"
+    start_gmt: "22:00"
+    end_gmt: "07:00"
+    eligible_symbols:
+      - "AUDUSD"
+      - "NZDUSD"
+      - "AUDJPY"
+    eligible_strategy_types:
+      - "ORB"
+      - "momentum"
+    kelly_multiplier: 1.0
+    event_filters: []
+    bot_type_mix:
+      orb_pct: 70
+      momentum_pct: 30
+      mean_reversion_pct: 0
+      trend_continuation_pct: 0
+    intensity: "LOW"
+    notes: "Clean directional, ORB dominant"
+
+  Sydney-Tokyo Overlap:
+    name: "Sydney-Tokyo Overlap"
+    start_gmt: "22:00"
+    end_gmt: "00:00"
+    eligible_symbols:
+      - "AUDUSD"
+      - "AUDJPY"
+      - "NZDUSD"
+    eligible_strategy_types:
+      - "mean_reversion"
+    kelly_multiplier: 1.0
+    event_filters: []
+    bot_type_mix:
+      orb_pct: 0
+      momentum_pct: 0
+      mean_reversion_pct: 100
+      trend_continuation_pct: 0
+    intensity: "VERY_LOW"
+    notes: "Very low activity"
+
+  Tokyo Open:
+    name: "Tokyo Open"
+    start_gmt: "00:00"
+    end_gmt: "09:00"
+    eligible_symbols:
+      - "USDJPY"
+      - "AUDJPY"
+      - "NZDUSD"
+      - "GBPJPY"
+    eligible_strategy_types:
+      - "mean_reversion"
+      - "momentum"
+    kelly_multiplier: 1.0
+    event_filters: []
+    bot_type_mix:
+      orb_pct: 0
+      momentum_pct: 30
+      mean_reversion_pct: 70
+      trend_continuation_pct: 0
+    intensity: "MODERATE"
+    notes: "Moderate — JPY pairs"
+
+  Tokyo-London Overlap:
+    name: "Tokyo-London Overlap"
+    start_gmt: "07:00"
+    end_gmt: "08:00"
+    eligible_symbols:
+      - "EURUSD"
+      - "GBPUSD"
+      - "USDJPY"
+      - "EURGBP"
+    eligible_strategy_types:
+      - "momentum"
+      - "ORB"
+    kelly_multiplier: 1.4
+    event_filters: []
+    bot_type_mix:
+      orb_pct: 40
+      momentum_pct: 40
+      mean_reversion_pct: 0
+      trend_continuation_pct: 20
+    intensity: "HIGH"
+    notes: "Premium Kelly boost active — embedded premium window in London Open assault"
+
+  London Open:
+    name: "London Open"
+    start_gmt: "08:00"
+    end_gmt: "12:00"
+    eligible_symbols:
+      - "EURUSD"
+      - "GBPUSD"
+      - "USDJPY"
+      - "EURGBP"
+      - "AUDUSD"
+    eligible_strategy_types:
+      - "ORB"
+      - "momentum"
+    kelly_multiplier: 1.4
+    event_filters: []
+    bot_type_mix:
+      orb_pct: 60
+      momentum_pct: 40
+      mean_reversion_pct: 0
+      trend_continuation_pct: 0
+    intensity: "PREMIUM"
+    notes: "Highest ORB boost active — Premium Kelly boost active"
+
+  London Mid:
+    name: "London Mid"
+    start_gmt: "12:00"
+    end_gmt: "16:00"
+    eligible_symbols:
+      - "EURUSD"
+      - "GBPUSD"
+      - "USDJPY"
+    eligible_strategy_types:
+      - "mean_reversion"
+      - "momentum"
+    kelly_multiplier: 1.0
+    event_filters: []
+    bot_type_mix:
+      orb_pct: 0
+      momentum_pct: 50
+      mean_reversion_pct: 50
+      trend_continuation_pct: 0
+    intensity: "MODERATE"
+    notes: "Transitional"
+
+  Inter-Session Cooldown:
+    name: "Inter-Session Cooldown"
+    start_gmt: "10:00"
+    end_gmt: "13:00"
+    eligible_symbols:
+      - "EURUSD"
+      - "GBPUSD"
+    eligible_strategy_types:
+      - "mean_reversion"
+      - "trend_continuation"
+    kelly_multiplier: 1.0
+    event_filters: []
+    bot_type_mix:
+      orb_pct: 0
+      momentum_pct: 0
+      mean_reversion_pct: 80
+      trend_continuation_pct: 20
+    intensity: "LOW"
+    notes: "Low activity — 6 trades/day max"
+
+  London-NY Overlap:
+    name: "London-NY Overlap"
+    start_gmt: "12:00"
+    end_gmt: "17:00"
+    eligible_symbols:
+      - "EURUSD"
+      - "GBPUSD"
+      - "USDCHF"
+      - "USDCAD"
+    eligible_strategy_types:
+      - "ORB"
+      - "momentum"
+    kelly_multiplier: 1.4
+    event_filters: []
+    bot_type_mix:
+      orb_pct: 55
+      momentum_pct: 45
+      mean_reversion_pct: 0
+      trend_continuation_pct: 0
+    intensity: "PREMIUM"
+    notes: "Highest priority window — Premium Kelly boost active"
+
+  NY Wind-Down:
+    name: "NY Wind-Down"
+    start_gmt: "17:00"
+    end_gmt: "21:00"
+    eligible_symbols:
+      - "EURUSD"
+      - "GBPUSD"
+    eligible_strategy_types:
+      - "trend_continuation"
+      - "mean_reversion"
+    kelly_multiplier: 1.0
+    event_filters: []
+    bot_type_mix:
+      orb_pct: 0
+      momentum_pct: 0
+      mean_reversion_pct: 40
+      trend_continuation_pct: 60
+    intensity: "LOW"
+    notes: "Declining liquidity"
+
+  Dead Zone:
+    name: "Dead Zone"
+    start_gmt: "16:00"
+    end_gmt: "22:00"
+    eligible_symbols: []
+    eligible_strategy_types: []
+    kelly_multiplier: 0.0
+    event_filters: []
+    bot_type_mix:
+      orb_pct: 0
+      momentum_pct: 0
+      mean_reversion_pct: 0
+      trend_continuation_pct: 0
+    intensity: "VERY_LOW"
+    notes: "No trading — intelligence and ranking only"

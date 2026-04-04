@@ -4,7 +4,7 @@ Bot models.
 Contains models for bot management including circuit breakers, cloning, manifests, and lifecycle tracking.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, date, timezone
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Index, Enum, Text, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship, attributes
 from ..models.base import Base, TradingMode
@@ -17,10 +17,17 @@ class BotCircuitBreaker(Base):
     Tracks bot-level performance and auto-quarantines underperforming bots.
     Prevents catastrophic losses from malfunctioning strategies.
 
+    Story 4.10: session_loss_counter added for GLOBAL session-level loss tracking.
+    This is distinct from per-bot consecutive_losses - session_loss_counter
+    tracks losses across ALL bots in the session for Reverse HMM.
+
+    Story 18.1: SSL (Survivorship Selection Loop) columns added for per-bot
+    consecutive loss tracking and paper rotation.
+
     Attributes:
         id: Primary key
         bot_id: Unique bot identifier
-        consecutive_losses: Number of consecutive losses
+        consecutive_losses: Number of consecutive losses (per-bot)
         daily_trade_count: Number of trades today
         last_trade_time: Timestamp of last trade
         is_quarantined: Whether bot is currently quarantined
@@ -29,6 +36,16 @@ class BotCircuitBreaker(Base):
         mode: Trading mode (demo or live)
         created_at: Record creation timestamp
         updated_at: Last update timestamp
+        # Story 4.10: Session-level fields
+        session_loss_counter: GLOBAL consecutive losses across all bots (for Reverse HMM)
+        session_start: When current session started
+        consecutive_session_wins: Consecutive winning sessions (for premium re-enable)
+        # Story 18.1: SSL fields
+        magic_number: MT5 magic number (strategy version identifier)
+        tier: Paper trading tier ('TIER_1' or 'TIER_2')
+        paper_entry_timestamp: When bot entered paper tier
+        recovery_win_count: Consecutive wins during paper tier (for recovery)
+        state: SSL state ('live', 'paper', 'recovery', 'retired')
     """
     __tablename__ = 'bot_circuit_breaker'
 
@@ -41,15 +58,31 @@ class BotCircuitBreaker(Base):
     quarantine_reason = Column(String(200), nullable=True)
     quarantine_start = Column(DateTime, nullable=True)
     mode = Column(Enum(TradingMode), nullable=False, default=TradingMode.LIVE, index=True)
+    # Story 4.10: Session-level tracking fields
+    session_loss_counter = Column(Integer, nullable=False, default=0)  # GLOBAL across all bots
+    session_start = Column(DateTime, nullable=True)  # When session started
+    consecutive_session_wins = Column(Integer, nullable=False, default=0)  # For premium re-enable
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    # Story 18.1: SSL fields
+    magic_number = Column(String(50), nullable=True, index=True)  # MT5 magic number
+    tier = Column(String(20), nullable=True)  # 'TIER_1' or 'TIER_2'
+    paper_entry_timestamp = Column(DateTime, nullable=True)  # When entered paper
+    recovery_win_count = Column(Integer, nullable=False, default=0)  # Wins during paper
+    state = Column(String(20), nullable=False, default='live', index=True)  # 'live', 'paper', 'recovery', 'retired'
+    # S3-11 / Section 7.4: 3-Loss-in-a-Row Circuit Breaker fields
+    daily_loss_streak_days = Column(Integer, nullable=False, default=0)  # Days where 3 consecutive losses occurred
+    last_loss_streak_date = Column(DateTime, nullable=True)  # Date of most recent 3-loss streak day
 
     __table_args__ = (
         Index('idx_bot_circuit_breaker_quarantined', 'is_quarantined'),
+        Index('idx_bot_circuit_breaker_session', 'session_start'),
+        Index('idx_bot_circuit_breaker_magic_number', 'magic_number'),
+        Index('idx_bot_circuit_breaker_state', 'state'),
     )
 
     def __repr__(self):
-        return f"<BotCircuitBreaker(id={self.id}, bot={self.bot_id}, quarantined={self.is_quarantined}, losses={self.consecutive_losses})>"
+        return f"<BotCircuitBreaker(id={self.id}, bot={self.bot_id}, quarantined={self.is_quarantined}, losses={self.consecutive_losses}, session_losses={self.session_loss_counter}, ssl_state={self.state})>"
 
 
 class BotCloneHistory(Base):
@@ -75,6 +108,7 @@ class BotCloneHistory(Base):
     clone_symbol = Column(String(20), nullable=False)
     performance_at_clone = Column(JSON, nullable=False)
     allocation_strategy = Column(String(50), nullable=False)  # 'adaptive' or 'equal'
+    allocation_pct = Column(Float, nullable=False, default=0.5)  # Percentage of allocation
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 

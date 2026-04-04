@@ -10,14 +10,32 @@ describe('WorkshopCanvas.svelte — session parity', () => {
     expect(src).toContain("chatApi.listSessions(undefined, 'workshop')");
   });
 
-  it('does not eagerly create an empty session on new chat', () => {
+  it('creates a persisted session immediately on new chat so recent history updates before first send', () => {
     expect(src).toContain('function startNewChat');
-    expect(src).toContain('currentSessionId = null');
-    expect(src).not.toContain('const newSession = await chatApi.createSession');
+    expect(src).toContain('await chatApi.createSession');
+    expect(src).toContain("agentType: 'floor-manager'");
   });
 
   it('sends workshop messages through the persisted floor-manager chat endpoint', () => {
     expect(src).toContain("chatApi.sendMessage(\n        'floor-manager'");
     expect(src).not.toContain("chatApi.sendMessage(\n        'workshop'");
+  });
+
+  it('renders a clear-history control for deleting all recent workshop sessions', () => {
+    expect(src).toContain('Clear history');
+    expect(src).toContain('deleteAllSessions');
+    expect(src).toContain('const allSessions = await listWorkshopSessions()');
+  });
+
+  it('supports per-session rename in the recent sidebar', () => {
+    expect(src).toContain('function startRenameSession');
+    expect(src).toContain('function commitRenameSession');
+    expect(src).toContain('chatApi.updateSessionTitle');
+    expect(src).toContain('title="Rename"');
+  });
+
+  it('does not render a synthetic placeholder session after history is cleared', () => {
+    expect(src).not.toContain("Today's session");
+    expect(src).toContain('No recent chats');
   });
 });

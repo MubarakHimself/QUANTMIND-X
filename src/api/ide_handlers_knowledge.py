@@ -5,6 +5,7 @@ Business logic for knowledge hub operations.
 """
 
 import logging
+import json
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -42,46 +43,35 @@ class KnowledgeAPIHandler:
                     except Exception:
                         size = 0
 
+                    metadata = self._read_sidecar_metadata(item)
                     items.append({
                         "id": str(rel_path).replace("\\", "/"),
-                        "name": item.stem,
+                        "name": metadata.get("title") or item.stem,
                         "category": cat,
                         "path": str(item),
                         "size_bytes": size,
                         "indexed": False,
                     })
 
-        # Also include scraped articles if they exist
-        if SCRAPED_ARTICLES_DIR.exists():
-            scraped_categories = [category] if category else ["expert_advisors", "integration", "trading", "trading_systems"]
+        # Also include scraped articles if they exist.
+        if category in (None, "articles"):
+            for item in self._iter_scraped_articles():
+                rel_path = item.relative_to(SCRAPED_ARTICLES_DIR)
+                try:
+                    size = item.stat().st_size
+                except Exception:
+                    size = 0
 
-            for cat in scraped_categories:
-                if category and cat != category:
-                    continue
-                cat_path = SCRAPED_ARTICLES_DIR / cat
-                if not cat_path.exists():
-                    continue
-
-                for item in cat_path.rglob("*"):
-                    if item.is_file() and item.suffix == ".md":
-                        rel_path = item.relative_to(SCRAPED_ARTICLES_DIR)
-                        try:
-                            size = item.stat().st_size
-                        except Exception:
-                            size = 0
-
-                        # Check if there's a corresponding .json file for metadata
-                        json_path = item.with_suffix(".json")
-                        has_index = json_path.exists()
-
-                        items.append({
-                            "id": f"scraped/{rel_path}".replace("\\", "/"),
-                            "name": item.stem.replace("_", " ").title(),
-                            "category": cat.replace("_", " "),
-                            "path": str(item),
-                            "size_bytes": size,
-                            "indexed": has_index,
-                        })
+                metadata = self._read_sidecar_metadata(item)
+                items.append({
+                    "id": f"scraped/{rel_path}".replace("\\", "/"),
+                    "name": metadata.get("title") or item.stem.replace("_", " ").title(),
+                    "category": "articles",
+                    "path": str(item),
+                    "size_bytes": size,
+                    "indexed": any(candidate.exists() for candidate in self._sidecar_candidates(item)),
+                    "source_category": rel_path.parent.as_posix() if rel_path.parent != Path(".") else "root",
+                })
 
         return items
 
@@ -101,3 +91,25 @@ class KnowledgeAPIHandler:
         except Exception as e:
             logger.error(f"Error reading knowledge item {item_id}: {e}")
             return None
+
+    def _sidecar_candidates(self, item: Path) -> List[Path]:
+        candidates = [item.parent / f"{item.name}.metadata.json"]
+        if item.suffix == ".md":
+            candidates.append(item.with_suffix(".json"))
+        return candidates
+
+    def _read_sidecar_metadata(self, item: Path) -> Dict[str, Any]:
+        for candidate in self._sidecar_candidates(item):
+            if not candidate.exists():
+                continue
+            try:
+                return json.loads(candidate.read_text(encoding="utf-8"))
+            except Exception as exc:
+                logger.warning(f"Failed to read knowledge metadata for {item}: {exc}")
+        return {}
+
+    def _iter_scraped_articles(self):
+        if not SCRAPED_ARTICLES_DIR.exists():
+            return
+        for item in SCRAPED_ARTICLES_DIR.rglob("*.md"):
+            yield item

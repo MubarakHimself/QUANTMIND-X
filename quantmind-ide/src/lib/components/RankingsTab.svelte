@@ -19,6 +19,7 @@
   }
 
   let { rankings }: Props = $props();
+  let activePeriod: 'daily' | 'weekly' = $state('daily');
 
   function formatCurrency(value: number) {
     return new Intl.NumberFormat('en-US', {
@@ -27,13 +28,14 @@
       minimumFractionDigits: 2
     }).format(value);
   }
+
+  let activeRankings = $derived(rankings[activePeriod] ?? []);
 </script>
 
 <div class="rankings-section">
   <div class="rankings-tabs">
-    <button class="rank-tab active">Daily</button>
-    <button class="rank-tab">Weekly</button>
-    <button class="rank-tab">Monthly</button>
+    <button class="rank-tab" class:active={activePeriod === 'daily'} onclick={() => activePeriod = 'daily'}>Daily</button>
+    <button class="rank-tab" class:active={activePeriod === 'weekly'} onclick={() => activePeriod = 'weekly'}>Weekly</button>
   </div>
 
   <div class="rankings-table">
@@ -45,17 +47,21 @@
       <span>Win Rate</span>
     </div>
 
-    {#each rankings.daily as ranking, index}
-      <div class="table-row">
-        <span class="rank">#{index + 1}</span>
-        <span class="name">{ranking.name}</span>
-        <span class="profit" class:positive={ranking.profit > 0}>
-          {formatCurrency(ranking.profit)}
-        </span>
-        <span class="trades">{ranking.trades}</span>
-        <span class="winrate">{ranking.winRate.toFixed(1)}%</span>
-      </div>
-    {/each}
+    {#if activeRankings.length > 0}
+      {#each activeRankings as ranking, index}
+        <div class="table-row">
+          <span class="rank">#{index + 1}</span>
+          <span class="name">{ranking.name}</span>
+          <span class="profit" class:positive={ranking.profit > 0}>
+            {formatCurrency(ranking.profit)}
+          </span>
+          <span class="trades">{ranking.trades}</span>
+          <span class="winrate">{ranking.winRate.toFixed(1)}%</span>
+        </div>
+      {/each}
+    {:else}
+      <div class="empty-state">No live {activePeriod} rankings available.</div>
+    {/if}
   </div>
 </div>
 
@@ -89,6 +95,12 @@
     background: var(--color-accent-cyan);
     border-color: var(--color-accent-cyan);
     color: var(--color-bg-base);
+  }
+
+  .empty-state {
+    padding: 20px 16px;
+    color: var(--color-text-muted);
+    font-size: 12px;
   }
 
   .rankings-table {

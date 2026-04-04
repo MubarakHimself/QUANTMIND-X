@@ -171,8 +171,8 @@ class ApprovalManager:
         self._ensure_table()
         try:
             from src.database.models.approval_request import ApprovalRequestModel
-            from src.database.models import get_db_session
-            db = get_db_session()
+            from src.database.engine import get_session
+            db = get_session()
             try:
                 row = ApprovalRequestModel(
                     request_id=req.id,
@@ -203,8 +203,8 @@ class ApprovalManager:
         """Update an approval request's status in the database."""
         try:
             from src.database.models.approval_request import ApprovalRequestModel
-            from src.database.models import get_db_session
-            db = get_db_session()
+            from src.database.engine import get_session
+            db = get_session()
             try:
                 row = db.query(ApprovalRequestModel).filter(
                     ApprovalRequestModel.request_id == req.id
@@ -228,8 +228,8 @@ class ApprovalManager:
         self._ensure_table()
         try:
             from src.database.models.approval_request import ApprovalRequestModel
-            from src.database.models import get_db_session
-            db = get_db_session()
+            from src.database.engine import get_session
+            db = get_session()
             try:
                 rows = db.query(ApprovalRequestModel).filter(
                     ApprovalRequestModel.status == "pending"
@@ -403,6 +403,9 @@ class ApprovalManager:
         # Notify UI via SSE thought stream + department mail
         self._notify_ui(req, event_type="approval_requested")
 
+        # Create Kanban card for approval (Issue #15)
+        self._create_approval_kanban(req)
+
         # Write to graph memory for audit trail
         self._write_memory(req, event="requested")
 
@@ -440,6 +443,7 @@ class ApprovalManager:
         self._archive(request_id)
         self._update_db_status(req)
         self._notify_ui(req, event_type="approval_resolved")
+        self._resolve_approval_kanban(req)
         self._write_memory(req, event="approved")
 
         logger.info(f"Approval granted: {request_id} by {approved_by}")
@@ -465,6 +469,7 @@ class ApprovalManager:
         self._archive(request_id)
         self._update_db_status(req)
         self._notify_ui(req, event_type="approval_resolved")
+        self._resolve_approval_kanban(req)
         self._write_memory(req, event="rejected")
 
         logger.info(f"Approval rejected: {request_id} reason={reason}")
@@ -680,6 +685,32 @@ class ApprovalManager:
             logger.debug(f"Approval mail sent: {req.id} ({event_type})")
         except Exception as e:
             logger.debug(f"Approval department mail skipped: {e}")
+
+    def _create_approval_kanban(self, req: ApprovalRequest) -> None:
+        """Create a Kanban card for a new approval request (Issue #15)."""
+        try:
+            from src.agents.departments.mail_consumer import get_task_manager
+            mgr = get_task_manager()
+            mgr.create_approval_kanban(
+                department=req.department or "development",
+                approval_id=req.id,
+                title=req.title,
+                workflow_id=req.workflow_id,
+            )
+        except Exception as e:
+            logger.debug(f"Approval Kanban creation skipped: {e}")
+
+    def _resolve_approval_kanban(self, req: ApprovalRequest) -> None:
+        """Update Kanban card when approval is resolved (Issue #15)."""
+        try:
+            from src.agents.departments.mail_consumer import get_task_manager
+            mgr = get_task_manager()
+            mgr.resolve_approval_kanban(
+                approval_id=req.id,
+                approved=(req.status == ApprovalStatus.APPROVED),
+            )
+        except Exception as e:
+            logger.debug(f"Approval Kanban resolve skipped: {e}")
 
 
 # =============================================================================

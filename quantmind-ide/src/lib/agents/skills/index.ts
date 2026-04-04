@@ -25,7 +25,7 @@ import { quantcodeSkills } from './quantcodeSkills';
 /**
  * Supported agent types in the QuantMindX system
  */
-export type AgentType = 'copilot' | 'quantcode' | 'analyst';
+export type AgentType = 'copilot' | 'quantcode' | 'analyst' | 'research' | 'development' | 'trading' | 'risk' | 'portfolio' | 'floor_manager';
 
 // ============================================================================
 // SKILL TYPES

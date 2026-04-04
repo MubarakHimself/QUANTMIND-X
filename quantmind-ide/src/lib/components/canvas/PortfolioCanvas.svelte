@@ -42,14 +42,15 @@
     RefreshCw,
     CircleDot,
     Lightbulb,
-    ChevronDown
+    ChevronDown,
+    Trophy
   } from 'lucide-svelte';
 
   // =============================================================================
   // Types
   // =============================================================================
 
-  type PortfolioTab = 'overview' | 'accounts' | 'attribution' | 'journal' | 'risk-exposure';
+  type PortfolioTab = 'overview' | 'accounts' | 'attribution' | 'journal' | 'risk-exposure' | 'race-board';
   type SubPage = 'grid' | 'journal-detail';
 
   interface AccountRow {
@@ -92,6 +93,26 @@
     { id: 'risk-exposure', label: 'Risk Exposure', icon: ShieldAlert },
   ];
 
+  // Race Board state
+  interface StrategyRace {
+    race_id: string;
+    participants: string[];
+    start_date: string;
+    conditions: Record<string, any>;
+    status: string;
+    results: Record<string, any>;
+  }
+
+  let activeRaces = $state<StrategyRace[]>([]);
+  let racesLoading = $state(false);
+
+  // Conditional tabs - Race Board only shows when activeRaces.length > 0
+  const visibleTabs = $derived(
+    activeRaces.length > 0
+      ? [...tabs, { id: 'race-board' as PortfolioTab, label: 'Race Board', icon: Trophy }]
+      : tabs
+  );
+
   // =============================================================================
   // Lifecycle
   // =============================================================================
@@ -128,10 +149,27 @@
       const data = await apiFetch<AccountRow[]>('/portfolio/accounts');
       accountsData = data;
     } catch {
-      // Fall back to the portfolio store's accounts as demo data
-      accountsData = ($accounts as AccountRow[]);
+      const storeAccounts = $accounts as AccountRow[];
+      accountsData = storeAccounts.length > 0 ? [...storeAccounts] : [];
     } finally {
       accountsLoading = false;
+    }
+  }
+
+  // =============================================================================
+  // Race Board data (Story C3)
+  // =============================================================================
+
+  async function loadActiveRaces() {
+    if (racesLoading) return;
+    racesLoading = true;
+    try {
+      activeRaces = await apiFetch<StrategyRace[]>('/races?status=RUNNING');
+    } catch {
+      // Fall back to empty
+      activeRaces = [];
+    } finally {
+      racesLoading = false;
     }
   }
 
@@ -178,7 +216,7 @@
     {
       id: 'win-rate',
       label: 'Win Rate',
-      value: '62.5%',
+      value: '—',
       icon: Target,
       color: 'cyan'
     },
@@ -192,14 +230,14 @@
     {
       id: 'sharpe',
       label: 'Sharpe Ratio',
-      value: '1.82',
+      value: '—',
       icon: LineChart,
       color: 'cyan'
     },
     {
       id: 'open-pos',
       label: 'Open Positions',
-      value: '—',
+      value: String($accounts.reduce((sum, account) => sum + (account.open_trades ?? 0), 0)),
       icon: Activity,
       color: 'amber'
     },
@@ -220,6 +258,184 @@
       onclick: () => handleTabChange('journal')
     }
   ]);
+
+  const visibleAccounts = $derived(
+    accountsData.length ? accountsData : ($accounts as AccountRow[])
+  );
+
+  const riskExposureMetrics = $derived.by(() => {
+    const accountRows = visibleAccounts;
+    const summary = $portfolioSummary;
+    const totalEquity = summary?.totalEquity ?? 0;
+    const largestAccountWeight = totalEquity > 0
+      ? Math.max(...accountRows.map((account) => (account.equity / totalEquity) * 100), 0)
+      : 0;
+    const openTrades = accountRows.reduce((sum, account) => sum + (account.open_trades ?? 0), 0);
+    const connectedAccounts = accountRows.filter((account) => account.connected).length;
+    const currencies = Array.from(new Set(accountRows.map((account) => account.currency).filter(Boolean)));
+
+    return [
+      {
+        id: 'drawdown',
+        label: 'Current Drawdown',
+        value: summary ? fmtPct(-summary.drawdownPercent) : '—',
+        sublabel: summary ? `${fmtCurrency(summary.totalDrawdown)} below balance` : 'No live portfolio summary',
+        icon: AlertTriangle,
+        accent: 'amber',
+      },
+      {
+        id: 'concentration',
+        label: 'Largest Account Weight',
+        value: totalEquity > 0 ? `${largestAccountWeight.toFixed(1)}%` : '—',
+        sublabel: totalEquity > 0 ? 'Share of total live equity' : 'No connected equity reported',
+        icon: LineChart,
+        accent: 'cyan',
+      },
+      {
+        id: 'trade-load',
+        label: 'Open Trade Load',
+        value: String(openTrades),
+        sublabel: `${connectedAccounts} connected account${connectedAccounts === 1 ? '' : 's'}`,
+        icon: Activity,
+        accent: openTrades > 0 ? 'amber' : 'cyan',
+      },
+      {
+        id: 'currency-mix',
+        label: 'Currency Coverage',
+        value: currencies.length > 0 ? currencies.join(' / ') : '—',
+        sublabel: currencies.length > 0 ? `${currencies.length} account currency${currencies.length === 1 ? '' : 'ies'}` : 'No account currency data',
+        icon: DollarSign,
+        accent: 'cyan',
+      },
+    ];
+  });
+
+  function getPortfolioAttachableResources() {
+    const baseResources = [
+      {
+        id: `portfolio:tab:${activeTab}`,
+        label: visibleTabs.find((tab) => tab.id === activeTab)?.label ?? activeTab,
+        canvas: 'portfolio',
+        resource_type: 'active-tab',
+        metadata: {
+          active_tab: activeTab,
+          current_subpage: currentSubPage,
+        },
+      },
+    ];
+
+    if (activeTab === 'overview') {
+      return [
+        ...baseResources,
+        ...overviewMetrics.map((metric) => ({
+          id: metric.id,
+          label: metric.label,
+          canvas: 'portfolio',
+          resource_type: 'portfolio-metric',
+          metadata: {
+            value: metric.value,
+            color: metric.color,
+          },
+        })),
+      ];
+    }
+
+    if (activeTab === 'accounts') {
+      return [
+        ...baseResources,
+        ...visibleAccounts.slice(0, 50).map((account) => ({
+          id: account.account_id,
+          label: `${account.broker_name} ${account.account_id}`,
+          canvas: 'portfolio',
+          resource_type: 'broker-account',
+          metadata: {
+            broker_name: account.broker_name,
+            balance: account.balance,
+            equity: account.equity,
+            connected: account.connected,
+            server: account.server,
+            currency: account.currency,
+          },
+        })),
+      ];
+    }
+
+    if (activeTab === 'attribution') {
+      return [
+        ...baseResources,
+        {
+          id: 'portfolio:attribution-panel',
+          label: 'Attribution Panel',
+          canvas: 'portfolio',
+          resource_type: 'panel',
+          metadata: {
+            active_tab: activeTab,
+          },
+        },
+      ];
+    }
+
+    if (activeTab === 'journal' || currentSubPage === 'journal-detail') {
+      return [
+        ...baseResources,
+        {
+          id: 'portfolio:trading-journal',
+          label: 'Trading Journal',
+          canvas: 'portfolio',
+          resource_type: 'journal',
+          metadata: {
+            current_subpage: currentSubPage,
+          },
+        },
+      ];
+    }
+
+    if (activeTab === 'risk-exposure') {
+      return [
+        ...baseResources,
+        ...riskExposureMetrics.map((metric) => ({
+          id: `portfolio:${metric.id}`,
+          label: metric.label,
+          canvas: 'portfolio',
+          resource_type: 'risk-metric',
+          metadata: {
+            value: metric.value,
+            sublabel: metric.sublabel,
+            accent: metric.accent,
+          },
+        })),
+      ];
+    }
+
+    if (activeTab === 'race-board') {
+      return [
+        ...baseResources,
+        ...activeRaces.slice(0, 25).map((race) => ({
+          id: race.race_id,
+          label: race.race_id,
+          canvas: 'portfolio',
+          resource_type: 'strategy-race',
+          metadata: {
+            participants: race.participants,
+            status: race.status,
+            start_date: race.start_date,
+          },
+        })),
+      ];
+    }
+
+    return baseResources;
+  }
+
+  $effect(() => {
+    canvasContextService.setRuntimeState('portfolio', {
+      active_tab: activeTab,
+      current_subpage: currentSubPage,
+      accounts_count: visibleAccounts.length,
+      race_count: activeRaces.length,
+      attachable_resources: getPortfolioAttachableResources(),
+    });
+  });
 </script>
 
 <div class="portfolio-canvas" data-dept="portfolio">
@@ -242,7 +458,7 @@
 
     {#if currentSubPage === 'grid'}
       <nav class="tab-nav">
-        {#each tabs as tab}
+        {#each visibleTabs as tab}
           <button
             class="tab-btn"
             class:active={activeTab === tab.id}
@@ -328,7 +544,7 @@
         </div>
       {:else}
         <div class="tile-grid">
-          {#each (accountsData.length ? accountsData : ($accounts as AccountRow[])) as acct}
+          {#each visibleAccounts as acct}
             <div class="tile account-tile">
               <div class="account-header">
                 <span class="broker-name">{acct.broker_name}</span>
@@ -408,45 +624,88 @@
       </div>
 
     {:else if activeTab === 'risk-exposure'}
-      <!-- ---- Risk Exposure: stub tiles ---- -->
+      <!-- ---- Risk Exposure: live portfolio/account-derived tiles ---- -->
       <div class="section-toolbar">
         <span class="section-label">Risk Exposure</span>
-        <span class="stub-badge">Wiring Pending</span>
       </div>
       <div class="tile-grid">
-        <div class="tile risk-tile">
-          <div class="tile-header">
-            <AlertTriangle size={13} class="tile-icon amber" />
-            <span class="tile-label">Value at Risk (VaR)</span>
+        {#each riskExposureMetrics as metric (metric.id)}
+          <div class="tile risk-tile accent-{metric.accent}">
+            <div class="tile-header">
+              <svelte:component this={metric.icon} size={13} class="tile-icon {metric.accent}" />
+              <span class="tile-label">{metric.label}</span>
+            </div>
+            <span class="tile-value accent-{metric.accent}">{metric.value}</span>
+            <span class="tile-sub">{metric.sublabel}</span>
           </div>
-          <span class="tile-value stub">—</span>
-          <span class="tile-sub">95% confidence · 1-day</span>
-        </div>
-        <div class="tile risk-tile">
-          <div class="tile-header">
-            <LineChart size={13} class="tile-icon amber" />
-            <span class="tile-label">Portfolio Beta</span>
-          </div>
-          <span class="tile-value stub">—</span>
-          <span class="tile-sub">vs. benchmark</span>
-        </div>
-        <div class="tile risk-tile">
-          <div class="tile-header">
-            <Activity size={13} class="tile-icon amber" />
-            <span class="tile-label">Net Exposure</span>
-          </div>
-          <span class="tile-value stub">—</span>
-          <span class="tile-sub">Long / Short delta</span>
-        </div>
-        <div class="tile risk-tile">
-          <div class="tile-header">
-            <DollarSign size={13} class="tile-icon amber" />
-            <span class="tile-label">Currency Risk</span>
-          </div>
-          <span class="tile-value stub">—</span>
-          <span class="tile-sub">USD / EUR / GBP exposure</span>
-        </div>
+        {/each}
       </div>
+
+    {:else if activeTab === 'race-board'}
+      <!-- ---- Race Board: Strategy Race Competition (Story C3) ---- -->
+      <div class="section-toolbar">
+        <Trophy size={14} class="tile-icon" style="color: #00d4ff" />
+        <span class="section-label">Strategy Race Board</span>
+        <button class="refresh-btn" onclick={loadActiveRaces} disabled={racesLoading}>
+          <span class:spin={racesLoading} style="display:inline-flex"><RefreshCw size={13} /></span>
+          <span>Refresh</span>
+        </button>
+      </div>
+
+      {#if racesLoading}
+        <div class="tile-grid">
+          {#each Array(3) as _, i (i)}
+            <div class="tile skeleton">
+              <div class="skeleton-line short"></div>
+              <div class="skeleton-line long"></div>
+            </div>
+          {/each}
+        </div>
+      {:else if activeRaces.length === 0}
+        <div class="empty-state">
+          <Trophy size={28} />
+          <span>No active races</span>
+          <span class="tile-sub">Start a new race to see competition live</span>
+        </div>
+      {:else}
+        <div class="race-grid">
+          {#each activeRaces as race}
+            <div class="tile race-tile">
+              <div class="race-header">
+                <span class="race-id">{race.race_id}</span>
+                <span class="race-status" class:running={race.status === 'RUNNING'}>{race.status}</span>
+              </div>
+              <div class="race-participants">
+                <span class="race-label">Participants:</span>
+                <div class="participant-list">
+                  {#each race.participants as participant}
+                    <span class="participant-badge">{participant}</span>
+                  {/each}
+                </div>
+              </div>
+              <div class="race-metrics">
+                <div class="race-metric">
+                  <span class="metric-label">Sharpe</span>
+                  <span class="metric-value cyan">—</span>
+                </div>
+                <div class="race-metric">
+                  <span class="metric-label">P&L</span>
+                  <span class="metric-value cyan">—</span>
+                </div>
+                <div class="race-metric">
+                  <span class="metric-label">Max DD</span>
+                  <span class="metric-value red">—</span>
+                </div>
+              </div>
+              <!-- Leader highlight -->
+              <div class="leader-badge">
+                <Trophy size={12} />
+                <span>Leader: --</span>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
     {/if}
 
   </div>
@@ -973,5 +1232,118 @@
 
   .insights-toggle .rotated {
     transform: rotate(180deg);
+  }
+
+  /* ==========================================================================
+     Race Board (Story C3)
+     ========================================================================== */
+
+  .race-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px;
+  }
+
+  .race-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .race-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .race-id {
+    font-size: 12px;
+    font-weight: 600;
+    color: #00d4ff;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .race-status {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: rgba(224, 224, 224, 0.1);
+    color: rgba(224, 224, 224, 0.5);
+  }
+
+  .race-status.running {
+    background: rgba(0, 200, 150, 0.15);
+    color: #00c896;
+  }
+
+  .race-participants {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .race-label {
+    font-size: 10px;
+    color: rgba(224, 224, 224, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .participant-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .participant-badge {
+    padding: 2px 8px;
+    background: rgba(0, 212, 255, 0.08);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    border-radius: 4px;
+    font-size: 11px;
+    color: #e0e0e0;
+  }
+
+  .race-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .race-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .metric-label {
+    font-size: 9px;
+    color: rgba(224, 224, 224, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .metric-value {
+    font-size: 16px;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .metric-value.cyan { color: #00d4ff; }
+  .metric-value.green { color: #00c896; }
+  .metric-value.red { color: #ff4d4d; }
+
+  .leader-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 4px;
+    font-size: 11px;
+    color: #00d4ff;
   }
 </style>

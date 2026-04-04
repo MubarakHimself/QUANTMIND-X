@@ -6,6 +6,7 @@
  */
 
 import { writable, derived } from 'svelte/store';
+import { apiFetch } from '$lib/api';
 
 // Node status types
 export type NodeStatus = 'connected' | 'disconnected' | 'reconnecting';
@@ -81,12 +82,7 @@ export const systemDegraded = derived(nodeHealthState, ($state) =>
  */
 export async function checkNodeHealth(): Promise<void> {
   try {
-    const response = await fetch('/api/v1/server/health/nodes');
-    if (!response.ok) {
-      throw new Error(`Health check failed: ${response.status}`);
-    }
-
-    const data = await response.json();
+    const data = await apiFetch<any>('/v1/server/health/nodes');
 
     nodeHealthState.update((state) => {
       const now = new Date().toISOString() + '_utc';

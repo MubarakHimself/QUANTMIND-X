@@ -10,6 +10,7 @@
 
 import { writable, derived, get } from 'svelte/store';
 import { nodeHealthState, isContaboDegraded, isCloudzyDegraded } from './node-health';
+import { buildApiUrl } from '$lib/api';
 
 // Bot status types
 export type Regime = 'ASIAN' | 'LONDON' | 'NEW_YORK' | 'OVERLAP' | 'CLOSED';
@@ -23,6 +24,8 @@ export interface BotStatus {
   regime: Regime;
   session_active: boolean;
   last_update: string; // ISO timestamp with _utc suffix
+  consecutive_losses?: number; // SSL consecutive loss count (0 if not yet tracked)
+  ssl_state?: 'live' | 'paper' | 'recovery' | 'retired'; // SSL paper tier state
 }
 
 export interface BotDetail extends BotStatus {
@@ -112,6 +115,149 @@ export const tradingDegraded = derived(
     hasDegradation: $isContaboDegraded || $isCloudzyDegraded
   })
 );
+
+// =============================================================================
+// Tilt State (Story 16.1 - Universal Session Boundary Mechanism)
+// =============================================================================
+
+export type TiltPhase = 'IDLE' | 'LOCK' | 'WAIT' | 'RE_RANK' | 'ACTIVATE';
+
+export interface TiltStatus {
+  phase: TiltPhase;
+  time_in_phase_seconds: number;
+  next_transition: number | null;
+  regime_context: string | null;
+  session_name: string | null;
+  state: string;
+}
+
+export interface TiltPhaseEvent {
+  phase: TiltPhase;
+  state: string;
+  closing_session: string;
+  incoming_session: string;
+  regime_persistence_timer: number;
+  timestamp_utc: string;
+}
+
+export interface RegimeTimer {
+  regime_timer_seconds: number;
+  regime_timer_max: number;
+  regime_name: string | null;
+  action_pending: string | null;
+  next_action: string | null;
+}
+
+// Tilt state store
+export const tiltStatus = writable<TiltStatus | null>(null);
+export const tiltPhaseEvent = writable<TiltPhaseEvent | null>(null);
+export const regimeTimer = writable<RegimeTimer | null>(null);
+export const tiltLoading = writable(false);
+export const tiltError = writable<string | null>(null);
+
+// Polling interval for tilt status
+let tiltPollInterval: number | null = null;
+const TILT_POLL_INTERVAL_MS = 10000; // 10 seconds
+
+/**
+ * Fetch tilt status from API endpoint
+ */
+export async function fetchTiltStatus(): Promise<TiltStatus | null> {
+  tiltLoading.set(true);
+  tiltError.set(null);
+
+  try {
+    const response = await fetch(buildApiUrl('/api/trading/tilt/status'), {
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch tilt status: ${response.status}`);
+    }
+
+    const data = await response.json() as TiltStatus;
+    tiltStatus.set(data);
+    tiltLoading.set(false);
+    return data;
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Unknown error';
+    tiltError.set(message);
+    tiltLoading.set(false);
+    console.error('[TradingStore] Failed to fetch tilt status:', e);
+    return null;
+  }
+}
+
+/**
+ * Fetch full tilt phase event from API endpoint
+ */
+export async function fetchTiltPhaseEvent(): Promise<TiltPhaseEvent | null> {
+  try {
+    const response = await fetch(buildApiUrl('/api/trading/tilt/phase-event'), {
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch tilt phase event: ${response.status}`);
+    }
+
+    const data = await response.json() as TiltPhaseEvent;
+    tiltPhaseEvent.set(data);
+    return data;
+  } catch (e) {
+    console.error('[TradingStore] Failed to fetch tilt phase event:', e);
+    return null;
+  }
+}
+
+/**
+ * Fetch regime timer from API endpoint
+ */
+export async function fetchRegimeTimer(): Promise<RegimeTimer | null> {
+  try {
+    const response = await fetch(buildApiUrl('/api/trading/tilt/regime-timer'), {
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch regime timer: ${response.status}`);
+    }
+
+    const data = await response.json() as RegimeTimer;
+    regimeTimer.set(data);
+    return data;
+  } catch (e) {
+    console.error('[TradingStore] Failed to fetch regime timer:', e);
+    return null;
+  }
+}
+
+/**
+ * Start polling tilt status every 10 seconds
+ */
+export function startTiltPolling(): void {
+  if (tiltPollInterval !== null) {
+    return; // Already polling
+  }
+
+  // Fetch immediately
+  fetchTiltStatus();
+
+  // Then poll every 10 seconds
+  tiltPollInterval = window.setInterval(() => {
+    fetchTiltStatus();
+  }, TILT_POLL_INTERVAL_MS);
+}
+
+/**
+ * Stop polling tilt status
+ */
+export function stopTiltPolling(): void {
+  if (tiltPollInterval !== null) {
+    clearInterval(tiltPollInterval);
+    tiltPollInterval = null;
+  }
+}
 
 // WebSocket connection
 let ws: WebSocket | null = null;
@@ -339,7 +485,9 @@ export function selectBot(botId: string | null) {
  */
 export async function loadBotDetails(botId: string): Promise<BotDetail | null> {
   try {
-    const response = await fetch(`/api/v1/trading/bots/${botId}/params`);
+    const response = await fetch(buildApiUrl(`/api/v1/trading/bots/${botId}/params`), {
+      credentials: 'include'
+    });
     if (!response.ok) {
       throw new Error('Failed to load bot details');
     }
@@ -380,7 +528,9 @@ export async function loadBotDetails(botId: string): Promise<BotDetail | null> {
  */
 export async function fetchActiveBots(): Promise<BotStatus[]> {
   try {
-    const response = await fetch('/api/v1/trading/bots');
+    const response = await fetch(buildApiUrl('/api/v1/trading/bots'), {
+      credentials: 'include'
+    });
     if (!response.ok) {
       throw new Error('Failed to fetch bots');
     }
@@ -403,8 +553,9 @@ export async function closePosition(ticket: number, botId: string): Promise<Clos
   closeError.set(null);
 
   try {
-    const response = await fetch('/api/v1/trading/close', {
+    const response = await fetch(buildApiUrl('/api/v1/trading/close'), {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json'
       },
@@ -457,8 +608,9 @@ export async function closeAllPositions(botId?: string): Promise<CloseAllResult 
   closeError.set(null);
 
   try {
-    const response = await fetch('/api/v1/trading/close-all', {
+    const response = await fetch(buildApiUrl('/api/v1/trading/close-all'), {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json'
       },

@@ -28,7 +28,7 @@
     Lightbulb,
     ChevronDown
   } from 'lucide-svelte';
-  import { apiFetch } from '$lib/api';
+  import { apiFetch, buildApiUrl } from '$lib/api';
   import DepartmentKanban from '$lib/components/department-kanban/DepartmentKanban.svelte';
   import AgentTilePanel from '$lib/components/AgentTilePanel.svelte';
   import NewsView from '$lib/components/research/NewsView.svelte';
@@ -48,6 +48,8 @@
     source: string;
     date: string;
     tags: string[];
+    category?: string;
+    source_category?: string;
     excerpt?: string;
   }
 
@@ -83,6 +85,15 @@
     date?: string;
   }
 
+  interface SharedAssetItem {
+    id: string;
+    name: string;
+    category: string;
+    description?: string;
+    updated_at?: string;
+    created_at?: string;
+  }
+
   // =============================================================================
   // State
   // =============================================================================
@@ -105,6 +116,9 @@
   let logs = $state<LogItem[]>([]);
   let personal = $state<PersonalItem[]>([]);
   let videos = $state<VideoItem[]>([]);
+  let booksUploadInProgress = $state(false);
+  let booksUploadError = $state<string | null>(null);
+  let booksUploadInput: HTMLInputElement | null = $state(null);
 
   // Loading states per tab
   let loadingTab = $state<ResearchTab | null>(null);
@@ -117,6 +131,12 @@
   // Agent insights strip
   let insightsExpanded = $state(false);
   let insightsUnread = $state(0);
+
+  interface ArticleGroup {
+    key: string;
+    label: string;
+    articles: ArticleItem[];
+  }
 
   // =============================================================================
   // Tab config
@@ -168,8 +188,32 @@
           break;
         }
         case 'books': {
-          const data = await apiFetch<BookItem[]>('/knowledge/books');
-          books = data;
+          const [knowledgeBooksResult, sharedAssetsResult] = await Promise.allSettled([
+            apiFetch<BookItem[]>('/knowledge/books'),
+            apiFetch<SharedAssetItem[]>('/assets/shared'),
+          ]);
+
+          const knowledgeBooks =
+            knowledgeBooksResult.status === 'fulfilled' ? knowledgeBooksResult.value : [];
+          const sharedBooks =
+            sharedAssetsResult.status === 'fulfilled'
+              ? sharedAssetsResult.value
+                  .filter((asset) => asset.category === 'Books')
+                  .map((asset) => ({
+                    id: asset.id,
+                    title: asset.name,
+                    author: asset.description || 'Shared Assets',
+                    topics: ['shared-assets'],
+                  }))
+              : [];
+
+          const seen = new Set<string>();
+          books = [...knowledgeBooks, ...sharedBooks].filter((item) => {
+            const key = `${item.id}::${item.title}`.toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
           break;
         }
         case 'logs': {
@@ -199,10 +243,141 @@
     activeTab = tab;
     selectedItem = null;
     selectedItemType = null;
+    if (tab !== 'books') booksUploadError = null;
     await loadTab(tab);
   }
 
+  function openBooksUploadDialog() {
+    booksUploadInput?.click();
+  }
+
+  async function handleBooksUpload(event: Event) {
+    const input = event.currentTarget as HTMLInputElement | null;
+    const files = input?.files ? Array.from(input.files) : [];
+    if (files.length === 0) return;
+
+    booksUploadInProgress = true;
+    booksUploadError = null;
+
+    try {
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('category', 'Books');
+        formData.append('title', file.name.replace(/\.[^.]+$/, ''));
+
+        const response = await fetch(buildApiUrl('/assets/upload'), {
+          method: 'POST',
+          credentials: 'include',
+          body: formData,
+        });
+        if (!response.ok) {
+          const detail = await response.text();
+          throw new Error(detail || `Failed to upload ${file.name}`);
+        }
+      }
+      await loadTab('books');
+    } catch (error) {
+      booksUploadError = error instanceof Error ? error.message : 'Failed to upload book files';
+    } finally {
+      booksUploadInProgress = false;
+      if (booksUploadInput) booksUploadInput.value = '';
+    }
+  }
+
+  function getArticleCategory(article: ArticleItem): string {
+    return (
+      article.category ||
+      article.source_category ||
+      article.tags?.[0] ||
+      'uncategorized'
+    );
+  }
+
+  function formatArticleCategory(category: string): string {
+    return category
+      .split(/[_-]+/)
+      .filter(Boolean)
+      .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+      .join(' ');
+  }
+
+  let articleGroups = $derived(
+    Object.entries(
+      articles.reduce((groups, article) => {
+        const key = getArticleCategory(article);
+        (groups[key] ??= []).push(article);
+        return groups;
+      }, {} as Record<string, ArticleItem[]>)
+    )
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, groupedArticles]) => ({
+        key,
+        label: formatArticleCategory(key),
+        articles: [...groupedArticles].sort((left, right) => left.title.localeCompare(right.title)),
+      }) satisfies ArticleGroup)
+  );
+
   $effect(() => {
+    const attachableResources = [
+      ...articles.map((article) => ({
+        id: article.id,
+        label: article.title,
+        canvas: 'research',
+        resource_type: 'article',
+        description: article.excerpt,
+        metadata: {
+          source: article.source,
+          date: article.date,
+          tags: article.tags,
+          category: getArticleCategory(article),
+        },
+      })),
+      ...books.map((book) => ({
+        id: book.id,
+        label: book.title,
+        canvas: 'research',
+        resource_type: 'book',
+        metadata: {
+          author: book.author,
+          topics: book.topics,
+          year: book.year,
+        },
+      })),
+      ...logs.map((log) => ({
+        id: log.id,
+        label: log.title,
+        canvas: 'research',
+        resource_type: 'log',
+        description: log.content,
+        metadata: {
+          date: log.date,
+          tags: log.tags,
+        },
+      })),
+      ...personal.map((note) => ({
+        id: note.id,
+        label: note.title,
+        canvas: 'research',
+        resource_type: 'personal-note',
+        description: note.preview,
+        metadata: {
+          date: note.date,
+        },
+      })),
+      ...videos.map((video) => ({
+        id: video.id,
+        label: video.title,
+        canvas: 'research',
+        resource_type: 'video',
+        metadata: {
+          channel: video.channel,
+          duration: video.duration,
+          date: video.date,
+        },
+      })),
+    ].slice(0, 100);
+
     canvasContextService.setRuntimeState('research', {
       active_tab: activeTab,
       visible_tabs: tabs.map((tab) => tab.id),
@@ -227,6 +402,7 @@
             type: selectedItemType,
           }
         : null,
+      attachable_resources: attachableResources,
     });
   });
 
@@ -457,33 +633,73 @@
               <span>No articles indexed yet</span>
             </div>
           {:else}
-            <div class="tile-grid">
-              {#each articles as article}
-                <button class="tile article-tile" onclick={() => openDetail(article, 'articles')}>
-                  <div class="tile-top">
-                    <FileText size={14} class="tile-icon" />
-                    <span class="tile-source">{article.source}</span>
-                  </div>
-                  <h3 class="tile-title">{article.title}</h3>
-                  <div class="tile-meta">
-                    <span class="meta-date">
-                      <Calendar size={10} />
-                      {article.date}
-                    </span>
-                  </div>
-                  {#if article.tags?.length}
-                    <div class="tile-tags">
-                      {#each article.tags.slice(0, 3) as tag}
-                        <span class="tag-chip small">{tag}</span>
-                      {/each}
+            <div class="article-groups">
+              {#each articleGroups as group}
+                <section class="article-group">
+                  <div class="group-header">
+                    <div class="group-title-row">
+                      <Tag size={12} />
+                      <h2 class="group-title">{group.label}</h2>
                     </div>
-                  {/if}
-                </button>
+                    <span class="group-count">{group.articles.length}</span>
+                  </div>
+                  <div class="tile-grid">
+                    {#each group.articles as article}
+                      <button class="tile article-tile" onclick={() => openDetail(article, 'articles')}>
+                        <div class="tile-top">
+                          <FileText size={14} class="tile-icon" />
+                          <span class="tile-source">{article.source}</span>
+                        </div>
+                        <h3 class="tile-title">{article.title}</h3>
+                        <div class="tile-meta">
+                          <span class="meta-date">
+                            <Calendar size={10} />
+                            {article.date}
+                          </span>
+                          <span class="category-chip">{group.label}</span>
+                        </div>
+                        {#if article.tags?.length}
+                          <div class="tile-tags">
+                            {#each article.tags.slice(0, 3) as tag}
+                              <span class="tag-chip small">{tag}</span>
+                            {/each}
+                          </div>
+                        {/if}
+                      </button>
+                    {/each}
+                  </div>
+                </section>
               {/each}
             </div>
           {/if}
 
         {:else if activeTab === 'books'}
+          <div class="books-toolbar">
+            <input
+              class="books-upload-input"
+              bind:this={booksUploadInput}
+              type="file"
+              accept=".pdf,.epub,.txt,.md,.doc,.docx"
+              multiple
+              onchange={handleBooksUpload}
+            />
+            <button
+              class="books-upload-btn"
+              onclick={openBooksUploadDialog}
+              disabled={booksUploadInProgress}
+            >
+              {#if booksUploadInProgress}
+                <Loader2 size={12} class="spin" />
+                <span>Uploading…</span>
+              {:else}
+                <BookOpen size={12} />
+                <span>Upload Books</span>
+              {/if}
+            </button>
+          </div>
+          {#if booksUploadError}
+            <div class="books-upload-error">{booksUploadError}</div>
+          {/if}
           {#if books.length === 0}
             <div class="empty-state">
               <Inbox size={28} />
@@ -778,6 +994,100 @@
     width: 100%;
   }
 
+  .books-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 12px;
+  }
+
+  .books-upload-input {
+    display: none;
+  }
+
+  .books-upload-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(240, 165, 0, 0.35);
+    background: rgba(240, 165, 0, 0.12);
+    color: #f0a500;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .books-upload-btn:hover:not(:disabled) {
+    background: rgba(240, 165, 0, 0.2);
+    border-color: rgba(240, 165, 0, 0.55);
+  }
+
+  .books-upload-btn:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+
+  .books-upload-error {
+    margin-bottom: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 95, 109, 0.45);
+    background: rgba(255, 95, 109, 0.1);
+    color: #ff8a95;
+    font-size: 11px;
+  }
+
+  .spin {
+    animation: spin 1s linear infinite;
+  }
+
+  .article-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  .article-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(240, 165, 0, 0.12);
+  }
+
+  .group-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #f0a500;
+  }
+
+  .group-title {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .group-count {
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(0, 212, 255, 0.24);
+    background: rgba(0, 212, 255, 0.08);
+    color: rgba(0, 212, 255, 0.9);
+    font-size: 10px;
+  }
+
   .tile-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -878,6 +1188,18 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  .category-chip {
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(240, 165, 0, 0.12);
+    border: 1px solid rgba(240, 165, 0, 0.24);
+    color: #f0a500;
+    font-size: 10px;
+    line-height: 1.2;
   }
 
   /* Video tile specifics */

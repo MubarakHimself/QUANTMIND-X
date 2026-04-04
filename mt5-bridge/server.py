@@ -12,6 +12,7 @@ import os
 import sys
 import time
 import logging
+from typing import Optional, Dict, Any
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -32,11 +33,15 @@ except Exception as e:
     logger.warning(f"Could not configure JSON file logging: {e}")
 
 # --- CONFIGURATION ---
-# In production, use environment variables
 API_TOKEN = os.getenv("MT5_BRIDGE_TOKEN", "secret-token-change-me")
-
-# Prometheus metrics port
 MT5_METRICS_PORT = int(os.getenv("MT5_PROMETHEUS_PORT", "9091"))
+MT5_BRIDGE_PORT = int(os.getenv("MT5_BRIDGE_PORT", "5005"))
+MT5_TERMINAL_PATH = os.getenv("MT5_TERMINAL_PATH")
+MT5_LOGIN = os.getenv("MT5_LOGIN")
+MT5_PASSWORD = os.getenv("MT5_PASSWORD")
+MT5_SERVER = os.getenv("MT5_SERVER")
+MT5_TIMEOUT_MS = int(os.getenv("MT5_TIMEOUT_MS", "60000"))
+MT5_PORTABLE = os.getenv("MT5_PORTABLE", "false").lower() == "true"
 
 app = FastAPI(title="QuantMind MT5 Bridge")
 
@@ -49,10 +54,59 @@ class TradeRequest(BaseModel):
     take_profit: float = 0.0
 
 # --- AUTH ---
-async def verify_token(x_token: str = Header(...)):
-    if x_token != API_TOKEN:
+async def verify_token(
+    authorization: Optional[str] = Header(default=None),
+    x_token: Optional[str] = Header(default=None, alias="X-Token"),
+):
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization[7:].strip()
+    elif x_token:
+        token = x_token.strip()
+
+    if token != API_TOKEN:
         raise HTTPException(status_code=401, detail="Invalid Auth Token")
-    return x_token
+    return token
+
+
+def _build_initialize_kwargs() -> Dict[str, Any]:
+    kwargs: Dict[str, Any] = {
+        "timeout": MT5_TIMEOUT_MS,
+        "portable": MT5_PORTABLE,
+    }
+    if MT5_LOGIN:
+        kwargs["login"] = int(MT5_LOGIN)
+    if MT5_PASSWORD:
+        kwargs["password"] = MT5_PASSWORD
+    if MT5_SERVER:
+        kwargs["server"] = MT5_SERVER
+    return kwargs
+
+
+def _initialize_mt5() -> bool:
+    kwargs = _build_initialize_kwargs()
+    if MT5_TERMINAL_PATH:
+        return mt5.initialize(MT5_TERMINAL_PATH, **kwargs)
+    return mt5.initialize(**kwargs)
+
+
+def _namedtuple_to_dict(value):
+    if value is None:
+        return None
+    if hasattr(value, "_asdict"):
+        return value._asdict()
+    return value
+
+
+def _trade_retcode_ok(retcode: Optional[int]) -> bool:
+    if retcode is None:
+        return False
+    accepted = {0}
+    if hasattr(mt5, "TRADE_RETCODE_DONE"):
+        accepted.add(mt5.TRADE_RETCODE_DONE)
+    if hasattr(mt5, "TRADE_RETCODE_PLACED"):
+        accepted.add(mt5.TRADE_RETCODE_PLACED)
+    return retcode in accepted
 
 # --- ENDPOINTS ---
 
@@ -75,15 +129,25 @@ def startup_mt5():
     # Start Grafana Cloud metrics pusher if configured
     _start_grafana_cloud_pusher()
     
-    # Initialize MT5
-    connected = mt5.initialize()
+    # Official MetaTrader5 Python contract:
+    # initialize(path?, login?, password?, server?, timeout?, portable?)
+    connected = _initialize_mt5()
     if not connected:
         error_code = mt5.last_error()
-        print(f"MT5 Ensure: Initialize failed, error code = {error_code}", file=sys.stderr)
-        logger.error(f"MT5 initialization failed: {error_code}")
+        logger.error(
+            "MT5 initialization failed: %s (path=%s, login=%s, server=%s)",
+            error_code,
+            MT5_TERMINAL_PATH,
+            MT5_LOGIN,
+            MT5_SERVER,
+        )
     else:
-        print("MT5 Ensure: Initialized successfully")
-        logger.info("MT5 initialized successfully")
+        logger.info(
+            "MT5 initialized successfully (path=%s, login=%s, server=%s)",
+            MT5_TERMINAL_PATH,
+            MT5_LOGIN,
+            MT5_SERVER,
+        )
     
     # Update connection status metric
     _update_mt5_status_metric(connected)
@@ -156,11 +220,22 @@ def get_status():
     _track_mt5_latency("status", duration, connected)
     
     if info is None:
-        return {"status": "disconnected", "error": mt5.last_error()}
+        return {
+            "status": "disconnected",
+            "error": mt5.last_error(),
+            "terminal_path": MT5_TERMINAL_PATH,
+            "configured_login": MT5_LOGIN,
+            "configured_server": MT5_SERVER,
+        }
+    version = mt5.version()
     return {
         "status": "connected",
         "trade_allowed": info.trade_allowed,
-        "connected": info.connected
+        "connected": info.connected,
+        "terminal_path": MT5_TERMINAL_PATH,
+        "configured_login": MT5_LOGIN,
+        "configured_server": MT5_SERVER,
+        "version": list(version) if version else None,
     }
 
 
@@ -201,12 +276,17 @@ def execute_trade(trade: TradeRequest):
             _track_mt5_trade(trade.symbol, trade.action_type.upper(), False)
             raise HTTPException(status_code=404, detail="Symbol not visible and cannot be selected")
 
+    tick = mt5.symbol_info_tick(trade.symbol)
+    if tick is None:
+        _track_mt5_trade(trade.symbol, trade.action_type.upper(), False)
+        raise HTTPException(status_code=503, detail=f"No live tick available for {trade.symbol}")
+
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": trade.symbol,
         "volume": trade.volume,
         "type": action,
-        "price": mt5.symbol_info_tick(trade.symbol).ask if action == mt5.ORDER_TYPE_BUY else mt5.symbol_info_tick(trade.symbol).bid,
+        "price": tick.ask if action == mt5.ORDER_TYPE_BUY else tick.bid,
         "sl": trade.stop_loss,
         "tp": trade.take_profit,
         "deviation": 20,
@@ -216,15 +296,44 @@ def execute_trade(trade: TradeRequest):
         "type_filling": mt5.ORDER_FILLING_IOC,
     }
 
+    # Pre-flight the request before execution.
+    check_result = mt5.order_check(request)
+    if check_result is None:
+        _track_mt5_latency("trade", time.time() - start_time, False)
+        _track_mt5_trade(trade.symbol, trade.action_type.upper(), False)
+        raise HTTPException(status_code=400, detail=f"Order check failed: {mt5.last_error()}")
+
+    check_retcode = getattr(check_result, "retcode", None)
+    if not _trade_retcode_ok(check_retcode):
+        _track_mt5_latency("trade", time.time() - start_time, False)
+        _track_mt5_trade(trade.symbol, trade.action_type.upper(), False)
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Order check rejected the request",
+                "retcode": check_retcode,
+                "comment": getattr(check_result, "comment", None),
+                "check_result": _namedtuple_to_dict(check_result),
+            },
+        )
+
     result = mt5.order_send(request)
     duration = time.time() - start_time
     
-    success = result.retcode == mt5.TRADE_RETCODE_DONE
+    success = result is not None and _trade_retcode_ok(getattr(result, "retcode", None))
     _track_mt5_latency("trade", duration, success)
     _track_mt5_trade(trade.symbol, trade.action_type.upper(), success)
     
     if not success:
-        raise HTTPException(status_code=400, detail=f"Order failed: {result.comment} ({result.retcode})")
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Order send failed",
+                "retcode": getattr(result, "retcode", None),
+                "comment": getattr(result, "comment", None),
+                "result": _namedtuple_to_dict(result),
+            },
+        )
     
     # Track trade execution
     try:
@@ -239,7 +348,10 @@ def execute_trade(trade: TradeRequest):
     except Exception as e:
         logger.debug(f"Could not track trade metric: {e}")
     
-    return result._asdict()
+    return {
+        "result": result._asdict(),
+        "check_result": _namedtuple_to_dict(check_result),
+    }
 
 
 @app.get("/health")
@@ -251,4 +363,4 @@ def health_check():
 if __name__ == "__main__":
     import uvicorn
     # Listen on all interfaces so the VPS is accessible from outside
-    uvicorn.run(app, host="0.0.0.0", port=5005)
+    uvicorn.run(app, host="0.0.0.0", port=MT5_BRIDGE_PORT)

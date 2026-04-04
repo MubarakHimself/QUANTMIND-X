@@ -15,6 +15,7 @@ import logging
 import os
 import uuid
 import base64
+import psutil
 from pathlib import Path
 from datetime import datetime
 
@@ -59,7 +60,7 @@ class MCPServer(BaseModel):
     description: Optional[str] = None
 
 class AgentSettings(BaseModel):
-    defaultModel: str = "claude-sonnet-4"
+    defaultModel: str = ""
     temperature: float = 0.7
     maxTokens: int = 4096
     enableMemory: bool = True
@@ -272,7 +273,6 @@ _DEPARTMENT_AGENTS = [
     "order_executor", "fill_tracker", "trade_monitor",
     "position_sizer", "drawdown_monitor", "var_calculator",
     "allocation_manager", "rebalancer", "performance_tracker",
-    "copilot",
 ]
 
 
@@ -316,67 +316,133 @@ async def get_all_agent_prompts():
     current = load_settings()
     saved_prompts = current.get("agents", {}).get("system_prompts", {})
 
-    # Load default prompts from types.py
+    # Load default prompts from prompt contracts / types seeds
     defaults = {}
     try:
         from src.agents.departments.types import (
-            _RESEARCH_SYSTEM_PROMPT,
-            _DEVELOPMENT_SYSTEM_PROMPT,
-            _TRADING_SYSTEM_PROMPT,
-            _RISK_SYSTEM_PROMPT,
-            _PORTFOLIO_SYSTEM_PROMPT,
-            _FLOOR_MANAGER_SYSTEM_PROMPT,
+            _RESEARCH_PROMPT_SEED,
+            _DEVELOPMENT_PROMPT_SEED,
+            _TRADING_PROMPT_SEED,
+            _RISK_PROMPT_SEED,
+            _PORTFOLIO_PROMPT_SEED,
+            _FLOOR_MANAGER_PROMPT_SEED,
+        )
+        from src.agents.prompts.department_contracts import (
+            compose_department_head_prompt,
+            compose_floor_manager_prompt,
+            compose_subagent_prompt,
         )
         defaults = {
-            "research": _RESEARCH_SYSTEM_PROMPT,
-            "research_head": _RESEARCH_SYSTEM_PROMPT,
-            "development": _DEVELOPMENT_SYSTEM_PROMPT,
-            "development_head": _DEVELOPMENT_SYSTEM_PROMPT,
-            "trading": _TRADING_SYSTEM_PROMPT,
-            "trading_head": _TRADING_SYSTEM_PROMPT,
-            "risk": _RISK_SYSTEM_PROMPT,
-            "risk_head": _RISK_SYSTEM_PROMPT,
-            "portfolio": _PORTFOLIO_SYSTEM_PROMPT,
-            "portfolio_head": _PORTFOLIO_SYSTEM_PROMPT,
-            "floor_manager": _FLOOR_MANAGER_SYSTEM_PROMPT,
+            "research": compose_department_head_prompt(
+                "research",
+                _RESEARCH_PROMPT_SEED,
+                sub_agents=["strategy_researcher", "market_analyst", "backtester"],
+            ),
+            "research_head": compose_department_head_prompt(
+                "research",
+                _RESEARCH_PROMPT_SEED,
+                sub_agents=["strategy_researcher", "market_analyst", "backtester"],
+            ),
+            "development": compose_department_head_prompt(
+                "development",
+                _DEVELOPMENT_PROMPT_SEED,
+                sub_agents=["python_dev", "pinescript_dev", "mql5_dev"],
+            ),
+            "development_head": compose_department_head_prompt(
+                "development",
+                _DEVELOPMENT_PROMPT_SEED,
+                sub_agents=["python_dev", "pinescript_dev", "mql5_dev"],
+            ),
+            "trading": compose_department_head_prompt(
+                "trading",
+                _TRADING_PROMPT_SEED,
+                sub_agents=["order_executor", "fill_tracker", "trade_monitor"],
+            ),
+            "trading_head": compose_department_head_prompt(
+                "trading",
+                _TRADING_PROMPT_SEED,
+                sub_agents=["order_executor", "fill_tracker", "trade_monitor"],
+            ),
+            "risk": compose_department_head_prompt(
+                "risk",
+                _RISK_PROMPT_SEED,
+                sub_agents=["position_sizer", "drawdown_monitor", "var_calculator"],
+            ),
+            "risk_head": compose_department_head_prompt(
+                "risk",
+                _RISK_PROMPT_SEED,
+                sub_agents=["position_sizer", "drawdown_monitor", "var_calculator"],
+            ),
+            "portfolio": compose_department_head_prompt(
+                "portfolio",
+                _PORTFOLIO_PROMPT_SEED,
+                sub_agents=["allocation_manager", "rebalancer", "performance_tracker"],
+            ),
+            "portfolio_head": compose_department_head_prompt(
+                "portfolio",
+                _PORTFOLIO_PROMPT_SEED,
+                sub_agents=["allocation_manager", "rebalancer", "performance_tracker"],
+            ),
+            "floor_manager": compose_floor_manager_prompt(_FLOOR_MANAGER_PROMPT_SEED),
         }
+        for agent_id in [
+            "strategy_researcher", "market_analyst", "backtester",
+            "python_dev", "pinescript_dev", "mql5_dev",
+            "order_executor", "fill_tracker", "trade_monitor",
+            "position_sizer", "drawdown_monitor", "var_calculator",
+            "allocation_manager", "rebalancer", "performance_tracker",
+        ]:
+            defaults[agent_id] = compose_subagent_prompt(agent_id)
     except ImportError:
         pass
-
-    # Load sub-agent prompts
-    _SUBAGENT_PROMPT_MAP = {
-        "strategy_researcher": "src.agents.departments.subagents.research_subagent:RESEARCH_SYSTEM_PROMPT",
-        "market_analyst": "src.agents.departments.subagents.research_subagent:RESEARCH_SYSTEM_PROMPT",
-        "backtester": "src.agents.departments.subagents.backtest_report_subagent:BACKTEST_REPORT_SYSTEM_PROMPT",
-        "python_dev": "src.agents.departments.subagents.pinescript_subagent:PINESCRIPT_SYSTEM_PROMPT",
-        "pinescript_dev": "src.agents.departments.subagents.pinescript_subagent:PINESCRIPT_SYSTEM_PROMPT",
-        "mql5_dev": "src.agents.departments.subagents.pinescript_subagent:PINESCRIPT_SYSTEM_PROMPT",
-        "order_executor": "src.agents.departments.subagents.trading_subagent:TRADING_SYSTEM_PROMPT",
-        "fill_tracker": "src.agents.departments.subagents.trading_subagent:TRADING_SYSTEM_PROMPT",
-        "trade_monitor": "src.agents.departments.subagents.trading_subagent:TRADING_SYSTEM_PROMPT",
-        "position_sizer": "src.agents.departments.subagents.risk_subagent:RISK_ASSESSMENT_SYSTEM_PROMPT",
-        "drawdown_monitor": "src.agents.departments.subagents.risk_subagent:RISK_ASSESSMENT_SYSTEM_PROMPT",
-        "var_calculator": "src.agents.departments.subagents.risk_subagent:RISK_ASSESSMENT_SYSTEM_PROMPT",
-        "allocation_manager": "src.agents.departments.subagents.portfolio_subagent:PORTFOLIO_SYSTEM_PROMPT",
-        "rebalancer": "src.agents.departments.subagents.portfolio_subagent:PORTFOLIO_SYSTEM_PROMPT",
-        "performance_tracker": "src.agents.departments.subagents.portfolio_subagent:PORTFOLIO_SYSTEM_PROMPT",
-    }
-    for agent_id, mod_attr in _SUBAGENT_PROMPT_MAP.items():
-        if agent_id not in defaults:
-            try:
-                mod_path, attr_name = mod_attr.rsplit(":", 1)
-                import importlib
-                mod = importlib.import_module(mod_path)
-                defaults[agent_id] = getattr(mod, attr_name, "")
-            except Exception:
-                defaults[agent_id] = ""
 
     result = {}
     for agent_id in _DEPARTMENT_AGENTS:
         saved = saved_prompts.get(agent_id, "")
         default = defaults.get(agent_id, "")
+        effective = saved if saved.strip() else default
+
+        if saved.strip():
+            try:
+                if agent_id in {"research", "research_head"}:
+                    effective = compose_department_head_prompt(
+                        "research",
+                        saved,
+                        sub_agents=["strategy_researcher", "market_analyst", "backtester"],
+                    )
+                elif agent_id in {"development", "development_head"}:
+                    effective = compose_department_head_prompt(
+                        "development",
+                        saved,
+                        sub_agents=["python_dev", "pinescript_dev", "mql5_dev"],
+                    )
+                elif agent_id in {"trading", "trading_head"}:
+                    effective = compose_department_head_prompt(
+                        "trading",
+                        saved,
+                        sub_agents=["order_executor", "fill_tracker", "trade_monitor"],
+                    )
+                elif agent_id in {"risk", "risk_head"}:
+                    effective = compose_department_head_prompt(
+                        "risk",
+                        saved,
+                        sub_agents=["position_sizer", "drawdown_monitor", "var_calculator"],
+                    )
+                elif agent_id in {"portfolio", "portfolio_head"}:
+                    effective = compose_department_head_prompt(
+                        "portfolio",
+                        saved,
+                        sub_agents=["allocation_manager", "rebalancer", "performance_tracker"],
+                    )
+                elif agent_id == "floor_manager":
+                    effective = compose_floor_manager_prompt(saved)
+                elif agent_id in defaults:
+                    effective = compose_subagent_prompt(agent_id, base_prompt=saved)
+            except Exception:
+                effective = saved
+
         result[agent_id] = {
-            "system_prompt": saved if saved.strip() else default,
+            "system_prompt": effective,
             "is_override": bool(saved and saved.strip()),
             "default_prompt": default,
         }
@@ -413,6 +479,7 @@ async def get_department_configs():
             get_department_skills,
             get_department_mcp_servers,
             get_department_mcp_config,
+            get_department_mcp_config_source,
         )
     except ImportError:
         return {"error": "Department skills module not available"}
@@ -424,6 +491,7 @@ async def get_department_configs():
             "skills": get_department_skills(dept),
             "mcp_servers": get_department_mcp_servers(dept),
             "mcp_config_file": get_department_mcp_config(dept),
+            "mcp_config_source_file": get_department_mcp_config_source(dept),
         }
     return result
 
@@ -455,43 +523,22 @@ async def get_agent_skills(department: Optional[str] = None):
         skills = []
         for name in skill_names:
             info = skill_manager.get_skill_info(name)
+            departments = info.get("departments", []) or []
             skills.append({
                 "id": name,
                 "name": info.get("name", name),
-                "agent": "copilot",  # Default agent
+                "agent": departments[0] if departments else "floor_manager",
                 "enabled": True,
                 "description": info.get("description", ""),
                 "category": info.get("category", "general"),
-                "departments": info.get("departments", []),
+                "departments": departments,
                 "parameters": info.get("parameters", {}),
             })
         return skills
     except Exception as e:
-        # Fallback to mock skills if skill manager fails
+        # No mock fallback for production mode; return empty list when registry is unavailable.
         logger.warning(f"Failed to load skills from manager: {e}")
-        return [
-            {
-                "id": "sk-1",
-                "name": "Generate TRD",
-                "agent": "analyst",
-                "enabled": True,
-                "description": "Generate Technical Requirements Document from VideoIngest"
-            },
-            {
-                "id": "sk-2",
-                "name": "Generate EA",
-                "agent": "quantcode",
-                "enabled": True,
-                "description": "Generate MQL5 Expert Advisor code from TRD"
-            },
-            {
-                "id": "sk-3",
-                "name": "Run Backtest",
-                "agent": "quantcode",
-                "enabled": True,
-                "description": "Execute backtest with specified parameters"
-            }
-        ]
+        return []
 
 class SkillToggleRequest(BaseModel):
     enabled: bool
@@ -620,81 +667,81 @@ Agent configuration file for QuantMindX IDE.
 
 ## Agent Definitions
 
-### copilot
-**Role**: Trading Assistant & Workflow Guide
+### floor_manager
+**Role**: Trading Floor Orchestrator
 
 **Model Configuration**:
-- Provider: openrouter
-- Model: anthropic/claude-sonnet-4
+- Provider: minimax
+- Model: MiniMax-M2.7
 - Temperature: 0.7
 - Max Tokens: 4096
 
 **System Prompt**:
 ```
-You are a helpful trading assistant for QuantMindX, an AI-powered trading system.
+You are the Floor Manager for QuantMindX. Route user requests to the right department and summarize progress clearly.
 ```
 
 **Skills**:
-- `market-analysis`: Analyze market conditions and trends
-- `strategy-guidance`: Guide users through strategy development
-- `troubleshooting`: Identify and resolve common issues
+- `orchestration`: Coordinate departments and workflow steps
+- `approval-gating`: Surface and manage approval checkpoints
+- `mail-routing`: Route inter-department communication
 
 **Tools**:
-- get_market_data
-- run_backtest
-- get_position_size
+- delegate_to_department
+- query_pending_approvals
+- send_department_mail
 
 ---
 
-### quantcode
-**Role**: MQL5 Code Expert
+### research_head
+**Role**: Strategy Research Lead
 
 **Model Configuration**:
-- Provider: openrouter
-- Model: anthropic/claude-sonnet-4
+- Provider: minimax
+- Model: MiniMax-M2.5
 - Temperature: 0.3
 - Max Tokens: 8192
 
 **System Prompt**:
 ```
-You are an MQ5 coding expert for QuantMindX.
+You are the Research Department Head. Build, test, and refine strategy hypotheses with evidence.
 ```
 
 **Skills**:
-- `code-generation`: Generate MQL5 code from specifications
-- `code-debugging`: Debug and fix MQL5 code issues
-- `code-optimization`: Optimize code for performance
+- `knowledge-search`: Query articles/books/notes
+- `hypothesis-design`: Draft and iterate strategy hypotheses
+- `backtest-review`: Interpret backtest and optimization output
 
 **Tools**:
-- get_market_data
+- search_knowledge_base
 - run_backtest
-- get_position_size
+- write_opinion_node
 
 ---
 
-### analyst
-**Role**: Trading Strategy Analyst
+### development_head
+**Role**: EA Development Lead
 
 **Model Configuration**:
-- Provider: openrouter
-- Model: anthropic/claude-sonnet-4
+- Provider: minimax
+- Model: MiniMax-M2.5
 - Temperature: 0.5
 - Max Tokens: 6144
 
 **System Prompt**:
 ```
-You are a trading strategy analyst for QuantMindX.
+You are the Development Department Head. Convert approved strategy specs into tested executable implementations.
 ```
 
 **Skills**:
-- `backtest-analysis`: Analyze backtesting results in depth
-- `pattern-recognition`: Identify trading patterns and setups
-- `risk-assessment`: Evaluate strategy risk profiles
+- `implementation`: Build strategy code and adapters
+- `validation`: Run tests and static checks
+- `handoff`: Publish implementation outputs for downstream departments
 
 **Tools**:
-- get_market_data
-- run_backtest
-- get_position_size
+- create_or_update_file
+- run_tests
+- send_department_mail
 """
         return {"content": default_content}
 
@@ -765,8 +812,8 @@ def parse_agents_md(content: str) -> dict[str, dict[str, Any]]:
             current_agent = {
                 'name': line[4:].strip(),
                 'role': '',
-                'provider': 'openrouter',
-                'model': 'anthropic/claude-sonnet-4',
+                'provider': 'minimax',
+                'model': 'MiniMax-M2.5',
                 'temperature': 0.7,
                 'maxTokens': 4096,
                 'systemPrompt': '',
@@ -1150,7 +1197,9 @@ from pydantic import BaseModel
 import subprocess
 import os
 
-APP_DIR = "/opt/quantmindx"
+DEFAULT_APP_DIR = Path("/opt/quantmindx")
+LOCAL_APP_DIR = Path(__file__).resolve().parents[2]
+APP_DIR = str(DEFAULT_APP_DIR if DEFAULT_APP_DIR.exists() else LOCAL_APP_DIR)
 
 
 class RollbackRequest(BaseModel):
@@ -1168,6 +1217,22 @@ def _run_git(cwd: str, *args: str) -> tuple[int, str, str]:
     return result.returncode, result.stdout.strip(), result.stderr.strip()
 
 
+def _get_local_api_health() -> str:
+    """
+    Return the current process health without loopback self-calls.
+
+    This endpoint already runs inside the API process, so probing localhost adds an
+    unnecessary deployment dependency when the app is reverse-proxied or split-hosted.
+    """
+    try:
+        current = psutil.Process()
+        if current.is_running() and current.status() != psutil.STATUS_ZOMBIE:
+            return "healthy"
+    except Exception:
+        pass
+    return "unreachable"
+
+
 @router.get("/deploy/version", response_model=dict)
 def get_deploy_version():
     """
@@ -1177,19 +1242,15 @@ def get_deploy_version():
         _, sha, _ = _run_git(APP_DIR, "rev-parse", "HEAD")
         _, msg, _ = _run_git(APP_DIR, "log", "-1", "--format=%s")
         _, branch, _ = _run_git(APP_DIR, "branch", "--show-current")
-        _, ahead, _ = _run_git(APP_DIR, "fetch", "origin", branch)
-        _, behind, _ = _run_git(APP_DIR, "rev-list", f"origin/{branch}..HEAD", "--count")
-        behind_count = behind or "0"
+        behind_count = "0"
+        if branch:
+            fetch_code, _, _ = _run_git(APP_DIR, "fetch", "origin", branch)
+            if fetch_code == 0:
+                rev_code, behind, _ = _run_git(APP_DIR, "rev-list", f"origin/{branch}..HEAD", "--count")
+                if rev_code == 0:
+                    behind_count = behind or "0"
 
-        # Health check
-        health = "unknown"
-        try:
-            import urllib.request
-            req = urllib.request.Request("http://localhost:8000/health")
-            with urllib.request.urlopen(req, timeout=3) as r:
-                health = r.read().decode() if r.status == 200 else "unhealthy"
-        except Exception:
-            health = "unreachable"
+        health = _get_local_api_health()
 
         return {
             "commit": sha[:8],

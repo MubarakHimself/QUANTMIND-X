@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { Loader2, Play, CheckCircle, XCircle, AlertCircle, Youtube, ListVideo, KeyRound } from 'lucide-svelte';
-  import { API_CONFIG } from '$lib/config/api';
+  import { getAuthStatus, getJobStatus, submitVideoJob } from '$lib/api/videoIngestApi';
 
   interface VideoIngestJob {
     id: string;
@@ -14,11 +14,10 @@
   }
 
   interface AuthStatus {
+    openrouter?: boolean;
     gemini: boolean;
     qwen: boolean;
   }
-
-  const API_BASE = API_CONFIG.API_BASE;
 
   let youtubeUrl = $state('');
   let isPlaylist = $state(false);
@@ -36,19 +35,9 @@
   async function checkAuth() {
     checkingAuth = true;
     try {
-      // Check if Gemini CLI or Qwen CLI is available
-      const response = await fetch(`${API_BASE}/video-ingest/auth-status`, {
-        method: 'GET'
-      });
-      if (response.ok) {
-        authStatus = await response.json();
-      } else {
-        // Assume available if endpoint doesn't exist yet
-        authStatus = { gemini: true, qwen: true };
-      }
-    } catch (e) {
-      // Assume available if endpoint fails
-      authStatus = { gemini: true, qwen: true };
+      authStatus = await getAuthStatus();
+    } catch {
+      authStatus = { openrouter: false, gemini: false, qwen: false };
     } finally {
       checkingAuth = false;
     }
@@ -61,33 +50,26 @@
     error = '';
 
     try {
-      const response = await fetch(`${API_BASE}/video-ingest/process`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: youtubeUrl,
-          is_playlist: isPlaylist,
-          strategy_name: extractVideoId(youtubeUrl) || 'video_ingest'
-        })
-      });
-
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.detail || 'Failed to submit job');
-      }
-
-      const result = await response.json();
-      jobs = [{
-        id: result.job_id,
-        status: result.status,
-        youtube_url: youtubeUrl,
-        created_at: new Date().toISOString(),
-        progress: 0,
-        strategy_folder: result.strategy_folder
-      }, ...jobs];
+      const result = await submitVideoJob(
+        youtubeUrl,
+        extractVideoId(youtubeUrl) || 'video_ingest',
+        isPlaylist
+      );
+      const jobIds = result.job_ids?.length ? result.job_ids : [result.job_id];
+      jobs = [
+        ...jobIds.map((jobId) => ({
+          id: jobId,
+          status: result.status,
+          youtube_url: youtubeUrl,
+          created_at: new Date().toISOString(),
+          progress: 0,
+          strategy_folder: result.strategy_folder
+        })),
+        ...jobs
+      ];
       youtubeUrl = '';
-    } catch (e: any) {
-      error = e.message || 'Failed to submit job';
+    } catch (e: unknown) {
+      error = e instanceof Error ? e.message : 'Failed to submit job';
     } finally {
       loading = false;
     }
@@ -96,17 +78,14 @@
   async function refreshJobs() {
     // Poll for job status updates
     for (const job of jobs) {
-      if (job.status === 'processing' || job.status === 'queued') {
+      const normalizedStatus = job.status.toUpperCase();
+      if (normalizedStatus === 'PENDING' || normalizedStatus === 'DOWNLOADING' || normalizedStatus === 'PROCESSING' || normalizedStatus === 'ANALYZING') {
         try {
-          const response = await fetch(`${API_BASE}/video-ingest/jobs/${job.id}`);
-          if (response.ok) {
-            const updated = await response.json();
-            job.status = updated.status;
-            job.progress = updated.progress;
-            job.result = updated.result;
-            jobs = [...jobs]; // Trigger reactivity
-          }
-        } catch (e) {
+          const updated = await getJobStatus(job.id);
+          job.status = updated.status;
+          job.progress = updated.progress;
+          jobs = [...jobs];
+        } catch {
           // Ignore polling errors
         }
       }
@@ -127,31 +106,39 @@
   }
 
   function getStatusIcon(status: string) {
-    switch (status) {
-      case 'completed': return CheckCircle;
-      case 'failed': return XCircle;
-      case 'processing': return Loader2;
-      case 'queued': return ListVideo;
+    switch (status.toUpperCase()) {
+      case 'COMPLETED': return CheckCircle;
+      case 'FAILED': return XCircle;
+      case 'PROCESSING':
+      case 'DOWNLOADING':
+      case 'ANALYZING':
+        return Loader2;
+      case 'PENDING': return ListVideo;
       default: return AlertCircle;
     }
   }
 
   function getStatusColor(status: string): string {
-    switch (status) {
-      case 'completed': return 'var(--color-accent-green)';
-      case 'failed': return 'var(--color-accent-red)';
-      case 'processing': return 'var(--color-accent-amber)';
-      case 'queued': return 'var(--color-accent-cyan)';
+    switch (status.toUpperCase()) {
+      case 'COMPLETED': return 'var(--color-accent-green)';
+      case 'FAILED': return 'var(--color-accent-red)';
+      case 'PROCESSING':
+      case 'DOWNLOADING':
+      case 'ANALYZING':
+        return 'var(--color-accent-amber)';
+      case 'PENDING': return 'var(--color-accent-cyan)';
       default: return 'var(--color-text-muted)';
     }
   }
 
   function getStatusText(status: string): string {
-    switch (status) {
-      case 'queued': return 'In Queue';
-      case 'processing': return 'Processing';
-      case 'completed': return 'Completed';
-      case 'failed': return 'Failed';
+    switch (status.toUpperCase()) {
+      case 'PENDING': return 'In Queue';
+      case 'DOWNLOADING': return 'Downloading';
+      case 'PROCESSING': return 'Processing';
+      case 'ANALYZING': return 'Analyzing';
+      case 'COMPLETED': return 'Completed';
+      case 'FAILED': return 'Failed';
       default: return status;
     }
   }

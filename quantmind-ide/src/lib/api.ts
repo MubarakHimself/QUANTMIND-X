@@ -3,9 +3,25 @@
  * Centralized API calls for all UI components
  */
 
-import { API_CONFIG } from './config/api';
+import { getBaseUrl } from './config/api';
 
-const API_BASE = `${API_CONFIG.API_URL}/api`;
+export function buildApiUrl(endpoint: string): string {
+    const baseUrl = getBaseUrl(endpoint);
+
+    if (endpoint.startsWith('/api') && baseUrl.endsWith('/api')) {
+        return baseUrl + endpoint.slice(4);
+    }
+
+    if (!endpoint.startsWith('/api') && baseUrl.endsWith('/api')) {
+        return baseUrl + endpoint;
+    }
+
+    if (endpoint.startsWith('/api') && !baseUrl.endsWith('/api')) {
+        return baseUrl + '/api' + endpoint.slice(4);
+    }
+
+    return baseUrl + endpoint;
+}
 
 /**
  * Generic fetch wrapper with error handling and cookie-based auth.
@@ -13,7 +29,7 @@ const API_BASE = `${API_CONFIG.API_URL}/api`;
  * Exported for use in components that cannot import from domain-specific API modules.
  */
 export async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
-    const response = await fetch(`${API_BASE}${endpoint}`, {
+    const response = await fetch(buildApiUrl(endpoint), {
         ...options,
         credentials: 'include',  // Required for httpOnly cookie-based auth
         headers: {
@@ -345,13 +361,14 @@ export interface MarketRegime {
 }
 
 export interface MarketResponse {
-  regime: MarketRegime;
+  regime: MarketRegime | null;
   symbols?: Array<{
     symbol: string;
     price: number;
     change: number;
     spread: number;
   }>;
+  unavailable_reason?: string | null;
 }
 
 export interface TradingMetrics {

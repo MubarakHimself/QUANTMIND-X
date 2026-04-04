@@ -14,7 +14,7 @@ from src.router.copilot_kill_switch import (
     CopilotKillSwitch,
 )
 
-router = APIRouter()
+router = APIRouter(prefix="/api")
 
 
 # Request/Response models

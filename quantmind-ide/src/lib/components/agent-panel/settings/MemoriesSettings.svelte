@@ -1,36 +1,39 @@
-<!-- @migration-task Error while migrating Svelte code: 'return' outside of function
-https://svelte.dev/e/js_parse_error -->
-<!-- @migration-task Error while migrating Svelte code: 'return' outside of function
-https://svelte.dev/e/js_parse_error -->
 <script lang="ts">
   import { Database, Brain, Clock, Trash2, Search, RefreshCw, BarChart3 } from 'lucide-svelte';
   import { settingsStore } from '../../../stores/settingsStore';
+  import type { MemoryConfig } from '../../../stores/settingsTypes';
+
+  interface MemoryEntry {
+    id: string;
+    type: 'semantic' | 'episodic' | 'procedural';
+    content: string;
+    timestamp: string | Date;
+  }
   
   // State
-  let searchQuery = '';
-  let selectedType: 'all' | 'semantic' | 'episodic' | 'procedural' = 'all';
+  let searchQuery = $state('');
+  let selectedType = $state<'all' | 'semantic' | 'episodic' | 'procedural'>('all');
+  // Keep this empty unless/until live memory entry APIs are wired for this panel.
+  let memoryEntries = $state<MemoryEntry[]>([]);
   
   // Reactive state
-  $: memories = $settingsStore.memories;
-  $: memoryStats = {
-    semantic: Math.floor(Math.random() * 100),
-    episodic: Math.floor(Math.random() * 50),
-    procedural: Math.floor(Math.random() * 30),
-    total: 0
-  };
-  
-  // Calculate total
-  $: memoryStats.total = memoryStats.semantic + memoryStats.episodic + memoryStats.procedural;
-
-  // Filter memories - empty array until backend provides real data
-  $: filteredMemories = memories.entries || [];
-    const matchesType = selectedType === 'all' || m.type === selectedType;
-    const matchesSearch = !searchQuery || m.content.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesType && matchesSearch;
+  let memories = $derived($settingsStore.memories);
+  let filteredMemories = $derived(
+    memoryEntries.filter((entry) => {
+      const matchesType = selectedType === 'all' || entry.type === selectedType;
+      const matchesSearch = !searchQuery || entry.content.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesType && matchesSearch;
+    })
+  );
+  let memoryStats = $derived({
+    semantic: memoryEntries.filter((entry) => entry.type === 'semantic').length,
+    episodic: memoryEntries.filter((entry) => entry.type === 'episodic').length,
+    procedural: memoryEntries.filter((entry) => entry.type === 'procedural').length,
+    total: memoryEntries.length,
   });
   
   // Update memory config
-  function updateConfig(key: keyof typeof memories, value: boolean | number) {
+  function updateConfig(key: keyof MemoryConfig, value: boolean | number) {
     settingsStore.updateMemoryConfig({ [key]: value });
   }
   
@@ -60,7 +63,7 @@ https://svelte.dev/e/js_parse_error -->
   }
   
   // Format timestamp
-  function formatTime(date: Date): string {
+  function formatTime(date: string | Date): string {
     return new Date(date).toLocaleString();
   }
 

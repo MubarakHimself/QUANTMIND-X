@@ -9,7 +9,7 @@
   import BotStatusCard from './BotStatusCard.svelte';
   import CloseAllModal from './CloseAllModal.svelte';
   import DegradedIndicator from './DegradedIndicator.svelte';
-  import { activeBots, isLoading, type PositionInfo } from '$lib/stores/trading';
+  import { activeBots, isLoading } from '$lib/stores/trading';
   import { isContaboDegraded } from '$lib/stores/node-health';
   import { Bot, XCircle } from 'lucide-svelte';
 
@@ -20,25 +20,13 @@
   // Close All modal state
   let showCloseAllModal = $state(false);
 
-  // Mock positions for demo - in real app would come from API
-  // This would be fetched based on open positions
-  let positions: PositionInfo[] = $derived(
-    $activeBots
-      .filter((bot) => bot.open_positions > 0)
-      .flatMap((bot) =>
-        Array.from({ length: bot.open_positions }, (_, i) => ({
-          ticket: 1000 + i,
-          bot_id: bot.bot_id,
-          symbol: bot.symbol,
-          direction: 'buy' as const,
-          lot: 0.01,
-          current_pnl: bot.current_pnl / bot.open_positions
-        }))
-      )
+  // Keep only real aggregate counts until the backend exposes position-level detail.
+  let totalOpenPositions = $derived(
+    $activeBots.reduce((sum, bot) => sum + Math.max(0, bot.open_positions ?? 0), 0)
   );
 
   function handleCloseAll() {
-    if (positions.length > 0) {
+    if (totalOpenPositions > 0) {
       showCloseAllModal = true;
     }
   }
@@ -56,10 +44,10 @@
       {/if}
     </div>
     <div class="header-right">
-      {#if positions.length > 0}
+      {#if totalOpenPositions > 0}
         <button class="close-all-btn" onclick={handleCloseAll} title="Close all positions">
           <XCircle size={14} />
-          <span>Close All ({positions.length})</span>
+          <span>Close All ({totalOpenPositions})</span>
         </button>
       {/if}
     </div>
@@ -90,7 +78,8 @@
 
 {#if showCloseAllModal}
   <CloseAllModal
-    {positions}
+    positions={[]}
+    positionCount={totalOpenPositions}
     onClose={handleModalClose}
   />
 {/if}

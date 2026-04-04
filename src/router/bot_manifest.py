@@ -28,12 +28,82 @@ from src.router.sessions import TradingSession
 logger = logging.getLogger(__name__)
 
 
+class DeclineState(Enum):
+    """
+    Decline and recovery state for bot lifecycle management.
+
+    Tracks bots through the Detect->Flag->Quarantine->Diagnose->Improve->
+    Re-validate->Promote/Retire workflow (Section 8.2).
+    """
+    NORMAL = "normal"              # Bot performing within expected parameters
+    FLAGGED = "flagged"            # Decline detected, awaiting review
+    QUARANTINED = "quarantined"    # Bot moved to paper-only, under review
+    DIAGNOSING = "diagnosing"      # Risk Agent examining failure period
+    IMPROVING = "improving"         # Research/Dev proposing parameter changes
+    PAPER_RETEST = "paper_retest" # Improved variant in paper trading re-validation
+    RECOVERED = "recovered"         # Variant passed paper trading, promoted to live
+    RETIRED = "retired"            # Bot variant failed twice, gracefully deprecated
+
+
+# Valid tags for bot lifecycle
+VALID_BOT_TAGS = [
+    "@primal",       # Live trading bot
+    "@pending",      # Awaiting promotion
+    "@perfect",      # High-performing bot
+    "@quarantine",   # Temporarily suspended
+    "@dead",         # Decommissioned bot
+    "@paper_only",   # Bot moved to paper-only (decline recovery)
+    "@under_review", # Bot under diagnosis review
+]
+
+
+class BotTag(str, Enum):
+    """Backward-compatible tag enum for callers expecting BotTag constants."""
+    PRIMAL = "@primal"
+    PENDING = "@pending"
+    PERFECT = "@perfect"
+    QUARANTINE = "@quarantine"
+    DEAD = "@dead"
+    PAPER_ONLY = "@paper_only"
+    UNDER_REVIEW = "@under_review"
+
+
 class StrategyType(Enum):
     """Strategy classification for routing decisions."""
     SCALPER = "SCALPER"       # High-frequency, many trades
     STRUCTURAL = "STRUCTURAL" # ICT, AMD, Pattern-based
     SWING = "SWING"           # Multi-day holds
     HFT = "HFT"               # Sub-second execution
+    ORB = "ORB"               # Opening Range Breakout
+
+
+class PoolState(Enum):
+    """Pool activation state for regime-conditional strategy routing."""
+    ACTIVE = "active"
+    MUTED = "muted"
+    CONDITIONAL = "conditional"  # requires additional runtime check (e.g., volume confirmation)
+
+
+@dataclass
+class StrategyPool:
+    """
+    Represents a named pool of strategies grouped by direction and regime.
+
+    Used by Commander for regime-conditional pool routing where pools are
+    activated or muted based on the current market regime.
+
+    Args:
+        name: Pool identifier (e.g., "scalping_long", "orb_short")
+        strategy_type: StrategyType enum value
+        direction: Pool direction ("long", "short", "neutral", "false_breakout")
+        state: Current PoolState (ACTIVE/MUTED/CONDITIONAL)
+        regime_activations: List of regimes where this pool can activate
+    """
+    name: str
+    strategy_type: StrategyType
+    direction: str  # "long", "short", "neutral", "false_breakout"
+    state: PoolState = PoolState.MUTED
+    regime_activations: List[str] = field(default_factory=list)
 
 
 class TradeFrequency(Enum):
@@ -344,6 +414,7 @@ class BotManifest:
     name: str = ""
     description: str = ""
     symbols: List[str] = field(default_factory=list)
+    symbol_affinity: Dict[str, float] = field(default_factory=lambda: {"agnostic": 0.5})  # symbol -> affinity (0.0-1.0)
     timeframes: List[str] = field(default_factory=list)
     preferred_timeframe: Timeframe = Timeframe.H1
     use_multi_timeframe: bool = False
@@ -384,7 +455,67 @@ class BotManifest:
     # Source tracking for imported EAs
     source_type: Optional[str] = None  # 'imported_ea', 'native', etc.
     source_path: Optional[str] = None  # Path to source file or repo
-    
+
+    # FIX-014 (V2): Symbol affinity for IC Markets scanner routing
+    # Migration: old string affinity ("preferred"/"agnostic"/"exclude") is converted to
+    # {"agnostic": 0.5} on load for backward compatibility.
+    # New format: Dict[str, float] mapping symbol -> affinity (0.0=avoid, 0.5=neutral, 1.0=preferred)
+    VALID_AFFINITY_RANGE = (0.0, 1.0)
+
+    # Section 8.2: Decline and Recovery Loop fields
+    decline_state: DeclineState = DeclineState.NORMAL
+    improvement_variant_id: Optional[str] = None  # Genealogy tracking for variants
+
+    def __post_init__(self):
+        """Validate symbol_affinity field."""
+        if not isinstance(self.symbol_affinity, dict):
+            raise ValueError(
+                f"symbol_affinity must be a Dict[str, float], got {type(self.symbol_affinity).__name__}"
+            )
+        for symbol, score in self.symbol_affinity.items():
+            if not isinstance(score, (int, float)):
+                raise ValueError(
+                    f"symbol_affinity score for '{symbol}' must be a number, got {type(score).__name__}"
+                )
+            if not (self.VALID_AFFINITY_RANGE[0] <= score <= self.VALID_AFFINITY_RANGE[1]):
+                raise ValueError(
+                    f"symbol_affinity score for '{symbol}' must be between {self.VALID_AFFINITY_RANGE[0]} "
+                    f"and {self.VALID_AFFINITY_RANGE[1]}, got {score}"
+                )
+
+    # --- Symbol affinity helpers ---
+
+    def is_preferred_symbol(self, symbol: str) -> bool:
+        """
+        Check if a symbol is preferred (affinity > 0.7).
+
+        Used by the routing matrix to determine if a bot should be activated
+        when its paired symbol appears in the IC Markets scanner's active list.
+        """
+        return self.get_symbol_affinity(symbol) > 0.7
+
+    def is_excluded_symbol(self, symbol: str) -> bool:
+        """
+        Check if a symbol is excluded (affinity < 0.3).
+
+        Bots with excluded symbols are not activated even if the symbol
+        appears in the scanner's active list.
+        """
+        return self.get_symbol_affinity(symbol) < 0.3
+
+    def get_symbol_affinity(self, symbol: str) -> float:
+        """
+        Get affinity score for a symbol.
+
+        Args:
+            symbol: Symbol name (e.g., "EURUSD")
+
+        Returns:
+            Affinity score 0.0-1.0. Returns 0.5 (neutral) if symbol not in map,
+            indicating no explicit preference.
+        """
+        return self.symbol_affinity.get(symbol, 0.5)
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize manifest to dictionary."""
         result = {
@@ -397,6 +528,7 @@ class BotManifest:
             "preferred_broker_type": self.preferred_broker_type.value,
             "prop_firm_safe": self.prop_firm_safe,
             "symbols": self.symbols,
+            "symbol_affinity": self.symbol_affinity,
             "timeframes": self.timeframes,
             "preferred_timeframe": self.preferred_timeframe.name,
             "use_multi_timeframe": self.use_multi_timeframe,
@@ -433,6 +565,9 @@ class BotManifest:
             result["demo_stats"] = self.demo_stats.to_dict()
         if self.live_stats is not None:
             result["live_stats"] = self.live_stats.to_dict()
+        # Section 8.2: Decline and Recovery Loop fields
+        result["decline_state"] = self.decline_state.value
+        result["improvement_variant_id"] = self.improvement_variant_id
         return result
     
     @classmethod
@@ -460,14 +595,29 @@ class BotManifest:
         paper_stats = None
         if "paper_stats" in data:
             paper_stats = ModePerformanceStats.from_dict(data["paper_stats"])
-        
+
         demo_stats = None
         if "demo_stats" in data:
             demo_stats = ModePerformanceStats.from_dict(data["demo_stats"])
-        
+
         live_stats = None
         if "live_stats" in data:
             live_stats = ModePerformanceStats.from_dict(data["live_stats"])
+
+        # FIX-014 (V2): Backward compatibility for old string symbol_affinity
+        # Old values: "preferred" -> {symbol: 1.0}, "exclude" -> {symbol: 0.0}, "agnostic" -> {symbol: 0.5}
+        # For backward compat with old manifests that had no explicit symbol mapping,
+        # treat "agnostic" string as {"agnostic": 0.5} (neutral/default).
+        raw_affinity = data.get("symbol_affinity", "agnostic")
+        if isinstance(raw_affinity, str):
+            # Map old string affinity to new dict format; use "agnostic" as the key
+            # to preserve the semantic meaning (no per-symbol preference)
+            _str_to_score = {"preferred": 1.0, "agnostic": 0.5, "exclude": 0.0}
+            symbol_affinity = {"agnostic": _str_to_score.get(raw_affinity, 0.5)}
+        elif isinstance(raw_affinity, dict):
+            symbol_affinity = raw_affinity
+        else:
+            symbol_affinity = {"agnostic": 0.5}
 
         return cls(
             bot_id=data["bot_id"],
@@ -479,6 +629,7 @@ class BotManifest:
             preferred_broker_type=BrokerType(data.get("preferred_broker_type", "ANY")),
             prop_firm_safe=data.get("prop_firm_safe", True),
             symbols=data.get("symbols", []),
+            symbol_affinity=symbol_affinity,
             timeframes=data.get("timeframes", []),
             preferred_timeframe=preferred_timeframe,
             use_multi_timeframe=use_multi_timeframe,
@@ -508,6 +659,9 @@ class BotManifest:
             account_book_type=AccountBook(data.get("account_book_type", "PERSONAL")),
             prop_firm_name=data.get("prop_firm_name"),
             max_drawdown_pct=data.get("max_drawdown_pct"),
+            # Section 8.2: Decline and Recovery Loop fields
+            decline_state=DeclineState(data.get("decline_state", "normal")),
+            improvement_variant_id=data.get("improvement_variant_id"),
         )
     
     def is_compatible_with_account(self, account_type: str) -> bool:
@@ -690,7 +844,7 @@ class BotManifest:
         self.promotion_eligible = False
         
         logger.warning(f"Bot {self.bot_id} downgraded from {old_mode.value} to {new_mode.value}. Reason: {reason}")
-        
+
         return {
             "success": True,
             "old_mode": old_mode.value,
@@ -698,6 +852,62 @@ class BotManifest:
             "reason": reason,
             "downgraded_at": self.mode_start_date.isoformat(),
         }
+
+    def mark_paper_only(self) -> None:
+        """
+        Mark bot as paper-only (Section 8.2: Quarantine phase).
+
+        Transitions bot from live to paper trading mode.
+        Tag changes: @primal -> @paper_only
+
+        Real execution is suspended. Bot will only run in paper mode
+        until it passes re-validation.
+        """
+        # Remove @primal if present
+        if "@primal" in self.tags:
+            self.tags.remove("@primal")
+
+        # Add @paper_only and @under_review tags
+        if "@paper_only" not in self.tags:
+            self.tags.append("@paper_only")
+        if "@under_review" not in self.tags:
+            self.tags.append("@under_review")
+
+        # Downgrade to paper mode
+        if self.trading_mode == TradingMode.LIVE:
+            self.downgrade(reason="Decline and Recovery: Bot quarantined to paper-only")
+
+        # Update decline state
+        self.decline_state = DeclineState.QUARANTINED
+
+        logger.info(f"Bot {self.bot_id} marked as paper_only")
+
+    def mark_recovered(self) -> None:
+        """
+        Mark bot as recovered (Section 8.2: Promote phase).
+
+        Transitions bot from paper back to live trading after
+        passing paper re-validation.
+
+        Tag changes: @paper_only, @under_review -> @primal (if promoted)
+        """
+        # Remove quarantine-related tags
+        if "@paper_only" in self.tags:
+            self.tags.remove("@paper_only")
+        if "@under_review" in self.tags:
+            self.tags.remove("@under_review")
+
+        # Restore @primal if not present
+        if "@primal" not in self.tags:
+            self.tags.append("@primal")
+
+        # Update decline state
+        self.decline_state = DeclineState.RECOVERED
+
+        # Note: Actual promotion to LIVE mode is handled separately
+        # by the promotion workflow after paper retest passes
+
+        logger.info(f"Bot {self.bot_id} marked as recovered")
 
 
 class BotRegistry:
@@ -766,6 +976,11 @@ class BotRegistry:
     def list_by_tag(self, tag: str) -> List[BotManifest]:
         """List bots by tag."""
         return [b for b in self._bots.values() if tag in b.tags]
+
+    def find_by_tag(self, tag: str | BotTag) -> List[BotManifest]:
+        """Compatibility alias used by trading status endpoints."""
+        tag_value = tag.value if isinstance(tag, BotTag) else str(tag)
+        return self.list_by_tag(tag_value)
     
     def list_prop_firm_safe(self) -> List[BotManifest]:
         """List only prop firm safe bots."""

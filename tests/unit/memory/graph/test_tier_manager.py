@@ -57,7 +57,7 @@ class TestGetHotNodes:
 
     def test_get_hot_nodes(self, tier_mgr):
         """Test retrieving hot tier nodes."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         for i in range(3):
             node = MemoryNode(
                 title=f"Hot {i}",
@@ -65,7 +65,7 @@ class TestGetHotNodes:
                 node_type=MemoryNodeType.WORLD,
                 category=MemoryCategory.FACTUAL,
                 tier=MemoryTier.HOT,
-                last_accessed=now - timedelta(minutes=i * 10),
+                last_accessed_utc=now - timedelta(minutes=i * 10),
             )
             tier_mgr.store.create_node(node)
         hot = tier_mgr.get_hot_nodes(limit=10)
@@ -84,7 +84,7 @@ class TestCompactOldNodes:
                 content=f"Content {i}",
                 node_type=MemoryNodeType.WORLD,
                 category=MemoryCategory.FACTUAL,
-                created_at=old_date,
+                created_at_utc=old_date,
                 importance=0.2,  # Less than min_importance=0.3
                 tier=MemoryTier.WARM,
             )
@@ -158,13 +158,13 @@ class TestPromoteHot:
             node_type=MemoryNodeType.WORLD,
             category=MemoryCategory.FACTUAL,
             tier=MemoryTier.COLD,
-            last_accessed=None,
+            last_accessed_utc=None,
         )
         tier_mgr.store.create_node(node)
         tier_mgr.promote_hot(node.id)
         updated = tier_mgr.store.get_node(str(node.id))
         assert updated.tier == MemoryTier.HOT
-        assert updated.last_accessed is not None
+        assert updated.last_accessed_utc is not None
 
 
 class TestGetNodesByTier:

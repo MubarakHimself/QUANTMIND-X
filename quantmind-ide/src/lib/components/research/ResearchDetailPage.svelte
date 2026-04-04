@@ -25,7 +25,7 @@ Excerpt:
 ${result.excerpt}`;
 
     try {
-      const response = await fetch(`${API_CONFIG.API_BASE}/floor-manager/chat`, {
+      const response = await fetch(`${API_CONFIG.API_BASE}/copilot/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

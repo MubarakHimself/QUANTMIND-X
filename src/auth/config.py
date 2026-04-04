@@ -9,6 +9,8 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 
+from src.config import get_internal_api_base_url
+
 
 @dataclass
 class Auth0Config:
@@ -51,7 +53,11 @@ def get_auth0_config() -> Auth0Config:
         raise ValueError("AUTH0_CLIENT_ID environment variable is required")
 
     # Build full callback/logout URLs based on API_BASE_URL env var
-    api_base = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
+    api_base = (
+        os.getenv("API_BASE_URL")
+        or os.getenv("QUANTMIND_API_URL")
+        or get_internal_api_base_url()
+    ).rstrip("/")
     callback_url = f"{api_base}{callback_path}"
     logout_callback_url = f"{api_base}{logout_path}"
 

@@ -9,7 +9,7 @@ Import directly from here: from src.database.models import PropFirmAccount
 """
 
 # Base utilities
-from .base import Base, TradingMode, AccountType, get_db_session
+from .base import Base, TradingMode, AccountType, get_db_session, db_session_scope
 
 # Account models
 from .account import (
@@ -125,6 +125,7 @@ __all__ = [
     'TradingMode',
     'AccountType',
     'get_db_session',
+    'db_session_scope',
     'SessionLocal',
 
     # Account

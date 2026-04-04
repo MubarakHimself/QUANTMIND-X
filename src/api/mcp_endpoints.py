@@ -11,6 +11,7 @@ All operations route to the live MCP client.
 """
 
 import logging
+import os
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
@@ -28,6 +29,10 @@ from src.mcp.client import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/mcp", tags=["mcp"])
+
+_DEFAULT_PAGEINDEX_ARTICLES_URL = os.getenv("PAGEINDEX_ARTICLES_URL", "http://pageindex-articles:3000")
+_DEFAULT_PAGEINDEX_BOOKS_URL = os.getenv("PAGEINDEX_BOOKS_URL", "http://pageindex-books:3001")
+_DEFAULT_PAGEINDEX_LOGS_URL = os.getenv("PAGEINDEX_LOGS_URL", "http://pageindex-logs:3002")
 
 
 # ============================================================================
@@ -146,9 +151,9 @@ DEFAULT_MCP_SERVERS = [
         "command": "python",
         "args": ["mcp-servers/quantmindx-kb/server.py"],
         "env": {
-            "PAGEINDEX_ARTICLES_URL": "http://localhost:3000",
-            "PAGEINDEX_BOOKS_URL": "http://localhost:3001",
-            "PAGEINDEX_LOGS_URL": "http://localhost:3002",
+            "PAGEINDEX_ARTICLES_URL": _DEFAULT_PAGEINDEX_ARTICLES_URL,
+            "PAGEINDEX_BOOKS_URL": _DEFAULT_PAGEINDEX_BOOKS_URL,
+            "PAGEINDEX_LOGS_URL": _DEFAULT_PAGEINDEX_LOGS_URL,
         },
         "auto_connect": False,
     },

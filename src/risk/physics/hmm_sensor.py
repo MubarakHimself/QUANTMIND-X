@@ -197,8 +197,8 @@ class HMMRegimeSensor(_HMMRegimeSensor):
         if not model_path.exists():
             return None
 
-        # Look for model files
-        model_files = list(model_path.glob("hmm_*.pkl"))
+        # Look for model files (match all .pkl files)
+        model_files = list(model_path.glob("*.pkl"))
 
         if not model_files:
             return None
@@ -214,7 +214,7 @@ class HMMRegimeSensor(_HMMRegimeSensor):
             return None
 
         # Look for exact version match
-        for model_file in model_path.glob("hmm_*.pkl"):
+        for model_file in model_path.glob("*.pkl"):
             if version in model_file.stem:
                 return model_file
 

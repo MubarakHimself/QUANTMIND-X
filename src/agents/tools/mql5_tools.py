@@ -110,7 +110,7 @@ CTrade trade;
 //| Expert initialization function |
 //+------------------------------------------------------------------+
 int OnInit()
-{ {{
+{{
     trade.SetExpertMagicNumber(MagicNumber);
     Print("{strategy_name} initialized");
     return(INIT_SUCCEEDED);
@@ -128,7 +128,7 @@ void OnDeinit(const int reason)
 //| Expert tick function |
 //+------------------------------------------------------------------+
 void OnTick()
-{ {{
+{{
     // Check for open positions
     if(PositionsTotal() > 0) return;
 
@@ -149,17 +149,17 @@ void OnTick()
             code += f"    // Exit condition {i+1}: {condition}\n"
 
         # Add trade execution
-        code += '''
+        code += f'''
     // Execute trades
     if(shouldBuy)
-    {
+    {{
         trade.Buy(LotSize, Symbol(), Ask, StopLoss, TakeProfit, "{strategy_name}");
-    }
+    }}
     else if(shouldSell)
-    {
+    {{
         trade.Sell(LotSize, Symbol(), Bid, StopLoss, TakeProfit, "{strategy_name}");
-    }
-}
+    }}
+}}
 '''
         code += "\n//+------------------------------------------------------------------+\n"
         return code
@@ -315,7 +315,7 @@ double {indicator_name}Buffer[];
 //| Custom indicator initialization function |
 //+------------------------------------------------------------------+
 int OnInit()
-{ {{
+{{
     SetIndexBuffer(0, {indicator_name}Buffer, INDICATOR_DATA);
     PlotIndexSetInteger(0, PLOT_DRAW_TYPE, DRAW_LINE);
     PlotIndexSetInteger(0, PLOT_LINE_COLOR, clrBlue);
@@ -327,7 +327,7 @@ int OnInit()
 //| Custom indicator deinitialization function |
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
-{ {{
+{{
     Print("{indicator_name} deinitialized");
 }}
 
@@ -344,7 +344,7 @@ int OnCalculate(const int rates_total,
                 const long &tick_volume[],
                 const long &volume[],
                 const int &spread[])
-{ {{
+{{
     if(rates_total <= 0) return(0);
 
     int start = prev_calculated == 0 ? 1 : prev_calculated - 1;

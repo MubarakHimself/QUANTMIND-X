@@ -30,6 +30,7 @@ import signal
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional, Any
+import os
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -44,7 +45,11 @@ except ImportError:
     print("WARNING: APScheduler not installed. Install with: pip install apscheduler")
 
 # Configure logging
-log_dir = Path("/data/lifecycle/logs")
+_lifecycle_root = Path(
+    os.environ.get("LIFECYCLE_DATA_DIR")
+    or (Path(os.environ.get("QUANTMIND_DATA_DIR", "data")) / "lifecycle")
+)
+log_dir = _lifecycle_root / "logs"
 log_dir.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
@@ -108,7 +113,7 @@ class LifecycleScheduler:
         logger.info(f"NOTIFICATION [{status.upper()}]: {message}")
         
         # Write to notification file (can be picked up by monitoring system)
-        notification_dir = Path("/data/lifecycle/notifications")
+        notification_dir = _lifecycle_root / "notifications"
         notification_dir.mkdir(parents=True, exist_ok=True)
         
         notification_file = notification_dir / f"notification_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"

@@ -48,6 +48,15 @@ describe('TradingCanvas.svelte — Story 12-6 (extends Story 12-4)', () => {
     expect(src).toContain('dept="trading"');
   });
 
+  it('uses live summary tiles instead of placeholder trading journal and risk physics blocks', () => {
+    expect(src).toContain('TradingJournalSummaryTile');
+    expect(src).toContain('RiskPhysicsSummaryTile');
+    expect(src).not.toContain('coming-soon');
+    expect(src).not.toContain('routed-from-risk');
+    expect(src).not.toContain('— coming soon —');
+    expect(src).not.toContain('— routed from Risk —');
+  });
+
   it('DeptKanbanTile onNavigate sets currentSubPage to dept-kanban', () => {
     expect(src).toContain("currentSubPage = 'dept-kanban'");
   });

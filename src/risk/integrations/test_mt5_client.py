@@ -409,7 +409,7 @@ class TestFactoryFunction(unittest.TestCase):
         """Test factory function with default parameters."""
         client = create_mt5_client()
         self.assertIsNotNone(client)
-        self.assertTrue(client.fallback_to_simulated)
+        self.assertFalse(client.fallback_to_simulated)
         self.assertEqual(client.cache_ttl, 10.0)
 
     def test_create_mt5_client_custom(self):

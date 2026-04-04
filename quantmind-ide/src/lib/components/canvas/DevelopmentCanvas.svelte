@@ -81,6 +81,18 @@
     monte_carlo?: BacktestStage;
   }
 
+  interface DeploymentListItem {
+    deployment_id: string;
+    strategy_id: string;
+    status: string;
+    started_at: string;
+    completed_at?: string | null;
+  }
+
+  interface DeploymentListResponse {
+    deployments?: DeploymentListItem[];
+  }
+
   // =============================================================================
   // State
   // =============================================================================
@@ -334,8 +346,25 @@ if __name__ == "__main__":
     loadingTab = tab;
     try {
       if (tab === 'active-eas') {
-        const data = await apiFetch<ActiveEA[]>('/deployment/active');
-        activeEAs = data;
+        const data = await apiFetch<DeploymentListResponse>('/deployment/list?limit=50');
+        const deployments = Array.isArray(data?.deployments) ? data.deployments : [];
+        activeEAs = deployments.map((deployment) => {
+          const status = deployment.status?.toLowerCase();
+          let mappedStatus: ActiveEA['status'] = 'STOPPED';
+          if (status === 'deployed' || status === 'running') {
+            mappedStatus = 'RUNNING';
+          } else if (status === 'failed' || status === 'error') {
+            mappedStatus = 'ERROR';
+          }
+          return {
+            id: deployment.deployment_id,
+            name: deployment.strategy_id || deployment.deployment_id,
+            symbol: '',
+            status: mappedStatus,
+            pnl_today: 0,
+            last_modified: deployment.completed_at || deployment.started_at || '',
+          };
+        });
       } else if (tab === 'backtest' && !backtestLoaded) {
         backtestLoading = true;
         const data = await apiFetch<BacktestResult[]>('/backtest/results?limit=20');
@@ -411,6 +440,157 @@ if __name__ == "__main__":
     if (val === undefined || val === null) return '—';
     return `${(val * 100).toFixed(1)}%`;
   }
+
+  function getDevelopmentAttachableResources() {
+    const baseResources = [
+      {
+        id: `development:tab:${activeTab}`,
+        label: tabs.find((tab) => tab.id === activeTab)?.label ?? activeTab,
+        canvas: 'development',
+        resource_type: 'active-tab',
+        metadata: {
+          active_tab: activeTab,
+          loading: loadingTab === activeTab,
+        },
+      },
+    ];
+
+    if (activeTab === 'active-eas') {
+      return [
+        ...baseResources,
+        ...activeEAs.slice(0, 50).map((ea) => ({
+          id: ea.id,
+          label: ea.name,
+          canvas: 'development',
+          resource_type: 'active-ea',
+          metadata: {
+            symbol: ea.symbol,
+            status: ea.status,
+            pnl_today: ea.pnl_today,
+            last_modified: ea.last_modified,
+          },
+        })),
+      ];
+    }
+
+    if (activeTab === 'backtest') {
+      return [
+        ...baseResources,
+        ...backtestResults.slice(0, 50).map((result) => ({
+          id: result.strategy_id,
+          label: result.strategy_name,
+          canvas: 'development',
+          resource_type: 'backtest-result',
+          metadata: {
+            strategy_id: result.strategy_id,
+            vanilla_status: result.vanilla?.status ?? 'waiting',
+            spiced_status: result.spiced?.status ?? 'waiting',
+            monte_carlo_status: result.monte_carlo?.status ?? 'waiting',
+          },
+        })),
+      ];
+    }
+
+    if (activeTab === 'workflows') {
+      return [
+        ...baseResources,
+        ...WORKFLOW_TEMPLATES.map((template) => ({
+          id: template.id,
+          label: template.name,
+          canvas: 'development',
+          resource_type: 'workflow-template',
+          metadata: {
+            description: template.description,
+          },
+        })),
+        {
+          id: 'development:workflow-editor',
+          label: 'Workflow Editor',
+          canvas: 'development',
+          resource_type: 'editor',
+          metadata: {
+            has_code: workflowCode.trim().length > 0,
+            line_count: workflowCode.split('\n').length,
+          },
+        },
+      ];
+    }
+
+    if (activeTab === 'pipeline') {
+      return [
+        ...baseResources,
+        {
+          id: 'development:pipeline-board',
+          label: 'Pipeline Board',
+          canvas: 'development',
+          resource_type: 'board',
+          metadata: {
+            active_tab: activeTab,
+          },
+        },
+        {
+          id: 'development:department-kanban',
+          label: 'Department Task Board',
+          canvas: 'development',
+          resource_type: 'kanban',
+          metadata: {
+            department: 'development',
+          },
+        },
+      ];
+    }
+
+    if (activeTab === 'variants') {
+      return [
+        ...baseResources,
+        {
+          id: 'development:variant-browser',
+          label: 'Variant Browser',
+          canvas: 'development',
+          resource_type: 'browser',
+          metadata: {
+            active_tab: activeTab,
+          },
+        },
+        {
+          id: 'development:variant-editor',
+          label: 'Variant Editor',
+          canvas: 'development',
+          resource_type: 'editor',
+          metadata: {
+            read_only: true,
+          },
+        },
+      ];
+    }
+
+    if (activeTab === 'dept-tasks') {
+      return [
+        ...baseResources,
+        {
+          id: 'development:department-kanban',
+          label: 'Department Task Board',
+          canvas: 'development',
+          resource_type: 'kanban',
+          metadata: {
+            department: 'development',
+          },
+        },
+      ];
+    }
+
+    return baseResources;
+  }
+
+  $effect(() => {
+    canvasContextService.setRuntimeState('development', {
+      active_tab: activeTab,
+      loading_tab: loadingTab,
+      active_ea_count: activeEAs.length,
+      backtest_result_count: backtestResults.length,
+      attachable_resources: getDevelopmentAttachableResources(),
+    });
+  });
 </script>
 
 <!-- =========================================================

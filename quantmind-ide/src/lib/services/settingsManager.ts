@@ -41,11 +41,13 @@ export const settingsManager = {
       
       // Load API keys separately (encrypted)
       const encryptedKeys = localStorage.getItem(API_KEYS_KEY);
-      let apiKeys = {
+      let apiKeys: APIKeys = {
         google: '',
         anthropic: '',
         openai: '',
-        qwen: ''
+        qwen: '',
+        zhipu: '',
+        minimax: ''
       };
       
       if (encryptedKeys) {
@@ -147,7 +149,9 @@ export const settingsManager = {
       google: '',
       anthropic: '',
       openai: '',
-      qwen: ''
+      qwen: '',
+      zhipu: '',
+      minimax: ''
     };
   },
 

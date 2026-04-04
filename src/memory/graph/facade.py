@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from src.memory.graph.compaction import ContextCompactionTrigger
+from src.memory.graph.config import resolve_graph_memory_db_path
 from src.memory.graph.operations import MemoryOperations
 from src.memory.graph.reflection_executor import ReflectionExecutor
 from src.memory.graph.store import GraphMemoryStore
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Global singleton instance
 _facade_instance: Optional["GraphMemoryFacade"] = None
+_facade_db_path: Optional[Path] = None
 
 
 class GraphMemoryFacade:
@@ -42,11 +44,12 @@ class GraphMemoryFacade:
         """Initialize the graph memory facade.
 
         Args:
-            db_path: Path to SQLite database file. If None, uses in-memory store.
+            db_path: Path to SQLite database file. If None, uses the shared
+                graph-memory database path.
             compaction_threshold: Percentage threshold for triggering compaction.
         """
-        if db_path is None:
-            db_path = Path(":memory:")
+        db_path = resolve_graph_memory_db_path(db_path)
+        self.db_path = db_path
 
         self.store = GraphMemoryStore(db_path)
         self.operations = MemoryOperations(self.store)
@@ -184,6 +187,10 @@ class GraphMemoryFacade:
             relation_type=relation_type,
             strength=strength,
         )
+
+    def delete_node(self, node_id: str) -> bool:
+        """Delete a memory node by ID."""
+        return self.store.delete_node(node_id)
 
     # Tier management methods
 
@@ -748,12 +755,20 @@ def get_graph_memory(
     Returns:
         The GraphMemoryFacade singleton instance.
     """
-    global _facade_instance
+    global _facade_instance, _facade_db_path
 
-    if _facade_instance is None:
+    resolved_path = resolve_graph_memory_db_path(db_path)
+    if _facade_instance is None or _facade_db_path != resolved_path:
+        if _facade_instance is not None and _facade_db_path != resolved_path:
+            logger.warning(
+                "Reinitializing GraphMemoryFacade for new db_path: %s -> %s",
+                _facade_db_path,
+                resolved_path,
+            )
         _facade_instance = GraphMemoryFacade(
-            db_path=db_path,
+            db_path=resolved_path,
             compaction_threshold=compaction_threshold,
         )
+        _facade_db_path = resolved_path
 
     return _facade_instance

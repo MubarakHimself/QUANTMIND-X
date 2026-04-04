@@ -11,7 +11,6 @@
     portfolioStore,
     accounts,
     routingRules,
-    strategies,
     portfolioLoading
   } from '$lib/stores/portfolio';
   import { X, Check, Filter, RefreshCw } from 'lucide-svelte';
@@ -45,7 +44,7 @@
 
   // Filtered rules based on dropdown selection
   let filteredRules = $derived(
-    routingRules.filter(rule => {
+    ($routingRules ?? []).filter(rule => {
       const regimeMatch = selectedRegime === 'all' || rule.regime_filter === selectedRegime;
       const typeMatch = selectedStrategyType === 'all' || rule.strategy_type_filter === selectedStrategyType;
       return regimeMatch && typeMatch;
@@ -54,7 +53,7 @@
 
   // Get unique accounts for matrix columns
   let accountList = $derived(
-    accounts.map(acc => ({
+    ($accounts ?? []).map(acc => ({
       id: acc.account_id,
       name: acc.broker_name,
       type: acc.account_type
@@ -77,7 +76,7 @@
   }
 
   function getRuleForStrategyAccount(strategyId: string, accountId: string) {
-    return routingRules.find(
+    return ($routingRules ?? []).find(
       rule => rule.strategy_id === strategyId && rule.account_id === accountId
     );
   }

@@ -876,6 +876,24 @@
                     continue;
                   }
 
+                  // Handle normalized status events
+                  if (data.type === "status") {
+                    const phase = typeof data.phase === "string" ? data.phase : "status";
+                    const status = typeof data.status === "string" ? data.status : "progress";
+                    const detail = typeof data.message === "string" ? data.message : "";
+                    currentToolCall = {
+                      tool: `${phase}${detail ? ` · ${detail}` : ""}`,
+                      status: status === "completed" ? "completed" : "started",
+                    };
+                    streamingMessage.toolCall = currentToolCall;
+                    if (phase === "thinking" && detail) {
+                      thinkingContent += detail;
+                      streamingMessage.thinking = thinkingContent;
+                    }
+                    messages = [...messages];
+                    continue;
+                  }
+
                   // Handle thinking chunks
                   if (data.type === "thinking" && data.content !== undefined) {
                     thinkingContent += data.content;
@@ -924,7 +942,7 @@
 
                   // Handle error events
                   if (data.type === "error") {
-                    throw new Error(data.error);
+                    throw new Error(typeof data.error === "string" ? data.error : String(data.content ?? "Streaming error"));
                   }
                 } catch (e) {
                   // Skip parse errors for incomplete chunks
@@ -1632,7 +1650,7 @@
       <div class="model-selector-inline">
         <AgentModelSelector
           agentId="floor_manager"
-          currentModel={fmModel ?? 'opus'}
+          currentModel={fmModel ?? ''}
           on:modelchange={handleModelChange}
         />
       </div>

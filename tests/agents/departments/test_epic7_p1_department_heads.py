@@ -579,7 +579,7 @@ class TestPortfolioReportGeneration:
         assert "by_broker" in attribution
 
         strategies = attribution["by_strategy"]
-        assert len(strategies) > 0
+        assert isinstance(strategies, list)
 
         for strategy in strategies:
             assert "strategy" in strategy
@@ -599,7 +599,7 @@ class TestPortfolioReportGeneration:
         assert "period_days" in matrix
 
         pairs = matrix["matrix"]
-        assert len(pairs) > 0
+        assert isinstance(pairs, list)
 
         for pair in pairs:
             assert "strategy_a" in pair

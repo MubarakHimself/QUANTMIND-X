@@ -239,6 +239,10 @@ describe('StatusBand.svelte — AC 12-5-7: activeCanvasStore navigation', () => 
     expect(src).toContain("activeCanvasStore.setActiveCanvas('portfolio')");
   });
 
+  it('navigateToTrading calls setActiveCanvas(trading)', () => {
+    expect(src).toContain("activeCanvasStore.setActiveCanvas('trading')");
+  });
+
   it('navigateToRisk calls setActiveCanvas(risk)', () => {
     expect(src).toContain("activeCanvasStore.setActiveCanvas('risk')");
   });
@@ -252,8 +256,8 @@ describe('StatusBand.svelte — AC 12-5-7: activeCanvasStore navigation', () => 
     expect(src).toContain('onclick={navigateToLiveTrading}');
   });
 
-  it('bots segment onclick calls navigateToPortfolio', () => {
-    expect(src).toContain('onclick={navigateToPortfolio}');
+  it('bots segment onclick calls navigateToTrading', () => {
+    expect(src).toContain('onclick={navigateToTrading}');
   });
 
   it('risk segment onclick calls navigateToRisk', () => {
@@ -273,6 +277,12 @@ describe('StatusBand.svelte — AC 12-5-7: activeCanvasStore navigation', () => 
 
   it('router segment exists and calls navigateToRouter — AC 12-5-7', () => {
     expect(src).toContain('onclick={navigateToRouter}');
+  });
+
+  it('workflow segment exists and calls navigateToFlowForge', () => {
+    expect(src).toContain('function navigateToFlowForge');
+    expect(src).toContain("activeCanvasStore.setActiveCanvas('flowforge')");
+    expect(src).toContain('onclick={navigateToFlowForge}');
   });
 
   it('routerMode is rendered in the template — AC 12-5-7', () => {
@@ -323,6 +333,10 @@ describe('canvasStore.ts — AC 12-5-6: All 9 keyboard shortcuts correct', () =>
 
   it('setActiveCanvas method exists on activeCanvasStore', () => {
     expect(src).toContain('setActiveCanvas');
+  });
+
+  it('defaults the active canvas to live-trading on initial load', () => {
+    expect(src).toContain("writable<string>('live-trading')");
   });
 });
 

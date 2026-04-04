@@ -6,41 +6,50 @@
 
   interface Props {
     kellyData: Record<string, {
-    kellyFraction: number;
-    halfKelly: number;
-    winRate: number;
-    avgWin: number;
-    avgLoss: number;
-    expectedValue: number;
-    suggestedFraction: number;
-  }>;
+      kellyFraction: number;
+      halfKelly: number;
+      winRate: number;
+      avgWin: number;
+      avgLoss: number;
+      expectedValue: number;
+      suggestedFraction: number;
+    }>;
     bots: Array<{
-    id: string;
-    name: string;
-  }>;
+      id: string;
+      name: string;
+    }>;
     kellyRankings: Array<{
-    botId: string;
-    name: string;
-    kellyFraction: number;
-    halfKelly: number;
-    winRate: number;
-    expectedValue: number;
-    suggestedFraction: number;
-    kellyScore: string;
-  }>;
+      botId: string;
+      name: string;
+      kellyFraction: number;
+      halfKelly: number;
+      winRate: number;
+      expectedValue: number;
+      suggestedFraction: number;
+      kellyScore: string;
+    }>;
     kellyHistory: Array<{
-    date: string;
-    botId: string;
-    fraction: number;
-    result: number;
-  }>;
+      date: string;
+      botId: string;
+      fraction: number;
+      result: number;
+    }>;
+    kellyEngine: {
+      fraction: number;
+      multiplier: number;
+      houseOfMoney: boolean;
+      configuredFraction: number;
+    } | null;
+    statusMessage: string;
   }
 
   let {
     kellyData,
     bots,
     kellyRankings,
-    kellyHistory
+    kellyHistory,
+    kellyEngine,
+    statusMessage
   }: Props = $props();
 
   function formatCurrency(value: number) {
@@ -51,9 +60,10 @@
     }).format(value);
   }
 
-  let avgKelly = $derived(Object.values(kellyData).reduce((a, b) => a + b.kellyFraction, 0) / Object.values(kellyData).length * 100);
-  let avgHalfKelly = $derived(Object.values(kellyData).reduce((a, b) => a + b.halfKelly, 0) / Object.values(kellyData).length * 100);
-  let maxKelly = $derived(Math.max(...Object.values(kellyData).map(k => k.kellyFraction * 100)));
+  let kellyEntries = $derived(Object.values(kellyData));
+  let avgKelly = $derived(kellyEntries.length > 0 ? kellyEntries.reduce((a, b) => a + b.kellyFraction, 0) / kellyEntries.length * 100 : 0);
+  let avgHalfKelly = $derived(kellyEntries.length > 0 ? kellyEntries.reduce((a, b) => a + b.halfKelly, 0) / kellyEntries.length * 100 : 0);
+  let maxKelly = $derived(kellyEntries.length > 0 ? Math.max(...kellyEntries.map((k) => k.kellyFraction * 100)) : 0);
 </script>
 
 <div class="kelly-section">
@@ -66,128 +76,159 @@
       </div>
     </div>
     <div class="kelly-summary">
-      <div class="summary-item">
-        <span class="label">Avg Kelly</span>
-        <span class="value">{avgKelly.toFixed(1)}%</span>
-      </div>
-      <div class="summary-item">
-        <span class="label">Avg Half-Kelly</span>
-        <span class="value">{avgHalfKelly.toFixed(1)}%</span>
-      </div>
-      <div class="summary-item">
-        <span class="label">Best Kelly</span>
-        <span class="value success">{maxKelly.toFixed(1)}%</span>
-      </div>
+      {#if kellyEntries.length > 0}
+        <div class="summary-item">
+          <span class="label">Avg Kelly</span>
+          <span class="value">{avgKelly.toFixed(1)}%</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">Avg Half-Kelly</span>
+          <span class="value">{avgHalfKelly.toFixed(1)}%</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">Best Kelly</span>
+          <span class="value success">{maxKelly.toFixed(1)}%</span>
+        </div>
+      {:else if kellyEngine}
+        <div class="summary-item">
+          <span class="label">Live Kelly</span>
+          <span class="value">{(kellyEngine.fraction * 100).toFixed(1)}%</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">Multiplier</span>
+          <span class="value">{kellyEngine.multiplier.toFixed(2)}x</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">House Money</span>
+          <span class="value success">{kellyEngine.houseOfMoney ? 'Enabled' : 'Disabled'}</span>
+        </div>
+      {/if}
     </div>
   </div>
+
+  {#if statusMessage}
+    <div class="status-banner">
+      {statusMessage}
+    </div>
+  {/if}
 
   <!-- Kelly Rankings -->
   <div class="kelly-rankings">
     <h4>Bot Rankings by Kelly Score</h4>
-    <div class="kelly-table">
-      <div class="table-header kelly-header-row">
-        <span>Rank</span>
-        <span>Bot</span>
-        <span>Full Kelly</span>
-        <span>Half Kelly</span>
-        <span>Win Rate</span>
-        <span>EV/Trade</span>
-        <span>Kelly Score</span>
-      </div>
-
-      {#each kellyRankings as ranking, index}
-        <div class="table-row kelly-row">
-          <span class="rank kelly-rank">#{index + 1}</span>
-          <span class="name">{ranking.name}</span>
-          <span class="kelly-value full-kelly" title="Full Kelly - aggressive">
-            <div class="kelly-bar" style="width: {ranking.kellyFraction * 100 * 4}%"></div>
-            {(ranking.kellyFraction * 100).toFixed(1)}%
-          </span>
-          <span class="kelly-value half-kelly" title="Half Kelly - conservative">
-            <div class="kelly-bar half" style="width: {ranking.halfKelly * 100 * 4}%"></div>
-            {(ranking.halfKelly * 100).toFixed(1)}%
-          </span>
-          <span class="winrate">{ranking.winRate * 100}%</span>
-          <span class="expected-value" class:positive={ranking.expectedValue > 0}>
-            ${ranking.expectedValue.toFixed(2)}
-          </span>
-          <span class="kelly-score" class:top={index === 0}>
-            {ranking.kellyScore}
-          </span>
+    {#if kellyRankings.length > 0}
+      <div class="kelly-table">
+        <div class="table-header kelly-header-row">
+          <span>Rank</span>
+          <span>Bot</span>
+          <span>Full Kelly</span>
+          <span>Half Kelly</span>
+          <span>Win Rate</span>
+          <span>EV/Trade</span>
+          <span>Kelly Score</span>
         </div>
-      {/each}
-    </div>
+
+        {#each kellyRankings as ranking, index}
+          <div class="table-row kelly-row">
+            <span class="rank kelly-rank">#{index + 1}</span>
+            <span class="name">{ranking.name}</span>
+            <span class="kelly-value full-kelly" title="Full Kelly - aggressive">
+              <div class="kelly-bar" style="width: {ranking.kellyFraction * 100 * 4}%"></div>
+              {(ranking.kellyFraction * 100).toFixed(1)}%
+            </span>
+            <span class="kelly-value half-kelly" title="Half Kelly - conservative">
+              <div class="kelly-bar half" style="width: {ranking.halfKelly * 100 * 4}%"></div>
+              {(ranking.halfKelly * 100).toFixed(1)}%
+            </span>
+            <span class="winrate">{ranking.winRate * 100}%</span>
+            <span class="expected-value" class:positive={ranking.expectedValue > 0}>
+              ${ranking.expectedValue.toFixed(2)}
+            </span>
+            <span class="kelly-score" class:top={index === 0}>
+              {ranking.kellyScore}
+            </span>
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <div class="empty-state">No per-bot Kelly rankings are available from the live backend.</div>
+    {/if}
   </div>
 
   <!-- Kelly Details Grid -->
-  <div class="kelly-details-grid">
-    {#each Object.entries(kellyData) as [botId, data]}
-      <div class="kelly-card">
-        <div class="kelly-card-header">
-          <span class="bot-name">{bots.find(b => b.id === botId)?.name || botId}</span>
-          <span
-            class="status-badge"
-            class:optimal={data.kellyFraction < 0.15}
-            class:caution={data.kellyFraction >= 0.15 && data.kellyFraction < 0.25}
-            class:warning={data.kellyFraction >= 0.25}
-          >
-            {data.kellyFraction < 0.15 ? 'Optimal' : data.kellyFraction < 0.25 ? 'Moderate' : 'High Risk'}
-          </span>
-        </div>
-        <div class="kelly-card-body">
-          <div class="metric-row">
-            <span class="metric-label">Win Rate</span>
-            <span class="metric-value">{(data.winRate * 100).toFixed(0)}%</span>
+  {#if Object.keys(kellyData).length > 0}
+    <div class="kelly-details-grid">
+      {#each Object.entries(kellyData) as [botId, data]}
+        <div class="kelly-card">
+          <div class="kelly-card-header">
+            <span class="bot-name">{bots.find(b => b.id === botId)?.name || botId}</span>
+            <span
+              class="status-badge"
+              class:optimal={data.kellyFraction < 0.15}
+              class:caution={data.kellyFraction >= 0.15 && data.kellyFraction < 0.25}
+              class:warning={data.kellyFraction >= 0.25}
+            >
+              {data.kellyFraction < 0.15 ? 'Optimal' : data.kellyFraction < 0.25 ? 'Moderate' : 'High Risk'}
+            </span>
           </div>
-          <div class="metric-row">
-            <span class="metric-label">Avg Win</span>
-            <span class="metric-value success">${data.avgWin.toFixed(2)}</span>
-          </div>
-          <div class="metric-row">
-            <span class="metric-label">Avg Loss</span>
-            <span class="metric-value danger">${data.avgLoss.toFixed(2)}</span>
-          </div>
-          <div class="kelly-visual">
-            <div class="kelly-gauge">
-              <div class="gauge-track">
-                <div class="gauge-fill" style="width: {data.kellyFraction * 100}%"></div>
-                <div class="gauge-half" style="left: {data.halfKelly * 100}%"></div>
-              </div>
-              <div class="gauge-labels">
-                <span>0%</span>
-                <span class="half-mark">Half: {(data.halfKelly * 100).toFixed(1)}%</span>
-                <span>{(data.kellyFraction * 100).toFixed(1)}%</span>
+          <div class="kelly-card-body">
+            <div class="metric-row">
+              <span class="metric-label">Win Rate</span>
+              <span class="metric-value">{(data.winRate * 100).toFixed(0)}%</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-label">Avg Win</span>
+              <span class="metric-value success">${data.avgWin.toFixed(2)}</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-label">Avg Loss</span>
+              <span class="metric-value danger">${data.avgLoss.toFixed(2)}</span>
+            </div>
+            <div class="kelly-visual">
+              <div class="kelly-gauge">
+                <div class="gauge-track">
+                  <div class="gauge-fill" style="width: {data.kellyFraction * 100}%"></div>
+                  <div class="gauge-half" style="left: {data.halfKelly * 100}%"></div>
+                </div>
+                <div class="gauge-labels">
+                  <span>0%</span>
+                  <span class="half-mark">Half: {(data.halfKelly * 100).toFixed(1)}%</span>
+                  <span>{(data.kellyFraction * 100).toFixed(1)}%</span>
+                </div>
               </div>
             </div>
-          </div>
-          <div class="suggested-fraction">
-            <span class="label">Suggested Fraction:</span>
-            <span class="value">{(data.suggestedFraction * 100).toFixed(0)}% of Kelly</span>
+            <div class="suggested-fraction">
+              <span class="label">Suggested Fraction:</span>
+              <span class="value">{(data.suggestedFraction * 100).toFixed(0)}% of Kelly</span>
+            </div>
           </div>
         </div>
-      </div>
-    {/each}
-  </div>
+      {/each}
+    </div>
+  {/if}
 
   <!-- Kelly History -->
   <div class="kelly-history">
     <h4>Recent Kelly Adjustments</h4>
-    <div class="history-list">
-      {#each kellyHistory.slice(0, 5) as entry}
-        <div class="history-item">
-          <span class="history-date">{entry.date}</span>
-          <span class="history-bot">{bots.find(b => b.id === entry.botId)?.name || entry.botId}</span>
-          <span class="history-fraction">Kelly: {(entry.fraction * 100).toFixed(1)}%</span>
-          <span
-            class="history-result"
-            class:positive={entry.result > 0}
-            class:negative={entry.result < 0}
-          >
-            {entry.result > 0 ? '+' : ''}{formatCurrency(entry.result)}
-          </span>
-        </div>
-      {/each}
-    </div>
+    {#if kellyHistory.length > 0}
+      <div class="history-list">
+        {#each kellyHistory.slice(0, 5) as entry}
+          <div class="history-item">
+            <span class="history-date">{entry.date}</span>
+            <span class="history-bot">{bots.find(b => b.id === entry.botId)?.name || entry.botId}</span>
+            <span class="history-fraction">Kelly: {(entry.fraction * 100).toFixed(1)}%</span>
+            <span
+              class="history-result"
+              class:positive={entry.result > 0}
+              class:negative={entry.result < 0}
+            >
+              {entry.result > 0 ? '+' : ''}{formatCurrency(entry.result)}
+            </span>
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <div class="empty-state">No Kelly adjustment history is available.</div>
+    {/if}
   </div>
 </div>
 
@@ -229,6 +270,17 @@
   .kelly-summary {
     display: flex;
     gap: 24px;
+  }
+
+  .status-banner,
+  .empty-state {
+    padding: 12px 14px;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 10px;
+    background: var(--color-bg-surface);
+    color: var(--color-text-muted);
+    font-size: 12px;
+    line-height: 1.5;
   }
 
   .summary-item {

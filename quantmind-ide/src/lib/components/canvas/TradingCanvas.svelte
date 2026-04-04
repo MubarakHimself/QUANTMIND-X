@@ -7,17 +7,92 @@
    * Story 12-4, Story 12-6
    */
   import CanvasTileGrid from '$lib/components/shared/CanvasTileGrid.svelte';
+  import { onMount } from 'svelte';
   import PaperTradingMonitorTile from '$lib/components/trading/tiles/PaperTradingMonitorTile.svelte';
   import BacktestResultsTile from '$lib/components/trading/tiles/BacktestResultsTile.svelte';
   import EAPerformanceTile from '$lib/components/trading/tiles/EAPerformanceTile.svelte';
+  import TradingJournalSummaryTile from '$lib/components/trading/tiles/TradingJournalSummaryTile.svelte';
+  import RiskPhysicsSummaryTile from '$lib/components/trading/tiles/RiskPhysicsSummaryTile.svelte';
   import EAPerformanceDetailPage from '$lib/components/trading/tiles/EAPerformanceDetailPage.svelte';
   import BacktestDetailPage from '$lib/components/trading/tiles/BacktestDetailPage.svelte';
   import DeptKanbanTile from '$lib/components/shared/DeptKanbanTile.svelte';
   import DepartmentKanban from '$lib/components/department-kanban/DepartmentKanban.svelte';
+  import { canvasContextService } from '$lib/services/canvasContextService';
 
   type TradingSubPage = 'grid' | 'backtest-detail' | 'ea-performance-detail' | 'dept-kanban';
 
   let currentSubPage = $state<TradingSubPage>('grid');
+
+  onMount(async () => {
+    try {
+      await canvasContextService.loadCanvasContext('trading');
+    } catch {
+      // canvas context is optional
+    }
+  });
+
+  $effect(() => {
+    canvasContextService.setRuntimeState('trading', {
+      current_subpage: currentSubPage,
+      attachable_resources: [
+        {
+          id: 'trading:paper-trading-monitor',
+          label: 'Paper Trading Monitor',
+          canvas: 'trading',
+          resource_type: 'tile',
+          metadata: {
+            destination: 'ea-performance-detail',
+          },
+        },
+        {
+          id: 'trading:backtest-results',
+          label: 'Backtest Results',
+          canvas: 'trading',
+          resource_type: 'tile',
+          metadata: {
+            destination: 'backtest-detail',
+          },
+        },
+        {
+          id: 'trading:ea-performance',
+          label: 'EA Performance',
+          canvas: 'trading',
+          resource_type: 'tile',
+          metadata: {
+            destination: 'ea-performance-detail',
+          },
+        },
+        {
+          id: 'trading:department-kanban',
+          label: 'Department Task Board',
+          canvas: 'trading',
+          resource_type: 'kanban',
+          metadata: {
+            destination: 'dept-kanban',
+            department: 'trading',
+          },
+        },
+        {
+          id: 'trading:trading-journal',
+          label: 'Trading Journal',
+          canvas: 'trading',
+          resource_type: 'tile',
+          metadata: {
+            source: '/api/journal/trades',
+          },
+        },
+        {
+          id: 'trading:risk-physics',
+          label: 'Risk Physics',
+          canvas: 'trading',
+          resource_type: 'tile',
+          metadata: {
+            source: '/api/risk/physics',
+          },
+        },
+      ],
+    });
+  });
 
 </script>
 
@@ -39,18 +114,8 @@
       />
       <EAPerformanceTile />
       <DeptKanbanTile dept="trading" onNavigate={() => { currentSubPage = 'dept-kanban'; }} />
-
-      <!-- Trading Journal Summary — placeholder tile -->
-      <div class="summary-tile" role="presentation">
-        <span class="tile-label">Trading Journal</span>
-        <span class="tile-value dim">— coming soon —</span>
-      </div>
-
-      <!-- Risk Physics Summary — placeholder tile (risk physics moving here) -->
-      <div class="summary-tile" role="presentation">
-        <span class="tile-label">Risk Physics</span>
-        <span class="tile-value dim">— routed from Risk —</span>
-      </div>
+      <TradingJournalSummaryTile />
+      <RiskPhysicsSummaryTile />
     {:else if currentSubPage === 'backtest-detail'}
       <BacktestDetailPage />
     {:else if currentSubPage === 'ea-performance-detail'}
@@ -103,40 +168,6 @@
     width: 100%;
     min-width: 0;
   }
-
-  /* — Inline placeholder tiles — */
-  .summary-tile {
-    background: var(--glass-content-bg);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: 8px;
-    padding: var(--space-4);
-    min-height: 120px;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .tile-label {
-    font-family: var(--font-ambient);
-    font-size: var(--text-xs);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--color-text-muted);
-  }
-
-  .tile-value {
-    font-family: var(--font-data);
-    font-size: var(--text-sm);
-    color: var(--color-text-primary);
-  }
-
-  .tile-value.dim {
-    color: var(--color-text-muted);
-    font-style: italic;
-  }
-
   /* Spin animation for loading icon */
   :global(.spin) {
     animation: spin 1s linear infinite;

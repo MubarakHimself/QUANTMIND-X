@@ -3,6 +3,7 @@
 
   const bubble = createBubbler();
   import { onMount, onDestroy } from "svelte";
+  import { API_CONFIG } from "../config/api";
   import { WebSocketClient } from "../ws-client";
   import type { WebSocketMessage } from "../ws-client";
   import {
@@ -28,7 +29,7 @@
     baseUrl?: string;
   }
 
-  let { baseUrl = "http://localhost:8000" }: Props = $props();
+  let { baseUrl = API_CONFIG.API_URL }: Props = $props();
 
   // ==========================================================================
   // Type Definitions

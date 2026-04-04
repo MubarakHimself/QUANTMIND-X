@@ -14,8 +14,17 @@ from pathlib import Path
 from typing import Callable, Dict, Any, Optional, List
 from dataclasses import dataclass, field
 from datetime import datetime
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileModifiedEvent
+
+try:
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileModifiedEvent
+    WATCHDOG_AVAILABLE = True
+except ImportError:
+    WATCHDOG_AVAILABLE = False
+    Observer = None
+    FileSystemEventHandler = None
+    FileCreatedEvent = None
+    FileModifiedEvent = None
 
 logger = logging.getLogger(__name__)
 
@@ -31,121 +40,130 @@ class VideoIngestWatchEvent:
     workflow_id: Optional[str] = None
 
 
-class VideoIngestFileHandler(FileSystemEventHandler):
-    """
-    File system event handler for VideoIngest files.
-    
-    Handles creation and modification of VideoIngest JSON files in the watched directory.
-    """
-    
-    def __init__(
-        self,
-        callback: Callable[[VideoIngestWatchEvent], None],
-        file_pattern: str = "*.json"
-    ):
+if WATCHDOG_AVAILABLE:
+    class VideoIngestFileHandler(FileSystemEventHandler):
         """
-        Initialize VideoIngest file handler.
-        
-        Args:
-            callback: Callback function to invoke on file events
-            file_pattern: Glob pattern for files to watch (default: "*.json")
+        File system event handler for VideoIngest files.
+
+        Handles creation and modification of VideoIngest JSON files in the watched directory.
         """
-        super().__init__()
-        self.callback = callback
-        self.file_pattern = file_pattern
-        self._processed_files: set = set()
-    
-    def on_created(self, event: FileCreatedEvent) -> None:
-        """Handle file creation event."""
-        if event.is_directory:
-            return
-        
-        file_path = Path(event.src_path)
-        
-        # Check if file matches pattern
-        if not file_path.match(self.file_pattern):
-            return
-        
-        logger.info(f"New VideoIngest file detected: {file_path}")
-        
-        # Create watch event
-        watch_event = VideoIngestWatchEvent(
-            event_type="created",
-            file_path=file_path,
-            timestamp=datetime.now().isoformat()
-        )
-        
-        # Try to load VideoIngest data
-        try:
-            # Wait a moment for file to be fully written
-            import time
-            time.sleep(0.5)
-            
-            with open(file_path, 'r') as f:
-                watch_event.video_ingestdata = json.load(f)
-            
-            # Mark as processed
-            self._processed_files.add(str(file_path))
-            
-        except json.JSONDecodeError as e:
-            watch_event.error = f"Invalid JSON: {e}"
-            logger.error(f"Failed to parse VideoIngest file {file_path}: {e}")
-            
-        except Exception as e:
-            watch_event.error = str(e)
-            logger.error(f"Error reading VideoIngest file {file_path}: {e}")
-        
+
+        def __init__(
+            self,
+            callback: Callable[[VideoIngestWatchEvent], None],
+            file_pattern: str = "*.json"
+        ):
+            """
+            Initialize VideoIngest file handler.
+
+            Args:
+                callback: Callback function to invoke on file events
+                file_pattern: Glob pattern for files to watch (default: "*.json")
+            """
+            super().__init__()
+            self.callback = callback
+            self.file_pattern = file_pattern
+            self._processed_files: set = set()
+
+        def on_created(self, event: FileCreatedEvent) -> None:
+            """Handle file creation event."""
+            if event.is_directory:
+                return
+
+            file_path = Path(event.src_path)
+
+            # Check if file matches pattern
+            if not file_path.match(self.file_pattern):
+                return
+
+            logger.info(f"New VideoIngest file detected: {file_path}")
+
+            # Create watch event
+            watch_event = VideoIngestWatchEvent(
+                event_type="created",
+                file_path=file_path,
+                timestamp=datetime.now().isoformat()
+            )
+
+            # Try to load VideoIngest data
+            try:
+                # Wait a moment for file to be fully written
+                import time
+                time.sleep(0.5)
+
+                with open(file_path, 'r') as f:
+                    watch_event.video_ingestdata = json.load(f)
+
+                # Mark as processed
+                self._processed_files.add(str(file_path))
+
+            except json.JSONDecodeError as e:
+                watch_event.error = f"Invalid JSON: {e}"
+                logger.error(f"Failed to parse VideoIngest file {file_path}: {e}")
+
+            except Exception as e:
+                watch_event.error = str(e)
+                logger.error(f"Error reading VideoIngest file {file_path}: {e}")
+
         # Invoke callback
         try:
             self.callback(watch_event)
         except Exception as e:
             logger.error(f"Callback error for {file_path}: {e}")
-    
+
     def on_modified(self, event: FileModifiedEvent) -> None:
         """Handle file modification event."""
         if event.is_directory:
             return
-        
+
         file_path = Path(event.src_path)
-        
+
         # Check if file matches pattern
         if not file_path.match(self.file_pattern):
             return
-        
+
         # Skip if already processed (avoid duplicate triggers)
         if str(file_path) in self._processed_files:
             return
-        
+
         logger.info(f"VideoIngest file modified: {file_path}")
-        
+
         # Create watch event
         watch_event = VideoIngestWatchEvent(
             event_type="modified",
             file_path=file_path,
             timestamp=datetime.now().isoformat()
         )
-        
+
         # Try to load VideoIngest data
         try:
             with open(file_path, 'r') as f:
                 watch_event.video_ingestdata = json.load(f)
-            
+
             # Mark as processed
             self._processed_files.add(str(file_path))
-            
+
         except json.JSONDecodeError as e:
             watch_event.error = f"Invalid JSON: {e}"
             logger.error(f"Failed to parse VideoIngest file {file_path}: {e}")
-            
+
         except Exception as e:
             watch_event.error = str(e)
             logger.error(f"Error reading VideoIngest file {file_path}: {e}")
-        
+
         # Invoke callback
         try:
             self.callback(watch_event)
         except Exception as e:
             logger.error(f"Callback error for {file_path}: {e}")
+
+
+else:
+    # Stub class when watchdog not available
+    class VideoIngestFileHandler:
+        """Stub handler when watchdog not available."""
+        def __init__(self, *args, **kwargs):
+            pass
 
 
 class VideoIngestFileWatcher:
@@ -194,9 +212,13 @@ class VideoIngestFileWatcher:
             callback=self._handle_event,
             file_pattern=file_pattern
         )
-        
+
         # Observer
-        self.observer = Observer()
+        if WATCHDOG_AVAILABLE:
+            self.observer = Observer()
+        else:
+            self.observer = None
+            logger.warning("watchdog not available - file watching disabled")
         
         # State
         self._running = False
@@ -489,3 +511,7 @@ def create_video_ingestwatcher(
         )
     
     return watcher
+
+
+# Alias for backward compatibility
+VideoIngestWatcher = VideoIngestFileWatcher

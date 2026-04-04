@@ -148,22 +148,8 @@ class DevelopmentHead(DepartmentHead):
         return tools
 
     def _format_tools_for_anthropic(self) -> list:
-        """Convert self._tools to Anthropic tool definition format."""
-        tools = []
-        for tool_name, tool_obj in (self._tools or {}).items():
-            try:
-                tools.append({
-                    "name": tool_name,
-                    "description": getattr(tool_obj, "description", f"{tool_name} tool"),
-                    "input_schema": getattr(
-                        tool_obj,
-                        "input_schema",
-                        {"type": "object", "properties": {}, "required": []},
-                    ),
-                })
-            except Exception:
-                pass
-        return tools
+        """Convert the full active tool surface to Anthropic tool definitions."""
+        return super()._format_tools_for_anthropic()
 
     async def process_task(self, task: str, context: dict = None) -> dict:
         """
@@ -181,21 +167,17 @@ class DevelopmentHead(DepartmentHead):
         import re
         import anthropic
 
-        # Build system prompt with department persona + graph memory
-        dept_system = self.system_prompt
-
-        memory_ctx = ""
+        memory_nodes = None
         try:
             if hasattr(self, "_read_relevant_memory"):
-                nodes = await self._read_relevant_memory(task)
-                if nodes:
-                    memory_ctx = "\n\n## Relevant Memory\n" + "\n".join(
-                        f"- {n['content']}" for n in nodes
-                    )
+                memory_nodes = await self._read_relevant_memory(task)
         except Exception:
             pass
 
-        full_system = dept_system + memory_ctx
+        full_system = self._build_system_prompt(
+            canvas_context=context,
+            memory_nodes=memory_nodes,
+        )
 
         # Get tools formatted for Anthropic
         tools = self._format_tools_for_anthropic()
@@ -209,9 +191,19 @@ class DevelopmentHead(DepartmentHead):
                     tools=tools if tools else None,
                 )
             else:
-                client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+                from src.agents.providers.router import get_router
+
+                runtime_config = get_router().resolve_runtime_config()
+                if not runtime_config or not runtime_config.api_key:
+                    raise RuntimeError(
+                        "No LLM runtime configured. Configure a provider in Settings or set QMX_LLM_* environment variables."
+                    )
+                client = anthropic.AsyncAnthropic(
+                    api_key=runtime_config.api_key,
+                    base_url=runtime_config.base_url,
+                )
                 kwargs = {
-                    "model": os.getenv("ANTHROPIC_MODEL_SONNET", "claude-sonnet-4-6"),
+                    "model": runtime_config.model,
                     "max_tokens": 4096,
                     "system": full_system,
                     "messages": [{"role": "user", "content": task}],
@@ -252,7 +244,7 @@ class DevelopmentHead(DepartmentHead):
             "has_code": result.get("has_code", False),
         }
 
-    def process_development_task(self, task: DevelopmentTask) -> EAGenerationResult:
+    async def process_development_task(self, task: DevelopmentTask) -> EAGenerationResult:
         """
         Process a structured development task through the TRD/EA pipeline.
 
@@ -270,6 +262,8 @@ class DevelopmentHead(DepartmentHead):
             return self._validate_trd_task(task.trd_data)
         elif task.task_type == "parse_trd":
             return self._parse_trd_task(task.trd_data)
+        elif task.task_type == "IMPROVE_EA_FROM_BRIEF":
+            return await self._handle_improve_ea_from_brief(task)
         else:
             return EAGenerationResult(
                 success=False,
@@ -278,6 +272,183 @@ class DevelopmentHead(DepartmentHead):
                 file_path="",
                 error=f"Unknown task type: {task.task_type}",
             )
+
+    async def _handle_improve_ea_from_brief(self, task: DevelopmentTask) -> EAGenerationResult:
+        """
+        Handle IMPROVE_EA_FROM_BRIEF task type.
+
+        Processes improvement brief and queues enhanced TRD to AlphaForge Workflow 2.
+
+        Args:
+            task: Development task with type=IMPROVE_EA_FROM_BRIEF
+
+        Returns:
+            EAGenerationResult indicating queued status
+        """
+        # Extract payload fields - support both task.trd_data dict and direct fields
+        if task.trd_data and isinstance(task.trd_data, dict):
+            brief = task.trd_data.get("brief", "")
+            strategy_id = task.trd_data.get("strategy_id", task.strategy_id or "")
+            original_trd_id = task.trd_data.get("original_trd_id")
+        else:
+            brief = getattr(task, "brief", "") or ""
+            strategy_id = task.strategy_id or ""
+            original_trd_id = getattr(task, "original_trd_id", None)
+
+        logger.info(f"DevelopmentHead: processing IMPROVE_EA_FROM_BRIEF for {strategy_id}")
+
+        # 1. Retrieve original TRD from storage (or knowledge hub)
+        original_trd = await self._load_trd(original_trd_id)
+
+        # 2. Apply brief recommendations to TRD (parse brief for parameter change directives)
+        improved_trd = await self._apply_brief_to_trd(original_trd, brief)
+
+        # 3. Queue improved TRD to AlphaForge Workflow 2
+        try:
+            from flows.alpha_forge_flow import alpha_forge_flow
+            await alpha_forge_flow(
+                strategy_id=f"{strategy_id}_v2",
+                trd_data=improved_trd,
+                mode="enhancement"  # distinguishes from new strategy creation
+            )
+            return EAGenerationResult(
+                success=True,
+                strategy_id=strategy_id,
+                version=0,
+                file_path="",
+            )
+        except Exception as e:
+            logger.error(f"Failed to queue to AlphaForge Workflow 2: {e}")
+            return EAGenerationResult(
+                success=False,
+                strategy_id=strategy_id,
+                version=0,
+                file_path="",
+                error=str(e),
+            )
+
+    async def _load_trd(self, trd_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Load TRD document from storage by ID.
+
+        Args:
+            trd_id: TRD identifier
+
+        Returns:
+            TRD data dictionary or None if not found
+        """
+        if not trd_id:
+            return None
+
+        try:
+            # Try to load from EA output storage first
+            if hasattr(self, "ea_storage") and self.ea_storage:
+                trd = self.ea_storage.get_trd(trd_id)
+                if trd:
+                    return trd
+
+            # Try to load from knowledge hub / memory
+            if hasattr(self, "_read_relevant_memory"):
+                nodes = await self._read_relevant_memory(f"trd {trd_id}")
+                for node in nodes:
+                    if trd_id in node.get("content", ""):
+                        # Parse TRD from node content
+                        import json
+                        try:
+                            return json.loads(node["content"])
+                        except (json.JSONDecodeError, KeyError):
+                            pass
+
+            logger.warning(f"TRD {trd_id} not found in storage, returning stub")
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to load TRD {trd_id}: {e}")
+            return None
+
+    async def _apply_brief_to_trd(self, original_trd: Optional[Dict[str, Any]], brief: str) -> Dict[str, Any]:
+        """
+        Apply brief recommendations to TRD document.
+
+        Parses brief for parameter change directives and applies them to the TRD.
+
+        Args:
+            original_trd: Original TRD data dictionary
+            brief: Improvement brief text
+
+        Returns:
+            Modified TRD data dictionary with version tag
+        """
+        import re
+
+        if not original_trd:
+            # Return a stub TRD if no original found
+            return {
+                "strategy_id": "unknown",
+                "version": "v2_stub",
+                "improved_from_brief": True,
+                "brief": brief,
+            }
+
+        # Create a copy to avoid mutating the original
+        improved_trd = dict(original_trd)
+
+        # Add version tag indicating this is an improvement
+        old_version = improved_trd.get("version", 1)
+        improved_trd["version"] = f"{old_version}_v2_improved"
+
+        # Parse brief for parameter change directives
+        # Common patterns: "change X from Y to Z", "set X = Y", "increase/decrease X by N"
+        changes_applied = []
+
+        # Pattern: parameter = value OR parameter: value
+        param_pattern = re.compile(r"(\w+)\s*(?:=|:)\s*([\d.]+)", re.IGNORECASE)
+        for match in param_pattern.finditer(brief):
+            param_name = match.group(1)
+            new_value = match.group(2)
+            changes_applied.append(f"{param_name}={new_value}")
+            # Apply to parameters section if it exists
+            if "parameters" in improved_trd and isinstance(improved_trd["parameters"], dict):
+                improved_trd["parameters"][param_name] = float(new_value) if "." in new_value else int(new_value)
+
+        # Pattern: increase/decrease X by N%
+        change_pattern = re.compile(r"(increase|decrease|reduce|raise|lower)\s+(\w+)\s+by\s+([\d.]+)%", re.IGNORECASE)
+        for match in change_pattern.finditer(brief):
+            direction = match.group(1).lower()
+            param_name = match.group(2)
+            pct = float(match.group(3))
+            changes_applied.append(f"{direction} {param_name} by {pct}%")
+            if "parameters" in improved_trd and isinstance(improved_trd["parameters"], dict):
+                if param_name in improved_trd["parameters"]:
+                    old_val = improved_trd["parameters"][param_name]
+                    if direction in ("decrease", "reduce", "lower"):
+                        improved_trd["parameters"][param_name] = old_val * (1 - pct / 100)
+                    else:
+                        improved_trd["parameters"][param_name] = old_val * (1 + pct / 100)
+
+        # Store metadata about the improvement (includes parent_version_id for genealogy)
+        parent_version_id = None
+        if original_trd:
+            # Try to get the current active version ID from storage
+            try:
+                from src.mql5.versions.storage import get_ea_version_storage
+                storage = get_ea_version_storage()
+                active = storage.get_active_version(original_trd.get("id", ""))
+                if active:
+                    parent_version_id = active.id
+            except Exception:
+                pass
+
+        improved_trd["_improvement_meta"] = {
+            "brief": brief,
+            "changes_applied": changes_applied,
+            "mode": "enhancement",
+            "parent_version_id": parent_version_id,
+            "original_strategy_id": original_trd.get("id") if original_trd else None,
+        }
+
+        logger.info(f"Applied brief to TRD: {changes_applied or 'no changes parsed'}")
+        return improved_trd
 
     def process_trd(self, trd_data: Dict[str, Any]) -> EAGenerationResult:
         """

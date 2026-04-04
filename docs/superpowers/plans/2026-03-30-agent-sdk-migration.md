@@ -11,7 +11,9 @@
 
 **Tech Stack:** Python `claude-agent-sdk-python`, FastAPI, SvelteKit, Redis, Anthropic SDK (replaced), LangChain (removed).
 
-**Toolchain per phase:** Context7 MCP (claude_agent_sdk docs), sequentialthinking MCP, WebFetch (external links), Explore (targeted only when spec is ambiguous).
+**Toolchain per phase:** `mcp__MCP_DOCKER__get-library-docs` (docker Context7 — working), `sequentialthinking` MCP (local), `WebFetch` (external links), `Explore` (targeted only when spec is ambiguous).
+
+> **⚠️ MCP Note:** The `context7` MCP in mcp.json has an INVALID API key. DO NOT use `context7__query-docs`. Use `mcp__MCP_DOCKER__resolve-library-id` then `mcp__MCP_DOCKER__get-library-docs` instead. Library ID: `/anthropics/claude-agent-sdk-python`.
 
 **Memory:** Log progress to `session_agent_sdk_migration_2026-03-30.md` after each phase.
 
@@ -61,19 +63,20 @@ Dependency order: `base_agent.py` → `types.py` (AgentConfig) → `di_container
 
 ### Task 1: Read spec + SDK docs
 > **Spec ref:** Section 3 (Claude Agent SDK Architecture) — query(), ClaudeAgentOptions, ResultMessage, hooks
-Tools: Context7 MCP (`mcp__context7__query-docs`), sequentialthinking
+> **⚠️ MCP Note:** Use `mcp__MCP_DOCKER__resolve-library-id` + `mcp__MCP_DOCKER__get-library-docs`. DO NOT use `context7__query-docs` (invalid key). Library ID: `/anthropics/claude-agent-sdk-python`
+Tools: `mcp__MCP_DOCKER__get-library-docs`, sequentialthinking
 
-- [ ] **Step 1: Context7 — query Claude Agent SDK query() function**
-  Query: `claude_agent_sdk_python query() function API ClaudeAgentOptions session_id resume`
+- [ ] **Step 1: Resolve library ID**
+  Use `mcp__MCP_DOCKER__resolve-library-id` with `libraryName: "claude-agent-sdk-python"`
 
-- [ ] **Step 2: Context7 — query ResultMessage and message types**
-  Query: `claude_agent_sdk_python ResultMessage AssistantMessage UserMessage system_message`
+- [ ] **Step 2: Docker Context7 — query Claude Agent SDK query() function**
+  Use `mcp__MCP_DOCKER__get-library-docs` with topic: `query ClaudeAgentOptions ResultMessage session_id resume hooks`
 
-- [ ] **Step 3: Context7 — query ClaudeAgentOptions hooks pattern**
-  Query: `claude_agent_sdk_python ClaudeAgentOptions hooks PreToolUse PostToolUse`
+- [ ] **Step 3: Docker Context7 — query message types and hooks**
+  Topic: `hooks PreToolUse PostToolUse ClaudeSDKClient`
 
 - [ ] **Step 4: Sequential thinking — review AgentConfig fields**
-  Prompt: "Review the spec's AgentConfig dataclass (Section 4.5). List each field and what SDK concept it maps to. Flag any fields where the spec is ambiguous."
+  Use local sequentialthinking MCP. Prompt: "Review the spec's AgentConfig dataclass (Section 4.5). List each field and what SDK concept it maps to. Flag any fields where the spec is ambiguous."
 
 ---
 

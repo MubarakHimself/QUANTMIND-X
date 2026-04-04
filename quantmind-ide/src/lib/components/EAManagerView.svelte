@@ -13,6 +13,7 @@ https://svelte.dev/e/js_parse_error -->
   } from 'lucide-svelte';
   import Breadcrumbs from './Breadcrumbs.svelte';
   import { navigationStore } from '../stores/navigationStore';
+  import { apiFetch } from '$lib/api';
 
   const dispatch = createEventDispatcher();
 
@@ -43,12 +44,12 @@ https://svelte.dev/e/js_parse_error -->
     tags: string[];
     version: string;
     lastModified: Date;
-    author: string;
+    author: string | null;
     performance: {
-      winRate: number;
-      profitFactor: number;
-      maxDrawdown: number;
-      sharpeRatio: number;
+      winRate: number | null;
+      profitFactor: number | null;
+      maxDrawdown: number | null;
+      sharpeRatio: number | null;
     };
     backtestStatus: 'passed' | 'failed' | 'pending';
   }
@@ -67,39 +68,26 @@ https://svelte.dev/e/js_parse_error -->
   // Load tags from API
   async function loadTags() {
     try {
-      const res = await fetch('http://localhost:8000/api/ea/tags');
-      if (res.ok) {
-        const data = await res.json();
-        availableTags = data.available_tags || [];
-        propFirmTags = data.prop_firm_tags || [];
-      }
+      const data = await apiFetch<{ available_tags?: TagDefinition[]; prop_firm_tags?: string[] }>('/ea/tags');
+      availableTags = data.available_tags || [];
+      propFirmTags = data.prop_firm_tags || [];
     } catch (e) {
       console.error('Failed to load tags:', e);
-      // Fallback to default tags
-      availableTags = [
-        { id: 'scalper', label: 'Scalper', color: '#3b82f6', description: 'Short-term trades' },
-        { id: 'swing', label: 'Swing', color: '#8b5cf6', description: 'Medium-term trades' },
-        { id: 'trend', label: 'Trend', color: '#06b6d4', description: 'Trend following' },
-        { id: 'mean-reversion', label: 'Mean Reversion', color: '#ec4899', description: 'Reversal strategy' },
-        { id: 'breakout', label: 'Breakout', color: '#f59e0b', description: 'Breakout strategy' },
-        { id: 'grid', label: 'Grid', color: '#10b981', description: 'Grid trading' },
-      ];
+      availableTags = [];
+      propFirmTags = [];
     }
   }
 
   // Add tag to a bot
   async function addTagToBot(botName: string, tagId: string) {
     try {
-      const res = await fetch(`http://localhost:8000/api/ea/tags/${botName}/add?tag=${encodeURIComponent(tagId)}`, {
-        method: 'POST'
-      });
-      if (res.ok) {
-        const data = await res.json();
-        // Update the bot's tags in the local state
-        bots = bots.map(b =>
-          b.name === botName ? { ...b, tags: data.tags } : b
-        );
-      }
+      const data = await apiFetch<{ tags: string[] }>(
+        `/ea/tags/${botName}/add?tag=${encodeURIComponent(tagId)}`,
+        { method: 'POST' }
+      );
+      bots = bots.map(b =>
+        b.name === botName ? { ...b, tags: data.tags } : b
+      );
     } catch (e) {
       console.error('Failed to add tag:', e);
     }
@@ -108,16 +96,13 @@ https://svelte.dev/e/js_parse_error -->
   // Remove tag from a bot
   async function removeTagFromBot(botName: string, tagId: string) {
     try {
-      const res = await fetch(`http://localhost:8000/api/ea/tags/${botName}/remove?tag=${encodeURIComponent(tagId)}`, {
-        method: 'POST'
-      });
-      if (res.ok) {
-        const data = await res.json();
-        // Update the bot's tags in the local state
-        bots = bots.map(b =>
-          b.name === botName ? { ...b, tags: data.tags } : b
-        );
-      }
+      const data = await apiFetch<{ tags: string[] }>(
+        `/ea/tags/${botName}/remove?tag=${encodeURIComponent(tagId)}`,
+        { method: 'POST' }
+      );
+      bots = bots.map(b =>
+        b.name === botName ? { ...b, tags: data.tags } : b
+      );
     } catch (e) {
       console.error('Failed to remove tag:', e);
     }
@@ -128,19 +113,8 @@ https://svelte.dev/e/js_parse_error -->
     return tagId.startsWith('@');
   }
 
-  // Default tags fallback
-  const defaultTags: TagDefinition[] = [
-    { id: 'primal', label: 'Primal', color: '#10b981', description: 'Production ready' },
-    { id: 'pending', label: 'Pending', color: '#f59e0b', description: 'Awaiting review' },
-    { id: 'quarantine', label: 'Quarantine', color: '#ef4444', description: 'Temporarily disabled' },
-    { id: 'scalper', label: 'Scalper', color: '#3b82f6', description: 'Short-term trades' },
-    { id: 'swing', label: 'Swing', color: '#8b5cf6', description: 'Medium-term trades' },
-    { id: 'trend', label: 'Trend', color: '#06b6d4', description: 'Trend following' },
-    { id: 'mean-reversion', label: 'Mean Reversion', color: '#ec4899', description: 'Reversal strategy' }
-  ];
-
-  // Computed tags - use API tags if loaded, otherwise default
-  $: tags = availableTags.length > 0 ? availableTags : defaultTags;
+  // Computed tags - use only live API tags
+  $: tags = availableTags;
 
   // Filter state
   let searchQuery = '';
@@ -155,12 +129,21 @@ https://svelte.dev/e/js_parse_error -->
   // Load bots from API
   async function loadBots() {
     try {
-      const res = await fetch('http://localhost:8000/api/ea/bots');
-      if (res.ok) {
-        bots = await res.json();
-      }
+      const rawBots = await apiFetch<any[]>('/ea/bots');
+      bots = rawBots.map((bot) => ({
+        ...bot,
+        lastModified: new Date(bot.lastModified ?? Date.now()),
+        author: bot.author ?? null,
+        performance: {
+          winRate: bot.performance?.winRate ?? null,
+          profitFactor: bot.performance?.profitFactor ?? null,
+          maxDrawdown: bot.performance?.maxDrawdown ?? null,
+          sharpeRatio: bot.performance?.sharpeRatio ?? null
+        }
+      }));
     } catch (e) {
       console.error('Failed to load bots:', e);
+      bots = [];
     }
   }
 
@@ -208,12 +191,14 @@ https://svelte.dev/e/js_parse_error -->
   // Load review history from API
   async function loadReviewHistory() {
     try {
-      const res = await fetch('http://localhost:8000/api/ea/reviews');
-      if (res.ok) {
-        reviewHistory = await res.json();
-      }
+      const rawHistory = await apiFetch<any[]>('/ea/reviews');
+      reviewHistory = rawHistory.map((entry) => ({
+        ...entry,
+        date: new Date(entry.date ?? Date.now())
+      }));
     } catch (e) {
       console.error('Failed to load review history:', e);
+      reviewHistory = [];
     }
   }
 
@@ -261,6 +246,14 @@ https://svelte.dev/e/js_parse_error -->
       live: 'Live'
     };
     return labels[status];
+  }
+
+  function formatPercent(value: number | null | undefined): string {
+    return typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : 'Unavailable';
+  }
+
+  function formatNumber(value: number | null | undefined, digits = 2): string {
+    return typeof value === 'number' ? value.toFixed(digits) : 'Unavailable';
   }
 
   function toggleTag(tagId: string) {
@@ -327,29 +320,21 @@ https://svelte.dev/e/js_parse_error -->
     isProcessing = true;
 
     try {
-      const res = await fetch('http://localhost:8000/api/video-ingest/start', {
+      const data = await apiFetch<{ job_id: string }>('/video-ingest/start', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: videoUrl, strategy_name: strategyName })
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        processingJobs = [
-          ...processingJobs,
-          { id: data.job_id, name: strategyName, status: 'processing', progress: 0 }
-        ];
-        videoUrl = '';
-        strategyName = '';
-        // Close modal after submission
-        showVideoIngestModal = false;
-      } else {
-        const error = await res.text();
-        alert(`Failed to start processing: ${error}`);
-      }
+      processingJobs = [
+        ...processingJobs,
+        { id: data.job_id, name: strategyName, status: 'processing', progress: 0 }
+      ];
+      videoUrl = '';
+      strategyName = '';
+      // Close modal after submission
+      showVideoIngestModal = false;
     } catch (e) {
       console.error('Video ingest error:', e);
-      alert('Failed to start video processing');
+      alert(`Failed to start video processing: ${e instanceof Error ? e.message : 'Unknown error'}`);
     } finally {
       isProcessing = false;
     }
@@ -494,19 +479,19 @@ https://svelte.dev/e/js_parse_error -->
         <div class="ea-performance">
           <div class="perf-item">
             <span class="perf-label">Win Rate</span>
-            <span class="perf-value">{bot.performance.winRate * 100}%</span>
+            <span class="perf-value">{formatPercent(bot.performance.winRate)}</span>
           </div>
           <div class="perf-item">
             <span class="perf-label">PF</span>
-            <span class="perf-value">{bot.performance.profitFactor.toFixed(2)}</span>
+            <span class="perf-value">{formatNumber(bot.performance.profitFactor)}</span>
           </div>
           <div class="perf-item">
             <span class="perf-label">Max DD</span>
-            <span class="perf-value">{(bot.performance.maxDrawdown * 100).toFixed(1)}%</span>
+            <span class="perf-value">{formatPercent(bot.performance.maxDrawdown)}</span>
           </div>
           <div class="perf-item">
             <span class="perf-label">Sharpe</span>
-            <span class="perf-value">{bot.performance.sharpeRatio.toFixed(2)}</span>
+            <span class="perf-value">{formatNumber(bot.performance.sharpeRatio)}</span>
           </div>
         </div>
 
@@ -526,7 +511,7 @@ https://svelte.dev/e/js_parse_error -->
 
         <!-- Meta -->
         <div class="ea-meta-footer">
-          <span class="author"><User size={10} /> {bot.author}</span>
+          <span class="author"><User size={10} /> {bot.author ?? 'Unknown'}</span>
           <span class="modified"><Clock size={10} /> {formatDate(bot.lastModified)}</span>
         </div>
 
@@ -587,7 +572,7 @@ https://svelte.dev/e/js_parse_error -->
             </div>
             <div class="info-row">
               <span class="label">Win Rate</span>
-              <span class="value">{selectedBotForReview.performance.winRate * 100}%</span>
+              <span class="value">{formatPercent(selectedBotForReview.performance.winRate)}</span>
             </div>
           </div>
 

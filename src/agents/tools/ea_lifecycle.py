@@ -10,13 +10,38 @@ Tools for managing Expert Advisor (EA) lifecycle operations:
 - Stop running EA
 """
 
-from typing import Optional, Dict, Any, List
+import sys
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from pathlib import Path
+from enum import Enum
 import subprocess
 import json
 import logging
 
+# Add MCP MT5 server path for PaperTradingDeployer
+MCP_MT5_PATH = Path("/home/mubarkahimself/Desktop/QUANTMINDX/mcp-metatrader5-server/src")
+if str(MCP_MT5_PATH) not in sys.path:
+    sys.path.insert(0, str(MCP_MT5_PATH))
+
+if TYPE_CHECKING:
+    from mcp_mt5.paper_trading.deployer import PaperTradingDeployer
+
+from src.router.virtual_balance import VirtualBalanceManager
+from src.router.trade_logger import TradeLogger
+
 logger = logging.getLogger(__name__)
+
+
+class EALifecycleStatus(str, Enum):
+    """EA Lifecycle Status enum."""
+    CREATED = "created"
+    VALIDATED = "validated"
+    BACKTEST_QUEUED = "backtest_queued"
+    BACKTEST_RUNNING = "backtest_running"
+    BACKTEST_COMPLETED = "backtest_completed"
+    DEPLOYED_PAPER = "deployed_paper"
+    STOPPED = "stopped"
+    FAILED = "failed"
 
 
 class EALifecycleTools:
@@ -26,6 +51,37 @@ class EALifecycleTools:
         self.base_path = Path(base_path)
         self.strategies_path = self.base_path / "strategies-yt"
         self.ea_output_path = self.base_path / "output" / "expert_advisors"
+        # MT5 Paper Trading integration
+        self._paper_deployer: Optional[Any] = None
+        self._virtual_balance_manager: Optional[VirtualBalanceManager] = None
+        self._trade_logger: Optional[TradeLogger] = None
+        self._bot_registry: Optional[Any] = None
+
+    def _get_paper_deployer(self):
+        """Lazy initialization of paper trading deployer."""
+        if self._paper_deployer is None:
+            from mcp_mt5.paper_trading.deployer import PaperTradingDeployer
+            self._paper_deployer = PaperTradingDeployer()
+        return self._paper_deployer
+
+    def _get_virtual_balance_manager(self) -> VirtualBalanceManager:
+        """Lazy initialization of virtual balance manager."""
+        if self._virtual_balance_manager is None:
+            self._virtual_balance_manager = VirtualBalanceManager()
+        return self._virtual_balance_manager
+
+    def _get_trade_logger(self) -> TradeLogger:
+        """Lazy initialization of trade logger."""
+        if self._trade_logger is None:
+            self._trade_logger = TradeLogger()
+        return self._trade_logger
+
+    def _get_bot_registry(self):
+        """Lazy initialization of bot manifest registry."""
+        if self._bot_registry is None:
+            from src.router.bot_manifest import BotManifestRegistry
+            self._bot_registry = BotManifestRegistry()
+        return self._bot_registry
 
 
 class EALifecycleManager:
@@ -410,26 +466,53 @@ double CalculateLotSize()
     def deploy_paper(
         self,
         ea_name: str,
-        account_id: Optional[str] = None
+        account_id: Optional[str] = None,
+        strategy_id: Optional[str] = None,
+        strategy_code: Optional[str] = None,
+        config: Optional[Dict[str, Any]] = None,
+        virtual_balance: float = 10000.0,
+        magic_number: int = 0
     ) -> Dict[str, Any]:
         """
-        Deploy EA to paper trading environment.
+        Deploy EA to paper trading environment via MT5 demo mode.
+
+        Uses PaperTradingDeployer to launch a Docker container with the EA
+        connected to MT5 demo account for live paper trading.
 
         Args:
             ea_name: Name of the EA to deploy
-            account_id: Optional paper trading account ID
+            account_id: Optional paper trading account ID (used as agent_id prefix)
+            strategy_id: Strategy identifier for bot manifest lookup
+            strategy_code: Strategy Python code or template reference
+            config: Strategy configuration parameters
+            virtual_balance: Starting virtual balance (default: $10,000)
+            magic_number: Unique magic number for trade identification
 
         Returns:
-            Dict with deployment status
+            Dict with deployment status including container_id and agent_id
         """
         try:
             ea_file = self.ea_output_path / f"{ea_name}.mq5"
 
             if not ea_file.exists():
-                return {
-                    "success": False,
-                    "error": f"EA file not found: {ea_file}"
-                }
+                # Try to find compiled EX5 file
+                ea_file_ex5 = self.ea_output_path / f"{ea_name}.ex5"
+                if ea_file_ex5.exists():
+                    ea_file = ea_file_ex5
+                else:
+                    return {
+                        "success": False,
+                        "error": f"EA file not found: {ea_file}"
+                    }
+
+            # Look up bot manifest for strategy type if strategy_id provided
+            strategy_type = None
+            if strategy_id:
+                registry = self._get_bot_registry()
+                manifest = registry.get(strategy_id)
+                if manifest:
+                    strategy_type = manifest.strategy_type.value
+                    logger.info(f"Found bot manifest for {strategy_id}: {strategy_type}")
 
             # Validate EA before deployment
             validation = self.validate_ea(ea_name)
@@ -440,17 +523,63 @@ double CalculateLotSize()
                     "validation_errors": validation.get("errors", [])
                 }
 
-            # Deploy to paper trading
+            # Create virtual account for paper trading P&L tracking
+            vbm = self._get_virtual_balance_manager()
+            virtual_account = vbm.create_account(
+                ea_id=ea_name,
+                initial_balance=virtual_balance
+            )
+            logger.info(f"Created virtual account for {ea_name}: balance={virtual_balance}")
+
+            # Generate agent_id from ea_name and account_id
+            agent_id = f"{ea_name}-{account_id or 'paper'}" if account_id else ea_name
+            if magic_number:
+                agent_id = f"{agent_id}-{magic_number}"
+
+            # Deploy to paper trading via Docker container with MT5 demo
+            deployer = self._get_paper_deployer()
+
+            # Use deploy_demo_agent for pure demo mode (no broker credentials needed)
+            from mcp_mt5.paper_trading.deployer import PaperTradingConfig
+
+            paper_config = PaperTradingConfig(
+                broker_connection=False,  # Pure demo mode with virtual balance
+                virtual_balance=virtual_balance,
+                use_live_data=True,
+                simulate_slippage=True,
+                simulate_fees=False,
+            )
+
+            deployment_result = deployer.deploy_agent(
+                strategy_name=ea_name,
+                strategy_code=strategy_code or f"file:{str(ea_file)}",
+                config=config or {},
+                mt5_credentials=None,  # No real broker for demo mode
+                magic_number=magic_number or hash(ea_name) % 1000000,
+                agent_id=agent_id,
+                paper_config=paper_config,
+            )
+
+            # Return actual deployment confirmation
             deployment = {
                 "success": True,
                 "ea_name": ea_name,
                 "environment": "paper",
                 "account_id": account_id or "paper_default",
                 "status": "deployed",
-                "file_path": str(ea_file)
+                "file_path": str(ea_file),
+                # Real MT5 deployment details
+                "agent_id": deployment_result.agent_id,
+                "container_id": deployment_result.container_id,
+                "container_name": deployment_result.container_name,
+                "virtual_account_id": virtual_account.ea_id,
+                "initial_balance": virtual_balance,
+                "strategy_type": strategy_type,
+                "redis_channel": deployment_result.redis_channel,
+                "message": f"EA {ea_name} deployed to MT5 demo mode"
             }
 
-            logger.info(f"Deployed {ea_name} to paper trading")
+            logger.info(f"Deployed {ea_name} to paper trading: agent_id={deployment_result.agent_id}")
             return deployment
 
         except Exception as e:

@@ -4,6 +4,8 @@
  * for Windows, Linux (Wine), and macOS platforms
  */
 
+import { buildApiUrl } from '$lib/api';
+
 export interface MT5Status {
   found: boolean;
   path?: string;
@@ -94,7 +96,7 @@ export class MT5Scanner {
   async scanForMT5(): Promise<MT5Status> {
     try {
       // Call backend API endpoint for MT5 scanning
-      const response = await fetch('http://localhost:8000/api/mt5/scan', {
+      const response = await fetch(buildApiUrl('/api/mt5/scan'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -157,7 +159,7 @@ export class MT5Scanner {
       }
 
       // Call backend API endpoint for MT5 launching
-      const response = await fetch('http://localhost:8000/api/mt5/launch', {
+      const response = await fetch(buildApiUrl('/api/mt5/launch'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

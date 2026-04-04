@@ -31,6 +31,7 @@
     CheckCircle,
     XCircle,
   } from "lucide-svelte";
+  import { buildApiUrl } from '$lib/api';
 
   // Import extracted sub-components
   import { KillZoneBanner, NewsHeader, NewsEventList, NewsDetailPanel } from "./news";
@@ -122,7 +123,7 @@
   // Load news events from API
   async function loadNewsEvents() {
     try {
-      const res = await fetch('http://localhost:8000/api/news/calendar');
+      const res = await fetch(buildApiUrl('/api/news/calendar'));
       if (res.ok) {
         newsEvents = await res.json();
       } else {

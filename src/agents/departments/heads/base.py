@@ -14,11 +14,14 @@ Model Tier: Sonnet (balanced reasoning)
 import json
 import logging
 import os
+import re
 import uuid
 from abc import ABC, abstractmethod
+from types import SimpleNamespace
 from typing import Dict, List, Optional, Any
 
 import anthropic
+import httpx
 
 from src.agents.providers.router import get_router
 from src.agents.core.base_agent import HookEvent
@@ -36,6 +39,7 @@ from src.agents.departments.department_mail import (
 from src.agents.departments.memory_manager import DepartmentMemoryManager
 from src.agents.departments.tool_access import ToolAccessController
 from src.agents.departments.tool_registry import ToolRegistry
+from src.agents.prompts.department_contracts import compose_department_head_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +223,19 @@ class DepartmentHead:
     _MAX_PROMPT_HINTS = 24
     _MAX_PROMPT_ATTACHMENTS = 12
 
+    _MINIMAX_TOOL_CALL_PATTERN = re.compile(
+        r"<minimax:tool_call>\s*(.*?)\s*</minimax:tool_call>",
+        re.DOTALL | re.IGNORECASE,
+    )
+    _MINIMAX_INVOKE_PATTERN = re.compile(
+        r"<invoke\s+name=\"(?P<name>[^\"]+)\">\s*(?P<body>.*?)\s*</invoke>",
+        re.DOTALL | re.IGNORECASE,
+    )
+    _MINIMAX_PARAMETER_PATTERN = re.compile(
+        r"<parameter\s+name=\"(?P<name>[^\"]+)\">(?P<value>.*?)</parameter>",
+        re.DOTALL | re.IGNORECASE,
+    )
+
     def _summarize_canvas_context_for_prompt(self, canvas_context: dict) -> dict:
         """
         Build a bounded prompt-safe summary from canvas context.
@@ -328,6 +345,49 @@ class DepartmentHead:
                 summary["canvas_context"] = preloaded_summary
 
         return summary
+
+    @classmethod
+    def _strip_minimax_tool_markup(cls, text: str) -> str:
+        if not text:
+            return ""
+        stripped = cls._MINIMAX_TOOL_CALL_PATTERN.sub("", text)
+        return stripped.strip()
+
+    @classmethod
+    def _extract_minimax_tool_calls_from_text(cls, text: str) -> List[SimpleNamespace]:
+        """
+        MiniMax's Anthropic-compatible API can sometimes emit tool calls as
+        XML-like text instead of native tool_use blocks. Parse those into a
+        synthetic tool_use representation so the normal agentic loop can
+        execute them.
+        """
+        if not text or "<minimax:tool_call>" not in text:
+            return []
+
+        tool_calls: List[SimpleNamespace] = []
+        for wrapper_match in cls._MINIMAX_TOOL_CALL_PATTERN.finditer(text):
+            wrapper_body = wrapper_match.group(1) or ""
+            for invoke_match in cls._MINIMAX_INVOKE_PATTERN.finditer(wrapper_body):
+                tool_name = (invoke_match.group("name") or "").strip()
+                if not tool_name:
+                    continue
+                body = invoke_match.group("body") or ""
+                tool_input: Dict[str, Any] = {}
+                for parameter_match in cls._MINIMAX_PARAMETER_PATTERN.finditer(body):
+                    param_name = (parameter_match.group("name") or "").strip()
+                    if not param_name:
+                        continue
+                    param_value = (parameter_match.group("value") or "").strip()
+                    tool_input[param_name] = param_value
+                tool_calls.append(
+                    SimpleNamespace(
+                        id=f"minimax-tool-{uuid.uuid4().hex}",
+                        name=tool_name,
+                        input=tool_input,
+                        type="tool_use",
+                    )
+                )
+        return tool_calls
 
     def __init__(
         self,
@@ -514,6 +574,51 @@ class DepartmentHead:
             Dictionary of tool_name to tool_instance
         """
         return self._tools
+
+    def _format_tools_for_anthropic(self) -> list:
+        """
+        Format the active tool surface for Anthropic-compatible providers.
+
+        This must include the standard department tools as well as registry and
+        skill-backed tools. Several heads had drifted into exposing only
+        registry-backed tools, which made prompts mention actions like mail or
+        spawning while the runtime silently omitted those tools.
+        """
+        tools: list[dict[str, Any]] = []
+        seen: set[str] = set()
+
+        for tool_def in self.STANDARD_TOOLS:
+            name = tool_def.get("name")
+            input_schema = tool_def.get("input_schema")
+            if not name or not input_schema or name in seen:
+                continue
+            tools.append(
+                {
+                    "name": name,
+                    "description": tool_def.get("description", f"{name} tool"),
+                    "input_schema": input_schema,
+                }
+            )
+            seen.add(name)
+
+        for tool_name, tool_obj in (self._tools or {}).items():
+            if tool_name in seen:
+                continue
+            input_schema = getattr(tool_obj, "input_schema", None) or getattr(
+                tool_obj, "parameters", None
+            )
+            if not input_schema:
+                continue
+            tools.append(
+                {
+                    "name": tool_name,
+                    "description": getattr(tool_obj, "description", f"{tool_name} tool"),
+                    "input_schema": input_schema,
+                }
+            )
+            seen.add(tool_name)
+
+        return tools
 
     def get_tool(self, tool_name: str) -> Optional[Any]:
         """
@@ -780,6 +885,20 @@ class DepartmentHead:
             base_prompt = saved if saved.strip() else self.system_prompt
         except Exception:
             base_prompt = self.system_prompt
+
+        if self.department.value in {
+            Department.RESEARCH.value,
+            Department.DEVELOPMENT.value,
+            Department.TRADING.value,
+            Department.RISK.value,
+            Department.PORTFOLIO.value,
+        }:
+            base_prompt = compose_department_head_prompt(
+                self.department.value,
+                base_prompt,
+                sub_agents=self.sub_agents,
+            )
+
         parts = [base_prompt]
 
         if memory_nodes:
@@ -1276,38 +1395,16 @@ class DepartmentHead:
             preferred_model = canvas_context.get("model") or canvas_context.get("llm_model")
 
         router = get_router()
-        provider = router._all_providers.get(preferred_provider) if preferred_provider else None
-        if provider is None and not preferred_provider:
-            # Default deployment preference: MiniMax first when configured.
-            provider = router.get_provider("minimax")
-        if provider is None:
-            provider = router.primary
-        if provider:
-            client = anthropic.AsyncAnthropic(
-                api_key=provider.api_key,
-                base_url=provider.base_url,
+        runtime_config = router.resolve_runtime_config(
+            preferred_provider=preferred_provider,
+            preferred_model=preferred_model,
+            tier=self.model_tier,
+        )
+        if not runtime_config or not runtime_config.api_key:
+            raise RuntimeError(
+                "No LLM runtime configured. Configure a provider in Settings or set QMX_LLM_* environment variables."
             )
-            # Pick model by tier from provider's model list
-            if preferred_model:
-                model = preferred_model
-            else:
-                ml = provider.model_list
-                if ml:
-                    model = ml[0].get("id") or ml[0].get("model_id", "claude-sonnet-4-6")
-                else:
-                    model = "claude-sonnet-4-6"
-        else:
-            # Env-only fallback: prefer MiniMax deployment config, then legacy Anthropic envs.
-            api_key = os.getenv("MINIMAX_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
-            base_url = (
-                os.getenv("MINIMAX_BASE_URL")
-                or os.getenv("ANTHROPIC_BASE_URL")
-                or "https://api.minimax.io/anthropic"
-            )
-            client = anthropic.AsyncAnthropic(api_key=api_key, base_url=base_url)
-            model = preferred_model or os.getenv("MINIMAX_MODEL", "MiniMax-M2.5")
-            if self.model_tier == "opus":
-                model = os.getenv("MINIMAX_MODEL_OPUS", "MiniMax-M2.7")
+        model = runtime_config.model
 
         messages: list = [{"role": "user", "content": task}]
 
@@ -1331,141 +1428,181 @@ class DepartmentHead:
         )
 
         try:
-            for iteration in range(MAX_ITERATIONS):
-                response = await client.messages.create(
-                    **base_kwargs,
-                    messages=messages,
+            timeout = httpx.Timeout(120.0, connect=30.0)
+            async with httpx.AsyncClient(timeout=timeout, trust_env=False) as http_client:
+                client = anthropic.AsyncAnthropic(
+                    api_key=runtime_config.api_key,
+                    base_url=runtime_config.base_url,
+                    http_client=http_client,
                 )
+                for iteration in range(MAX_ITERATIONS):
+                    response = await client.messages.create(
+                        **base_kwargs,
+                        messages=messages,
+                    )
 
-                total_input_tokens += response.usage.input_tokens
-                total_output_tokens += response.usage.output_tokens
+                    total_input_tokens += response.usage.input_tokens
+                    total_output_tokens += response.usage.output_tokens
 
-                # Publish thinking blocks if present (extended thinking)
-                for block in response.content:
-                    if hasattr(block, "type") and block.type == "thinking":
-                        self._publish_thought(
-                            getattr(block, "thinking", "")[:500],
-                            thought_type="reasoning",
+                    # Publish thinking blocks if present (extended thinking)
+                    for block in response.content:
+                        if hasattr(block, "type") and block.type == "thinking":
+                            self._publish_thought(
+                                getattr(block, "thinking", "")[:500],
+                                thought_type="reasoning",
+                            )
+
+                    tool_use_blocks = [
+                        b for b in response.content if getattr(b, "type", None) == "tool_use"
+                    ]
+                    text_blocks = [
+                        b.text for b in response.content if getattr(b, "type", None) == "text"
+                    ]
+                    synthetic_tool_use_blocks: list = []
+                    if not tool_use_blocks and text_blocks:
+                        minimax_tool_calls = self._extract_minimax_tool_calls_from_text(
+                            "\n".join(text_blocks)
                         )
+                        if minimax_tool_calls:
+                            synthetic_tool_use_blocks = minimax_tool_calls
 
-                if response.stop_reason != "tool_use":
-                    # Collect any final text blocks and exit the loop
+                    if response.stop_reason != "tool_use" and not synthetic_tool_use_blocks:
+                        # Collect any final text blocks and exit the loop
+                        for block in response.content:
+                            if block.type == "text":
+                                final_text += block.text
+                        # Fire STOP hook (Agent SDK lifecycle)
+                        await self._fire_hook(
+                            HookEvent.STOP,
+                            self._hook_context(
+                                HookEvent.STOP,
+                                iterations=iteration + 1,
+                                stop_reason=response.stop_reason,
+                            ),
+                        )
+                        self._publish_thought(
+                            f"Turn {iteration + 1}: Final response ({len(final_text)} chars)",
+                            thought_type="decision",
+                        )
+                        break
+
+                    # --- tool_use turn ---
+                    tool_use_blocks = tool_use_blocks or synthetic_tool_use_blocks
+
+                    # Also capture any text emitted alongside tool calls
                     for block in response.content:
                         if block.type == "text":
-                            final_text += block.text
-                    # Fire STOP hook (Agent SDK lifecycle)
-                    await self._fire_hook(
-                        HookEvent.STOP,
-                        self._hook_context(
-                            HookEvent.STOP,
-                            iterations=iteration + 1,
-                            stop_reason=response.stop_reason,
-                        ),
-                    )
-                    self._publish_thought(
-                        f"Turn {iteration + 1}: Final response ({len(final_text)} chars)",
-                        thought_type="decision",
-                    )
-                    break
+                            if synthetic_tool_use_blocks:
+                                visible_text = self._strip_minimax_tool_markup(block.text)
+                                if visible_text:
+                                    final_text += visible_text
+                            else:
+                                final_text += block.text
 
-                # --- tool_use turn ---
-                tool_use_blocks = [
-                    b for b in response.content if b.type == "tool_use"
-                ]
+                    # Append the assistant message (with tool_use blocks) to history
+                    if synthetic_tool_use_blocks:
+                        messages.append(
+                            {
+                                "role": "assistant",
+                                "content": [
+                                    {
+                                        "type": "tool_use",
+                                        "id": block.id,
+                                        "name": block.name,
+                                        "input": block.input,
+                                    }
+                                    for block in synthetic_tool_use_blocks
+                                ],
+                            }
+                        )
+                    else:
+                        messages.append({"role": "assistant", "content": response.content})
 
-                # Also capture any text emitted alongside tool calls
-                for block in response.content:
-                    if block.type == "text":
-                        final_text += block.text
+                    # Execute each tool and build the tool_result user message
+                    tool_result_content = []
+                    for block in tool_use_blocks:
+                        all_tool_calls.append(
+                            {"name": block.name, "input": block.input, "id": block.id}
+                        )
 
-                # Append the assistant message (with tool_use blocks) to history
-                messages.append({"role": "assistant", "content": response.content})
-
-                # Execute each tool and build the tool_result user message
-                tool_result_content = []
-                for block in tool_use_blocks:
-                    all_tool_calls.append(
-                        {"name": block.name, "input": block.input, "id": block.id}
-                    )
-
-                    # Fire PRE_TOOL_USE hook (Agent SDK lifecycle)
-                    pre_result = await self._fire_hook(
-                        HookEvent.PRE_TOOL_USE,
-                        self._hook_context(
+                        # Fire PRE_TOOL_USE hook (Agent SDK lifecycle)
+                        pre_result = await self._fire_hook(
                             HookEvent.PRE_TOOL_USE,
-                            tool_name=block.name,
-                            tool_input=block.input,
-                            tool_use_id=block.id,
-                        ),
-                    )
-                    # If hook returns a decision to deny, skip tool execution
-                    denied, deny_reason = self._hook_denied(pre_result)
-                    if denied:
-                        tool_result_content.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": deny_reason,
-                            "is_error": True,
-                        })
-                        continue
-                    tool_input = self._hook_updated_input(pre_result, block.input)
-
-                    self._publish_thought(
-                        f"Turn {iteration + 1}: Calling {block.name}",
-                        thought_type="tool_call",
-                    )
-
-                    logger.info(
-                        f"Executing tool '{block.name}' (id={block.id}) "
-                        f"for {self.department.value}"
-                    )
-
-                    try:
-                        result_str = await self._execute_tool(block.name, tool_input)
-                        # Fire POST_TOOL_USE hook
-                        await self._fire_hook(
-                            HookEvent.POST_TOOL_USE,
                             self._hook_context(
-                                HookEvent.POST_TOOL_USE,
+                                HookEvent.PRE_TOOL_USE,
                                 tool_name=block.name,
-                                tool_input=tool_input,
+                                tool_input=block.input,
                                 tool_use_id=block.id,
-                                result=result_str,
                             ),
                         )
-                    except Exception as tool_err:
-                        # Fire POST_TOOL_USE_FAILURE hook
-                        await self._fire_hook(
-                            HookEvent.POST_TOOL_USE_FAILURE,
-                            self._hook_context(
-                                HookEvent.POST_TOOL_USE_FAILURE,
-                                tool_name=block.name,
-                                tool_input=tool_input,
-                                tool_use_id=block.id,
-                                error=str(tool_err),
-                            ),
-                        )
+                        # If hook returns a decision to deny, skip tool execution
+                        denied, deny_reason = self._hook_denied(pre_result)
+                        if denied:
+                            tool_result_content.append({
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": deny_reason,
+                                "is_error": True,
+                            })
+                            continue
+                        tool_input = self._hook_updated_input(pre_result, block.input)
+
                         self._publish_thought(
-                            f"Tool {block.name} failed: {str(tool_err)[:100]}",
-                            thought_type="error",
+                            f"Turn {iteration + 1}: Calling {block.name}",
+                            thought_type="tool_call",
                         )
-                        result_str = f"Error: {tool_err}"
 
-                    tool_result_content.append(
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": result_str,
-                        }
-                    )
+                        logger.info(
+                            f"Executing tool '{block.name}' (id={block.id}) "
+                            f"for {self.department.value}"
+                        )
 
-                messages.append({"role": "user", "content": tool_result_content})
+                        try:
+                            result_str = await self._execute_tool(block.name, tool_input)
+                            # Fire POST_TOOL_USE hook
+                            await self._fire_hook(
+                                HookEvent.POST_TOOL_USE,
+                                self._hook_context(
+                                    HookEvent.POST_TOOL_USE,
+                                    tool_name=block.name,
+                                    tool_input=tool_input,
+                                    tool_use_id=block.id,
+                                    result=result_str,
+                                ),
+                            )
+                        except Exception as tool_err:
+                            # Fire POST_TOOL_USE_FAILURE hook
+                            await self._fire_hook(
+                                HookEvent.POST_TOOL_USE_FAILURE,
+                                self._hook_context(
+                                    HookEvent.POST_TOOL_USE_FAILURE,
+                                    tool_name=block.name,
+                                    tool_input=tool_input,
+                                    tool_use_id=block.id,
+                                    error=str(tool_err),
+                                ),
+                            )
+                            self._publish_thought(
+                                f"Tool {block.name} failed: {str(tool_err)[:100]}",
+                                thought_type="error",
+                            )
+                            result_str = f"Error: {tool_err}"
 
-                if iteration == MAX_ITERATIONS - 1:
-                    logger.warning(
-                        f"Agentic loop hit max iterations ({MAX_ITERATIONS}) "
-                        f"for {self.department.value}"
-                    )
+                        tool_result_content.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": result_str,
+                            }
+                        )
+
+                    messages.append({"role": "user", "content": tool_result_content})
+
+                    if iteration == MAX_ITERATIONS - 1:
+                        logger.warning(
+                            f"Agentic loop hit max iterations ({MAX_ITERATIONS}) "
+                            f"for {self.department.value}"
+                        )
 
             self._publish_thought(
                 f"Task complete: {iteration + 1} turns, "

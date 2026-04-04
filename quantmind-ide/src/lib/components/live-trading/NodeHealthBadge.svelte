@@ -43,7 +43,7 @@ function formatLatency(ms: number): string {
     <div class="node-icon">
       <Server size={10} strokeWidth={2} />
     </div>
-    <span class="node-label">Contabo</span>
+    <span class="node-label">node_backend</span>
     <div class="status-indicator" style="background: {statusConfig[$nodeHealthState.contabo.status].color}">
       {#if $nodeHealthState.contabo.status === 'connected'}
         <Wifi size={8} strokeWidth={2} />
@@ -64,7 +64,7 @@ function formatLatency(ms: number): string {
     <div class="node-icon">
       <Server size={10} strokeWidth={2} />
     </div>
-    <span class="node-label">Cloudzy</span>
+    <span class="node-label">node_trading</span>
     <div class="status-indicator" style="background: {statusConfig[$nodeHealthState.cloudzy.status].color}">
       {#if $nodeHealthState.cloudzy.status === 'connected'}
         <Wifi size={8} strokeWidth={2} />

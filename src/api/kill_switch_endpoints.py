@@ -17,6 +17,8 @@ from src.router.progressive_kill_switch import (
     ProgressiveKillSwitch, get_progressive_kill_switch
 )
 from src.router.alert_manager import AlertLevel
+from src.router.bot_circuit_breaker import BotCircuitBreakerManager
+from src.router.kill_switch import get_kill_switch
 
 router = APIRouter(prefix="/api/kill-switch", tags=["kill-switch"])
 
@@ -198,6 +200,39 @@ async def get_kill_switch_status() -> KillSwitchStatusResponse:
     )
 
 
+@router.get("/bots")
+async def get_kill_switch_bots() -> List[Dict[str, Any]]:
+    """
+    Compatibility route for KillSwitchView.
+
+    Returns real bot/circuit-breaker state when available, or an honest empty
+    list when there are no registered bots.
+    """
+    from src.api.trading.control import TradingControlAPIHandler
+
+    trading_status = TradingControlAPIHandler().get_bot_status()
+    breaker = BotCircuitBreakerManager()
+    bots: List[Dict[str, Any]] = []
+
+    for bot in trading_status.bots:
+        bot_id = bot.get("bot_id", "")
+        cb_state = breaker.get_state(bot_id) or {}
+        tags = bot.get("tags", []) or []
+        status = "quarantine" if "@quarantine" in tags or "quarantine" in tags else "active"
+        bots.append({
+            "bot_id": bot_id,
+            "bot_name": bot_id,
+            "status": status,
+            "strategy": cb_state.get("kill_strategy"),
+            "today_pnl": None,
+            "loss_count": cb_state.get("consecutive_losses", 0),
+            "max_losses": breaker.max_consecutive_losses,
+            "positions_open": None,
+        })
+
+    return bots
+
+
 @router.get("/tiers")
 async def get_tier_status() -> Dict[str, Any]:
     """
@@ -269,6 +304,27 @@ async def get_alert_history(
 
     history = pks.alert_manager.get_history(tier=tier, level=level_enum, limit=limit)
     return history
+
+
+@router.get("/history")
+async def get_kill_switch_history() -> List[Dict[str, Any]]:
+    """
+    Compatibility route for KillSwitchView history.
+
+    Uses real kill-switch event history, not generated placeholder rows.
+    """
+    history = get_kill_switch().get_history()
+    return [
+        {
+            "id": f"kill_{idx}",
+            "timestamp": event["timestamp"],
+            "trigger_reason": event["reason"],
+            "strategy_used": event.get("strategy_used"),
+            "positions_closed": event.get("positions_closed", 0),
+            "total_pnl_preserved": event.get("total_pnl_preserved"),
+        }
+        for idx, event in enumerate(reversed(history), start=1)
+    ]
 
 
 # =============================================================================

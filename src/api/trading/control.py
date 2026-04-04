@@ -164,7 +164,10 @@ class TradingControlAPIHandler:
                     "bot_id": bot.bot_id,
                     "strategy_type": bot.strategy_type.value,
                     "frequency": bot.frequency.value,
-                    "tags": [tag.value for tag in bot.tags],
+                    "tags": [
+                        tag.value if hasattr(tag, "value") else str(tag)
+                        for tag in bot.tags
+                    ],
                     "is_compatible": True
                 })
 

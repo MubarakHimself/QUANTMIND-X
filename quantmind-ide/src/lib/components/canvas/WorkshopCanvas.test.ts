@@ -212,11 +212,11 @@ describe('WorkshopCanvas.svelte — sendMessage logic', () => {
   });
 
   it('checks copilot kill switch before sending (AC 5-6)', () => {
-    expect(src).toContain('killSwitchStatus.active');
+    expect(src).toContain('ks.active');
   });
 
   it('does not send empty message (checks trim)', () => {
-    expect(src).toContain('messageContent.trim()');
+    expect(src).toContain('text.trim()');
   });
 
   it('adds user message to messages array', () => {
@@ -231,8 +231,9 @@ describe('WorkshopCanvas.svelte — sendMessage logic', () => {
     expect(src).toContain("inputMessage = ''");
   });
 
-  it('calls /floor-manager/chat API endpoint (AC 5-7)', () => {
-    expect(src).toContain('/floor-manager/chat');
+  it('sends workshop messages through chatApi session persistence', () => {
+    expect(src).toContain("chatApi.sendMessage('workshop'");
+    expect(src).not.toContain('/floor-manager/chat');
   });
 
   it('sets isLoading to false in finally block', () => {
@@ -335,10 +336,11 @@ describe('WorkshopCanvas.svelte — Skills section', () => {
 // ─── Session management ───────────────────────────────────────────────────
 
 describe('WorkshopCanvas.svelte — Session management', () => {
-  it('startNewChat clears messages and resets sessionId', () => {
+  it('startNewChat creates a persisted floor-manager session before first send', () => {
     expect(src).toContain('function startNewChat');
     expect(src).toContain('messages = []');
-    expect(src).toContain('currentSessionId = null');
+    expect(src).toContain('await chatApi.createSession');
+    expect(src).toContain("agentType: 'floor-manager'");
   });
 
   it('selectSession sets currentSessionId', () => {
@@ -353,6 +355,16 @@ describe('WorkshopCanvas.svelte — Session management', () => {
 
   it('deleteSession calls stopPropagation to prevent session selection', () => {
     expect(src).toContain('e.stopPropagation()');
+  });
+
+  it('loads both floor-manager and legacy workshop sessions into the recent sidebar', () => {
+    expect(src).toContain("chatApi.listSessions(undefined, 'floor-manager')");
+    expect(src).toContain("chatApi.listSessions(undefined, 'workshop')");
+  });
+
+  it('renders a clear-history control that deletes all recent sessions', () => {
+    expect(src).toContain('deleteAllSessions');
+    expect(src).toContain('Clear history');
   });
 });
 

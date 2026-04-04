@@ -7,6 +7,7 @@
 
 import { z } from 'zod';
 import type { Skill, SkillContext } from './index';
+import { buildApiUrl } from '../../api';
 
 // ============================================================================
 // MQL5 CODE GENERATION SKILLS
@@ -54,7 +55,7 @@ const generateMQL5: Skill = {
   defaultEnabled: true,
   execute: async ({ specification, template, includeComments, optimize, version }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/generate', {
+      const response = await fetch(buildApiUrl('/api/quantcode/generate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ specification, template, includeComments, optimize, version })
@@ -123,7 +124,7 @@ const generateComponent: Skill = {
   defaultEnabled: true,
   execute: async ({ componentType, description, parameters, dependencies }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/generate-component', {
+      const response = await fetch(buildApiUrl('/api/quantcode/generate-component'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ componentType, description, parameters, dependencies })
@@ -192,7 +193,7 @@ const validateSyntax: Skill = {
   defaultEnabled: true,
   execute: async ({ code, checkStyle, strictMode, version }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/validate', {
+      const response = await fetch(buildApiUrl('/api/quantcode/validate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, checkStyle, strictMode, version })
@@ -262,7 +263,7 @@ const fixSyntaxErrors: Skill = {
   defaultEnabled: true,
   execute: async ({ code, errors, preserveStyle }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/fix', {
+      const response = await fetch(buildApiUrl('/api/quantcode/fix'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, errors, preserveStyle })
@@ -334,7 +335,7 @@ const compileMQL5: Skill = {
   defaultEnabled: true,
   execute: async ({ code, filename, includePath, optimization, strictMode }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/compile', {
+      const response = await fetch(buildApiUrl('/api/quantcode/compile'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, filename, includePath, optimization, strictMode })
@@ -415,7 +416,7 @@ const debugCode: Skill = {
   defaultEnabled: true,
   execute: async ({ code, issueDescription, checkMemory, checkConcurrency, deepAnalysis }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/debug', {
+      const response = await fetch(buildApiUrl('/api/quantcode/debug'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, issueDescription, checkMemory, checkConcurrency, deepAnalysis })
@@ -482,7 +483,7 @@ const optimizeCode: Skill = {
   defaultEnabled: true,
   execute: async ({ code, optimizationLevel, target, preserveReadability }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/optimize', {
+      const response = await fetch(buildApiUrl('/api/quantcode/optimize'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, optimizationLevel, target, preserveReadability })
@@ -550,7 +551,7 @@ const generateDocumentation: Skill = {
   defaultEnabled: true,
   execute: async ({ code, format, includeExamples, includeDiagrams, targetAudience }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/document', {
+      const response = await fetch(buildApiUrl('/api/quantcode/document'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, format, includeExamples, includeDiagrams, targetAudience })
@@ -622,7 +623,7 @@ const lookupDocumentation: Skill = {
   defaultEnabled: true,
   execute: async ({ query, source, includeExamples }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/quantcode/lookup-docs', {
+      const response = await fetch(buildApiUrl('/api/quantcode/lookup-docs'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, source, includeExamples })

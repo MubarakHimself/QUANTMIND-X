@@ -11,6 +11,7 @@
  */
 
 import { writable, derived, get } from 'svelte/store';
+import { buildApiUrl } from '$lib/api';
 
 // Types for physics sensor data
 export interface PhysicsIsingData {
@@ -32,6 +33,38 @@ export interface PhysicsHMMData {
   alert: 'normal' | 'warning' | 'critical';
 }
 
+export interface PhysicsMSGARCHData {
+  vol_state: string | null;
+  sigma_forecast: number | null;
+  regime_type: string | null;
+  confidence: number;
+  transition_probs: Record<string, number> | null;
+  model_version: string | null;
+  alert: 'normal' | 'warning' | 'critical';
+}
+
+export interface PhysicsBOCPDData {
+  changepoint_prob: number;
+  is_changepoint: boolean;
+  current_run_length: number;
+  regime_type: string;
+  confidence: number;
+  hazard_lambda: number | null;
+  alert: 'normal' | 'warning' | 'critical';
+}
+
+export interface PhysicsEnsembleData {
+  regime_type: string | null;
+  confidence: number;
+  is_transition: boolean;
+  sigma_forecast: number | null;
+  ensemble_agreement: number;
+  weights_used: Record<string, number> | null;
+  model_count: number;
+  sources: Record<string, unknown> | null;
+  alert: 'normal' | 'warning' | 'critical';
+}
+
 export interface PhysicsKellyData {
   fraction: number;
   multiplier: number;
@@ -43,6 +76,9 @@ export interface PhysicsSensorData {
   ising: PhysicsIsingData;
   lyapunov: PhysicsLyapunovData;
   hmm: PhysicsHMMData;
+  msgarch: PhysicsMSGARCHData;
+  bocpd: PhysicsBOCPDData;
+  ensemble: PhysicsEnsembleData;
   kelly: PhysicsKellyData;
 }
 
@@ -50,6 +86,7 @@ export interface PhysicsSensorState {
   data: PhysicsSensorData | null;
   loading: boolean;
   error: string | null;
+  unavailableReason: string | null;
   lastUpdated: Date | null;
 }
 
@@ -58,6 +95,7 @@ const initialState: PhysicsSensorState = {
   data: null,
   loading: false,
   error: null,
+  unavailableReason: null,
   lastUpdated: null
 };
 
@@ -68,13 +106,33 @@ function createPhysicsSensorStore() {
   let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
   async function fetchData() {
-    update(state => ({ ...state, loading: true, error: null }));
+    update(state => ({ ...state, loading: true, error: null, unavailableReason: null }));
 
     try {
-      const response = await fetch('/api/risk/physics');
+      const response = await fetch(buildApiUrl('/api/risk/physics'), {
+        credentials: 'include'
+      });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        let detail: string | null = null;
+        try {
+          const errorPayload = await response.json() as { detail?: string };
+          detail = typeof errorPayload?.detail === 'string' ? errorPayload.detail : null;
+        } catch {
+          detail = null;
+        }
+
+        if (response.status === 503 && detail) {
+          update(state => ({
+            ...state,
+            loading: false,
+            error: null,
+            unavailableReason: detail
+          }));
+          return;
+        }
+
+        throw new Error(detail ? `HTTP ${response.status}: ${detail}` : `HTTP ${response.status}: ${response.statusText}`);
       }
 
       const data: PhysicsSensorData = await response.json();
@@ -83,6 +141,7 @@ function createPhysicsSensorStore() {
         ...state,
         data,
         loading: false,
+        unavailableReason: null,
         lastUpdated: new Date()
       }));
     } catch (err) {
@@ -90,7 +149,8 @@ function createPhysicsSensorStore() {
       update(state => ({
         ...state,
         loading: false,
-        error: errorMessage
+        error: errorMessage,
+        unavailableReason: null
       }));
     }
   }
@@ -129,11 +189,15 @@ export const physicsSensorStore = createPhysicsSensorStore();
 export const isingData = derived(physicsSensorStore, $store => $store.data?.ising ?? null);
 export const lyapunovData = derived(physicsSensorStore, $store => $store.data?.lyapunov ?? null);
 export const hmmData = derived(physicsSensorStore, $store => $store.data?.hmm ?? null);
+export const msgarchData = derived(physicsSensorStore, $store => $store.data?.msgarch ?? null);
+export const bocpdData = derived(physicsSensorStore, $store => $store.data?.bocpd ?? null);
+export const ensembleData = derived(physicsSensorStore, $store => $store.data?.ensemble ?? null);
 export const kellyData = derived(physicsSensorStore, $store => $store.data?.kelly ?? null);
 
 // Loading and error states
 export const physicsLoading = derived(physicsSensorStore, $store => $store.loading);
 export const physicsError = derived(physicsSensorStore, $store => $store.error);
+export const physicsUnavailableReason = derived(physicsSensorStore, $store => $store.unavailableReason);
 export const physicsLastUpdated = derived(physicsSensorStore, $store => $store.lastUpdated);
 
 
@@ -188,7 +252,9 @@ function createComplianceStore() {
     update(state => ({ ...state, loading: true, error: null }));
 
     try {
-      const response = await fetch('/api/risk/compliance');
+      const response = await fetch(buildApiUrl('/api/risk/compliance'), {
+        credentials: 'include'
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -278,7 +344,9 @@ function createPropFirmStore() {
     update(state => ({ ...state, loading: true, error: null }));
 
     try {
-      const response = await fetch('/api/risk/prop-firms');
+      const response = await fetch(buildApiUrl('/api/risk/prop-firms'), {
+        credentials: 'include'
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -305,8 +373,9 @@ function createPropFirmStore() {
     update(state => ({ ...state, loading: true, error: null }));
 
     try {
-      const response = await fetch(`/api/risk/prop-firms/${id}`, {
+      const response = await fetch(buildApiUrl(`/api/risk/prop-firms/${id}`), {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
@@ -339,8 +408,9 @@ function createPropFirmStore() {
     update(state => ({ ...state, loading: true, error: null }));
 
     try {
-      const response = await fetch('/api/risk/prop-firms', {
+      const response = await fetch(buildApiUrl('/api/risk/prop-firms'), {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
@@ -463,7 +533,9 @@ function createCalendarGateStore() {
     update(state => ({ ...state, loading: true, error: null }));
 
     try {
-      const response = await fetch('/api/risk/calendar/blackout');
+      const response = await fetch(buildApiUrl('/api/risk/calendar/blackout'), {
+        credentials: 'include'
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -564,7 +636,9 @@ function createBacktestStore() {
     update(state => ({ ...state, loading: true, error: null }));
 
     try {
-      const response = await fetch('/api/backtests');
+      const response = await fetch(buildApiUrl('/api/backtests'), {
+        credentials: 'include'
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);

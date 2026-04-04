@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Activity, Server, RefreshCw, AlertTriangle, CheckCircle, XCircle, Clock } from 'lucide-svelte';
   import { fireServerHealthAlert, clearServerHealthAlert, type ServerHealthAlert } from '$lib/stores/serverHealthAlerts';
+  import { apiFetch } from '$lib/api';
 
   interface NodeMetrics {
     cpu: number;
@@ -8,8 +9,9 @@
     disk: number;
     latency_ms: number;
     uptime_seconds: number;
-    last_heartbeat: string;
+    last_heartbeat?: string | null;
     status: string;
+    status_detail?: string | null;
   }
 
   interface ServerHealthResponse {
@@ -39,12 +41,12 @@
   /**
    * Check each metric against its threshold. Fire a serverHealthAlertEvent only
    * when a metric transitions into the critical state (not on every poll while breached).
-   * AC3: "Contabo: disk usage at 91%. Action recommended."
+   * AC3: "node_backend: disk usage at 91%. Action recommended."
    */
   function checkThresholdBreaches(data: ServerHealthResponse) {
     const nodes: Array<{ name: string; metrics: NodeMetrics }> = [
-      { name: 'Contabo', metrics: data.contabo },
-      { name: 'Cloudzy', metrics: data.cloudzy }
+      { name: 'node_backend', metrics: data.contabo },
+      { name: 'node_trading', metrics: data.cloudzy }
     ];
 
     for (const { name, metrics } of nodes) {
@@ -87,14 +89,9 @@
   async function loadHealthData() {
     error = null;
     try {
-      const response = await fetch('/api/server/health/metrics');
-      if (response.ok) {
-        healthData = await response.json();
-        lastUpdated = new Date().toLocaleTimeString();
-        checkThresholdBreaches(healthData!);
-      } else {
-        error = 'Failed to load server health data';
-      }
+      healthData = await apiFetch<ServerHealthResponse>('/server/health/metrics');
+      lastUpdated = new Date().toLocaleTimeString();
+      checkThresholdBreaches(healthData);
     } catch (e) {
       error = 'Failed to load server health data';
       console.error(e);
@@ -130,14 +127,13 @@
     return `${mins}m`;
   }
 
-  function formatHeartbeat(timestamp: string): string {
+  function formatHeartbeat(timestamp?: string | null): string {
     if (!timestamp) return 'N/A';
-    try {
-      const date = new Date(timestamp);
-      return date.toLocaleTimeString();
-    } catch {
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) {
       return 'N/A';
     }
+    return date.toLocaleTimeString();
   }
 
   function startPolling() {
@@ -189,12 +185,12 @@
     </div>
   {:else if healthData}
     <div class="nodes-grid">
-      <!-- Contabo Node -->
+      <!-- node_backend Node -->
       <div class="node-card">
         <div class="node-header">
           <div class="node-title">
             <Server size={20} />
-            <h4>Contabo</h4>
+            <h4>node_backend</h4>
           </div>
           <div class="node-status" style="color: {getStatusColor(healthData.contabo.status)}">
             {#if healthData.contabo.status === 'healthy'}
@@ -250,12 +246,12 @@
         </div>
       </div>
 
-      <!-- Cloudzy Node -->
+      <!-- node_trading Node -->
       <div class="node-card">
         <div class="node-header">
           <div class="node-title">
             <Activity size={20} />
-            <h4>Cloudzy</h4>
+            <h4>node_trading</h4>
           </div>
           <div class="node-status" style="color: {getStatusColor(healthData.cloudzy.status)}">
             {#if healthData.cloudzy.status === 'healthy'}
@@ -310,6 +306,13 @@
             <span class="metric-label">Last Heartbeat</span>
             <span class="metric-value">{formatHeartbeat(healthData.cloudzy.last_heartbeat)}</span>
           </div>
+
+          {#if healthData.cloudzy.status === 'disconnected' && healthData.cloudzy.status_detail}
+            <div class="metric metric-detail">
+              <span class="metric-label">Status Detail</span>
+              <span class="metric-detail-value">{healthData.cloudzy.status_detail}</span>
+            </div>
+          {/if}
         </div>
       </div>
     </div>
@@ -472,6 +475,11 @@
     gap: 8px;
   }
 
+  .metric-detail {
+    grid-template-columns: 72px 1fr;
+    align-items: start;
+  }
+
   .metric-label {
     font-size: 11px;
     color: rgba(255, 255, 255, 0.35);
@@ -488,6 +496,14 @@
 
   .metric.critical .metric-value {
     color: #ff3b3b;
+  }
+
+  .metric-detail-value {
+    font-size: 11px;
+    line-height: 1.45;
+    color: rgba(255, 255, 255, 0.55);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    text-align: left;
   }
 
   .metric-bar {

@@ -583,7 +583,7 @@ class MetricsWebSocketManager:
 ws_manager = MetricsWebSocketManager()
 
 
-@router.websocket("/ws")
+@router.websocket("/ws/metrics")
 async def metrics_websocket(websocket: WebSocket):
     """WebSocket endpoint for real-time metrics streaming."""
     await ws_manager.connect(websocket)

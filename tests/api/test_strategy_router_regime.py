@@ -9,6 +9,7 @@ Tests for:
 """
 
 import pytest
+import asyncio
 from datetime import datetime, timezone
 from pydantic import ValidationError
 
@@ -168,6 +169,75 @@ class TestStrategyStateItemModel:
         )
 
         assert item.eligible_regimes == []
+
+
+class TestRouterStateEndpointBehavior:
+    """Test live router-state fallback behavior."""
+
+    def test_router_state_returns_empty_when_router_unavailable(self, monkeypatch):
+        """Should return an honest empty list instead of demo strategy rows."""
+        from src.api import risk_endpoints
+
+        monkeypatch.setattr(risk_endpoints, "ROUTER_AVAILABLE", False)
+
+        response = asyncio.run(risk_endpoints.get_router_state())
+
+        assert response.strategies == []
+
+
+class TestRouterMarketEndpointBehavior:
+    """Test honest unavailable responses for router market state."""
+
+    def test_market_state_returns_unavailable_payload_when_router_missing(self, monkeypatch):
+        from src.api import router_endpoints
+
+        monkeypatch.setattr(router_endpoints, "_strategy_router", None)
+
+        response = asyncio.run(router_endpoints.get_market_state())
+
+        assert response["regime"] is None
+        assert response["symbols"] == []
+        assert response["unavailable_reason"] == "Router not configured"
+
+    def test_market_state_returns_unavailable_payload_when_mt5_missing(self, monkeypatch):
+        from src.api import router_endpoints
+        from src.data.brokers import mt5_socket_adapter
+
+        class RouterStub:
+            def get_status(self):
+                return {
+                    "sentinel": {
+                        "regime_quality": 0.42,
+                        "current_regime": "UNKNOWN",
+                        "chaos": 0.0,
+                        "volatility": "UNKNOWN",
+                    }
+                }
+
+        monkeypatch.setattr(router_endpoints, "_strategy_router", RouterStub())
+        monkeypatch.setattr(mt5_socket_adapter, "get_mt5_adapter", lambda: None, raising=False)
+
+        response = asyncio.run(router_endpoints.get_market_state())
+
+        assert response["regime"]["quality"] == 0.42
+        assert response["symbols"] == []
+        assert "MT5 adapter not connected" in response["unavailable_reason"]
+
+    def test_router_state_returns_empty_when_router_has_no_registered_bots(self, monkeypatch):
+        """Should not synthesize strategies when the router is configured but empty."""
+        from src.api import risk_endpoints
+        from src.api import router_endpoints
+
+        class EmptyRouter:
+            registered_bots = {}
+            governor = None
+
+        monkeypatch.setattr(risk_endpoints, "ROUTER_AVAILABLE", True)
+        monkeypatch.setattr(router_endpoints, "_strategy_router", EmptyRouter())
+
+        response = asyncio.run(risk_endpoints.get_router_state())
+
+        assert response.strategies == []
 
 
 class TestPhysicsOutputModels:

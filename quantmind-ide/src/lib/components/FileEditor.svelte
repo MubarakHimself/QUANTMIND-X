@@ -9,6 +9,7 @@
   } from 'lucide-svelte';
   import { fileHistoryManager } from '../services/fileHistoryManager';
   import type { AgentType } from '../stores/chatStore';
+  import { buildApiUrl } from '$lib/api';
 
 
   interface Props {
@@ -50,8 +51,6 @@
   let cursorLine = $state(1);
   let cursorColumn = $state(1);
   let showHistoryPanel = $state(false);
-
-  const API_BASE = 'http://localhost:8000/api';
 
   // Supported file types for syntax highlighting
   const languageMap: Record<string, string> = {
@@ -183,7 +182,7 @@
     dispatch('save', { content: editorContent });
     
     try {
-      const endpoint = `${API_BASE}/files/${file.id}`;
+      const endpoint = buildApiUrl(`/api/files/${file.id}`);
       const response = await fetch(endpoint, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

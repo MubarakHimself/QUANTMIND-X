@@ -11,6 +11,7 @@ import uvicorn
 import logging
 import time
 import asyncio
+from pathlib import Path
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.websockets import WebSocket
@@ -83,8 +84,8 @@ CONTABO_ROUTERS = {
     "memory_dept_router",      # Memory department
     "memory_unified_router",   # Unified memory
     "graph_memory_router",     # Graph memory
-    "floor_manager_router",    # Copilot
-    "workshop_copilot_router",# Workshop copilot
+    "floor_manager_router",    # Primary assistant orchestration
+    "workshop_copilot_router", # Legacy workshop compatibility alias
     "workflow_router",         # Alpha Forge
     "hmm_router",              # Risk sensors
     "hmm_inference_router",    # HMM inference
@@ -115,13 +116,13 @@ BOTH_ROUTERS = {
 
 def _get_include_cloudzy() -> bool:
     """Check if trading routers should be included based on NODE_ROLE."""
-    role = os.getenv("NODE_ROLE", "").lower()
+    role = os.getenv("NODE_ROLE", "local").lower()
     # cloudzy / node_trading node OR local dev includes trading routers
     return role in ("cloudzy", "node_trading", "local")
 
 def _get_include_contabo() -> bool:
     """Check if agent/compute routers should be included based on NODE_ROLE."""
-    role = os.getenv("NODE_ROLE", "").lower()
+    role = os.getenv("NODE_ROLE", "local").lower()
     # contabo / node_backend node OR local dev includes agent/compute routers
     return role in ("contabo", "node_backend", "local")
 
@@ -241,6 +242,7 @@ try:
     from src.api.ide_video_ingest import router as video_ingest_ide_router
     from src.api.ide_chat import router as chat_ide_router
     from src.api.ide_backtest import router as backtest_router
+    from src.api.ea_endpoints import router as ea_router
     from src.api.backtest_endpoints import router as backtest_results_router
     from src.api.portfolio_endpoints import router as portfolio_router
     from src.api.portfolio_broker_endpoints import router as portfolio_broker_router
@@ -418,6 +420,7 @@ if _get_include_contabo():  # Contabo runs the IDE
     app.include_router(strategies_router)
     app.include_router(timeframes_router)
     app.include_router(compile_router)
+    app.include_router(ea_router)
 
 # ---------------------------------------------------------------------------
 # Cloudzy Routers (Live Trading)
@@ -474,7 +477,7 @@ if _get_include_contabo():
     app.include_router(floor_manager_router)
     app.include_router(copilot_kill_switch_router)
     app.include_router(workshop_copilot_router)
-    app.include_router(copilot_router)  # /api/copilot/chat - UI always routes through Copilot
+    app.include_router(copilot_router)  # Legacy compatibility alias for older clients
     app.include_router(workflow_router)
     app.include_router(prefect_workflow_router)
     app.include_router(flowforge_workflow_proxy_router)  # Story 11.8: FlowForge ↔ Prefect API Contract
@@ -498,7 +501,7 @@ if _get_include_contabo():
 
     # Video & Processing
     app.include_router(video_to_ea_router)
-    app.include_router(video_ingest_ide_router)
+    app.include_router(video_ingest_ide_router, prefix="/api")
     app.include_router(batch_router)
     app.include_router(evaluation_router)
 
@@ -566,22 +569,18 @@ app.include_router(pdf_router)
 
 # ── Always-on routers (NODE_ROLE-agnostic) ────────────────────────────────
 # These endpoints are needed on every deployment type including local dev.
+# Task management — to-do lists, Kanban boards, mail consumers (Issues #11-#15)
+try:
+    from src.api.task_management_endpoints import router as task_management_router
+    app.include_router(task_management_router)
+except ImportError:
+    pass
+
 app.include_router(agent_thought_router)      # Agent thought SSE stream
 app.include_router(agent_tile_router)         # Agent tile creation / display
 app.include_router(zero_auth_router)          # Zero-Auth: Qwen CLI + Gemini ADC
 app.include_router(autonomous_scheduler_router)  # Overnight research scheduler
 app.include_router(tool_forge_router)         # Dynamic tool creation / registry
-app.include_router(settings_router)          # Settings (connection, appearance, etc.)
-app.include_router(skills_router)            # Skill Catalogue (always-on for UI)
-app.include_router(provider_config_router)    # AI provider configurations
-
-# ── Copilot & Floor Manager (always-on for Workshop UI) ──────────────────────
-# The Workshop UI (CopilotPanel) calls /api/copilot/chat - these must be available
-# in ALL modes: local (development), node_backend, and node_trading.
-app.include_router(floor_manager_router)      # Floor Manager chat + task routing
-app.include_router(copilot_router)           # /api/copilot/chat - Workshop UI entry point
-app.include_router(workshop_copilot_router)   # Workshop copilot secondary endpoints
-app.include_router(copilot_kill_switch_router)  # Copilot kill switch
 
 logger.info(f"Router registration complete for NODE_ROLE={NODE_ROLE}")
 
@@ -632,12 +631,13 @@ async def startup_event():
 
     # Run graph memory DB migrations (idempotent - safe to run every startup)
     try:
-        import os
-        os.makedirs("data", exist_ok=True)
         from src.memory.graph.migration import migrate_graph_memory_db
+
         graph_db = os.environ.get("GRAPH_MEMORY_DB", "data/graph_memory.db")
-        migrate_graph_memory_db(graph_db)
-        logger.info(f"Graph memory DB migrations applied: {graph_db}")
+        graph_db_path = Path(graph_db).expanduser()
+        graph_db_path.parent.mkdir(parents=True, exist_ok=True)
+        migrate_graph_memory_db(str(graph_db_path))
+        logger.info(f"Graph memory DB migrations applied: {graph_db_path}")
     except Exception as e:
         logger.warning(f"Graph memory migration warning: {e}")
 
@@ -661,11 +661,18 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"HITL resume warning: {e}")
 
+    # Start background mail consumers for all departments (Issue #11)
+    try:
+        from src.agents.departments.mail_consumer import get_task_manager
+        await get_task_manager().start_consumers(poll_interval=15.0)
+        logger.info("Background mail consumers started for all departments")
+    except Exception as e:
+        logger.warning(f"Mail consumer startup warning: {e}")
+
     # Start Prometheus metrics server
     # Note: Grafana Cloud push is disabled - using Prometheus agent for remote_write
     # to avoid duplicate metric ingestion. See docker-compose.production.yml
     try:
-        import os
         from src.monitoring import start_metrics_server
         
         metrics_port = int(os.getenv("PROMETHEUS_PORT", "9090"))

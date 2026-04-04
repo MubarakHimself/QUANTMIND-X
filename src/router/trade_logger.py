@@ -79,35 +79,38 @@ class BotContext:
 class TradeLogEntry:
     """
     Complete trade log entry - the "Black Box" record.
-    
+
     Answers "Why?" for every trade decision.
     """
     # Identity
     log_id: str
     timestamp: datetime
-    
+
     # Trade details
     symbol: str
     direction: str  # "BUY" or "SELL"
     requested_volume: float
     approved_volume: float
     risk_multiplier: float
-    
+
     # Decision
     decision: TradeDecision
     rejection_reason: Optional[RejectionReason] = None
-    
+
     # Context - the "Why?"
     market: Optional[MarketContext] = None
     risk: Optional[RiskContext] = None
     bot: Optional[BotContext] = None
-    
+
     # Execution (filled after trade)
     entry_price: Optional[float] = None
     exit_price: Optional[float] = None
     pnl: Optional[float] = None
     execution_time_ms: Optional[float] = None
-    
+
+    # Close reason (for forced closes)
+    close_reason: Optional[str] = None
+
     # Additional notes
     notes: List[str] = field(default_factory=list)
     
@@ -127,6 +130,7 @@ class TradeLogEntry:
             "exit_price": self.exit_price,
             "pnl": self.pnl,
             "execution_time_ms": self.execution_time_ms,
+            "close_reason": self.close_reason,
             "notes": self.notes
         }
         
@@ -176,11 +180,12 @@ class TradeLogger:
         market: Optional[MarketContext] = None,
         risk: Optional[RiskContext] = None,
         bot: Optional[BotContext] = None,
-        notes: Optional[List[str]] = None
+        notes: Optional[List[str]] = None,
+        close_reason: Optional[str] = None
     ) -> TradeLogEntry:
         """
         Log a trade decision with full context.
-        
+
         This is the primary logging method, called by socket_server and commander.
         """
         entry = TradeLogEntry(
@@ -196,7 +201,8 @@ class TradeLogger:
             market=market,
             risk=risk,
             bot=bot,
-            notes=notes or []
+            notes=notes or [],
+            close_reason=close_reason
         )
         
         self._current_entries.append(entry)
@@ -264,7 +270,8 @@ class TradeLogger:
         entry_price: float,
         exit_price: Optional[float] = None,
         pnl: Optional[float] = None,
-        execution_time_ms: Optional[float] = None
+        execution_time_ms: Optional[float] = None,
+        close_reason: Optional[str] = None
     ) -> None:
         """Update log entry with execution details."""
         for entry in self._current_entries:
@@ -273,6 +280,8 @@ class TradeLogger:
                 entry.exit_price = exit_price
                 entry.pnl = pnl
                 entry.execution_time_ms = execution_time_ms
+                if close_reason is not None:
+                    entry.close_reason = close_reason
                 break
     
     def get_recent(self, count: int = 50) -> List[Dict[str, Any]]:
@@ -373,6 +382,172 @@ class TradeLogger:
         else:
             return "EXTREME"
     
+    def log_paper_trade(
+        self,
+        symbol: str,
+        direction: str,
+        requested_volume: float,
+        approved_volume: float,
+        risk_multiplier: float,
+        entry_price: float,
+        exit_price: float,
+        pnl: float,
+        close_reason: str = "PAPER_SESSION_END",
+        market: Optional[MarketContext] = None,
+        risk: Optional[RiskContext] = None,
+        bot: Optional[BotContext] = None,
+        notes: Optional[List[str]] = None,
+    ) -> TradeLogEntry:
+        """
+        Log a paper trading result with full context.
+
+        This method logs closed paper trades to the TradeLogger for evaluation
+        during the paper trading gate phase in ImprovementLoopFlow.
+
+        Args:
+            symbol: Trading symbol
+            direction: "BUY" or "SELL"
+            requested_volume: Requested lot size
+            approved_volume: Approved lot size after risk checks
+            risk_multiplier: Applied risk multiplier
+            entry_price: Entry price
+            exit_price: Exit price
+            pnl: Profit/loss amount
+            close_reason: Reason for trade closure (e.g., "PAPER_SESSION_END", "TP_HIT", "SL_HIT")
+            market: Market context at trade time
+            risk: Risk context at trade time
+            bot: Bot context at trade time
+            notes: Additional notes
+
+        Returns:
+            TradeLogEntry for the logged trade
+        """
+        entry = TradeLogEntry(
+            log_id=self._generate_log_id(),
+            timestamp=datetime.now(),
+            symbol=symbol,
+            direction=direction,
+            requested_volume=requested_volume,
+            approved_volume=approved_volume,
+            risk_multiplier=risk_multiplier,
+            decision=TradeDecision.APPROVED,
+            market=market,
+            risk=risk,
+            bot=bot,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            pnl=pnl,
+            close_reason=close_reason,
+            notes=notes or ["PAPER_TRADE"],
+        )
+
+        self._current_entries.append(entry)
+
+        # Log to console with paper indicator
+        self._log_paper_to_console(entry)
+
+        # Persist if threshold reached
+        if len(self._current_entries) >= self.max_entries_per_file:
+            self._flush_to_file()
+
+        return entry
+
+    def _log_paper_to_console(self, entry: TradeLogEntry) -> None:
+        """Log paper trade summary to console."""
+        pnl_str = f"${entry.pnl:.2f}" if entry.pnl is not None else "N/A"
+        direction_arrow = "↑" if entry.direction == "BUY" else "↓"
+
+        log_msg = (
+            f"[PAPER] {entry.symbol} {direction_arrow} {entry.direction} "
+            f"Entry: {entry.entry_price} → Exit: {entry.exit_price} "
+            f"PnL: {pnl_str} | Close: {entry.close_reason}"
+        )
+
+        if entry.risk:
+            log_msg += f" | Chaos: {entry.risk.chaos_level}, Gov: {entry.risk.governor_value:.2f}"
+
+        logger.info(log_msg)
+
+    def get_paper_trade_summary(
+        self,
+        agent_id: Optional[str] = None,
+        symbol: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get summary of paper trades for evaluation.
+
+        Args:
+            agent_id: Filter by agent ID (from bot context)
+            symbol: Filter by symbol
+
+        Returns:
+            Summary dict with win rate, P&L, trade count, max drawdown
+        """
+        paper_trades = [
+            e for e in self._current_entries
+            if "PAPER_TRADE" in e.notes or e.close_reason in [
+                "PAPER_SESSION_END", "TP_HIT", "SL_HIT", "MANUAL_CLOSE"
+            ]
+        ]
+
+        if agent_id:
+            paper_trades = [
+                e for e in paper_trades
+                if e.bot and e.bot.bot_id == agent_id
+            ]
+
+        if symbol:
+            paper_trades = [e for e in paper_trades if e.symbol == symbol]
+
+        if not paper_trades:
+            return {
+                "total_trades": 0,
+                "winning_trades": 0,
+                "losing_trades": 0,
+                "win_rate": 0.0,
+                "total_pnl": 0.0,
+                "average_pnl": 0.0,
+                "max_drawdown": 0.0,
+            }
+
+        total = len(paper_trades)
+        winners = sum(1 for e in paper_trades if e.pnl and e.pnl > 0)
+        losers = total - winners
+        total_pnl = sum(e.pnl for e in paper_trades if e.pnl is not None)
+        avg_pnl = total_pnl / total if total > 0 else 0.0
+
+        # Calculate max drawdown from cumulative P&L
+        cumulative_pnl = 0.0
+        peak_pnl = 0.0
+        max_drawdown = 0.0
+        for e in paper_trades:
+            if e.pnl:
+                cumulative_pnl += e.pnl
+                if cumulative_pnl > peak_pnl:
+                    peak_pnl = cumulative_pnl
+                drawdown = peak_pnl - cumulative_pnl
+                if drawdown > max_drawdown:
+                    max_drawdown = drawdown
+
+        return {
+            "total_trades": total,
+            "winning_trades": winners,
+            "losing_trades": losers,
+            "win_rate": winners / total if total > 0 else 0.0,
+            "total_pnl": total_pnl,
+            "average_pnl": avg_pnl,
+            "max_drawdown": max_drawdown,
+            "close_reasons": self._count_close_reasons(paper_trades),
+        }
+
+    def _count_close_reasons(self, entries: List[TradeLogEntry]) -> Dict[str, int]:
+        """Count close reasons across entries."""
+        counts: Dict[str, int] = {}
+        for e in entries:
+            if e.close_reason:
+                counts[e.close_reason] = counts.get(e.close_reason, 0) + 1
+        return counts
+
     def flush(self) -> None:
         """Force flush to file."""
         self._flush_to_file()

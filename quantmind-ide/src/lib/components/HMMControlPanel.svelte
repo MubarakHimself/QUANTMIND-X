@@ -274,11 +274,11 @@
     <h4>Version Control</h4>
     <div class="version-grid">
       <div class="version-card">
-        <span class="server-label">Contabo (Training)</span>
+        <span class="server-label">node_backend (Training)</span>
         <span class="version-value">{hmmStatus.contabo_version || 'No model'}</span>
       </div>
       <div class="version-card">
-        <span class="server-label">Cloudzy (Trading)</span>
+        <span class="server-label">node_trading (Trading)</span>
         <span class="version-value">{hmmStatus.cloudzy_version || 'No model'}</span>
       </div>
     </div>

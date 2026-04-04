@@ -1,77 +1,94 @@
 """
-QuantMind IDE Chat Endpoint
+QuantMind IDE legacy chat compatibility endpoint.
 
-API endpoint for agent chat.
-
-NOTE: LangChain/LangGraph imports removed - pending migration to Anthropic Agent SDK (Epic 7).
+This module keeps the old `/api/chat` surface alive as an ingress-only alias
+while routing requests to the canonical Floor Manager / department chat paths.
+It must not import deprecated LangChain/LangGraph-era agents.
 """
 
 import logging
+from typing import Any, Dict, Optional, Tuple
+
 from fastapi import APIRouter, HTTPException
+
+from src.api.chat_endpoints import (
+    ChatMessageRequest,
+    department_chat,
+    floor_manager_chat,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
+_LEGACY_AGENT_ROUTE_MAP: Dict[str, Tuple[str, Optional[str]]] = {
+    "copilot": ("floor-manager", None),
+    "floor_manager": ("floor-manager", None),
+    "workshop": ("floor-manager", None),
+    "analyst": ("department", "research"),
+    "research": ("department", "research"),
+    "quantcode": ("department", "development"),
+    "development": ("department", "development"),
+    "risk": ("department", "risk"),
+    "trading": ("department", "trading"),
+    "portfolio": ("department", "portfolio"),
+}
+
+
+def _coerce_legacy_context(raw_context: Any, *, model: str) -> tuple[Dict[str, Any], Optional[list[dict[str, str]]]]:
+    """Normalize legacy request context into canonical chat request fields."""
+    history = raw_context if isinstance(raw_context, list) else None
+    context = dict(raw_context) if isinstance(raw_context, dict) else {}
+    if model:
+        context.setdefault("model", model)
+    return context, history
+
+
+def _resolve_legacy_route(agent: str) -> tuple[str, Optional[str]]:
+    normalized = (agent or "floor_manager").strip().lower()
+    return _LEGACY_AGENT_ROUTE_MAP.get(normalized, ("floor-manager", None))
+
 
 @router.post("/chat")
 async def chat(request: dict):
-    """Send message to agent and get response."""
-    message = request.get("message", "")
-    agent = request.get("agent", "copilot")
-    model = request.get("model", "gemini-2.5-pro")
-    context = request.get("context", [])
+    """Compatibility wrapper for the removed legacy `/api/chat` endpoint."""
+    message = str(request.get("message", "")).strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
 
-    # Import handlers for fallback responses
-    from src.api.ide_handlers import LiveTradingAPIHandler
-    trading_handler = LiveTradingAPIHandler()
+    agent = str(request.get("agent", "floor_manager"))
+    model = str(request.get("model", "")).strip()
+    raw_context = request.get("context", {})
+    normalized_context, history = _coerce_legacy_context(raw_context, model=model)
+    normalized_context.setdefault("legacy_agent", agent)
 
-    # STUB - LangGraph agent pending migration to Anthropic Agent SDK (Epic 7)
-    # Previously used: from langgraph.checkpoint.memory import MemorySaver
+    route_type, route_target = _resolve_legacy_route(agent)
+    compat_request = ChatMessageRequest(
+        message=message,
+        context=normalized_context,
+        history=history,
+        stream=False,
+    )
+
     try:
-        from src.agents.analyst_v2 import compile_analyst_graph
-        import uuid
-
-        # Compile the graph (memory checkpointer removed pending Epic 7)
-        graph = compile_analyst_graph()
-
-        # Build config for per-session conversation history
-        thread_id = f"chat_{agent}_{uuid.uuid4().hex[:8]}"
-        config = {"configurable": {"thread_id": thread_id}}
-
-        # Invoke the graph
-        result = graph.invoke(
-            {"messages": [{"role": "user", "content": message}]},
-            config=config
-        )
-
-        # Extract the last AI message
-        messages = result.get("messages", [])
-        response = ""
-        for msg in reversed(messages):
-            if hasattr(msg, "type") and msg.type == "ai":
-                response = msg.content
-                break
-            elif hasattr(msg, "role") and msg.role == "assistant":
-                response = msg.content
-                break
-
-        if not response:
-            response = f"Processed: {message[:50]}..."
-
-    except (ImportError, NotImplementedError, AttributeError) as e:
-        logger.warning(f"Agent chat is in stub mode: {e}")
-        # Fallback to keyword-based responses
-        response = f"I understand you want to: {message[:50]}... I'll help you with that."
-
-        if "backtest" in message.lower():
-            response = "I can run backtests in 4 variants. Which strategy would you like to test?"
-        elif "video" in message.lower() or "youtube" in message.lower() or "ingest" in message.lower():
-            response = "To process video: 1. Click Video Ingest in EA Management 2. Paste YouTube URL 3. The system will transcribe and analyze."
-        elif "bot" in message.lower() or "active" in message.lower():
-            bots = trading_handler.get_active_bots()
-            response = f"You have {len(bots)} active bots. Go to Live Trading to manage them."
+        if route_type == "department" and route_target:
+            result = await department_chat(route_target, compat_request)
         else:
-            response = "Chat functionality is currently in stub mode pending migration to Anthropic Agent SDK (Epic 7)."
+            result = await floor_manager_chat(compat_request)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Legacy chat compatibility routing failed for agent %s: %s", agent, exc)
+        raise HTTPException(status_code=502, detail=f"Legacy chat routing failed: {exc}") from exc
 
-    return {"response": response, "agent": agent, "model": model}
+    reply = getattr(result, "reply", None)
+    if reply is None and isinstance(result, dict):
+        reply = result.get("reply")
+    if reply is None:
+        raise HTTPException(status_code=502, detail="Legacy chat routing returned no reply")
+
+    return {
+        "response": reply,
+        "agent": agent,
+        "model": model or normalized_context.get("model") or "",
+    }

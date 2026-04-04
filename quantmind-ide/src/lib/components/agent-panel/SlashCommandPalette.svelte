@@ -49,7 +49,7 @@
   
   // State
   let selectedIndex = $state(0);
-  let commandListElement: HTMLDivElement = $state();
+  let commandListElement = $state<HTMLDivElement | null>(null);
   
   
   

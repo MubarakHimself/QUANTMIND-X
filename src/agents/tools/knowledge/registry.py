@@ -9,6 +9,7 @@ from src.agents.tools.knowledge.knowledge_hub import (
     search_knowledge_hub,
     get_article_content,
     list_knowledge_namespaces,
+    resurrect_strategy_from_retired,
 )
 from src.agents.tools.knowledge.pdf_indexing import (
     index_pdf_document,
@@ -111,6 +112,14 @@ KNOWLEDGE_TOOLS: Dict[str, Dict[str, Any]] = {
         "description": "Get MQL5 code template for a specific indicator",
         "parameters": {
             "indicator_name": {"type": "string", "required": True}
+        }
+    },
+    "resurrect_strategy_from_retired": {
+        "function": resurrect_strategy_from_retired,
+        "description": "Moves a strategy from RETIRED state back to PAPER state",
+        "parameters": {
+            "strategy_id": {"type": "string", "required": True},
+            "session_mask": {"type": "string", "required": False}
         }
     },
 }

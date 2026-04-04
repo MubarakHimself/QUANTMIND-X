@@ -11,7 +11,8 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks
+from urllib.parse import urlparse
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Request
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from enum import Enum
@@ -81,6 +82,187 @@ knowledge_handler = KnowledgeAPIHandler()
 SYNC_STATE_FILE = Path("data/scraped_articles/.sync_state.json")
 
 
+def _metadata_candidates(path: Path) -> List[Path]:
+    candidates = [path.parent / f"{path.name}.metadata.json"]
+    if path.suffix.lower() == ".md":
+        candidates.append(path.with_suffix(".json"))
+    return candidates
+
+
+def _read_metadata(path: Path) -> Dict[str, Any]:
+    for candidate in _metadata_candidates(path):
+        if not candidate.exists():
+            continue
+        try:
+            return json.loads(candidate.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+    return {}
+
+
+def _pretty_title(name: str) -> str:
+    return Path(name).stem.replace("_", " ").replace("-", " ").strip().title()
+
+
+def _frontmatter_value(text: str, key: str) -> Optional[Any]:
+    if not text.startswith("---\n"):
+        return None
+    lines = text.splitlines()
+    values: List[str] = []
+    in_tags = False
+    current_key = f"{key}:"
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        stripped = line.strip()
+        if stripped.startswith(current_key):
+            value = stripped[len(current_key):].strip().strip("'\"")
+            if value:
+                return value
+            in_tags = True
+            continue
+        if in_tags:
+            if stripped.startswith("- "):
+                values.append(stripped[2:].strip().strip("'\""))
+                continue
+            break
+    if values:
+        return values
+    return None
+
+
+def _markdown_heading_title(text: str) -> Optional[str]:
+    if text.startswith("---\n"):
+        parts = text.split("\n---\n", 1)
+        if len(parts) == 2:
+            text = parts[1]
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("# "):
+            title = stripped[2:].strip()
+            if title:
+                return title
+    return None
+
+
+def _markdown_excerpt(path: Path, limit: int = 220) -> str:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except Exception:
+        return ""
+    if text.startswith("---\n"):
+        parts = text.split("\n---\n", 1)
+        if len(parts) == 2:
+            text = parts[1]
+    excerpt = " ".join(line.strip() for line in text.splitlines() if line.strip())
+    return excerpt[:limit].strip()
+
+
+def _source_from_url(url: Optional[str], fallback: str) -> str:
+    if not url:
+        return fallback
+    parsed = urlparse(url)
+    return parsed.netloc or fallback
+
+
+def _collect_research_article_cards() -> List[Dict[str, Any]]:
+    cards: List[Dict[str, Any]] = []
+
+    articles_dir = KNOWLEDGE_DIR / "articles"
+    if articles_dir.exists():
+        for path in articles_dir.rglob("*"):
+            if not path.is_file() or path.name.endswith(".metadata.json"):
+                continue
+            metadata = _read_metadata(path)
+            cards.append({
+                "id": f"articles/{path.name}",
+                "title": metadata.get("title") or _pretty_title(path.name),
+                "source": _source_from_url(metadata.get("url"), "uploaded"),
+                "date": metadata.get("uploaded_at") or datetime.fromtimestamp(path.stat().st_mtime).isoformat(),
+                "tags": [metadata["subcategory"]] if metadata.get("subcategory") else [],
+                "excerpt": _markdown_excerpt(path),
+            })
+
+    if SCRAPED_ARTICLES_DIR.exists():
+        for path in SCRAPED_ARTICLES_DIR.rglob("*.md"):
+            metadata = _read_metadata(path)
+            try:
+                text = path.read_text(encoding="utf-8")
+            except Exception:
+                text = ""
+            excerpt = _markdown_excerpt(path)
+            tags = metadata.get("relevance_tags")
+            if not tags:
+                frontmatter_tags = _frontmatter_value(text, "relevance_tags")
+                tags = frontmatter_tags if isinstance(frontmatter_tags, list) else []
+            source_category = path.parent.name if path.parent != SCRAPED_ARTICLES_DIR else "root"
+            cards.append({
+                "id": f"scraped/{str(path.relative_to(SCRAPED_ARTICLES_DIR)).replace('\\', '/')}",
+                "title": (
+                    metadata.get("title")
+                    or _frontmatter_value(text, "title")
+                    or _markdown_heading_title(text)
+                    or _pretty_title(path.name)
+                ),
+                "source": _source_from_url(
+                    metadata.get("url")
+                    or metadata.get("source_url")
+                    or _frontmatter_value(text, "source_url"),
+                    source_category,
+                ),
+                "date": datetime.fromtimestamp(path.stat().st_mtime).isoformat(),
+                "tags": tags or [source_category],
+                "excerpt": excerpt,
+            })
+
+    cards.sort(key=lambda item: item.get("date", ""), reverse=True)
+    return cards
+
+
+def _collect_knowledge_books() -> List[Dict[str, Any]]:
+    books: List[Dict[str, Any]] = []
+    books_dir = KNOWLEDGE_DIR / "books"
+    if not books_dir.exists():
+        return books
+
+    for path in books_dir.rglob("*"):
+        if not path.is_file() or path.name.endswith(".metadata.json"):
+            continue
+        metadata = _read_metadata(path)
+        books.append({
+            "id": f"books/{path.name}",
+            "title": metadata.get("title") or Path(path.name).stem,
+            "author": metadata.get("author", ""),
+            "topics": [metadata["subcategory"]] if metadata.get("subcategory") else [],
+            "year": metadata.get("year"),
+        })
+
+    books.sort(key=lambda item: item["title"].lower())
+    return books
+
+
+def _collect_generic_entries(folder: str, *, title_key: str, preview_key: Optional[str] = None) -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
+    target_dir = KNOWLEDGE_DIR / folder
+    if not target_dir.exists():
+        return items
+
+    for path in target_dir.rglob("*"):
+        if not path.is_file() or path.name.endswith(".metadata.json"):
+            continue
+        metadata = _read_metadata(path)
+        payload: Dict[str, Any] = {
+            "id": f"{folder}/{path.name}",
+            title_key: metadata.get("title") or Path(path.name).stem,
+            "date": metadata.get("uploaded_at") or datetime.fromtimestamp(path.stat().st_mtime).isoformat(),
+        }
+        if preview_key is not None:
+            payload[preview_key] = _markdown_excerpt(path)
+        items.append(payload)
+    items.sort(key=lambda item: item.get("date", ""), reverse=True)
+    return items
+
+
 def get_sync_state() -> dict:
     """Get the current sync state."""
     if SYNC_STATE_FILE.exists():
@@ -127,21 +309,63 @@ def update_sync_state(
 
 FIRECRAWL_SETTINGS_FILE = Path("config/settings/firecrawl.json")
 
+# Allowlist of permitted scraper modules and their validated arguments
+ALLOWED_SCRAPER_MODULES = {
+    "firecrawl": {
+        "script": "scripts/firecrawl_scraper.py",
+        "extra_args": ["api_key"],  # api_key is passed as --api-key
+    },
+    "simple": {
+        "script": "scripts/simple_scraper.py",
+        "extra_args": [],  # no extra args allowed
+    },
+}
+
+
+def _validate_scraper_type(scraper_type: str) -> bool:
+    """Check if scraper type is in the allowlist."""
+    return scraper_type in ALLOWED_SCRAPER_MODULES
+
 
 def load_firecrawl_settings() -> dict:
-    """Load Firecrawl settings from file."""
+    """Load Firecrawl settings from file (without API key)."""
     if FIRECRAWL_SETTINGS_FILE.exists():
         try:
-            return json.loads(FIRECRAWL_SETTINGS_FILE.read_text())
+            settings = json.loads(FIRECRAWL_SETTINGS_FILE.read_text())
         except Exception:
             pass
     return {"api_key": None, "scraper_type": "simple"}
 
 
+def get_firecrawl_api_key() -> Optional[str]:
+    """Fetch Firecrawl API key from secure keyring storage."""
+    try:
+        import keyring
+        return keyring.get_password("quantmindx", "firecrawl_api_key")
+    except Exception:
+        return None
+
+
+def save_firecrawl_api_key(api_key: str) -> bool:
+    """Store Firecrawl API key in secure keyring storage."""
+    try:
+        import keyring
+        keyring.set_password("quantmindx", "firecrawl_api_key", api_key)
+        return True
+    except Exception:
+        return False
+
+
 def save_firecrawl_settings(settings: dict):
-    """Save Firecrawl settings to file."""
+    """Save Firecrawl settings to file (API key stored separately in keyring)."""
     FIRECRAWL_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    FIRECRAWL_SETTINGS_FILE.write_text(json.dumps(settings, indent=2))
+    # Store API key securely via keyring; only non-sensitive settings go to file
+    if settings.get("api_key"):
+        save_firecrawl_api_key(settings["api_key"])
+    # Write settings without the raw API key
+    safe_settings = {k: v for k, v in settings.items() if k != "api_key"}
+    safe_settings.setdefault("scraper_type", "simple")
+    FIRECRAWL_SETTINGS_FILE.write_text(json.dumps(safe_settings, indent=2))
 
 
 def check_scraper_available() -> tuple[bool, bool]:
@@ -425,11 +649,20 @@ def run_scraper_background(batch_size: int = 10, start_index: int = 0, scraper_t
     )
 
     try:
-        # Select scraper based on type
-        if scraper_type == "firecrawl":
-            scraper_path = Path("scripts/firecrawl_scraper.py")
-        else:
-            scraper_path = Path("scripts/simple_scraper.py")
+        # SECURITY: Validate scraper_type against allowlist
+        if not _validate_scraper_type(scraper_type):
+            logger.error(f"Unknown scraper type: {scraper_type}")
+            update_sync_state(
+                status="failed",
+                batch_size=batch_size,
+                start_index=start_index,
+                last_error=f"Unknown scraper type: {scraper_type}"
+            )
+            return
+
+        # SECURITY: Use allowlist to determine scraper script path
+        scraper_info = ALLOWED_SCRAPER_MODULES[scraper_type]
+        scraper_path = Path(scraper_info["script"])
 
         if not scraper_path.exists():
             logger.error(f"Scraper not found: {scraper_path}")
@@ -441,7 +674,12 @@ def run_scraper_background(batch_size: int = 10, start_index: int = 0, scraper_t
             )
             return
 
-        # Build command arguments
+        # SECURITY: Fetch API key from keyring if not provided
+        resolved_api_key = api_key
+        if scraper_type == "firecrawl" and not resolved_api_key:
+            resolved_api_key = get_firecrawl_api_key()
+
+        # Build command arguments using allowlist only
         cmd_args = [
             sys.executable,
             str(scraper_path),
@@ -449,9 +687,9 @@ def run_scraper_background(batch_size: int = 10, start_index: int = 0, scraper_t
             "--start-index", str(start_index)
         ]
 
-        # Add API key for firecrawl scraper
-        if scraper_type == "firecrawl" and api_key:
-            cmd_args.extend(["--api-key", api_key])
+        # Add API key for firecrawl scraper (from secure keyring)
+        if scraper_type == "firecrawl" and resolved_api_key:
+            cmd_args.extend(["--api-key", resolved_api_key])
 
         # Run the scraper with limited batch for API usage
         result = subprocess.run(
@@ -523,22 +761,28 @@ async def sync_knowledge(
     Returns:
         JSON with sync status and article count
     """
-    # Load settings to get default scraper_type and api_key
+    # Load settings to get default scraper_type
     firecrawl_settings = load_firecrawl_settings()
     scraper_type = scraper_type or firecrawl_settings.get("scraper_type", "simple")
 
-    # Use provided api_key or fall back to stored settings
-    if api_key is None or api_key == "":
-        api_key = firecrawl_settings.get("api_key", "")
+    # SECURITY: Validate scraper_type against allowlist
+    if not _validate_scraper_type(scraper_type):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown scraper type '{scraper_type}'. Allowed: {list(ALLOWED_SCRAPER_MODULES.keys())}"
+        )
+
+    # SECURITY: Fetch API key from secure keyring (not from plain settings file)
+    resolved_api_key: Optional[str] = None
+    if scraper_type == "firecrawl":
+        resolved_api_key = api_key if api_key else get_firecrawl_api_key()
 
     # Count existing articles before sync
     existing_count = count_existing_articles()
 
-    # Select scraper based on type
-    if scraper_type == "firecrawl":
-        scraper_path = Path("scripts/firecrawl_scraper.py")
-    else:
-        scraper_path = Path("scripts/simple_scraper.py")
+    # SECURITY: Use allowlist to determine scraper script path
+    scraper_info = ALLOWED_SCRAPER_MODULES[scraper_type]
+    scraper_path = Path(scraper_info["script"])
 
     export_file = Path("data/exports/engineering_ranked.json")
 
@@ -574,7 +818,7 @@ async def sync_knowledge(
             "current_sync": current_state
         }
 
-    # Build command arguments
+    # Build command arguments using allowlist only
     cmd_args = [
         sys.executable,
         str(scraper_path),
@@ -582,9 +826,9 @@ async def sync_knowledge(
         "--start-index", str(start_index)
     ]
 
-    # Add API key for firecrawl scraper
-    if scraper_type == "firecrawl" and api_key:
-        cmd_args.extend(["--api-key", api_key])
+    # SECURITY: Only add api_key for firecrawl (per allowlist), from secure keyring
+    if scraper_type == "firecrawl" and resolved_api_key:
+        cmd_args.extend(["--api-key", resolved_api_key])
 
     if sync_mode == "sync":
         # Run synchronously (for automated workflows)
@@ -719,6 +963,7 @@ async def get_sync_status():
 
 @router.get("/articles")
 async def get_scraped_articles(
+    request: Request,
     sort_by: str = "name",
     order: str = "asc",
     category: Optional[str] = None,
@@ -738,28 +983,26 @@ async def get_scraped_articles(
     Returns:
         JSON with articles list and total count
     """
+    research_mode = not any(
+        key in request.query_params for key in ("sort_by", "order", "category", "limit", "offset")
+    )
+    if research_mode:
+        return _collect_research_article_cards()
+
     articles = []
 
-    if SCRAPED_ARTICLES_DIR.exists():
-        for category_dir in SCRAPED_ARTICLES_DIR.iterdir():
-            if category_dir.is_dir():
-                category_name = category_dir.name
-                if category and category != category_name:
-                    continue
-
-                for article_file in category_dir.glob("*.md"):
-                    try:
-                        stat = article_file.stat()
-                        articles.append({
-                            "id": article_file.stem,
-                            "name": article_file.stem.replace("_", " ").title(),
-                            "category": category_name,
-                            "size_bytes": stat.st_size,
-                            "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                            "path": str(article_file)
-                        })
-                    except Exception:
-                        pass
+    for article in _collect_research_article_cards():
+        article_category = article["tags"][0] if article.get("tags") else "uploaded"
+        if category and category != article_category:
+            continue
+        articles.append({
+            "id": article["id"].split("/")[-1].replace(".md", ""),
+            "name": article["title"],
+            "category": article_category,
+            "size_bytes": 0,
+            "modified": article["date"],
+            "path": article["id"],
+        })
 
     # Sort articles
     reverse = order == "desc"
@@ -779,10 +1022,63 @@ async def get_scraped_articles(
         "success": True,
         "articles": paginated,
         "total": total,
-        "categories": list(get_articles_by_category().keys()),
+        "categories": sorted({article["category"] for article in articles}),
         "sort_by": sort_by,
         "order": order
     }
+
+
+@router.get("/books")
+async def get_books():
+    """Return uploaded books in the Research canvas card shape."""
+    return _collect_knowledge_books()
+
+
+@router.get("/logs")
+async def get_logs():
+    """Return knowledge logs if present, otherwise an honest empty state."""
+    items = _collect_generic_entries("logs", title_key="title", preview_key="content")
+    return [
+        {
+            "id": item["id"],
+            "title": item["title"],
+            "date": item["date"],
+            "content": item["content"],
+            "tags": [],
+        }
+        for item in items
+    ]
+
+
+@router.get("/personal")
+async def get_personal_notes():
+    """Return personal notes if present."""
+    items = _collect_generic_entries("personal", title_key="title", preview_key="preview")
+    return [
+        {
+            "id": item["id"],
+            "title": item["title"],
+            "date": item["date"],
+            "preview": item["preview"],
+        }
+        for item in items
+    ]
+
+
+@router.get("/videos")
+async def get_videos():
+    """Return indexed videos if present."""
+    items = _collect_generic_entries("videos", title_key="title")
+    return [
+        {
+            "id": item["id"],
+            "title": item["title"],
+            "channel": "",
+            "duration": "",
+            "date": item["date"],
+        }
+        for item in items
+    ]
 
 
 # =============================================================================

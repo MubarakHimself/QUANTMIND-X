@@ -12,6 +12,7 @@
 import { writable, derived, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import { addNotification } from '$lib/stores/notifications';
+import { buildApiUrl } from '$lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -256,7 +257,7 @@ function _connectSSE() {
   if (_eventSource) return;
 
   try {
-    _eventSource = new EventSource('/api/approvals/stream');
+    _eventSource = new EventSource(buildApiUrl('/api/approvals/stream'), { withCredentials: true });
 
     _eventSource.onmessage = (event) => {
       try {
@@ -372,8 +373,8 @@ export const approvalStore = {
     try {
       // Fetch both sources in parallel
       const [gatesRes, hitlRes] = await Promise.allSettled([
-        fetch('/api/approval-gates/pending?limit=50'),
-        fetch('/api/approvals/pending'),
+        fetch(buildApiUrl('/api/approval-gates/pending?limit=50'), { credentials: 'include' }),
+        fetch(buildApiUrl('/api/approvals/pending'), { credentials: 'include' }),
       ]);
 
       let gateItems: UnifiedApproval[] = [];
@@ -432,7 +433,9 @@ export const approvalStore = {
   async fetchWorkflowGates(workflowId: string): Promise<UnifiedApproval[]> {
     approvalState.update((s) => ({ ...s, loading: true }));
     try {
-      const response = await fetch(`/api/approval-gates/workflow/${workflowId}`);
+      const response = await fetch(buildApiUrl(`/api/approval-gates/workflow/${workflowId}`), {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to fetch workflow approvals');
 
       const data = await response.json();
@@ -469,13 +472,15 @@ export const approvalStore = {
 
       if (item.source === 'hitl') {
         // New ApprovalManager endpoint
-        response = await fetch(`/api/approvals/${item.id}/approve`, {
+        response = await fetch(buildApiUrl(`/api/approvals/${item.id}/approve`), {
           method: 'POST',
+          credentials: 'include',
         });
       } else {
         // Legacy gate endpoint
-        response = await fetch(`/api/approval-gates/${item.id}/approve`, {
+        response = await fetch(buildApiUrl(`/api/approval-gates/${item.id}/approve`), {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(request),
         });
@@ -535,15 +540,17 @@ export const approvalStore = {
 
       if (item.source === 'hitl') {
         // New ApprovalManager endpoint
-        response = await fetch(`/api/approvals/${item.id}/reject`, {
+        response = await fetch(buildApiUrl(`/api/approvals/${item.id}/reject`), {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reason: request.notes || '' }),
         });
       } else {
         // Legacy gate endpoint
-        response = await fetch(`/api/approval-gates/${item.id}/reject`, {
+        response = await fetch(buildApiUrl(`/api/approval-gates/${item.id}/reject`), {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(request),
         });

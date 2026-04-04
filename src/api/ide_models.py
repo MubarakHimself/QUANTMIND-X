@@ -117,10 +117,12 @@ class VideoIngestProcessResponse(BaseModel):
     job_id: str
     status: str
     strategy_folder: str
+    job_ids: Optional[List[str]] = None
 
 
 class VideoIngestAuthStatus(BaseModel):
     """Authentication status for video_ingest AI providers."""
+    openrouter: bool = Field(default=False, description="OpenRouter authentication status")
     gemini: bool = Field(default=False, description="Gemini CLI authentication status")
     qwen: bool = Field(default=False, description="Qwen CLI authentication status")
 

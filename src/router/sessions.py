@@ -11,7 +11,7 @@ Uses DST-aware session detection with local trading hours:
 - Overlap: Detected when London and NY sessions are concurrent
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta, time
 from typing import Optional, Dict, Any, List, Tuple
 from enum import Enum
@@ -22,6 +22,128 @@ import calendar
 logger = logging.getLogger(__name__)
 
 
+# =============================================================================
+# Tilt Transition Window (minutes before session end)
+# =============================================================================
+TILT_TRANSITION_MINUTES = 5
+
+
+# =============================================================================
+# Canonical Session Windows (authoritative for Tilt + bot type dispatch)
+# =============================================================================
+# All times in UTC. These 10 windows are the authoritative gate for
+# Tilt state transitions and bot type mix dispatch.
+# The existing TradingSession/SESSIONS remain for backward compatibility.
+
+CANONICAL_WINDOWS = {
+    "SYDNEY_OPEN": {
+        "utc_start": time(21, 0),
+        "utc_end": time(23, 0),
+        "name": "Sydney Open",
+        "is_premium": False,
+        "is_trading": True,
+    },
+    "SYDNEY_TOKYO_OVERLAP": {
+        "utc_start": time(23, 0),
+        "utc_end": time(0, 0),
+        "name": "Sydney-Tokyo Overlap",
+        "is_premium": False,
+        "is_trading": True,
+    },
+    "TOKYO_OPEN": {
+        "utc_start": time(0, 0),
+        "utc_end": time(3, 0),
+        "name": "Tokyo Open",
+        "is_premium": False,
+        "is_trading": True,
+    },
+    "TOKYO_LONDON_OVERLAP": {
+        "utc_start": time(7, 0),
+        "utc_end": time(9, 0),
+        "name": "Tokyo-London Overlap",
+        "is_premium": True,   # PREMIUM SESSION
+        "is_trading": True,
+    },
+    "LONDON_OPEN": {
+        "utc_start": time(8, 0),
+        "utc_end": time(10, 30),
+        "name": "London Open",
+        "is_premium": True,   # PREMIUM SESSION
+        "is_trading": True,
+    },
+    "LONDON_MID": {
+        "utc_start": time(10, 30),
+        "utc_end": time(12, 0),
+        "name": "London Mid",
+        "is_premium": False,
+        "is_trading": True,
+    },
+    "INTER_SESSION_COOLDOWN": {
+        "utc_start": time(12, 0),
+        "utc_end": time(13, 0),
+        "name": "Inter-Session Cooldown",
+        "is_premium": False,
+        "is_trading": True,
+    },
+    "LONDON_NY_OVERLAP": {
+        "utc_start": time(13, 0),
+        "utc_end": time(16, 0),
+        "name": "London-NY Overlap",
+        "is_premium": True,   # PREMIUM SESSION
+        "is_trading": True,
+    },
+    "NY_WIND_DOWN": {
+        "utc_start": time(16, 0),
+        "utc_end": time(20, 0),
+        "name": "NY Wind Down",
+        "is_premium": False,
+        "is_trading": True,
+    },
+    "DEAD_ZONE": {
+        "utc_start": time(20, 0),
+        "utc_end": time(21, 0),
+        "name": "Dead Zone",
+        "is_premium": False,
+        "is_trading": False,  # No trading in Dead Zone — intelligence/DPR only
+    },
+}
+
+# =============================================================================
+# Per-Session Bot Type Mix (authoritative for Tilt ACTIVATE dispatch)
+# =============================================================================
+# Maps canonical window names to bot type probability distributions.
+# Used in Tilt ACTIVATE to filter DPR-ranked queue for correct bot types.
+#
+# Bot types:
+#   ORB = ICT Order Block Recognition strategy
+#   MOM = Momentum strategy
+#   MR  = Mean Reversion strategy
+#   TC  = Trend Continuation strategy
+#
+# During DEAD_ZONE: empty dict — no trading, DPR/intelligence only
+
+SESSION_BOT_MIX = {
+    "SYDNEY_OPEN":            {"MR": 0.70, "MOM": 0.30},
+    "SYDNEY_TOKYO_OVERLAP":   {"MR": 0.70, "MOM": 0.30},
+    "TOKYO_OPEN":             {"MR": 0.70, "MOM": 0.30},
+    "TOKYO_LONDON_OVERLAP":   {"MR": 0.50, "MOM": 0.30, "ORB": 0.20},
+    "LONDON_OPEN":            {"ORB": 0.60, "MOM": 0.40},
+    "LONDON_MID":             {"MR": 0.50, "MOM": 0.50},
+    "INTER_SESSION_COOLDOWN": {"MR": 0.80, "TC": 0.20},
+    "LONDON_NY_OVERLAP":      {"ORB": 0.55, "MOM": 0.45},
+    "NY_WIND_DOWN":           {"TC": 0.60, "MR": 0.40},
+    "DEAD_ZONE":              {},   # No trading
+}
+
+PREMIUM_SESSIONS = {
+    "TOKYO_LONDON_OVERLAP",
+    "LONDON_OPEN",
+    "LONDON_NY_OVERLAP",
+}
+
+TRADING_WINDOWS = {k for k, v in CANONICAL_WINDOWS.items() if v["is_trading"]}
+
+
 class TradingSession(Enum):
     """Major forex trading sessions."""
     ASIAN = "ASIAN"
@@ -29,6 +151,111 @@ class TradingSession(Enum):
     NEW_YORK = "NEW_YORK"
     OVERLAP = "OVERLAP"
     CLOSED = "CLOSED"
+
+
+@dataclass
+class SessionTemplate:
+    """Configurable session template with per-session trading parameters.
+
+    Used for session-aware bot dispatch, Tilt transitions, and queue management.
+    Each session has weighted bot type priorities and concurrency limits.
+    """
+    name: str                          # e.g. "Asian", "London Open"
+    start_gmt: str                    # e.g. "22:00" (HH:MM in GMT)
+    end_gmt: str                      # e.g. "07:00"
+    scalper_priority_weight: float     # 0.0-1.0, sum of scalper+momentum = 1.0
+    momentum_priority_weight: float    # 0.0-1.0, sum of scalper+momentum = 1.0
+    max_concurrent_bots: int          # max bots for this session
+    is_premium: bool                  # premium sessions get extra parameters
+    orb_boost_pct: float = 0.0        # e.g. 0.06 for premium (6% ORB boost)
+    mr_weight: float = 0.0            # mean reversion weight (for some sessions)
+    tc_weight: float = 0.0            # trend continuation weight
+
+
+# =============================================================================
+# Session Templates (authoritative per FIX-010 canonical params)
+# =============================================================================
+SESSIONS: Dict[str, SessionTemplate] = {
+    "asian": SessionTemplate(
+        name="Asian",
+        start_gmt="22:00",
+        end_gmt="07:00",
+        scalper_priority_weight=0.70,
+        momentum_priority_weight=0.30,
+        max_concurrent_bots=18,
+        is_premium=False,
+        mr_weight=0.70,
+        tc_weight=0.0,
+    ),
+    "london_open": SessionTemplate(
+        name="London Open",
+        start_gmt="07:00",
+        end_gmt="10:00",
+        scalper_priority_weight=0.60,
+        momentum_priority_weight=0.40,
+        max_concurrent_bots=50,
+        is_premium=True,
+        orb_boost_pct=0.06,
+        mr_weight=0.0,
+        tc_weight=0.0,
+    ),
+    "london_mid": SessionTemplate(
+        name="London Mid",
+        start_gmt="10:00",
+        end_gmt="11:30",
+        scalper_priority_weight=0.50,
+        momentum_priority_weight=0.50,
+        max_concurrent_bots=15,
+        is_premium=False,
+        mr_weight=0.50,
+        tc_weight=0.0,
+    ),
+    "inter_session": SessionTemplate(
+        name="Inter-Session",
+        start_gmt="11:30",
+        end_gmt="13:00",
+        scalper_priority_weight=0.80,
+        momentum_priority_weight=0.20,
+        max_concurrent_bots=6,
+        is_premium=False,
+        mr_weight=0.80,
+        tc_weight=0.0,
+    ),
+    "ny_overlap": SessionTemplate(
+        name="NY+Overlap",
+        start_gmt="13:00",
+        end_gmt="16:00",
+        scalper_priority_weight=0.55,
+        momentum_priority_weight=0.45,
+        max_concurrent_bots=60,
+        is_premium=True,
+        orb_boost_pct=0.06,
+        mr_weight=0.0,
+        tc_weight=0.0,
+    ),
+    "ny_wind_down": SessionTemplate(
+        name="NY Wind-Down",
+        start_gmt="16:00",
+        end_gmt="17:00",
+        scalper_priority_weight=0.60,
+        momentum_priority_weight=0.40,
+        max_concurrent_bots=8,
+        is_premium=False,
+        mr_weight=0.0,
+        tc_weight=0.60,
+    ),
+    "dead_zone": SessionTemplate(
+        name="Dead Zone",
+        start_gmt="17:00",
+        end_gmt="22:00",
+        scalper_priority_weight=0.0,
+        momentum_priority_weight=0.0,
+        max_concurrent_bots=0,
+        is_premium=False,
+        mr_weight=0.0,
+        tc_weight=0.0,
+    ),
+}
 
 
 @dataclass
@@ -694,6 +921,297 @@ class SessionDetector:
 
         delta = session_start_utc - utc_time
         return int(delta.total_seconds() // 60)
+
+    @classmethod
+    def get_canonical_windows(cls) -> Dict[str, Dict[str, Any]]:
+        """Return the CANONICAL_WINDOWS dict."""
+        return CANONICAL_WINDOWS
+
+    @classmethod
+    def detect_canonical_window(cls, utc_time: datetime) -> Optional[str]:
+        """
+        Detect which of the 10 canonical windows the given UTC time falls in.
+
+        Args:
+            utc_time: datetime in UTC
+
+        Returns:
+            Window name (e.g., "LONDON_OPEN") or None if between windows
+        """
+        if utc_time.tzinfo is None:
+            utc_time = utc_time.replace(tzinfo=timezone.utc)
+
+        # Ensure weekday check — Dead Zone applies on all days including weekends
+        # (Dead Zone is a window regardless of weekday)
+        current_time = utc_time.time()
+
+        for window_name, window_def in CANONICAL_WINDOWS.items():
+            start = window_def["utc_start"]
+            end = window_def["utc_end"]
+
+            if start <= end:
+                # Normal range (e.g., 08:00-10:30)
+                if start <= current_time < end:
+                    return window_name
+            else:
+                # Overnight range (e.g., 23:00-00:00, 20:00-21:00)
+                if current_time >= start or current_time < end:
+                    return window_name
+
+        return None
+
+    @classmethod
+    def is_premium_session(cls, window_name: str) -> bool:
+        """Check if a canonical window is a premium session."""
+        return window_name in PREMIUM_SESSIONS
+
+    @classmethod
+    def is_dead_zone(cls, window_name: str) -> bool:
+        """Check if a canonical window is the Dead Zone."""
+        return window_name == "DEAD_ZONE"
+
+    @classmethod
+    def is_trading_window(cls, window_name: str) -> bool:
+        """Check if trading is allowed in this window."""
+        return window_name in TRADING_WINDOWS
+
+    @classmethod
+    def get_bot_type_mix(cls, window_name: str) -> Dict[str, float]:
+        """
+        Get bot type probability mix for a canonical window.
+
+        Args:
+            window_name: Canonical window name (e.g., "LONDON_OPEN")
+
+        Returns:
+            Dict of bot_type -> probability (sums to 1.0, or empty dict for no trading)
+        """
+        return SESSION_BOT_MIX.get(window_name, {})
+
+    @classmethod
+    def get_session_bot_types(cls, window_name: str) -> List[str]:
+        """
+        Get list of bot types allowed in a canonical window.
+
+        Args:
+            window_name: Canonical window name
+
+        Returns:
+            List of bot type strings (e.g., ["ORB", "MOM"])
+        """
+        mix = cls.get_bot_type_mix(window_name)
+        return list(mix.keys())
+
+    @classmethod
+    def get_session_template(cls, session_name: str) -> Optional[SessionTemplate]:
+        """
+        Get the SessionTemplate for a given session name.
+
+        Args:
+            session_name: Session key from SESSIONS dict (e.g. "asian", "london_open")
+
+        Returns:
+            SessionTemplate instance or None if not found
+        """
+        return SESSIONS.get(session_name)
+
+    @classmethod
+    def get_all_session_templates(cls) -> Dict[str, SessionTemplate]:
+        """Return all session templates."""
+        return SESSIONS
+
+    @classmethod
+    def is_trading_allowed(cls, window_name: str) -> bool:
+        """
+        Check if active trading is allowed in this window.
+
+        Returns False for DEAD_ZONE (intelligence/DPR ranking only).
+        """
+        return cls.is_trading_window(window_name)
+
+    @classmethod
+    def get_current_canonical_window(cls) -> Optional[str]:
+        """Get current canonical window name."""
+        return cls.detect_canonical_window(datetime.now(timezone.utc))
+
+    @classmethod
+    def get_next_canonical_window(cls, utc_time: datetime) -> Tuple[Optional[str], Optional[int]]:
+        """
+        Get the next canonical window and minutes until it starts.
+
+        Args:
+            utc_time: Current UTC time
+
+        Returns:
+            Tuple of (next_window_name, minutes_until_start)
+        """
+        if utc_time.tzinfo is None:
+            utc_time = utc_time.replace(tzinfo=timezone.utc)
+
+        current_window = cls.detect_canonical_window(utc_time)
+        current_time = utc_time.time()
+
+        # Find next window
+        window_names = list(CANONICAL_WINDOWS.keys())
+
+        if current_window:
+            idx = window_names.index(current_window)
+            search_order = window_names[idx + 1:] + window_names[:idx + 1]
+        else:
+            # Not in any window — find the next one
+            search_order = window_names
+
+        for window_name in search_order:
+            window_def = CANONICAL_WINDOWS[window_name]
+            start = window_def["utc_start"]
+            end = window_def["utc_end"]
+
+            # Calculate minutes until this window starts
+            start_hour, start_min = start.hour, start.minute
+            current_mins = current_time.hour * 60 + current_time.minute
+            start_mins = start_hour * 60 + start_min
+
+            if start_mins > current_mins:
+                minutes_until = start_mins - current_mins
+            else:
+                # Window wraps to tomorrow
+                minutes_until = (24 * 60 - current_mins) + start_mins
+
+            return window_name, minutes_until
+
+        return None, None
+
+    # =============================================================================
+    # Tilt Mechanism at Session Boundaries (FIX-015)
+    # =============================================================================
+
+    @classmethod
+    def is_tilt_window(cls, utc_now: Optional[datetime] = None) -> bool:
+        """
+        Returns True if we're in the T-5 tilt window before session end.
+
+        The tilt window spans the last TILT_TRANSITION_MINutes (default 5) minutes
+        before a session ends. No new entries are allowed during this window.
+
+        Args:
+            utc_now: UTC datetime to check. Defaults to now.
+
+        Returns:
+            True if in T-5 tilt window before session end
+        """
+        if utc_now is None:
+            utc_now = datetime.now(timezone.utc)
+        elif utc_now.tzinfo is None:
+            utc_now = utc_now.replace(tzinfo=timezone.utc)
+
+        # Find the current session template
+        current_window = cls.detect_canonical_window(utc_now)
+        if current_window is None:
+            return False
+
+        # Find the session template that matches this window
+        session_template = cls._get_template_for_window(current_window)
+        if session_template is None:
+            return False
+
+        # Parse session end time
+        end_hour, end_minute = map(int, session_template.end_gmt.split(":"))
+        end_time = utc_now.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0)
+
+        # Handle overnight sessions (end time is next day)
+        if end_time <= utc_now:
+            end_time += timedelta(days=1)
+
+        # Calculate minutes until session end
+        delta = end_time - utc_now
+        minutes_until_end = delta.total_seconds() / 60
+
+        return 0 < minutes_until_end <= TILT_TRANSITION_MINUTES
+
+    @classmethod
+    def _get_template_for_window(cls, window_name: str) -> Optional[SessionTemplate]:
+        """Map canonical window name to session template."""
+        # Canonical window to session template name mapping
+        WINDOW_TO_TEMPLATE = {
+            "SYDNEY_OPEN": "asian",
+            "SYDNEY_TOKYO_OVERLAP": "asian",
+            "TOKYO_OPEN": "asian",
+            "TOKYO_LONDON_OVERLAP": "london_open",
+            "LONDON_OPEN": "london_open",
+            "LONDON_MID": "london_mid",
+            "INTER_SESSION_COOLDOWN": "inter_session",
+            "LONDON_NY_OVERLAP": "ny_overlap",
+            "NY_WIND_DOWN": "ny_wind_down",
+            "DEAD_ZONE": "dead_zone",
+        }
+        template_name = WINDOW_TO_TEMPLATE.get(window_name)
+        if template_name:
+            return SESSIONS.get(template_name)
+        return None
+
+    @classmethod
+    def get_tilt_action(
+        cls,
+        bot_id: str,
+        current_profit: float,
+        rvol: float,
+        utc_now: Optional[datetime] = None,
+    ) -> Optional[str]:
+        """
+        Returns the tilt action for a bot based on profit and RVOL.
+
+        Rules (FIX-015):
+        - At T-5 before session end: no new entries allowed
+        - Running trades at T-5: if in profit AND RVOL < 0.8 -> take profit
+        - At session end: force close scalpers
+        - After session end: 1-min gap, then activate new queue
+
+        Args:
+            bot_id: Bot identifier
+            current_profit: Current profit (positive = profit, negative = loss)
+            rvol: Relative volatility measure (RVOL)
+            utc_now: UTC datetime to check. Defaults to now.
+
+        Returns:
+            'take_profit' | 'force_close' | None
+        """
+        if utc_now is None:
+            utc_now = datetime.now(timezone.utc)
+        elif utc_now.tzinfo is None:
+            utc_now = utc_now.replace(tzinfo=timezone.utc)
+
+        current_window = cls.detect_canonical_window(utc_now)
+        if current_window is None:
+            return None
+
+        session_template = cls._get_template_for_window(current_window)
+        if session_template is None:
+            return None
+
+        # Parse session end time
+        end_hour, end_minute = map(int, session_template.end_gmt.split(":"))
+        end_time = utc_now.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0)
+
+        # Handle overnight sessions
+        if end_time <= utc_now:
+            end_time += timedelta(days=1)
+
+        delta = end_time - utc_now
+        minutes_until_end = delta.total_seconds() / 60
+
+        # At session end (within 1 minute): force close scalpers
+        if 0 <= minutes_until_end <= 1:
+            return "force_close"
+
+        # In T-5 window: evaluate take profit vs hold
+        if 0 < minutes_until_end <= TILT_TRANSITION_MINUTES:
+            # Take profit if in profit AND RVOL < 0.8
+            if current_profit > 0 and rvol < 0.8:
+                return "take_profit"
+            # Otherwise force close scalpers at T-5
+            return "force_close"
+
+        return None
 
 
 # Convenience functions for common operations

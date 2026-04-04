@@ -139,6 +139,18 @@ class TestWorkshopCopilotSingleton:
         assert isinstance(service, WorkshopCopilotService)
 
 
+class TestWorkshopCopilotServiceConfig:
+    """Sync config checks that do not require async pytest plugins."""
+
+    def test_internal_api_base_url_takes_priority(self, monkeypatch):
+        monkeypatch.setenv("INTERNAL_API_BASE_URL", "https://internal.quantmindx.local")
+        monkeypatch.setenv("API_BASE_URL", "https://public.quantmindx.local")
+
+        service = WorkshopCopilotService()
+
+        assert service.floor_manager_url == "https://internal.quantmindx.local"
+
+
 class TestWorkshopCopilotRequest:
     """Tests for request model."""
 

@@ -14,13 +14,21 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Machine UUID file location
+# Default machine key file location
 _MACHINE_KEY_FILE = Path.home() / ".quantmind" / "machine.key"
+
+
+def _get_machine_key_file() -> Path:
+    """Resolve the machine-key file location from deployment config."""
+    configured = os.getenv("QUANTMIND_MACHINE_KEY_FILE")
+    if configured:
+        return Path(configured).expanduser()
+    return _MACHINE_KEY_FILE
 
 
 def _ensure_machine_key_dir() -> None:
     """Ensure the machine key directory exists."""
-    _MACHINE_KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _get_machine_key_file().parent.mkdir(parents=True, exist_ok=True)
 
 
 def _get_or_create_machine_key() -> str:
@@ -34,10 +42,11 @@ def _get_or_create_machine_key() -> str:
         Base64-encoded 32-byte key suitable for Fernet
     """
     _ensure_machine_key_dir()
+    machine_key_file = _get_machine_key_file()
 
-    if _MACHINE_KEY_FILE.exists():
+    if machine_key_file.exists():
         try:
-            with open(_MACHINE_KEY_FILE, 'r') as f:
+            with open(machine_key_file, 'r') as f:
                 key = f.read().strip()
                 if key:
                     logger.debug("Loaded existing machine key")
@@ -75,10 +84,10 @@ def _get_or_create_machine_key() -> str:
     key = base64.urlsafe_b64encode(key_bytes).decode()
 
     try:
-        with open(_MACHINE_KEY_FILE, 'w') as f:
+        with open(machine_key_file, 'w') as f:
             f.write(key)
         # Restrict permissions to owner only
-        os.chmod(_MACHINE_KEY_FILE, 0o600)
+        os.chmod(machine_key_file, 0o600)
         logger.info("Generated new machine-local encryption key")
     except Exception as e:
         logger.error(f"Failed to save machine key: {e}")

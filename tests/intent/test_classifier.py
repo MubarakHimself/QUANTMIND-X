@@ -3,6 +3,11 @@
 Story 5.7: NL System Commands & Context-Aware Canvas Binding
 Story 10.4: NL Audit Query UI & Reasoning Explorer
 """
+import asyncio
+from unittest.mock import MagicMock
+
+import pytest
+
 from src.intent.classifier import IntentClassifier, CommandIntent
 from src.intent.patterns import CommandPatternMatcher
 
@@ -214,3 +219,31 @@ class TestIntentClassifier:
         )
         # Should have different context_data based on canvas
         assert result_trading.raw_command == result_risk.raw_command
+
+    def test_execute_node_update_uses_internal_api_base_url(self, monkeypatch):
+        monkeypatch.setenv("INTERNAL_API_BASE_URL", "https://internal.quantmindx.local")
+
+        response = MagicMock()
+        response.status_code = 200
+        response.json.return_value = {
+            "status": "completed",
+            "nodes": [{"node": "contabo", "status": "completed"}],
+            "duration_seconds": 1.0,
+        }
+
+        post_mock = MagicMock(return_value=response)
+        monkeypatch.setattr("httpx.post", post_mock)
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("src.api.node_update_endpoints.is_valid_deploy_window", lambda: True)
+            result = asyncio.run(
+                self.classifier._execute_node_update(
+                    classification=MagicMock(),
+                    canvas_binder=None,
+                    canvas_context={},
+                )
+            )
+
+        assert result["type"] == "success"
+        post_mock.assert_called_once()
+        assert post_mock.call_args.args[0] == "https://internal.quantmindx.local/api/node-update/update"

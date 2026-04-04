@@ -77,27 +77,27 @@ export interface SkillAuthoringRequest {
 
 /**
  * Get all registered skills
- * GET /api/skills
+ * GET /api/settings/skills
  */
 export async function listSkills(department?: string): Promise<Skill[]> {
   const params = department ? `?department=${encodeURIComponent(department)}` : '';
-  return apiFetch<Skill[]>(`/skills${params}`);
+  return apiFetch<Skill[]>(`/settings/skills${params}`);
 }
 
 /**
  * Get detailed information about a specific skill
- * GET /api/skills/{skill_name}
+ * GET /api/settings/skills/{skill_name}
  */
 export async function getSkillInfo(skillName: string): Promise<SkillInfo> {
-  return apiFetch<SkillInfo>(`/skills/${skillName}`);
+  return apiFetch<SkillInfo>(`/settings/skills/${skillName}`);
 }
 
 /**
  * Create a new skill
- * POST /api/skills
+ * POST /api/settings/skills
  */
 export async function createSkill(skill: SkillCreateRequest): Promise<Skill> {
-  return apiFetch<Skill>('/skills', {
+  return apiFetch<Skill>('/settings/skills', {
     method: 'POST',
     body: JSON.stringify(skill)
   });
@@ -105,7 +105,7 @@ export async function createSkill(skill: SkillCreateRequest): Promise<Skill> {
 
 /**
  * Skill Forge: Author a new skill
- * POST /api/skills/authoring
+ * POST /api/settings/skills/authoring
  */
 export async function skillForgeAuthoring(request: SkillAuthoringRequest): Promise<{
   name: string;
@@ -116,7 +116,7 @@ export async function skillForgeAuthoring(request: SkillAuthoringRequest): Promi
     name: string;
     skill_md_path: string;
     status: string;
-  }>('/skills/authoring', {
+  }>('/settings/skills/authoring', {
     method: 'POST',
     body: JSON.stringify(request)
   });
@@ -124,14 +124,14 @@ export async function skillForgeAuthoring(request: SkillAuthoringRequest): Promi
 
 /**
  * Execute a skill with given parameters
- * POST /api/skills/{skill_name}/execute
+ * POST /api/settings/skills/{skill_name}/execute
  */
 export async function executeSkill(
   skillName: string,
   parameters: Record<string, any> = {}
 ): Promise<{ success: boolean; data: any; error?: string; execution_time_ms: number }> {
   return apiFetch<{ success: boolean; data: any; error?: string; execution_time_ms: number }>(
-    `/skills/${skillName}/execute`,
+    `/settings/skills/${skillName}/execute`,
     {
       method: 'POST',
       body: JSON.stringify({ parameters })

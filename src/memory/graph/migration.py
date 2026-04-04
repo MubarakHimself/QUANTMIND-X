@@ -130,10 +130,7 @@ def add_opinion_columns(db_path: str) -> bool:
 
 
 def rename_timestamps_to_utc(db_path: str) -> bool:
-    """Rename timestamp columns to _utc suffix.
-
-    This is a complex migration that requires creating a new table
-    and copying data. Only run this on backups first.
+    """Rename timestamp columns to _utc suffix by recreating the nodes and edges tables.
 
     Args:
         db_path: Path to SQLite database file.
@@ -143,29 +140,76 @@ def rename_timestamps_to_utc(db_path: str) -> bool:
     """
     try:
         conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        # Check current column names
+        # Check current column names in nodes
         cursor.execute("PRAGMA table_info(nodes)")
-        columns = {col[1]: col[2] for col in cursor.fetchall()}
+        node_columns = {col[1] for col in cursor.fetchall()}
 
-        # Check if already migrated
-        if "created_at_utc" in columns:
-            logger.info(f"Timestamps already migrated in {db_path}")
-            conn.close()
-            return True
+        if "created_at_utc" not in node_columns and "created_at" in node_columns:
+            logger.info(f"Migrating nodes timestamp columns in {db_path}")
+            # Map old → new column names for nodes
+            old_to_new = {
+                "last_accessed": "last_accessed_utc",
+                "created_at": "created_at_utc",
+                "updated_at": "updated_at_utc",
+                "expires_at": "expires_at_utc",
+                "event_time": "event_time_utc",
+            }
+            # Build SELECT list: rename old cols, keep others, add any missing new cols as NULL
+            new_cols = [
+                "last_accessed_utc", "created_at_utc", "updated_at_utc",
+                "expires_at_utc", "event_time_utc",
+                "id", "node_type", "category", "title", "content", "summary",
+                "evidence", "department", "agent_id", "session_id", "role", "tags",
+                "importance", "relevance_score", "access_count", "created_by",
+                "tier", "compaction_level", "original_id", "entity_id",
+                "session_status", "embedding", "action", "reasoning", "confidence",
+                "alternatives_considered", "constraints_applied", "agent_role",
+            ]
+            select_parts = []
+            for col in new_cols:
+                old_name = {v: k for k, v in old_to_new.items()}.get(col, col)
+                if col in old_to_new.values():
+                    old_name = {v: k for k, v in old_to_new.items()}[col]
+                    select_parts.append(f"{old_name} AS {col}")
+                elif old_name in node_columns:
+                    select_parts.append(col)
+                else:
+                    select_parts.append(f"NULL AS {col}")
 
-        # Rename columns in edges table
+            cursor.execute(f"""
+                CREATE TABLE nodes_new AS
+                SELECT {', '.join(select_parts)}
+                FROM nodes
+            """)
+            cursor.execute("DROP TABLE nodes")
+            cursor.execute("ALTER TABLE nodes_new RENAME TO nodes")
+            conn.commit()
+            logger.info(f"Nodes timestamp columns migrated in {db_path}")
+
+        # Check edges table
         cursor.execute("PRAGMA table_info(edges)")
-        edge_columns = {col[1]: col[2] for col in cursor.fetchall()}
+        edge_columns = {col[1] for col in cursor.fetchall()}
 
-        # We need to handle this differently - SQLite doesn't support
-        # ALTER TABLE RENAME COLUMN for all versions
-        # For now, we'll create views or handle this at application level
-        # The application code now uses _utc suffixes, so old data
-        # will still work with the old column names
+        if "created_at_utc" not in edge_columns and "created_at" in edge_columns:
+            logger.info(f"Migrating edges timestamp columns in {db_path}")
+            cursor.execute("""
+                CREATE TABLE edges_new AS
+                SELECT
+                    id, relation_type, source_id, target_id, strength,
+                    bidirectional, pattern, context,
+                    created_at AS created_at_utc,
+                    traversal_count,
+                    last_traversed AS last_traversed_utc
+                FROM edges
+            """)
+            cursor.execute("DROP TABLE edges")
+            cursor.execute("ALTER TABLE edges_new RENAME TO edges")
+            conn.commit()
+            logger.info(f"Edges timestamp columns migrated in {db_path}")
 
-        logger.info(f"Timestamp migration not fully implemented for {db_path} - using application-level handling")
         conn.close()
         return True
 

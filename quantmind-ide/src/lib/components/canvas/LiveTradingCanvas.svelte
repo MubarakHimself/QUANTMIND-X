@@ -155,6 +155,48 @@
   function pnlColor(v: number): string {
     return v >= 0 ? '#00c896' : '#ff3b3b';
   }
+
+  $effect(() => {
+    canvasContextService.setRuntimeState('live-trading', {
+      current_subpage: currentSubPage,
+      session_clocks: {
+        tokyo: { time: tokyoTime, open: tokyoOpen },
+        london: { time: londonTime, open: londonOpen },
+        new_york: { time: newYorkTime, open: newYorkOpen },
+      },
+      bot_count: $botCount,
+      total_pnl: totalPnl,
+      open_positions: openPositions,
+      attachable_resources: [
+        ...$activeBots.slice(0, 50).map((bot) => ({
+          id: bot.id,
+          label: bot.name || bot.symbol,
+          canvas: 'live-trading',
+          resource_type: 'active-bot',
+          metadata: {
+            symbol: bot.symbol,
+            pnl: bot.current_pnl,
+            open_positions: bot.open_positions,
+            session_active: bot.session_active,
+          },
+        })),
+        {
+          id: 'live-trading:news',
+          label: 'News Feed',
+          canvas: 'live-trading',
+          resource_type: 'tile',
+          metadata: { subpage: 'news' },
+        },
+        {
+          id: 'live-trading:dept-mail',
+          label: 'Trading Mail',
+          canvas: 'live-trading',
+          resource_type: 'tile',
+          metadata: { subpage: 'dept-mail' },
+        },
+      ],
+    });
+  });
 </script>
 
 <div class="live-trading-canvas" data-dept="trading">
@@ -252,13 +294,6 @@
   <!-- ── Main Dashboard Grid ─────────────────────────────────────────────── -->
   {:else}
     <div class="canvas-scroll">
-
-      <!-- Morning Digest (conditional on time of day) -->
-      {#if isMorning}
-        <div class="digest-row">
-          <MorningDigestCard />
-        </div>
-      {/if}
 
       <!-- Tile Grid -->
       <div class="tile-grid">
@@ -389,7 +424,7 @@
             <div class="node-rows">
               <div class="node-row">
                 <div class="node-dot" class:dot-green={$nodeHealthState.contabo.status === 'connected'} class:dot-amber={$nodeHealthState.contabo.status === 'reconnecting'} class:dot-red={$nodeHealthState.contabo.status === 'disconnected'}></div>
-                <span class="node-name">Contabo (CZ)</span>
+                <span class="node-name">node_backend</span>
                 <span class="node-latency">
                   {$nodeHealthState.contabo.latency_ms > 0 ? `${$nodeHealthState.contabo.latency_ms}ms` : '—'}
                 </span>
@@ -399,7 +434,7 @@
               </div>
               <div class="node-row">
                 <div class="node-dot" class:dot-green={$nodeHealthState.cloudzy.status === 'connected'} class:dot-amber={$nodeHealthState.cloudzy.status === 'reconnecting'} class:dot-red={$nodeHealthState.cloudzy.status === 'disconnected'}></div>
-                <span class="node-name">Cloudzy (LO)</span>
+                <span class="node-name">node_trading</span>
                 <span class="node-latency">
                   {$nodeHealthState.cloudzy.latency_ms > 0 ? `${$nodeHealthState.cloudzy.latency_ms}ms` : '—'}
                 </span>

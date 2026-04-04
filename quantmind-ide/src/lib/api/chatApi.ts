@@ -51,13 +51,24 @@ export interface StoredChatMessage {
   metadata?: Record<string, unknown>;
 }
 
+export interface UpdateSessionRequest {
+  title: string;
+}
+
 export const chatApi = {
   async createSession(data: CreateSessionRequest): Promise<ChatSession> {
     const response = await fetch(`${API_BASE}/sessions`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      body: JSON.stringify({
+        agent_type: data.agentType,
+        agent_id: data.agentId,
+        user_id: data.userId,
+        title: data.title,
+        context: data.context,
+        metadata: data.metadata,
+      })
     });
     if (!response.ok) {
       throw new Error(`Failed to create session: ${response.statusText}`);
@@ -107,6 +118,19 @@ export const chatApi = {
     if (!response.ok) {
       throw new Error(`Failed to delete session: ${response.statusText}`);
     }
+  },
+
+  async updateSessionTitle(id: string, data: UpdateSessionRequest): Promise<ChatSession> {
+    const response = await fetch(`${API_BASE}/sessions/${id}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: data.title })
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to update session: ${response.statusText}`);
+    }
+    return response.json();
   },
 
   async sendMessage(

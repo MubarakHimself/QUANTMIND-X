@@ -85,7 +85,8 @@
           title="Navigate to {crumb.name}"
         >
           {#if crumb.type === "view"}
-            {@const SvelteComponent = viewConfig[crumb.id]?.icon ? viewConfig[crumb.id].icon : Folder}
+            {@const viewKey = crumb.id ?? ""}
+            {@const SvelteComponent = viewConfig[viewKey]?.icon ? viewConfig[viewKey].icon : Folder}
             <SvelteComponent
               size={16}
             />

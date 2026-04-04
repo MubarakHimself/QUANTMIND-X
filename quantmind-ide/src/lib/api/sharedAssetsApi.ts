@@ -49,6 +49,7 @@ export interface SharedAsset {
   metadata: AssetMetadata;
   content?: string;
   language?: string;
+  source_path?: string;
 }
 
 // =============================================================================
@@ -77,142 +78,27 @@ const typeToBackendCategory: Record<AssetType, string> = {
   'mcp-configs': 'mcp-configs'
 };
 
-// =============================================================================
-// Mock Data for Development (opt-in only — NOT used as silent fallback)
-// To use mock data during development, call listAssetsByType with useMock=true
-// or import MOCK_ASSETS directly in a dev-only context.
-// =============================================================================
-
-export const MOCK_ASSETS: Record<AssetType, SharedAsset[]> = {
-  'docs': [
-    {
-      id: 'docs/getting-started',
-      name: 'Getting Started Guide',
-      type: 'docs',
-      metadata: {
-        version: '1.0.0',
-        usage_count: 42,
-        last_updated: '2026-03-15T10:00:00Z',
-        author: 'System',
-        description: 'Introduction guide for new users'
-      },
-      language: 'markdown'
-    },
-    {
-      id: 'docs/api-reference',
-      name: 'API Reference',
-      type: 'docs',
-      metadata: {
-        version: '2.1.0',
-        usage_count: 128,
-        last_updated: '2026-03-18T14:30:00Z',
-        author: 'System',
-        description: 'Complete API documentation'
-      },
-      language: 'markdown'
-    }
-  ],
-  'strategy-templates': [
-    {
-      id: 'templates/martingale-basic',
-      name: 'Martingale Basic',
-      type: 'strategy-templates',
-      metadata: {
-        version: '1.2.0',
-        usage_count: 15,
-        last_updated: '2026-03-10T08:00:00Z',
-        author: 'Strategy Team',
-        description: 'Basic Martingale trading template'
-      },
-      language: 'mql5'
-    }
-  ],
-  'indicators': [
-    {
-      id: 'indicators/rsi-filter',
-      name: 'RSI Filter',
-      type: 'indicators',
-      metadata: {
-        version: '1.0.0',
-        usage_count: 23,
-        last_updated: '2026-03-12T16:00:00Z',
-        author: 'Quant Team',
-        description: 'RSI-based trend filter indicator'
-      },
-      content: '// RSI Filter Indicator\n// Version 1.0.0\n\n#property indicator_separate_window\n#property indicator_minimum 0\n#property indicator_maximum 100\n\ninput int RSIPeriod = 14;\ninput int oversoldLevel = 30;\ninput int overboughtLevel = 70;\n\ndouble RSIBuffer[];\n\nint OnInit() {\n   SetIndexBuffer(0, RSIBuffer);\n   IndicatorShortName("RSI Filter");\n   return INIT_SUCCEEDED;\n}\n\nint OnCalculate(const int rates_total,\n                const int prev_calculated,\n                const datetime &time[],\n                const double &open[],\n                const double &high[],\n                const double &low[],\n                const double &close[],\n                const long &tick_volume[],\n                const long &volume[],\n                const int &spread[]) {\n   // RSI calculation logic here\n   return rates_total;\n}',
-      language: 'mql5'
-    },
-    {
-      id: 'indicators/ema-cross',
-      name: 'EMA Crossover',
-      type: 'indicators',
-      metadata: {
-        version: '1.1.0',
-        usage_count: 45,
-        last_updated: '2026-03-14T12:00:00Z',
-        author: 'Quant Team',
-        description: 'EMA crossover signal indicator'
-      },
-      language: 'mql5'
-    }
-  ],
-  'skills': [
-    {
-      id: 'skills/backtest-analysis',
-      name: 'Backtest Analysis',
-      type: 'skills',
-      metadata: {
-        version: '2.0.0',
-        usage_count: 89,
-        last_updated: '2026-03-16T09:00:00Z',
-        author: 'Dev Team',
-        description: 'Analyze backtest results and generate reports'
-      }
-    },
-    {
-      id: 'skills/signal-generator',
-      name: 'Signal Generator',
-      type: 'skills',
-      metadata: {
-        version: '1.5.0',
-        usage_count: 67,
-        last_updated: '2026-03-17T11:00:00Z',
-        author: 'Dev Team',
-        description: 'Generate trading signals from indicators'
-      }
-    }
-  ],
-  'flow-components': [
-    {
-      id: 'flow-components/order-pipeline',
-      name: 'Order Pipeline',
-      type: 'flow-components',
-      metadata: {
-        version: '1.0.0',
-        usage_count: 12,
-        last_updated: '2026-03-11T15:00:00Z',
-        author: 'Dev Team',
-        description: 'Order execution pipeline component'
-      },
-      language: 'python'
-    }
-  ],
-  'mcp-configs': [
-    {
-      id: 'mcp-configs/trading-api',
-      name: 'Trading API Config',
-      type: 'mcp-configs',
-      metadata: {
-        version: '1.0.0',
-        usage_count: 8,
-        last_updated: '2026-03-09T10:00:00Z',
-        author: 'Ops Team',
-        description: 'MCP configuration for trading API'
-      },
-      language: 'json'
-    }
-  ]
+const typeCategoryAliases: Record<AssetType, string[]> = {
+  'docs': ['docs', 'doc', 'articles', 'article', 'books', 'book', 'libraries', 'library', 'risk', 'utils'],
+  'strategy-templates': ['templates', 'template', 'strategy-templates', 'strategy_templates'],
+  'indicators': ['indicators', 'indicator'],
+  'skills': ['skills', 'skill'],
+  'flow-components': ['flow-components', 'flow_components', 'flow components'],
+  'mcp-configs': ['mcp-configs', 'mcp_configs', 'mcp configs', 'mcp'],
 };
+
+function normalizeCategory(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-');
+}
+
+function categoryMatchesType(type: AssetType, category: unknown): boolean {
+  const normalized = normalizeCategory(category);
+  const aliases = typeCategoryAliases[type];
+  return aliases.includes(normalized);
+}
 
 // =============================================================================
 // API Functions
@@ -221,21 +107,37 @@ export const MOCK_ASSETS: Record<AssetType, SharedAsset[]> = {
 /**
  * Map backend asset to frontend format
  */
-function mapBackendAsset(asset: any, type: AssetType): SharedAsset {
+function mapBackendAsset(asset: Record<string, any>, type: AssetType): SharedAsset {
   return {
-    id: asset.id || asset.path || asset.name,
-    name: asset.name,
+    id: asset.id || asset.path || asset.filesystem_path || asset.name,
+    name: asset.name || asset.title || asset.id || 'Untitled Asset',
     type: type,
     metadata: {
-      version: asset.version || '1.0.0',
-      usage_count: asset.usage_count || asset.used_in?.length || 0,
-      last_updated: asset.last_updated || new Date().toISOString(),
+      version: asset.version || asset.checksum?.slice(0, 8) || '1.0.0',
+      usage_count: asset.usage_count || asset.used_by_count || asset.used_in?.length || 0,
+      last_updated: asset.last_updated || asset.updated_at || asset.created_at || new Date().toISOString(),
       author: asset.author,
       description: asset.description
     },
-    content: asset.content,
-    language: asset.language
+    content: asset.content || asset.excerpt,
+    language: asset.language,
+    source_path: asset.path || asset.filesystem_path
   };
+}
+
+function getAssetCategoryToken(asset: Record<string, any>): unknown {
+  return asset.category ?? asset.type ?? asset.asset_type;
+}
+
+async function listSharedAssetsRaw(): Promise<Record<string, any>[]> {
+  try {
+    const shared = await apiFetch<Record<string, any>[]>('/assets/shared');
+    if (Array.isArray(shared)) return shared;
+  } catch {
+    // fall through to legacy endpoint
+  }
+  const legacy = await apiFetch<Record<string, any>[]>('/assets');
+  return Array.isArray(legacy) ? legacy : [];
 }
 
 /**
@@ -244,11 +146,25 @@ function mapBackendAsset(asset: any, type: AssetType): SharedAsset {
  */
 export async function listAssetsByType(type: AssetType): Promise<SharedAsset[]> {
   const backendCategory = typeToBackendCategory[type];
-  const response = await apiFetch<any[]>(`/assets?category=${backendCategory}`);
-  if (response && response.length > 0) {
-    return response.map(asset => mapBackendAsset(asset, type));
+  const preferred = await apiFetch<Record<string, any>[]>(`/assets?category=${backendCategory}`).catch(() => []);
+  const byId = new Map<string, SharedAsset>();
+
+  if (Array.isArray(preferred) && preferred.length > 0) {
+    for (const asset of preferred) {
+      const mapped = mapBackendAsset(asset, type);
+      byId.set(mapped.id, mapped);
+    }
   }
-  return [];
+
+  const sharedAssets = await listSharedAssetsRaw();
+  const filtered = sharedAssets.filter((asset) => categoryMatchesType(type, getAssetCategoryToken(asset)));
+  for (const asset of filtered) {
+    const mapped = mapBackendAsset(asset, type);
+    if (!byId.has(mapped.id)) {
+      byId.set(mapped.id, mapped);
+    }
+  }
+  return Array.from(byId.values());
 }
 
 /**
@@ -257,19 +173,13 @@ export async function listAssetsByType(type: AssetType): Promise<SharedAsset[]> 
 export async function listAllAssets(): Promise<Record<AssetType, SharedAsset[]>> {
   const types: AssetType[] = ['docs', 'strategy-templates', 'indicators', 'skills', 'flow-components', 'mcp-configs'];
   const result: Record<AssetType, SharedAsset[]> = {} as Record<AssetType, SharedAsset[]>;
+  const sharedAssets = await listSharedAssetsRaw();
 
-  // Fetch all asset types in parallel
-  const promises = types.map(async (type) => {
-    try {
-      const assets = await listAssetsByType(type);
-      result[type] = assets;
-    } catch (e) {
-      console.error(`Failed to load ${type}:`, e);
-      result[type] = [];
-    }
-  });
+  for (const type of types) {
+    const filtered = sharedAssets.filter((asset) => categoryMatchesType(type, getAssetCategoryToken(asset)));
+    result[type] = filtered.map((asset) => mapBackendAsset(asset, type));
+  }
 
-  await Promise.all(promises);
   return result;
 }
 

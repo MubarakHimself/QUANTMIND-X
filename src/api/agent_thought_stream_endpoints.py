@@ -120,10 +120,13 @@ async def stream_thoughts(request: Request, session_id: Optional[str] = None):
 
 
 @router.get("/history")
-async def get_thought_history(limit: int = 50):
+async def get_thought_history(limit: int = 50, session_id: Optional[str] = None):
     """Returns recent published thoughts from the in-memory ring buffer (last 200).
 
     Query Parameters:
         limit: Number of recent thoughts to return (default 50, max 200).
     """
-    return list(_recent_thoughts)[-limit:]
+    items = list(_recent_thoughts)
+    if session_id:
+        items = [event for event in items if event.get("session_id") == session_id]
+    return items[-limit:]

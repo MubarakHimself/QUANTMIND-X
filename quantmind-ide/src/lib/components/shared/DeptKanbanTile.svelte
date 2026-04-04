@@ -12,6 +12,7 @@
   import TileCard from './TileCard.svelte';
   import { Kanban } from 'lucide-svelte';
   import type { DepartmentTasksResponse } from '$lib/components/department-kanban/types';
+  import { API_CONFIG } from '$lib/config/api';
 
   interface Props {
     dept: string;
@@ -27,6 +28,10 @@
 
   // SSE for real-time tile count updates (AC 12-6-5)
   let eventSource: EventSource | null = null;
+
+  function getTasksApiUrl(path: string): string {
+    return `${API_CONFIG.API_URL}${path}`;
+  }
 
   function parseCounts(tasks: DepartmentTasksResponse['tasks']) {
     activeCount = tasks.filter(t => t.status === 'TODO' || t.status === 'IN_PROGRESS').length;
@@ -47,7 +52,14 @@
 
     // SSE for real-time task count updates (AC 12-6-5)
     try {
-      eventSource = new EventSource(`/api/sse/tasks/${dept}`);
+      eventSource = new EventSource(getTasksApiUrl(`/api/sse/tasks/${dept}`));
+      eventSource.onopen = () => {
+        void apiFetch<DepartmentTasksResponse>(`/tasks/${dept}`)
+          .then((data) => parseCounts(data.tasks || []))
+          .catch(() => {
+            // Keep last known counts if refresh fails
+          });
+      };
       eventSource.onmessage = (event) => {
         try {
           const update = JSON.parse(event.data);

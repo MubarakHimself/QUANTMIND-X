@@ -9,14 +9,29 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from .runtime import (
+    PaperTradingUnavailableDeployer,
+    ensure_paper_trading_runtime,
+)
+
 logger = logging.getLogger(__name__)
 
 
 # Dependency Injection for Deployer
 def get_deployer():
     """Dependency injection for PaperTradingDeployer."""
-    from mcp_mt5.paper_trading.deployer import PaperTradingDeployer
-    return PaperTradingDeployer()
+    try:
+        from mcp_mt5.paper_trading.deployer import PaperTradingDeployer
+    except ImportError as e:
+        logger.warning("PaperTradingDeployer unavailable: %s", e)
+        return PaperTradingUnavailableDeployer(
+            "Paper trading runtime unavailable on this host. "
+            "Install and configure the MT5 paper trading runtime on the target VPS."
+        )
+
+    deployer = PaperTradingDeployer()
+    setattr(deployer, "available", True)
+    return deployer
 
 
 def get_enhanced_deployer():
@@ -54,6 +69,7 @@ def setup_deploy_routes(router: APIRouter):
 
         Creates a Docker container with the specified strategy code and MT5 credentials.
         """
+        ensure_paper_trading_runtime(deployer)
         try:
             # Note: symbol and timeframe can be added to config if needed
             config = getattr(request, 'config', {})

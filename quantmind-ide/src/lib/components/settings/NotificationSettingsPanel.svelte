@@ -1,187 +1,224 @@
 <script lang="ts">
-  import { Bell, BellOff, Lock, RefreshCw, Check, AlertCircle } from 'lucide-svelte';
+  import { onMount } from 'svelte';
+  import { Bell, BellOff, Mail, Webhook, Clock, Save, RefreshCw, Check, AlertCircle, Volume2, VolumeOff, Monitor } from 'lucide-svelte';
+  import { settingsStore } from '$lib/stores/settingsStore';
 
-  interface NotificationEvent {
-    event_type: string;
-    category: string;
-    severity: string;
-    enabled: boolean;
-    delivery_channel: string;
-    is_always_on: boolean;
-    description: string | null;
-  }
-
-  let events: NotificationEvent[] = $state([]);
-  let categories: string[] = $state([]);
-  let isLoading = $state(true);
   let isSaving = $state(false);
-  let error = $state<string | null>(null);
-  let success = $state<string | null>(null);
+  let saveSuccess = $state(false);
+  let saveError = $state<string | null>(null);
 
-  // Group events by category
-  let eventsByCategory = $derived(
-    categories.reduce((acc, cat) => {
-      acc[cat] = events.filter(e => e.category === cat);
-      return acc;
-    }, {} as Record<string, NotificationEvent[]>)
-  );
+  // Local state bound to settingsStore
+  let desktopNotifications = $state(true);
+  let soundEffects = $state(false);
+  let emailAlerts = $state(false);
+  let webhookUrl = $state('');
+  let notificationFrequency = $state<'immediate' | 'daily' | 'weekly'>('immediate');
 
-  async function loadNotifications() {
-    isLoading = true;
-    error = null;
-    try {
-      const response = await fetch('/api/notifications');
-      if (response.ok) {
-        const data = await response.json();
-        events = data.events;
-        categories = data.categories;
-      } else {
-        error = 'Failed to load notification settings';
-      }
-    } catch (e) {
-      error = 'Failed to load notification settings';
-      console.error(e);
-    } finally {
-      isLoading = false;
-    }
+  const frequencyOptions = [
+    { value: 'immediate', label: 'Immediate' },
+    { value: 'daily', label: 'Daily Digest' },
+    { value: 'weekly', label: 'Weekly Summary' }
+  ];
+
+  // Load settings from store on mount
+  onMount(() => {
+    const unsub = settingsStore.subscribe(state => {
+      desktopNotifications = state.general.notifications;
+      soundEffects = state.general.soundEffects;
+      emailAlerts = state.general.emailAlerts;
+      webhookUrl = state.general.webhookUrl;
+      notificationFrequency = state.general.notificationFrequency;
+    });
+    return unsub;
+  });
+
+  function updateNotification(key: 'notifications' | 'soundEffects' | 'emailAlerts', value: boolean) {
+    if (key === 'notifications') desktopNotifications = value;
+    else if (key === 'soundEffects') soundEffects = value;
+    else if (key === 'emailAlerts') emailAlerts = value;
+    settingsStore.updateGeneral({ [key]: value });
   }
 
-  async function toggleNotification(event: NotificationEvent) {
-    if (event.is_always_on) return;
+  function updateWebhookUrl(value: string) {
+    webhookUrl = value;
+    settingsStore.updateGeneral({ webhookUrl: value });
+  }
 
+  function updateFrequency(value: 'immediate' | 'daily' | 'weekly') {
+    notificationFrequency = value;
+    settingsStore.updateGeneral({ notificationFrequency: value });
+  }
+
+  async function saveSettings() {
     isSaving = true;
-    error = null;
-    success = null;
-
+    saveError = null;
     try {
-      const response = await fetch('/api/notifications', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event_type: event.event_type,
-          is_enabled: !event.enabled
-        })
-      });
-
-      if (response.ok) {
-        const updated = await response.json();
-        // Update local state
-        const idx = events.findIndex(e => e.event_type === event.event_type);
-        if (idx >= 0) {
-          events[idx] = { ...events[idx], enabled: updated.is_enabled };
-        }
-        success = `${event.event_type} ${updated.enabled ? 'enabled' : 'disabled'}`;
-        setTimeout(() => success = null, 3000);
-      } else {
-        const err = await response.json();
-        error = err.detail || 'Failed to update notification';
-      }
+      await settingsStore.save();
+      saveSuccess = true;
+      setTimeout(() => saveSuccess = false, 3000);
     } catch (e) {
-      error = 'Failed to update notification';
+      saveError = 'Failed to save notification settings';
       console.error(e);
     } finally {
       isSaving = false;
     }
   }
-
-  function getCategoryLabel(category: string): string {
-    const labels: Record<string, string> = {
-      trade: 'Trade Events',
-      strategy: 'Strategy Events',
-      risk: 'Risk Events',
-      system: 'System Events',
-      agent: 'Agent Events'
-    };
-    return labels[category] || category;
-  }
-
-  // Load on mount
-  import { onMount } from 'svelte';
-  onMount(() => {
-    loadNotifications();
-  });
 </script>
 
 <div class="panel">
   <div class="panel-header">
-    <h3>Notification Settings</h3>
+    <h3>Notifications</h3>
     <div class="header-actions">
-      <button class="icon-btn" onclick={loadNotifications} title="Refresh">
-        <RefreshCw size={16} class={isLoading ? 'spinning' : ''} />
+      <button class="icon-btn" onclick={saveSettings} title="Save" disabled={isSaving}>
+        {#if isSaving}
+          <RefreshCw size={16} class="spinning" />
+        {:else}
+          <Save size={16} />
+        {/if}
       </button>
     </div>
   </div>
 
-  {#if error}
+  {#if saveError}
     <div class="alert error">
-      <AlertCircle size={16} />
-      <span>{error}</span>
+      <AlertCircle size={14} />
+      <span>{saveError}</span>
     </div>
   {/if}
 
-  {#if success}
+  {#if saveSuccess}
     <div class="alert success">
-      <Check size={16} />
-      <span>{success}</span>
+      <Check size={14} />
+      <span>Notification settings saved</span>
     </div>
   {/if}
 
-  {#if isLoading}
-    <div class="loading">
-      <RefreshCw size={24} class="spinning" />
-      <span>Loading notification settings...</span>
+  <!-- Desktop Notifications -->
+  <div class="settings-section">
+    <div class="section-header">
+      <Monitor size={16} />
+      <h4>Desktop Notifications</h4>
     </div>
-  {:else}
-    <div class="categories">
-      {#each categories as category}
-        <div class="category-section">
-          <h4 class="category-header">{getCategoryLabel(category)}</h4>
-          <div class="events-list">
-            {#each eventsByCategory[category] || [] as event}
-              <div class="event-item" class:disabled={!event.enabled} class:always-on={event.is_always_on}>
-                <div class="event-info">
-                  <span class="event-name">{event.event_type.replace(/_/g, ' ')}</span>
-                  {#if event.description}
-                    <span class="event-description">{event.description}</span>
-                  {/if}
-                </div>
-                <div class="event-toggle">
-                  {#if event.is_always_on}
-                    <div class="always-on-badge">
-                      <Lock size={14} />
-                      <span>Always On</span>
-                    </div>
-                  {:else}
-                    <label class="switch">
-                      <input
-                        type="checkbox"
-                        checked={event.enabled}
-                        onchange={() => toggleNotification(event)}
-                        disabled={isSaving}
-                      />
-                      <span class="slider"></span>
-                    </label>
-                  {/if}
-                </div>
-              </div>
-            {/each}
-          </div>
-        </div>
+    <p class="section-description">
+      Receive browser notifications for important events.
+    </p>
+    <div class="toggle-row">
+      <span>Enable Desktop Notifications</span>
+      <label class="switch">
+        <input
+          type="checkbox"
+          checked={desktopNotifications}
+          onchange={(e) => updateNotification('notifications', e.currentTarget.checked)}
+        />
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <!-- Sound Effects -->
+  <div class="settings-section">
+    <div class="section-header">
+      {#if soundEffects}
+        <Volume2 size={16} />
+      {:else}
+        <VolumeOff size={16} />
+      {/if}
+      <h4>Sound Effects</h4>
+    </div>
+    <p class="section-description">
+      Play sounds for alerts and notifications.
+    </p>
+    <div class="toggle-row">
+      <span>Enable Sound Effects</span>
+      <label class="switch">
+        <input
+          type="checkbox"
+          checked={soundEffects}
+          onchange={(e) => updateNotification('soundEffects', e.currentTarget.checked)}
+        />
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <!-- Email Alerts -->
+  <div class="settings-section">
+    <div class="section-header">
+      <Mail size={16} />
+      <h4>Email Alerts</h4>
+    </div>
+    <p class="section-description">
+      Send critical alerts to your email address.
+    </p>
+    <div class="toggle-row">
+      <span>Enable Email Alerts</span>
+      <label class="switch">
+        <input
+          type="checkbox"
+          checked={emailAlerts}
+          onchange={(e) => updateNotification('emailAlerts', e.currentTarget.checked)}
+        />
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <!-- Webhook URL -->
+  <div class="settings-section">
+    <div class="section-header">
+      <Webhook size={16} />
+      <h4>Slack / Discord Webhook</h4>
+    </div>
+    <p class="section-description">
+      Send notifications to Slack or Discord via webhook URL.
+    </p>
+    <div class="input-row">
+      <input
+        type="text"
+        class="text-input"
+        placeholder="https://hooks.slack.com/services/... or Discord webhook URL"
+        value={webhookUrl}
+        oninput={(e) => updateWebhookUrl(e.currentTarget.value)}
+      />
+    </div>
+  </div>
+
+  <!-- Notification Frequency -->
+  <div class="settings-section">
+    <div class="section-header">
+      <Clock size={16} />
+      <h4>Notification Frequency</h4>
+    </div>
+    <p class="section-description">
+      How often to receive non-critical notifications.
+    </p>
+    <div class="frequency-options">
+      {#each frequencyOptions as option}
+        <button
+          class="frequency-btn"
+          class:active={notificationFrequency === option.value}
+          onclick={() => updateFrequency(option.value)}
+        >
+          {option.label}
+        </button>
       {/each}
     </div>
-  {/if}
+  </div>
+
+  <div class="action-row">
+    <button class="btn primary" onclick={saveSettings} disabled={isSaving}>
+      <Save size={14} />
+      {isSaving ? 'Saving...' : 'Save Notification Settings'}
+    </button>
+  </div>
 </div>
 
 <style>
-  .panel {
-    padding: 0;
-  }
-
   .panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
   }
 
   .panel-header h3 {
@@ -194,38 +231,7 @@
     letter-spacing: 0.04em;
   }
 
-  .header-actions {
-    display: flex;
-    gap: 8px;
-  }
-
-  .icon-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 30px;
-    height: 30px;
-    border: none;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.04);
-    color: rgba(255, 255, 255, 0.4);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .icon-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #e8eaf0;
-  }
-
-  .spinning {
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
+  .header-actions { display: flex; gap: 8px; }
 
   .alert {
     display: flex;
@@ -250,113 +256,50 @@
     color: #00c896;
   }
 
-  .loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 40px;
-    color: rgba(255, 255, 255, 0.3);
-    gap: 12px;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 12px;
-  }
-
-  .categories {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .category-section {
+  .settings-section {
     background: rgba(8, 13, 20, 0.35);
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 8px;
     padding: 16px;
+    margin-bottom: 12px;
   }
 
-  .category-header {
-    margin: 0 0 12px 0;
-    font-size: 11px;
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    color: var(--text-primary, #e8eaf0);
+  }
+
+  .section-header h4 {
+    margin: 0;
+    font-size: 12px;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.5);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
+  }
+
+  .section-description {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.35);
+    margin-bottom: 14px;
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
   }
 
-  .events-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .event-item {
+  /* Toggle Row */
+  .toggle-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 12px;
-    background: rgba(8, 13, 20, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    border-radius: 6px;
-    transition: border-color 0.15s;
-  }
-
-  .event-item:hover {
-    border-color: rgba(255, 255, 255, 0.09);
-  }
-
-  .event-item.disabled {
-    opacity: 0.5;
-  }
-
-  .event-item.always-on {
-    background: rgba(0, 212, 255, 0.04);
-    border-color: rgba(0, 212, 255, 0.12);
-  }
-
-  .event-info {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .event-name {
+    padding: 8px 0;
     font-size: 12px;
-    font-weight: 500;
-    color: rgba(255, 255, 255, 0.75);
-    text-transform: capitalize;
+    color: rgba(255, 255, 255, 0.6);
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
   }
 
-  .event-description {
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.3);
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  }
-
-  .event-toggle {
-    display: flex;
-    align-items: center;
-  }
-
-  .always-on-badge {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 3px 8px;
-    background: rgba(0, 212, 255, 0.1);
-    border: 1px solid rgba(0, 212, 255, 0.2);
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: 600;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    color: #00d4ff;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-
-  /* Toggle switch */
+  /* Toggle Switch */
   .switch {
     position: relative;
     display: inline-block;
@@ -364,11 +307,7 @@
     height: 22px;
   }
 
-  .switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-  }
+  .switch input { opacity: 0; width: 0; height: 0; }
 
   .slider {
     position: absolute;
@@ -376,8 +315,8 @@
     inset: 0;
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.12);
-    transition: 0.2s;
     border-radius: 22px;
+    transition: 0.2s;
   }
 
   .slider:before {
@@ -388,8 +327,8 @@
     left: 3px;
     bottom: 3px;
     background: rgba(255, 255, 255, 0.5);
-    transition: 0.2s;
     border-radius: 50%;
+    transition: 0.2s;
   }
 
   input:checked + .slider {
@@ -402,8 +341,119 @@
     background: #00d4ff;
   }
 
-  input:disabled + .slider {
-    opacity: 0.5;
-    cursor: not-allowed;
+  /* Text Input */
+  .input-row {
+    margin-top: 8px;
+  }
+
+  .text-input {
+    width: 100%;
+    padding: 8px 12px;
+    background: rgba(8, 13, 20, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: #e8eaf0;
+    font-size: 12px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    box-sizing: border-box;
+  }
+
+  .text-input:focus {
+    outline: none;
+    border-color: rgba(0, 212, 255, 0.5);
+    box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+  }
+
+  .text-input::placeholder {
+    color: rgba(255, 255, 255, 0.25);
+  }
+
+  /* Frequency Options */
+  .frequency-options {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .frequency-btn {
+    padding: 8px 14px;
+    background: rgba(8, 13, 20, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .frequency-btn:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  .frequency-btn.active {
+    background: rgba(0, 212, 255, 0.08);
+    border-color: rgba(0, 212, 255, 0.35);
+    color: #00d4ff;
+  }
+
+  /* Action Row */
+  .action-row {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 4px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+  }
+
+  .btn.primary {
+    background: rgba(0, 212, 255, 0.15);
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    color: #00d4ff;
+  }
+
+  .btn.primary:hover { background: rgba(0, 212, 255, 0.25); }
+  .btn.primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.4);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .icon-btn:hover { background: rgba(255, 255, 255, 0.1); color: #e8eaf0; }
+  .icon-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .spinning { animation: spin 1s linear infinite; }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 </style>

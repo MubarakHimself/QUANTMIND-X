@@ -19,12 +19,18 @@ logger = logging.getLogger(__name__)
 
 class HouseMoneyManager:
     """
-    Manager for House Money State operations.
+    Manager for House Money State operations (DB persistence layer).
 
-    Implements the house money effect:
+    NOTE: The canonical House Money logic lives in
+    src.risk.sizing.session_kelly_modifiers.SessionKellyModifiers
+    which is used by the enhanced governor and API endpoints.
+    This class provides the DB persistence layer only.
+
+    Canonical thresholds (Planning Doc Section 5.2):
     - 1.0x risk: Baseline (breakeven or small profit/loss)
-    - 1.5x risk: Aggressive (up > 5% - trading with house money)
-    - 0.5x risk: Conservative (down > 3% - preserve capital)
+    - 1.25x risk: Early House Money (+4% to +8% daily P&L)
+    - 1.5x risk: House Money (daily P&L >= +8%, or +6% in premium sessions)
+    - 0.5x risk: Preservation (daily P&L <= -10%)
 
     Usage:
         manager = HouseMoneyManager()
@@ -32,10 +38,11 @@ class HouseMoneyManager:
         multiplier = manager.get_risk_multiplier("12345")
     """
 
-    # Risk thresholds
-    PROFIT_THRESHOLD_PCT = 0.05  # 5% profit triggers aggressive mode
-    LOSS_THRESHOLD_PCT = 0.03    # 3% loss triggers conservative mode
-    PRESERVATION_TARGET_PCT = 0.08  # 8% triggers preservation mode
+    # Risk thresholds (canonical values from Planning Doc Section 5.2)
+    PROFIT_THRESHOLD_PCT = 0.08  # +8% daily P&L triggers House Money (1.5x)
+    LOSS_THRESHOLD_PCT = 0.10    # -10% daily P&L triggers Preservation (0.5x)
+    EARLY_HOUSE_MONEY_PCT = 0.04  # +4% to +8% triggers Early House Money (1.25x)
+    PREMIUM_THRESHOLD_BOOST = 0.02  # Premium sessions lower threshold by 2%
 
     # Risk multipliers
     MULTIPLIER_BASELINE = 1.0
@@ -245,19 +252,29 @@ class HouseMoneyManager:
         """
         Calculate risk multiplier based on P&L percentage.
 
+        Canonical thresholds (Planning Doc Section 5.2):
+        - pnl >= +8%: 1.5x (House Money)
+        - +4% <= pnl < +8%: 1.25x (Early House Money)
+        - pnl <= -10%: 0.5x (Preservation)
+        - Otherwise: 1.0x (Baseline)
+
         Args:
-            pnl_pct: P&L as percentage (0.05 = 5% profit)
+            pnl_pct: P&L as percentage (0.08 = 8% profit)
 
         Returns:
             Risk multiplier
         """
-        # Aggressive mode: Trading with house money
+        # Preservation mode: capital protection (highest priority)
+        if pnl_pct <= -self.LOSS_THRESHOLD_PCT:
+            return self.MULTIPLIER_CONSERVATIVE
+
+        # House Money mode: trading with profits
         if pnl_pct >= self.PROFIT_THRESHOLD_PCT:
             return self.MULTIPLIER_AGGRESSIVE
 
-        # Conservative mode: Preserve capital
-        if pnl_pct <= -self.LOSS_THRESHOLD_PCT:
-            return self.MULTIPLIER_CONSERVATIVE
+        # Early House Money: between +4% and +8%
+        if pnl_pct >= self.EARLY_HOUSE_MONEY_PCT:
+            return 1.25
 
         # Baseline mode
         return self.MULTIPLIER_BASELINE

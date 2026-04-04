@@ -112,6 +112,7 @@ _MAX_HINTS = 32
 _MAX_ATTACHMENTS = 24
 _MAX_CONTEXT_STR = 512
 _MAX_ID_LEN = 256
+_GLOBAL_HINT_CANVASES = {"workshop", "flowforge", "floor-manager"}
 
 
 def _safe_text(value: Any, *, limit: int = _MAX_CONTEXT_STR) -> str:
@@ -269,12 +270,28 @@ def _normalize_chat_context(
         normalized,
     )
 
+    allowed_hint_canvases = set()
+    active_canvas = _safe_text(
+        context.get("active_canvas") or context.get("canvas") or default_canvas,
+        limit=64,
+    )
+    normalized_department = _safe_text(default_department, limit=64)
+    if active_canvas and active_canvas not in _GLOBAL_HINT_CANVASES:
+        allowed_hint_canvases.add(active_canvas)
+        allowed_hint_canvases.add("shared-assets")
+    elif normalized_department and normalized_department not in _GLOBAL_HINT_CANVASES:
+        allowed_hint_canvases.add(normalized_department)
+        allowed_hint_canvases.add("shared-assets")
+
     hints = context.get("workspace_resource_hints")
     if isinstance(hints, list):
         compact_hints: List[Dict[str, Any]] = []
         for hint in hints[:_MAX_HINTS]:
             compact_hint = _compact_hint(hint)
             if compact_hint:
+                hint_canvas = _safe_text(compact_hint.get("canvas"), limit=64)
+                if allowed_hint_canvases and hint_canvas and hint_canvas not in allowed_hint_canvases:
+                    continue
                 compact_hints.append(compact_hint)
         if compact_hints:
             normalized["workspace_resource_hints"] = compact_hints
@@ -317,6 +334,182 @@ def _normalize_chat_context(
         normalized.setdefault("department", default_department)
 
     return normalized
+
+
+async def _ensure_chat_session(
+    *,
+    requested_session_id: Optional[str],
+    agent_type: str,
+    agent_id: str,
+    context: Optional[Dict[str, Any]] = None,
+    user_id: str = "anonymous",
+) -> str:
+    """
+    Resolve a requested session id, creating a new session when missing/stale.
+
+    Prevents runtime 500s when the frontend sends a cached session_id that no
+    longer exists in persistent storage.
+    """
+    get_session = getattr(_session_service, "get_session", None)
+    create_session = getattr(_session_service, "create_session", None)
+
+    # Test stubs sometimes monkeypatch a partial session service. In that case,
+    # preserve the caller-provided session id instead of forcing recreation.
+    if requested_session_id and not callable(get_session):
+        return requested_session_id
+
+    if requested_session_id:
+        try:
+            existing = await get_session(requested_session_id)
+            if existing:
+                return requested_session_id
+            logger.warning(
+                "Requested session %s not found for %s/%s; creating a new session.",
+                requested_session_id,
+                agent_type,
+                agent_id,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Session lookup failed for %s (%s/%s): %s; creating a new session.",
+                requested_session_id,
+                agent_type,
+                agent_id,
+                exc,
+            )
+
+    if not callable(create_session):
+        if requested_session_id:
+            return requested_session_id
+        raise RuntimeError(
+            "Session service cannot create sessions (create_session unavailable)."
+        )
+
+    session = await create_session(
+        agent_type=agent_type,
+        agent_id=agent_id,
+        user_id=user_id,
+        context=dict(context or {}),
+    )
+    return session.id
+
+
+def _normalize_sse_event(event: Dict[str, Any], *, session_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Normalize chat streaming events to one consistent frontend contract.
+
+    Contract:
+    - content: {type: "content", delta: str}
+    - tool: {type: "tool", tool: str, status?: str}
+    - status: {type: "status", phase: str, status: str, message?: str}
+    - error: {type: "error", error: str}
+    - done: {type: "done", session_id?: str}
+    """
+    event_type = str(event.get("type") or "").strip().lower()
+
+    if event_type == "content":
+        raw_delta = event.get("delta")
+        if raw_delta is None:
+            raw_delta = event.get("content")
+        if raw_delta is None:
+            delta = ""
+        else:
+            delta = str(raw_delta)
+            if len(delta) > 4096:
+                delta = delta[:4096]
+        return {
+            "type": "content",
+            "delta": delta,
+        }
+
+    if event_type == "tool":
+        normalized = {
+            "type": "tool",
+            "tool": _safe_text(event.get("tool"), limit=96) or "tool",
+        }
+        status = _safe_text(event.get("status"), limit=64)
+        if status:
+            normalized["status"] = status
+            normalized["phase"] = normalized["tool"]
+        return normalized
+
+    if event_type in {"thinking", "thinking_start", "thinking_chunk", "status"}:
+        status = _safe_text(event.get("status"), limit=64)
+        message = _safe_text(event.get("message") or event.get("content"), limit=2048)
+        phase = _safe_text(event.get("phase"), limit=64) or "thinking"
+
+        if event_type == "thinking_start":
+            status = status or "started"
+        elif event_type == "thinking_chunk":
+            status = status or "streaming"
+        elif event_type == "thinking":
+            status = status or ("streaming" if message else "started")
+        else:
+            status = status or "progress"
+
+        normalized = {"type": "status", "phase": phase, "status": status}
+        if message:
+            normalized["message"] = message
+        return normalized
+
+    if event_type == "delegation":
+        normalized = {"type": "delegation"}
+        for key in ("department", "task_id", "status"):
+            value = event.get(key)
+            if value is not None:
+                normalized[key] = value
+        return normalized
+
+    if event_type == "done":
+        normalized = {"type": "done"}
+        sid = event.get("session_id") or session_id
+        if sid:
+            normalized["session_id"] = sid
+        return normalized
+
+    if event_type == "error":
+        return {
+            "type": "error",
+            "error": _safe_text(event.get("error") or event.get("content") or "Streaming error", limit=2048),
+        }
+
+    # Unknown event: emit as status for observability.
+    return {
+        "type": "status",
+        "phase": _safe_text(event_type or "stream", limit=64),
+        "status": "progress",
+        "message": _safe_text(event.get("content") or event.get("message"), limit=1024),
+    }
+
+
+_PROVISIONAL_STREAM_PREFIXES = (
+    "i'll ",
+    "i will ",
+    "let me ",
+    "first, i'll ",
+    "first i will ",
+    "i am going to ",
+    "i'm going to ",
+)
+
+
+def _looks_like_provisional_stream_reply(content: Optional[str]) -> bool:
+    """
+    Detect short streaming preambles that are not useful final assistant replies.
+
+    Some providers emit a single acknowledgement chunk like "I'll search the
+    workspace..." and then terminate the stream without sending a real answer.
+    Those should be buffered so the endpoint can fall back to the non-streaming
+    completion path instead of persisting the preamble as the final reply.
+    """
+    if not content:
+        return False
+
+    normalized = " ".join(str(content).strip().split()).lower()
+    if not normalized or len(normalized) > 280:
+        return False
+
+    return normalized.startswith(_PROVISIONAL_STREAM_PREFIXES)
 
 
 # =============================================================================
@@ -526,14 +719,13 @@ async def workshop_chat(request: ChatMessageRequest):
         get_workshop_copilot_service,
     )
 
-    session_id = request.session_id
-    if not session_id:
-        session = await _session_service.create_session(
-            agent_type="floor-manager",
-            agent_id="floor-manager",
-            user_id="anonymous"
-        )
-        session_id = session.id
+    normalized_context = _normalize_chat_context(request.context)
+    session_id = await _ensure_chat_session(
+        requested_session_id=request.session_id,
+        agent_type="floor-manager",
+        agent_id="floor-manager",
+        context=normalized_context,
+    )
 
     # Add user message
     await _session_service.add_message(
@@ -578,19 +770,15 @@ async def workshop_chat(request: ChatMessageRequest):
 @router.post("/floor-manager/message", response_model=ChatMessageResponse)
 async def floor_manager_chat(request: ChatMessageRequest):
     """Chat with Floor Manager."""
-    session_id = request.session_id
     normalized_context = _normalize_chat_context(request.context)
     model_name = normalized_context.get("model") or normalized_context.get("llm_model")
     preferred_provider = normalized_context.get("provider") or normalized_context.get("llm_provider")
-    if not session_id:
-        session_context = dict(normalized_context)
-        session = await _session_service.create_session(
-            agent_type="floor-manager",
-            agent_id="floor-manager",
-            user_id="anonymous",
-            context=session_context,
-        )
-        session_id = session.id
+    session_id = await _ensure_chat_session(
+        requested_session_id=request.session_id,
+        agent_type="floor-manager",
+        agent_id="floor-manager",
+        context=normalized_context,
+    )
 
     # Add user message to session
     await _session_service.add_message(session_id=session_id, role="user", content=request.message)
@@ -606,6 +794,11 @@ async def floor_manager_chat(request: ChatMessageRequest):
     if request.stream:
         async def event_generator():
             full_content = ""
+            buffered_content = ""
+            buffered_content_emitted = False
+            content_chunk_count = 0
+            done_emitted = False
+            last_status_signature: Optional[tuple[str, str, str]] = None
             try:
                 async for event in fm.chat_stream(
                     message=request.message,
@@ -614,15 +807,70 @@ async def floor_manager_chat(request: ChatMessageRequest):
                     model_name=model_name,
                     preferred_provider=preferred_provider,
                 ):
-                    if event.get("type") == "content" and "delta" not in event:
-                        event = {
-                            **event,
-                            "delta": event.get("content", ""),
-                        }
-                    yield f"data: {json.dumps(event)}\n\n"
-                    if event.get("type") == "content":
-                        full_content += event.get("delta", "")
-                yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
+                    normalized_event = _normalize_sse_event(event, session_id=session_id)
+                    if normalized_event.get("type") == "status":
+                        status_signature = (
+                            str(normalized_event.get("phase") or ""),
+                            str(normalized_event.get("status") or ""),
+                            str(normalized_event.get("message") or ""),
+                        )
+                        if status_signature == last_status_signature:
+                            continue
+                        last_status_signature = status_signature
+                    else:
+                        last_status_signature = None
+                    if normalized_event.get("type") == "content":
+                        delta = str(normalized_event.get("delta") or "")
+                        full_content += delta
+                        buffered_content += delta
+                        content_chunk_count += 1
+
+                        should_flush_buffer = (
+                            content_chunk_count > 1
+                            or not _looks_like_provisional_stream_reply(buffered_content)
+                        )
+                        if buffered_content_emitted or should_flush_buffer:
+                            emit_delta = buffered_content if not buffered_content_emitted else delta
+                            if emit_delta:
+                                yield f"data: {json.dumps({'type': 'content', 'delta': emit_delta})}\n\n"
+                            buffered_content = ""
+                            buffered_content_emitted = True
+                        continue
+                    if normalized_event.get("type") == "done":
+                        done_emitted = True
+                        continue
+                    yield f"data: {json.dumps(normalized_event)}\n\n"
+
+                # Some providers may stream only status/thinking events.
+                # Ensure the UI always receives a final assistant reply.
+                needs_fallback = (
+                    not full_content.strip()
+                    or (
+                        not buffered_content_emitted
+                        and _looks_like_provisional_stream_reply(buffered_content)
+                    )
+                )
+                if needs_fallback:
+                    fallback = await fm.chat(
+                        message=request.message,
+                        context=normalized_context,
+                        history=history,
+                        model_name=model_name,
+                        preferred_provider=preferred_provider,
+                        stream=False,
+                    )
+                    fallback_reply = str(fallback.get("content") or "").strip()
+                    if fallback_reply:
+                        full_content = fallback_reply
+                        yield f"data: {json.dumps({'type': 'content', 'delta': fallback_reply})}\n\n"
+                        buffered_content = ""
+                        buffered_content_emitted = True
+                elif buffered_content and not buffered_content_emitted:
+                    yield f"data: {json.dumps({'type': 'content', 'delta': buffered_content})}\n\n"
+                    buffered_content = ""
+                    buffered_content_emitted = True
+                if done_emitted or full_content:
+                    yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
             except Exception as e:
                 logger.error(f"Floor Manager streaming failed: {e}")
                 yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
@@ -682,7 +930,6 @@ async def department_chat(dept: str, request: ChatMessageRequest):
     if dept not in valid_depts:
         raise HTTPException(status_code=400, detail=f"Invalid department: {dept}")
 
-    session_id = request.session_id
     normalized_context = _normalize_chat_context(
         request.context,
         default_canvas=dept,
@@ -690,16 +937,14 @@ async def department_chat(dept: str, request: ChatMessageRequest):
     )
     model_name = normalized_context.get("model") or normalized_context.get("llm_model")
     preferred_provider = normalized_context.get("provider") or normalized_context.get("llm_provider")
-    if not session_id:
-        session_context = dict(normalized_context)
-        session_context.setdefault("canvas", dept)
-        session = await _session_service.create_session(
-            agent_type="department",
-            agent_id=dept,
-            user_id="anonymous",
-            context=session_context,
-        )
-        session_id = session.id
+    session_context = dict(normalized_context)
+    session_context.setdefault("canvas", dept)
+    session_id = await _ensure_chat_session(
+        requested_session_id=request.session_id,
+        agent_type="department",
+        agent_id=dept,
+        context=session_context,
+    )
 
     await _session_service.add_message(session_id=session_id, role="user", content=request.message)
 
@@ -744,27 +989,116 @@ async def department_chat(dept: str, request: ChatMessageRequest):
     if request.stream:
         async def event_generator():
             full_content = ""
-            yield f"data: {json.dumps({'type': 'tool', 'tool': 'thinking', 'status': 'started'})}\n\n"
+            buffered_content = ""
+            buffered_content_emitted = False
+            content_chunk_count = 0
+            done_emitted = False
+            last_status_signature: Optional[tuple[str, str, str]] = None
+            initial_status = {'type': 'status', 'phase': 'thinking', 'status': 'started'}
+            yield f"data: {json.dumps(initial_status)}\n\n"
+            last_status_signature = ("thinking", "started", "")
             try:
-                async for event in fm._invoke_llm_stream(
-                    message=request.message,
-                    history=history,
-                    model_name=model_name,
-                    system_prompt=dept_system_prompt,
-                    preferred_provider=preferred_provider,
-                ):
-                    if event.get("type") == "content" and "delta" not in event:
-                        event = {
-                            **event,
-                            "delta": event.get("content", ""),
-                        }
-                    yield f"data: {json.dumps(event)}\n\n"
-                    if event.get("type") == "content":
-                        full_content += event.get("delta", "")
+                if dept_head:
+                    yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'status': 'streaming'})}\n\n"
+                    last_status_signature = ("thinking", "streaming", "")
+                    result = await dept_head._invoke_claude(
+                        task=request.message,
+                        canvas_context=merged_canvas_context,
+                        tools=None,
+                    )
+                    full_content = str(result.get("content") or "").strip()
+                    if full_content:
+                        yield f"data: {json.dumps({'type': 'content', 'delta': full_content})}\n\n"
+                        buffered_content_emitted = True
+                    elif result.get("error"):
+                        yield f"data: {json.dumps({'type': 'error', 'error': str(result['error'])})}\n\n"
+                else:
+                    async for event in fm._invoke_llm_stream(
+                        message=request.message,
+                        history=history,
+                        model_name=model_name,
+                        system_prompt=dept_system_prompt,
+                        preferred_provider=preferred_provider,
+                    ):
+                        normalized_event = _normalize_sse_event(event, session_id=session_id)
+                        if normalized_event.get("type") == "status":
+                            status_signature = (
+                                str(normalized_event.get("phase") or ""),
+                                str(normalized_event.get("status") or ""),
+                                str(normalized_event.get("message") or ""),
+                            )
+                            if status_signature == last_status_signature:
+                                continue
+                            last_status_signature = status_signature
+                        else:
+                            last_status_signature = None
+                        if normalized_event.get("type") == "content":
+                            delta = str(normalized_event.get("delta") or "")
+                            full_content += delta
+                            buffered_content += delta
+                            content_chunk_count += 1
+
+                            should_flush_buffer = (
+                                content_chunk_count > 1
+                                or not _looks_like_provisional_stream_reply(buffered_content)
+                            )
+                            if buffered_content_emitted or should_flush_buffer:
+                                emit_delta = buffered_content if not buffered_content_emitted else delta
+                                if emit_delta:
+                                    yield f"data: {json.dumps({'type': 'content', 'delta': emit_delta})}\n\n"
+                                buffered_content = ""
+                                buffered_content_emitted = True
+                            continue
+                        if normalized_event.get("type") == "done":
+                            done_emitted = True
+                            continue
+                        yield f"data: {json.dumps(normalized_event)}\n\n"
             except Exception as e:
-                yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
-            yield f"data: {json.dumps({'type': 'tool', 'tool': 'thinking', 'status': 'completed'})}\n\n"
-            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+            # Some providers may stream only status/thinking events.
+            # Ensure a final assistant reply is still emitted to the UI.
+            needs_fallback = (
+                not full_content.strip()
+                or (
+                    not buffered_content_emitted
+                    and _looks_like_provisional_stream_reply(buffered_content)
+                )
+            )
+            if needs_fallback:
+                try:
+                    if dept_head:
+                        fallback_result = await dept_head._invoke_claude(
+                            task=request.message,
+                            canvas_context=merged_canvas_context,
+                            tools=None,
+                        )
+                        fallback_reply = str(fallback_result.get("content") or "").strip()
+                    else:
+                        fallback_result = await fm.chat(
+                            message=f"[{dept.upper()}] {request.message}",
+                            context=merged_canvas_context,
+                            history=history,
+                            stream=False,
+                            model_name=model_name,
+                            preferred_provider=preferred_provider,
+                        )
+                        fallback_reply = str(fallback_result.get("content") or "").strip()
+                    if fallback_reply:
+                        full_content = fallback_reply
+                        yield f"data: {json.dumps({'type': 'content', 'delta': fallback_reply})}\n\n"
+                        buffered_content = ""
+                        buffered_content_emitted = True
+                except Exception as fallback_error:
+                    yield f"data: {json.dumps({'type': 'error', 'error': str(fallback_error)})}\n\n"
+            elif buffered_content and not buffered_content_emitted:
+                yield f"data: {json.dumps({'type': 'content', 'delta': buffered_content})}\n\n"
+                buffered_content = ""
+                buffered_content_emitted = True
+
+            yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'status': 'completed'})}\n\n"
+            if done_emitted or full_content:
+                yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"
             # Persist assistant message
             if full_content:
                 try:

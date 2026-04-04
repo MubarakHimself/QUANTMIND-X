@@ -278,8 +278,9 @@ export async function streamToStore(
 
         // Schedule cleanup after delay
         if (taskId) {
+          const tid = taskId;
           setTimeout(() => {
-            agentStreamStore.clearTask(taskId);
+            agentStreamStore.clearTask(tid);
           }, CLEANUP_DELAY_MS);
         }
 
@@ -288,15 +289,16 @@ export async function streamToStore(
     }
   } catch (error) {
     if (taskId) {
+      const tid = taskId;
       agentStreamStore.completeTask(
-        taskId,
+        tid,
         undefined,
         error instanceof Error ? error.message : 'Stream error'
       );
 
       // Still schedule cleanup on error
       setTimeout(() => {
-        agentStreamStore.clearTask(taskId);
+        agentStreamStore.clearTask(tid);
       }, CLEANUP_DELAY_MS);
     }
   }
@@ -305,8 +307,9 @@ export async function streamToStore(
 
   // Schedule cleanup for incomplete streams that exit abnormally
   if (taskId) {
+    const tid = taskId;
     setTimeout(() => {
-      agentStreamStore.clearTask(taskId);
+      agentStreamStore.clearTask(tid);
     }, CLEANUP_DELAY_MS);
   }
 

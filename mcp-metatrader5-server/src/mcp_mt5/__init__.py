@@ -5,8 +5,26 @@ def _get_mcp():
     from .main import mcp
     return mcp
 
-from .ea_manager import EAManager, EAInfo, EAStatus, EAPerformance, get_ea_manager
-from .account_manager import AccountManager, AccountCredentials, get_account_manager
+def _missing_mt5(*_args, **_kwargs):
+    raise RuntimeError("MetaTrader5 package is not available in this environment")
+
+
+try:
+    from .ea_manager import EAManager, EAInfo, EAStatus, EAPerformance, get_ea_manager
+except ModuleNotFoundError as exc:
+    if exc.name != "MetaTrader5":
+        raise
+    EAManager = EAInfo = EAStatus = EAPerformance = None
+    get_ea_manager = _missing_mt5
+
+try:
+    from .account_manager import AccountManager, AccountCredentials, get_account_manager
+except ModuleNotFoundError as exc:
+    if exc.name != "MetaTrader5":
+        raise
+    AccountManager = AccountCredentials = None
+    get_account_manager = _missing_mt5
+
 from .alert_service import AlertService, AlertConfig, AlertSeverity, AlertCategory, get_alert_service
 
 __version__ = "0.4.0"

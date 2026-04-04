@@ -44,6 +44,11 @@ describe('DeptKanbanTile.svelte — Story 12-6', () => {
     expect(src).toContain("from '$lib/api'");
   });
 
+  it('imports API_CONFIG for direct SSE backend URLs', () => {
+    expect(src).toContain("from '$lib/config/api'");
+    expect(src).toContain('API_CONFIG');
+  });
+
   // API endpoint path — apiFetch prepends /api internally, so pass /tasks/{dept}
   it('calls apiFetch with /tasks/${dept} path (apiFetch prepends /api automatically)', () => {
     // Correct: apiFetch('/tasks/${dept}') → resolves to /api/tasks/{dept} at runtime
@@ -130,12 +135,12 @@ describe('DeptKanbanTile.svelte — Story 12-6', () => {
   // AC 12-6-5: SSE for real-time tile count updates
   it('opens an SSE EventSource for real-time updates (AC 12-6-5)', () => {
     expect(src).toContain('EventSource');
-    expect(src).toContain('/api/sse/tasks/${dept}');
+    expect(src).toContain('getTasksApiUrl(`/api/sse/tasks/${dept}`)');
   });
 
-  it('SSE uses full /api/sse/tasks/ path (not via apiFetch — EventSource requires direct URL)', () => {
-    // EventSource uses direct URL with /api prefix — it does NOT use apiFetch
-    expect(src).toContain('new EventSource(`/api/sse/tasks/${dept}`)');
+  it('SSE uses configured backend origin instead of a relative dev-server path', () => {
+    expect(src).toContain('return `${API_CONFIG.API_URL}${path}`');
+    expect(src).toContain('new EventSource(getTasksApiUrl(`/api/sse/tasks/${dept}`))');
   });
 
   it('SSE error handler closes connection without crashing tile (AC 12-6-6)', () => {

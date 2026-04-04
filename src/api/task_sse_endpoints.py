@@ -9,17 +9,18 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
-from typing import AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.agents.departments.types import Department
+from src.agents.departments.mail_consumer import TodoStatus, get_task_manager
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(prefix="/api")
 
 
 # ============================================================================
@@ -39,64 +40,75 @@ class DepartmentTaskResponse(BaseModel):
     tasks: List[Dict]
 
 
-# ============================================================================
-# In-Memory Task State (mirrors Redis from TaskRouter)
-# ============================================================================
+def _resolve_departments(department: str) -> List[str]:
+    """Resolve a frontend department name into one or more real task-manager departments."""
+    normalized = department.lower()
+    task_manager = get_task_manager()
 
-# Global task state store (in production, this would come from Redis)
-_task_state: Dict[str, Dict[str, Dict]] = {}
+    if normalized in task_manager.DEPARTMENTS:
+        return [normalized]
+    if normalized == "flowforge":
+        return list(task_manager.DEPARTMENTS)
+    if normalized == "shared-assets":
+        return []
+
+    valid = [*task_manager.DEPARTMENTS, "flowforge", "shared-assets"]
+    raise HTTPException(
+        status_code=400,
+        detail=f"Invalid department: {department}. Must be one of: {valid}",
+    )
+
+
+def _map_todo_to_task(todo: Dict[str, Any]) -> Dict[str, Any]:
+    status_map = {
+        TodoStatus.PENDING.value: "TODO",
+        TodoStatus.IN_PROGRESS.value: "IN_PROGRESS",
+        TodoStatus.BLOCKED.value: "BLOCKED",
+        TodoStatus.COMPLETED.value: "DONE",
+        TodoStatus.CANCELLED.value: "DONE",
+    }
+    priority = str(todo.get("priority", "medium")).upper()
+    if priority not in {"LOW", "MEDIUM", "HIGH"}:
+        priority = "MEDIUM"
+
+    task: Dict[str, Any] = {
+        "task_id": todo["id"],
+        "task_name": todo.get("title") or "Untitled task",
+        "description": todo.get("description") or "",
+        "department": todo.get("department", "research"),
+        "priority": priority,
+        "status": status_map.get(todo.get("status", ""), "TODO"),
+        "source_dept": todo.get("source_dept") or "",
+        "message_type": todo.get("message_type") or "",
+        "workflow_id": todo.get("workflow_id"),
+        "kanban_card_id": todo.get("kanban_card_id"),
+        "mail_message_id": todo.get("mail_message_id"),
+        "created_at": todo.get("created_at") or datetime.now(timezone.utc).isoformat(),
+        "updated_at": todo.get("updated_at") or todo.get("created_at") or datetime.now(timezone.utc).isoformat(),
+    }
+
+    if task["status"] == "IN_PROGRESS":
+        task["started_at"] = todo.get("updated_at") or task["created_at"]
+    if task["status"] == "DONE":
+        task["completed_at"] = todo.get("updated_at") or task["created_at"]
+    return task
 
 
 def _get_department_tasks(department: str) -> List[Dict]:
     """
-    Get all tasks for a department from the task state.
+    Get all real tasks for a department or aggregate canvas.
 
-    In production, this would query Redis via TaskRouter.
-    For now, returns mock data demonstrating the interface.
+    Source of truth is the task manager populated by the background mail
+    consumers. No mock/sample tasks are returned.
     """
-    # Try to get from global state
-    if department in _task_state:
-        return list(_task_state[department].values())
+    task_manager = get_task_manager()
+    tasks: List[Dict[str, Any]] = []
 
-    # Return sample data for demonstration
-    # In production: use TaskRouter.get_department_status()
-    sample_tasks = [
-        {
-            "task_id": "task_001",
-            "task_name": "Research market data",
-            "department": department,
-            "priority": "HIGH",
-            "status": "IN_PROGRESS",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "started_at": datetime.now(timezone.utc).isoformat(),
-        },
-        {
-            "task_id": "task_002",
-            "task_name": "Analyze strategy performance",
-            "department": department,
-            "priority": "MEDIUM",
-            "status": "TODO",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        },
-        {
-            "task_id": "task_003",
-            "task_name": "Review risk metrics",
-            "department": department,
-            "priority": "LOW",
-            "status": "BLOCKED",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        },
-        {
-            "task_id": "task_004",
-            "task_name": "Generate report",
-            "department": department,
-            "priority": "MEDIUM",
-            "status": "DONE",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-        },
-    ]
-    return sample_tasks
+    for resolved_department in _resolve_departments(department):
+        todos = task_manager.get_todos(resolved_department)
+        tasks.extend(_map_todo_to_task(todo.to_dict()) for todo in todos)
+
+    return sorted(tasks, key=lambda task: task["created_at"], reverse=True)
 
 
 async def _stream_task_updates(department: str) -> AsyncGenerator[str, None]:
@@ -137,11 +149,17 @@ async def _stream_task_updates(department: str) -> AsyncGenerator[str, None]:
         initial_tasks = _get_department_tasks(department)
         yield f"data: {json.dumps({'type': 'initial', 'tasks': initial_tasks})}\n\n"
 
-        # If Redis pub/sub available, wait for messages
+        # If Redis pub/sub available, poll it in a worker thread so the
+        # synchronous redis client cannot block the FastAPI event loop.
         if pubsub:
-            for message in pubsub.listen():
-                if message['type'] == 'message':
-                    update_data = json.loads(message['data'])
+            while True:
+                message = await asyncio.to_thread(
+                    pubsub.get_message,
+                    ignore_subscribe_messages=True,
+                    timeout=1.0,
+                )
+                if message and message.get("type") == "message":
+                    update_data = json.loads(message["data"])
                     yield f"data: {json.dumps(update_data)}\n\n"
         else:
             # Fallback: poll every 5 seconds
@@ -185,14 +203,7 @@ async def stream_department_tasks(department: str):
     Returns:
         StreamingResponse with SSE data
     """
-    # Validate department
-    try:
-        dept = Department(department.lower())
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid department: {department}. Must be one of: {[d.value for d in Department]}"
-        )
+    _resolve_departments(department)
 
     logger.info(f"SSE connection opened for department: {department}")
 
@@ -218,13 +229,7 @@ async def get_department_tasks(department: str):
     Returns:
         DepartmentTaskResponse with current tasks
     """
-    try:
-        dept = Department(department.lower())
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid department: {department}"
-        )
+    _resolve_departments(department)
 
     tasks = _get_department_tasks(department)
 
@@ -248,13 +253,27 @@ async def update_task_status(task_id: str, update: TaskStatusUpdate):
     """
     logger.info(f"Task {task_id} status update: {update.status}")
 
-    # In production: update Redis via TaskRouter
-    # For now, just acknowledge
+    status_map = {
+        "TODO": TodoStatus.PENDING,
+        "IN_PROGRESS": TodoStatus.IN_PROGRESS,
+        "BLOCKED": TodoStatus.BLOCKED,
+        "DONE": TodoStatus.COMPLETED,
+    }
+    todo_status = status_map.get(update.status.upper())
+    if todo_status is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid status. Must be one of: TODO, IN_PROGRESS, BLOCKED, DONE",
+        )
+
+    updated = get_task_manager().update_todo_status(task_id, todo_status)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Task not found")
 
     return {
-        "task_id": task_id,
-        "status": update.status,
-        "updated_at": datetime.now(timezone.utc).isoformat()
+        "task_id": updated.id,
+        "status": update.status.upper(),
+        "updated_at": updated.updated_at,
     }
 
 

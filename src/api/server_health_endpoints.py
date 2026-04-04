@@ -31,14 +31,28 @@ class NodeMetrics(BaseModel):
     disk: float
     latency_ms: float
     uptime_seconds: int
-    last_heartbeat: str
+    last_heartbeat: Optional[str]
     status: str  # healthy, warning, critical
+    status_detail: Optional[str] = None
 
 
 class ServerHealthResponse(BaseModel):
     contabo: NodeMetrics
     cloudzy: NodeMetrics
     timestamp: str
+
+
+def _disconnected_node_metrics(reason: str) -> Dict[str, Any]:
+    return {
+        "cpu": 0.0,
+        "memory": 0.0,
+        "disk": 0.0,
+        "latency_ms": 0.0,
+        "uptime_seconds": 0,
+        "last_heartbeat": "",
+        "status": "disconnected",
+        "status_detail": reason,
+    }
 
 
 def get_system_metrics() -> Dict[str, Any]:
@@ -91,7 +105,8 @@ def get_system_metrics() -> Dict[str, Any]:
             "latency_ms": latency_ms,
             "uptime_seconds": uptime_seconds,
             "last_heartbeat": datetime.now(timezone.utc).isoformat(),
-            "status": status
+            "status": status,
+            "status_detail": None,
         }
 
     except ImportError:
@@ -103,7 +118,8 @@ def get_system_metrics() -> Dict[str, Any]:
             "latency_ms": 0.0,
             "uptime_seconds": 0,
             "last_heartbeat": datetime.now(timezone.utc).isoformat(),
-            "status": "unknown"
+            "status": "unknown",
+            "status_detail": None,
         }
     except Exception as e:
         logger.error(f"Error getting system metrics: {e}")
@@ -114,7 +130,8 @@ def get_system_metrics() -> Dict[str, Any]:
             "latency_ms": 0.0,
             "uptime_seconds": 0,
             "last_heartbeat": datetime.now(timezone.utc).isoformat(),
-            "status": "error"
+            "status": "error",
+            "status_detail": None,
         }
 
 
@@ -153,10 +170,8 @@ async def get_server_health_metrics():
     try:
         cloudzy_metrics = get_cloudzy_metrics()
     except (RuntimeError, NotImplementedError) as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Cloudzy metrics unavailable: {e}"
-        )
+        logger.info("Cloudzy metrics unavailable for combined health view: %s", e)
+        cloudzy_metrics = _disconnected_node_metrics(str(e))
 
     return ServerHealthResponse(
         contabo=NodeMetrics(**contabo_metrics),

@@ -137,11 +137,11 @@ class PineScriptSubAgent:
     def _initialize_llm(self) -> None:
         """Initialize LLM client for code generation."""
         try:
-            from anthropic import Anthropic
-            self._llm_client = Anthropic()
-            logger.info("PineScriptSubAgent: LLM client initialized")
-        except ImportError:
-            logger.warning("PineScriptSubAgent: Anthropic SDK not available")
+            from src.agents.departments.subagents.llm_utils import get_subagent_client
+            self._llm_client, self._llm_model = get_subagent_client()
+            logger.info(f"PineScriptSubAgent: LLM client initialized (model={self._llm_model})")
+        except Exception as e:
+            logger.warning(f"PineScriptSubAgent: LLM init failed: {e}")
 
     def _initialize_tools(self) -> Dict[str, Any]:
         """Initialize available tools for this agent."""
@@ -187,7 +187,7 @@ class PineScriptSubAgent:
 
         try:
             response = self._llm_client.messages.create(
-                model="claude-3-5-sonnet-20241022",  # Use Sonnet for better code gen
+                model=self._llm_model,
                 max_tokens=4000,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],

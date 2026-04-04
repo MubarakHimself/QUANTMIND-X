@@ -354,7 +354,9 @@ class HMMFeatureExtractor:
                     'std': np.nanstd(features, axis=0)
                 }
 
-            # Apply scaling
+            # Apply scaling — guard against empty scaler_params (e.g., first inference before any fit)
+            if not self._scaler_params:
+                return features
             scaled = (features - self._scaler_params['mean']) / (self._scaler_params['std'] + 1e-8)
 
         elif self.config.scaling_method == "minmax":
@@ -364,7 +366,9 @@ class HMMFeatureExtractor:
                     'max': np.nanmax(features, axis=0)
                 }
 
-            # Apply scaling
+            # Apply scaling — guard against empty scaler_params
+            if not self._scaler_params:
+                return features
             scaled = (features - self._scaler_params['min']) / (self._scaler_params['max'] - self._scaler_params['min'] + 1e-8)
 
         else:  # robust
@@ -374,7 +378,9 @@ class HMMFeatureExtractor:
                     'iqr': np.nanpercentile(features, 75, axis=0) - np.nanpercentile(features, 25, axis=0)
                 }
 
-            # Apply scaling
+            # Apply scaling — guard against empty scaler_params
+            if not self._scaler_params:
+                return features
             scaled = (features - self._scaler_params['median']) / (self._scaler_params['iqr'] + 1e-8)
 
         # Clip outliers

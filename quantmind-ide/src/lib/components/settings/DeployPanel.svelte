@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { GitBranch, GitCommit, RefreshCw, Upload, RotateCcw, CheckCircle, XCircle, AlertTriangle, ChevronDown } from 'lucide-svelte';
+  import { apiFetch, buildApiUrl } from '$lib/api';
 
   interface VersionInfo {
     commit: string;
@@ -35,14 +36,9 @@
     isLoading = true;
     error = null;
     try {
-      const res = await fetch('/api/settings/deploy/version');
-      if (res.ok) {
-        versionInfo = await res.json();
-        if (versionInfo?.behind_origin && versionInfo.behind_origin > 0) {
-          error = `${versionInfo.behind_origin} commit(s) behind origin/${versionInfo.branch}`;
-        }
-      } else {
-        error = 'Failed to load version info';
+      versionInfo = await apiFetch<VersionInfo>('/settings/deploy/version');
+      if (versionInfo?.behind_origin && versionInfo.behind_origin > 0) {
+        error = `${versionInfo.behind_origin} commit(s) behind origin/${versionInfo.branch}`;
       }
     } catch (e) {
       error = 'Server unreachable';
@@ -57,8 +53,7 @@
     error = null;
     success = null;
     try {
-      const res = await fetch('/api/settings/deploy/latest', { method: 'POST' });
-      const data: DeployResult = await res.json();
+      const data = await apiFetch<DeployResult>('/settings/deploy/latest', { method: 'POST' });
       if (data.error) {
         error = data.error;
       } else {
@@ -80,12 +75,13 @@
     error = null;
     success = null;
     try {
-      const res = await fetch('/api/settings/deploy/rollback', {
+      const response = await fetch(buildApiUrl('/api/settings/deploy/rollback'), {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ git_ref: ref }),
       });
-      const data: DeployResult = await res.json();
+      const data: DeployResult = await response.json();
       if (data.error) {
         error = data.error;
       } else {

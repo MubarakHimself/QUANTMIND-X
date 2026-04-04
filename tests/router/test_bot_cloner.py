@@ -1,5 +1,6 @@
 import pytest
-from unittest.mock import MagicMock, patch, contextmanager
+from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
 from src.router.bot_cloner import BotCloner, CloneCandidate
 from src.database.db_manager import DBManager
 

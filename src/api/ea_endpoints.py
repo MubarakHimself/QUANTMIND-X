@@ -20,6 +20,107 @@ class EAListItem(BaseModel):
     size: int
     modified: float
 
+
+# EA Request/Response Models (stubs for API compatibility)
+class EACreationRequest(BaseModel):
+    """EA creation request."""
+    name: str
+    strategy_code: Optional[str] = None
+
+
+class EAValidationRequest(BaseModel):
+    """EA validation request."""
+    ea_path: str
+
+
+class EABacktestRequest(BaseModel):
+    """EA backtest request."""
+    ea_path: str
+    symbol: str
+    timeframe: int = 1
+
+
+class EAStressTestRequest(BaseModel):
+    """EA stress test request."""
+    ea_path: str
+
+
+class EAMonteCarloRequest(BaseModel):
+    """EA Monte Carlo request."""
+    ea_path: str
+    simulations: int = 1000
+
+
+class EADeployPaperRequest(BaseModel):
+    """EA deploy to paper request."""
+    ea_path: str
+    symbol: str
+
+
+class EAOptimizationRequest(BaseModel):
+    """EA optimization request."""
+    ea_path: str
+
+
+class EACreationResponse(BaseModel):
+    """EA creation response."""
+    success: bool
+    message: str
+    ea_path: Optional[str] = None
+
+
+class EAValidationResponse(BaseModel):
+    """EA validation response."""
+    success: bool
+    message: str
+
+
+class EABacktestResponse(BaseModel):
+    """EA backtest response."""
+    success: bool
+    message: str
+    result: Optional[Dict[str, Any]] = None
+
+
+class EAStressTestResponse(BaseModel):
+    """EA stress test response."""
+    success: bool
+    message: str
+
+
+class EAMonteCarloResponse(BaseModel):
+    """EA Monte Carlo response."""
+    success: bool
+    message: str
+
+
+class EADeployPaperResponse(BaseModel):
+    """EA deploy paper response."""
+    success: bool
+    message: str
+
+
+class EAMonitorResponse(BaseModel):
+    """EA monitor response."""
+    status: str
+
+
+class EAOptimizationResponse(BaseModel):
+    """EA optimization response."""
+    success: bool
+    message: str
+
+
+class EAStopResponse(BaseModel):
+    """EA stop response."""
+    success: bool
+    message: str
+
+
+class EAListResponse(BaseModel):
+    """EA list response."""
+    items: List[EAListItem]
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ea", tags=["ea"])
@@ -141,6 +242,67 @@ async def list_eas(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/bots")
+async def list_ea_bots() -> List[Dict[str, Any]]:
+    """
+    Compatibility route for the current EA Manager UI.
+
+    Returns real EA file and manifest inventory normalized into the existing UI
+    shape without fabricating performance values.
+    """
+    from src.router.bot_manifest import BotRegistry
+
+    registry = BotRegistry()
+    manifest_by_name = {manifest.name: manifest for manifest in registry.list_all()}
+    result = await list_eas(limit=MAX_LIMIT, offset=0)
+    bots: List[Dict[str, Any]] = []
+    for item in result.items:
+        manifest = manifest_by_name.get(item.name)
+        stats = manifest.get_current_stats() if manifest else None
+        tags = list(manifest.tags) if manifest else []
+
+        if manifest:
+            if "@quarantine" in tags or "@paper_only" in tags:
+                status = "quarantine"
+            elif "@under_review" in tags:
+                status = "review"
+            elif manifest.trading_mode.value == "live":
+                status = "live"
+            elif manifest.promotion_eligible:
+                status = "primal"
+            elif "@pending" in tags:
+                status = "pending"
+            else:
+                status = "development"
+        else:
+            status = "development"
+
+        bots.append({
+            "id": item.name,
+            "name": item.name,
+            "symbol": manifest.symbols[0] if manifest and manifest.symbols else "",
+            "status": status,
+            "tags": tags,
+            "version": str(int(item.modified)),
+            "lastModified": item.modified,
+            "author": getattr(manifest, "created_by", None) if manifest else None,
+            "performance": {
+                "winRate": stats.win_rate if stats else None,
+                "profitFactor": stats.profit_factor if stats else None,
+                "maxDrawdown": stats.max_drawdown if stats else None,
+                "sharpeRatio": stats.sharpe_ratio if stats else None,
+            },
+            "backtestStatus": "passed" if stats and stats.total_trades > 0 else "pending",
+        })
+    return bots
+
+
+@router.get("/reviews")
+async def get_ea_reviews() -> List[Dict[str, Any]]:
+    """Compatibility route for EA review history."""
+    return []
+
+
 @router.post("/validate")
 async def validate_ea(ea_name: str) -> Dict[str, Any]:
     """
@@ -211,22 +373,37 @@ async def backtest_ea(
 @router.post("/deploy-paper")
 async def deploy_paper(
     ea_name: str,
-    account_id: Optional[str] = None
+    account_id: Optional[str] = None,
+    strategy_id: Optional[str] = None,
+    strategy_code: Optional[str] = None,
+    config: Optional[Dict[str, Any]] = None,
+    virtual_balance: float = 10000.0,
+    magic_number: int = 0
 ) -> Dict[str, Any]:
     """
-    Deploy EA to paper trading.
+    Deploy EA to paper trading via MT5 demo mode.
 
     Args:
         ea_name: Name of the EA to deploy
         account_id: Paper trading account ID
+        strategy_id: Strategy identifier for bot manifest lookup
+        strategy_code: Strategy Python code or template reference
+        config: Strategy configuration parameters
+        virtual_balance: Starting virtual balance (default: $10,000)
+        magic_number: Unique magic number for trade identification
 
     Returns:
-        Deployment status
+        Deployment status with container_id and agent_id
     """
     try:
         result = ea_tools.deploy_paper(
             ea_name=ea_name,
-            account_id=account_id
+            account_id=account_id,
+            strategy_id=strategy_id,
+            strategy_code=strategy_code,
+            config=config,
+            virtual_balance=virtual_balance,
+            magic_number=magic_number
         )
 
         if not result.get("success"):
@@ -237,6 +414,194 @@ async def deploy_paper(
     except Exception as e:
         logger.error(f"Error deploying to paper: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+async def collect_paper_results(
+    agent_id: str,
+    container_id: Optional[str] = None,
+    magic_number: Optional[int] = None,
+    from_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Collect paper trading results from MT5 and log to TradeLogger.
+
+    This function:
+    1. Connects to MT5 demo via SocketAdapter
+    2. Retrieves deal history
+    3. Logs each trade to TradeLogger
+    4. Returns aggregated summary metrics
+
+    Args:
+        agent_id: Paper trading agent ID
+        container_id: Docker container ID (optional, for logging)
+        magic_number: MT5 magic number to filter trades (optional)
+        from_date: Start date for deal history (ISO format, optional)
+
+    Returns:
+        Summary dict with win rate, P&L, total trades, max drawdown
+    """
+    import asyncio
+    import os
+
+    from src.router.trade_logger import get_trade_logger
+    from src.data.brokers.mt5_socket_adapter import MT5SocketAdapter
+
+    # Get MT5 connection config from environment
+    mt5_config = {
+        "vps_host": os.getenv("MT5_VPS_HOST", "localhost"),
+        "vps_port": int(os.getenv("MT5_VPS_PORT", "5555")),
+        "account_id": os.getenv("MT5_ACCOUNT_ID", "demo"),
+        "timeout": 10.0,
+    }
+
+    adapter = MT5SocketAdapter(mt5_config)
+    trade_logger = get_trade_logger()
+
+    try:
+        # Get deal history from MT5
+        deals = await adapter.get_deal_history(
+            from_date=from_date,
+            magic_number=magic_number,
+        )
+
+        if not deals:
+            return {
+                "agent_id": agent_id,
+                "total_trades": 0,
+                "win_rate": 0.0,
+                "total_pnl": 0.0,
+                "max_drawdown": 0.0,
+                "deals_collected": 0,
+                "deals_logged": 0,
+            }
+
+        # Log each deal to TradeLogger
+        logged_count = 0
+        for deal in deals:
+            # Determine close reason from deal properties
+            close_reason = _determine_close_reason(deal)
+
+            trade_logger.log_paper_trade(
+                symbol=deal.get("symbol", "UNKNOWN"),
+                direction=deal.get("direction", "BUY").upper(),
+                requested_volume=deal.get("volume", 0.0),
+                approved_volume=deal.get("volume", 0.0),
+                risk_multiplier=1.0,
+                entry_price=deal.get("entry_price", 0.0),
+                exit_price=deal.get("exit_price", 0.0),
+                pnl=deal.get("pnl", 0.0),
+                close_reason=close_reason,
+                notes=[
+                    f"agent_id: {agent_id}",
+                    f"deal_id: {deal.get('deal_id', 'N/A')}",
+                    f"container_id: {container_id or 'N/A'}",
+                ],
+            )
+            logged_count += 1
+
+        # Get summary from TradeLogger
+        summary = trade_logger.get_paper_trade_summary(agent_id=agent_id)
+
+        result = {
+            "agent_id": agent_id,
+            "total_trades": summary.get("total_trades", 0),
+            "winning_trades": summary.get("winning_trades", 0),
+            "losing_trades": summary.get("losing_trades", 0),
+            "win_rate": summary.get("win_rate", 0.0),
+            "total_pnl": summary.get("total_pnl", 0.0),
+            "average_pnl": summary.get("average_pnl", 0.0),
+            "max_drawdown": summary.get("max_drawdown", 0.0),
+            "deals_collected": len(deals),
+            "deals_logged": logged_count,
+            "close_reasons": summary.get("close_reasons", {}),
+        }
+
+        logger.info(
+            f"Collected paper results for {agent_id}: "
+            f"{result['total_trades']} trades, WR={result['win_rate']:.2%}, "
+            f"PnL=${result['total_pnl']:.2f}"
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to collect paper results for {agent_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to collect paper results: {str(e)}"
+        )
+    finally:
+        adapter.close()
+
+
+def _determine_close_reason(deal: Dict[str, Any]) -> str:
+    """
+    Determine the close reason from a deal dictionary.
+
+    MT5 deal reasons typically include:
+    - DEAL_REASON_TP = Take Profit
+    - DEAL_REASON_SL = Stop Loss
+    - DEAL_REASON手动 = Manual close
+
+    Args:
+        deal: Deal dictionary from MT5
+
+    Returns:
+        Close reason string
+    """
+    reason_code = deal.get("reason", deal.get("close_reason", ""))
+
+    if isinstance(reason_code, int):
+        # MT5 reason codes
+        if reason_code == 1:  # DEAL_REASON_TP
+            return "TP_HIT"
+        elif reason_code == 2:  # DEAL_REASON_SL
+            return "SL_HIT"
+        elif reason_code == 3:  # DEAL_REASON手动 (manual)
+            return "MANUAL_CLOSE"
+
+    reason_str = str(reason_code).upper()
+    if "TP" in reason_str or "TAKE" in reason_str or "PROFIT" in reason_str:
+        return "TP_HIT"
+    elif "SL" in reason_str or "STOP" in reason_str or "LOSS" in reason_str:
+        return "SL_HIT"
+    elif "MANUAL" in reason_str or "USER" in reason_str:
+        return "MANUAL_CLOSE"
+    else:
+        return "PAPER_SESSION_END"
+
+
+@router.get("/paper-results")
+async def get_paper_results(
+    agent_id: str = Query(..., description="Paper trading agent ID"),
+    container_id: Optional[str] = Query(None, description="Docker container ID"),
+    magic_number: Optional[int] = Query(None, description="MT5 magic number filter"),
+    from_date: Optional[str] = Query(None, description="Start date (ISO format)"),
+) -> Dict[str, Any]:
+    """
+    Get paper trading results and log to TradeLogger.
+
+    Collects closed trades from MT5 demo, logs them to TradeLogger,
+    and returns aggregated summary metrics.
+
+    This endpoint is called by the ImprovementLoopFlow during paper gate
+    monitoring to collect and evaluate paper trading performance.
+
+    Args:
+        agent_id: Paper trading agent ID
+        container_id: Docker container ID (optional)
+        magic_number: MT5 magic number to filter trades (optional)
+        from_date: Start date for deal history in ISO format (optional)
+
+    Returns:
+        Summary dict with win rate, P&L, total trades, max drawdown
+    """
+    return await collect_paper_results(
+        agent_id=agent_id,
+        container_id=container_id,
+        magic_number=magic_number,
+        from_date=from_date,
+    )
 
 
 @router.post("/stop")
@@ -304,8 +669,7 @@ async def get_ea_tags(
         from src.database.manager import DatabaseManager
         from src.database.models.bots import BotManifest
 
-        db = DatabaseManager.get_instance()
-        session = db.get_session()
+        db = DatabaseManager()
 
         # Default available tags
         available_tags = [
@@ -334,9 +698,10 @@ async def get_ea_tags(
         # If bot_name provided, get its tags
         bot_tags = []
         if bot_name:
-            bot = session.query(BotManifest).filter(BotManifest.bot_name == bot_name).first()
-            if bot:
-                bot_tags = bot.prop_firm_tags
+            with db.get_session() as session:
+                bot = session.query(BotManifest).filter(BotManifest.bot_name == bot_name).first()
+                if bot:
+                    bot_tags = bot.prop_firm_tags
 
         return {
             "available_tags": all_tags,
@@ -364,27 +729,27 @@ async def set_ea_tags(
     Returns:
         Success status and updated tags
     """
+    session = None
     try:
         from src.database.manager import DatabaseManager
         from src.database.models.bots import BotManifest
 
-        db = DatabaseManager.get_instance()
-        session = db.get_session()
+        db = DatabaseManager()
 
-        bot = session.query(BotManifest).filter(BotManifest.bot_name == bot_name).first()
-        if not bot:
-            # Create new bot manifest if doesn't exist
-            bot = BotManifest(
-                bot_name=bot_name,
-                bot_type="general",
-                strategy_type="mixed",
-                broker_type="STANDARD"
-            )
-            session.add(bot)
-            session.flush()
+        with db.get_session() as session:
+            bot = session.query(BotManifest).filter(BotManifest.bot_name == bot_name).first()
+            if not bot:
+                # Create new bot manifest if doesn't exist
+                bot = BotManifest(
+                    bot_name=bot_name,
+                    bot_type="general",
+                    strategy_type="mixed",
+                    broker_type="STANDARD"
+                )
+                session.add(bot)
+                session.flush()
 
-        bot.prop_firm_tags = request.tags
-        session.commit()
+            bot.prop_firm_tags = request.tags
 
         return {
             "success": True,
@@ -393,7 +758,8 @@ async def set_ea_tags(
         }
 
     except Exception as e:
-        session.rollback()
+        if session is not None:
+            session.rollback()
         logger.error(f"Error setting EA tags: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -413,19 +779,19 @@ async def add_ea_tag(
     Returns:
         Success status and updated tags
     """
+    session = None
     try:
         from src.database.manager import DatabaseManager
         from src.database.models.bots import BotManifest
 
-        db = DatabaseManager.get_instance()
-        session = db.get_session()
+        db = DatabaseManager()
 
-        bot = session.query(BotManifest).filter(BotManifest.bot_name == bot_name).first()
-        if not bot:
-            raise HTTPException(status_code=404, detail=f"Bot '{bot_name}' not found")
+        with db.get_session() as session:
+            bot = session.query(BotManifest).filter(BotManifest.bot_name == bot_name).first()
+            if not bot:
+                raise HTTPException(status_code=404, detail=f"Bot '{bot_name}' not found")
 
-        bot.add_prop_firm_tag(tag)
-        session.commit()
+            bot.add_prop_firm_tag(tag)
 
         return {
             "success": True,
@@ -437,7 +803,8 @@ async def add_ea_tag(
     except HTTPException:
         raise
     except Exception as e:
-        session.rollback()
+        if session is not None:
+            session.rollback()
         logger.error(f"Error adding EA tag: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -457,19 +824,19 @@ async def remove_ea_tag(
     Returns:
         Success status and updated tags
     """
+    session = None
     try:
         from src.database.manager import DatabaseManager
         from src.database.models.bots import BotManifest
 
-        db = DatabaseManager.get_instance()
-        session = db.get_session()
+        db = DatabaseManager()
 
-        bot = session.query(BotManifest).filter(BotManifest.bot_name == bot_name).first()
-        if not bot:
-            raise HTTPException(status_code=404, detail=f"Bot '{bot_name}' not found")
+        with db.get_session() as session:
+            bot = session.query(BotManifest).filter(BotManifest.bot_name == bot_name).first()
+            if not bot:
+                raise HTTPException(status_code=404, detail=f"Bot '{bot_name}' not found")
 
-        bot.remove_prop_firm_tag(tag)
-        session.commit()
+            bot.remove_prop_firm_tag(tag)
 
         return {
             "success": True,
@@ -481,7 +848,8 @@ async def remove_ea_tag(
     except HTTPException:
         raise
     except Exception as e:
-        session.rollback()
+        if session is not None:
+            session.rollback()
         logger.error(f"Error removing EA tag: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -500,13 +868,12 @@ async def get_prop_firm_settings() -> Dict[str, Any]:
         from src.database.manager import DatabaseManager
         from src.database.models.bots import BotManifest
 
-        db = DatabaseManager.get_instance()
-        session = db.get_session()
-
-        # Get all bots with prop firm tags
-        bots = session.query(BotManifest).filter(
-            BotManifest.bot_metadata.isnot(None)
-        ).all()
+        db = DatabaseManager()
+        with db.get_session() as session:
+            # Get all bots with prop firm tags
+            bots = session.query(BotManifest).filter(
+                BotManifest.bot_metadata.isnot(None)
+            ).all()
 
         prop_firms = []
         for bot in bots:
@@ -571,31 +938,31 @@ async def save_prop_firm_settings(
     Returns:
         Success status
     """
+    session = None
     try:
         from src.database.manager import DatabaseManager
         from src.database.models.bots import BotManifest
 
-        db = DatabaseManager.get_instance()
-        session = db.get_session()
+        db = DatabaseManager()
 
-        bot = session.query(BotManifest).filter(BotManifest.bot_name == bot_name).first()
-        if not bot:
-            bot = BotManifest(
-                bot_name=bot_name,
-                bot_type="general",
-                strategy_type="mixed",
-                broker_type="STANDARD"
-            )
-            session.add(bot)
-            session.flush()
+        with db.get_session() as session:
+            bot = session.query(BotManifest).filter(BotManifest.bot_name == bot_name).first()
+            if not bot:
+                bot = BotManifest(
+                    bot_name=bot_name,
+                    bot_type="general",
+                    strategy_type="mixed",
+                    broker_type="STANDARD"
+                )
+                session.add(bot)
+                session.flush()
 
-        # Add tag if not exists
-        if not bot.has_prop_firm_tag(tag):
-            bot.add_prop_firm_tag(tag)
+            # Add tag if not exists
+            if not bot.has_prop_firm_tag(tag):
+                bot.add_prop_firm_tag(tag)
 
-        # Save firm config
-        bot.firm_config = settings.dict()
-        session.commit()
+            # Save firm config
+            bot.firm_config = settings.dict()
 
         return {
             "success": True,
@@ -605,6 +972,7 @@ async def save_prop_firm_settings(
         }
 
     except Exception as e:
-        session.rollback()
+        if session is not None:
+            session.rollback()
         logger.error(f"Error saving prop firm settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))

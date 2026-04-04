@@ -229,19 +229,18 @@ class VideoIngestProcessor:
             ))
             logger.info("Qwen Code CLI provider initialized (fallback)")
         
-        # Tertiary: Gemini CLI provider if configured (kept for backward compatibility)
-        if self.config.gemini_api_key:
-            providers.append(GeminiCLIProvider(
-                yolo_mode=self.config.gemini_yolo_mode,
-                api_key=self.config.gemini_api_key
-            ))
+        # Tertiary: Gemini CLI provider if authenticated via API key or OAuth.
+        gemini_provider = GeminiCLIProvider(
+            yolo_mode=self.config.gemini_yolo_mode,
+            api_key=self.config.gemini_api_key,
+        )
+        if gemini_provider.is_authenticated():
+            providers.append(gemini_provider)
             logger.info("Gemini CLI provider initialized (tertiary fallback)")
-        
-        # Ultimate fallback: Initialize OpenRouter without explicit key (uses env var)
+
         if not providers:
-            providers.append(OpenRouterProvider())
-            logger.warning("No API keys configured, using OpenRouter with env var")
-        
+            logger.warning("No authenticated video ingest providers configured")
+
         return providers
     
     def set_status_callback(self, callback: callable) -> None:
@@ -513,7 +512,12 @@ class VideoIngestProcessor:
         """
         # Select provider (respect options if specified)
         providers_to_try = self._get_providers_to_try(options)
-        
+
+        if not providers_to_try:
+            error_msg = "No authenticated video ingest providers configured"
+            logger.error(error_msg)
+            raise ProviderError(error_msg)
+
         last_error = None
         
         for provider in providers_to_try:

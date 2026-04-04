@@ -1,6 +1,14 @@
 <script lang="ts">
   import { createEventDispatcher, onMount, tick } from "svelte";
   import { fly, fade } from "svelte/transition";
+  import { marked } from 'marked';
+  import DOMPurify from 'dompurify';
+
+  function renderMarkdown(text: string): string {
+    if (!text) return '';
+    const html = marked.parse(text, { breaks: true, gfm: true }) as string;
+    return DOMPurify.sanitize(html);
+  }
   import {
     Send,
     Loader,
@@ -17,6 +25,7 @@
     Clock,
     ArrowRight,
     Bot,
+    Trash2,
   } from "lucide-svelte";
   import {
     departmentChatStore,
@@ -152,6 +161,12 @@
     }
   }
 
+  // Clear chat history for active department
+  function clearChat() {
+    if (!activeDept) return;
+    departmentChatStore.clearHistory(activeDept);
+  }
+
   // Close panel
   function closePanel() {
     dispatch("close");
@@ -194,6 +209,11 @@
     </div>
 
     <div class="header-actions">
+      {#if activeDept && messages.length > 0}
+        <button class="icon-btn" title="Clear chat" onclick={clearChat}>
+          <Trash2 size={14} />
+        </button>
+      {/if}
       <button class="icon-btn" title="Close" onclick={closePanel}>
         <X size={16} />
       </button>
@@ -267,7 +287,11 @@
               </div>
             {/if}
             <div class="message-text">
-              {msg.content}
+              {#if msg.role === 'department'}
+                {@html renderMarkdown(msg.content)}
+              {:else}
+                {msg.content}
+              {/if}
             </div>
             <div class="message-time">
               {formatTime(msg.timestamp)}
@@ -307,7 +331,7 @@
       <div class="model-selector-container">
         <AgentModelSelector
           agentId={activeDept || 'development'}
-          currentModel="sonnet"
+          currentModel=""
         />
       </div>
       <div class="char-count">

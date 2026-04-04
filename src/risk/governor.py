@@ -16,14 +16,25 @@ This orchestrator:
 import json
 import logging
 import time
-from datetime import datetime, timedelta
-from typing import Dict, Optional, Tuple, Any
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Dict, Optional, Tuple, Any
+
+if TYPE_CHECKING:
+    from src.router.position_monitor import PositionMonitorService
 
 from .models.position_sizing_result import PositionSizingResult
 from .models.sizing_recommendation import SizingRecommendation
 from .physics.chaos_sensor import ChaosSensor
 from .physics.correlation_sensor import CorrelationSensor
 from .physics.ising_sensor import IsingRegimeSensor
+from .svss_rvol_consumer import (
+    get_rvol,
+    clamp_rvol,
+    should_block_entry,
+    RVOL_MIN,
+    DEFAULT_RVOL,
+    get_global_consumer
+)
 from .config import (
     PROP_FIRM_PRESETS,
     get_preset,
@@ -65,20 +76,27 @@ class RiskGovernor:
         >>> print(f"Position size: {result.lot_size} lots")
     """
 
-    def __init__(self, prop_firm_preset: Optional[str] = None):
+    def __init__(
+        self,
+        prop_firm_preset: Optional[str] = None,
+        position_monitor: Optional['PositionMonitorService'] = None
+    ):
         """
         Initialize Risk Governor with optional prop firm preset.
 
         Args:
             prop_firm_preset: Name of prop firm preset (e.g., "ftmo", "the5ers")
+            position_monitor: Optional PositionMonitorService for Layer 2 SL modification
         """
         self._cache = {
             'physics': {},  # Physics sensor cache
-            'account': {}   # Account info cache
+            'account': {},  # Account info cache
+            'rvol': {}      # RVOL cache per symbol
         }
         self._cache_timestamps = {
             'physics': {},
-            'account': {}
+            'account': {},
+            'rvol': {}
         }
 
         # Initialize physics sensors
@@ -89,6 +107,10 @@ class RiskGovernor:
         # Initialize portfolio scaler
         self.portfolio_scaler = PortfolioKellyScaler()
 
+        # Position Monitor Service for Layer 2 dynamic SL modification (Cloudzy)
+        # Spec: Addendum Section 3, Layer 2
+        self.position_monitor = position_monitor
+
         # Set prop firm preset if provided
         self.prop_firm_preset = None
         if prop_firm_preset:
@@ -98,9 +120,67 @@ class RiskGovernor:
             "RiskGovernor initialized",
             extra={
                 'prop_firm_preset': prop_firm_preset,
-                'max_risk_pct': self.get_max_risk_pct()
+                'max_risk_pct': self.get_max_risk_pct(),
+                'position_monitor': position_monitor is not None
             }
         )
+
+    def register_position_with_monitor(
+        self,
+        ticket: int,
+        symbol: str,
+        entry_price: float,
+        stop_loss: float,
+        side: str,
+        stop_distance_pips: float,
+        entry_regime_m5: Optional[str] = None,
+        entry_regime_h1: Optional[str] = None,
+        entry_regime_h4: Optional[str] = None
+    ) -> bool:
+        """
+        Register a position with the Layer 2 Position Monitor Service.
+
+        Called after calculate_position_size() returns and the order is placed.
+
+        Args:
+            ticket: MT5 ticket number
+            symbol: Trading symbol
+            entry_price: Position entry price
+            stop_loss: Initial stop loss price
+            side: 'BUY' or 'SELL'
+            stop_distance_pips: SL distance in pips
+            entry_regime_m5: M5 regime at entry
+            entry_regime_h1: H1 regime at entry
+            entry_regime_h4: H4 regime at entry
+
+        Returns:
+            True if registered successfully or no monitor is configured
+        """
+        if not self.position_monitor:
+            logger.debug("Position monitor not configured, skipping registration")
+            return True
+
+        try:
+            self.position_monitor.register_position(
+                ticket=ticket,
+                symbol=symbol,
+                entry_price=entry_price,
+                current_sl=stop_loss,
+                side=side,
+                stop_distance_pips=stop_distance_pips,
+                entry_time=datetime.now(timezone.utc),
+                entry_regime_m5=entry_regime_m5,
+                entry_regime_h1=entry_regime_h1,
+                entry_regime_h4=entry_regime_h4
+            )
+            logger.info(
+                f"Position registered with monitor: ticket={ticket}, "
+                f"{symbol} {side} @ {entry_price}, SL={stop_loss}"
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to register position with monitor: {e}")
+            return False
 
     def calculate_position_size(
         self,
@@ -113,7 +193,10 @@ class RiskGovernor:
         stop_loss_pips: float,
         pip_value: float = 10.0,
         bot_id: Optional[str] = None,
-        portfolio_risk: Optional[Dict[str, float]] = None
+        portfolio_risk: Optional[Dict[str, float]] = None,
+        strategy_type: Optional[str] = None,
+        active_signals: Optional[Dict[str, float]] = None,
+        symbol: Optional[str] = None
     ) -> PositionSizingResult:
         """
         Calculate optimal position size using Enhanced Kelly with all safety layers.
@@ -121,11 +204,12 @@ class RiskGovernor:
         This method orchestrates the entire position sizing process:
         1. Validate inputs
         2. Calculate base Kelly fraction
-        3. Apply physics-based adjustments
-        4. Apply prop firm constraints
-        5. Apply portfolio scaling
-        6. Calculate final position size
-        7. Return comprehensive result with audit trail
+        3. Apply RVOL execution quality multiplier (NEW - Story 4-9)
+        4. Apply physics-based adjustments
+        5. Apply prop firm constraints
+        6. Apply portfolio scaling
+        7. Calculate final position size
+        8. Return comprehensive result with audit trail
 
         Args:
             account_balance: Current account balance in base currency
@@ -138,6 +222,9 @@ class RiskGovernor:
             pip_value: Value per pip for 1 standard lot (default $10)
             bot_id: Optional bot identifier for portfolio scaling
             portfolio_risk: Optional portfolio risk data for scaling
+            strategy_type: Optional strategy type ('scalping', 'ORB') for regime-aware correlation
+            active_signals: Optional dict of bot_id -> kelly_factor for already-signaled bots
+            symbol: Optional trading symbol (e.g., 'EURUSD') for RVOL lookup
 
         Returns:
             PositionSizingResult with complete calculation details
@@ -169,6 +256,11 @@ class RiskGovernor:
             base_kelly_f = self._calculate_base_kelly(win_rate, avg_win, avg_loss)
             result.add_step(f"Base Kelly fraction: {base_kelly_f:.4f} ({base_kelly_f*100:.2f}%)")
 
+            # Step 2.5: Apply RVOL execution quality multiplier (Story 4-9)
+            # RVOL is the first multiplier in the chain: RVOL x Session Kelly x Correlation x House Money
+            rvol_multiplier, rvol_factor = self._apply_rvol_multiplier(symbol)
+            result.add_step(f"RVOL factor: {rvol_factor:.4f} (multiplier: {rvol_multiplier:.2f})")
+
             # Step 3: Apply physics-based adjustments
             physics_multiplier = self._apply_physics_adjustments()
             result.add_step(f"Physics multiplier: {physics_multiplier:.2f}")
@@ -179,12 +271,12 @@ class RiskGovernor:
 
             # Step 5: Apply portfolio scaling
             portfolio_multiplier = self._apply_portfolio_scaling(
-                base_kelly_f, bot_id, portfolio_risk
+                base_kelly_f, bot_id, portfolio_risk, strategy_type, active_signals
             )
             result.add_step(f"Portfolio multiplier: {portfolio_multiplier:.2f}")
 
             # Step 6: Calculate final Kelly fraction
-            final_kelly_f = base_kelly_f * physics_multiplier * prop_firm_multiplier * portfolio_multiplier
+            final_kelly_f = base_kelly_f * rvol_multiplier * physics_multiplier * prop_firm_multiplier * portfolio_multiplier
             result.add_step(f"Final Kelly fraction: {final_kelly_f:.4f} ({final_kelly_f*100:.2f}%)")
 
             # Step 7: Calculate risk amount and position size
@@ -211,6 +303,10 @@ class RiskGovernor:
                 extra={
                     'account_balance': account_balance,
                     'final_kelly_f': final_kelly_f,
+                    'rvol_factor': rvol_factor,
+                    'physics_multiplier': physics_multiplier,
+                    'prop_firm_multiplier': prop_firm_multiplier,
+                    'portfolio_multiplier': portfolio_multiplier,
                     'risk_amount': risk_amount,
                     'lot_size': lot_size,
                     'calculation_time': calculation_time
@@ -261,6 +357,69 @@ class RiskGovernor:
             return MAX_RISK_PCT  # Use max risk as fallback
 
         return base_kelly_f
+
+    def _apply_rvol_multiplier(self, symbol: Optional[str]) -> tuple[float, float]:
+        """
+        Apply RVOL execution quality multiplier to position sizing.
+
+        RVOL (Relative Volume) is retrieved from SVSS via Redis cache.
+        The multiplier is clamped to [0.5, 1.5]:
+        - RVOL >= 2.0: Kelly capped at 1.5x
+        - RVOL = 1.0: Kelly multiplied by 1.0x (neutral)
+        - RVOL = 0.6: Kelly multiplied by 0.6x
+        - RVOL < 0.5: Entry blocked (hard stop, returns 0.0)
+
+        Args:
+            symbol: Trading symbol for RVOL lookup
+
+        Returns:
+            Tuple of (rvol_multiplier, rvol_factor):
+            - rvol_multiplier: The multiplier to apply (0.0 for hard block, or clamped RVOL)
+            - rvol_factor: The raw clamped RVOL value before being used as multiplier
+        """
+        if not symbol:
+            # No symbol provided, use default RVOL of 1.0 (no adjustment)
+            return 1.0, 1.0
+
+        # Get RVOL from cache (or default 1.0 if unavailable)
+        rvol_value = get_rvol(symbol)
+
+        # Get detailed info for logging
+        was_miss = False
+        try:
+            consumer = get_global_consumer()
+            if consumer:
+                _, was_miss = consumer.get_rvol_detailed(symbol)
+        except Exception:
+            # Log but don't fail - RVOL is advisory
+            logger.debug(f"Could not get detailed RVOL for {symbol}", exc_info=True)
+
+        # Apply clamping: clamp(RVOL, 0.5, 1.5)
+        rvol_factor = clamp_rvol(rvol_value)
+
+        if rvol_factor == 0.0:
+            # Hard block - RVOL < 0.5
+            logger.warning(
+                "RVOL hard block triggered",
+                extra={'symbol': symbol, 'rvol': rvol_value, 'threshold': RVOL_MIN}
+            )
+            return 0.0, 0.0
+
+        # Calculate multiplier from clamped RVOL
+        rvol_multiplier = rvol_factor  # clamp_rvol already ensures 0.5 <= value <= 1.5
+
+        logger.info(
+            "RVOL multiplier applied",
+            extra={
+                'symbol': symbol,
+                'raw_rvol': rvol_value,
+                'rvol_factor': rvol_factor,
+                'rvol_multiplier': rvol_multiplier,
+                'cache_miss': was_miss
+            }
+        )
+
+        return rvol_multiplier, rvol_factor
 
     def _apply_physics_adjustments(self) -> float:
         """Apply physics-based adjustments to position sizing."""
@@ -316,30 +475,59 @@ class RiskGovernor:
         self,
         base_kelly_f: float,
         bot_id: Optional[str],
-        portfolio_risk: Optional[Dict[str, float]]
+        portfolio_risk: Optional[Dict[str, float]],
+        strategy_type: Optional[str] = None,
+        active_signals: Optional[Dict[str, float]] = None
     ) -> float:
         """Apply portfolio scaling to prevent over-leverage."""
-        if not bot_id or not portfolio_risk:
-            return 1.0  # No scaling if no bot ID or portfolio data
+        if not bot_id:
+            return 1.0  # No scaling if no bot ID
 
         # Create portfolio risk data
         bot_kelly_factors = {bot_id: base_kelly_f}
 
-        # Scale positions - portfolio_risk is used as bot_correlations here
-        # Convert Dict[str, float] to Dict[Tuple[str, str], float] if needed
-        # For now, pass None since we don't have pairwise correlations
-        scaled_factors = self.portfolio_scaler.scale_bot_positions(bot_kelly_factors, None)
+        # Build bot correlations from active signals if provided
+        bot_correlations = None
+        if active_signals:
+            # Check for correlation penalty with each active signal
+            for active_bot_id, active_kelly in active_signals.items():
+                if active_bot_id == bot_id:
+                    continue  # Skip self
+
+                # Get correlation penalty using correlation sensor
+                correlation_penalty = self.correlation_sensor.get_penalty(
+                    bot_i=bot_id,
+                    bot_j=active_bot_id,
+                    regime=strategy_type or 'scalping'
+                )
+
+                if correlation_penalty > 0:
+                    logger.info(
+                        f"Correlation penalty applied: {bot_id} vs {active_bot_id}, "
+                        f"penalty={correlation_penalty:.4f}, regime={strategy_type}"
+                    )
+
+                    # Apply penalty to this bot's Kelly factor
+                    # This reduces size for the second-signaling bot only
+                    base_kelly_f = base_kelly_f * (1.0 - correlation_penalty)
+
+        # Scale positions using portfolio scaler
+        scaled_factors = self.portfolio_scaler.scale_bot_positions(bot_kelly_factors, bot_correlations)
 
         # Get scaled Kelly factor for this bot
         scaled_kelly_f = scaled_factors.get(bot_id, base_kelly_f)
 
         # Calculate multiplier
-        return scaled_kelly_f / base_kelly_f if base_kelly_f > 0 else 1.0
+        return scaled_kelly_f / (bot_kelly_factors.get(bot_id, base_kelly_f)) if base_kelly_f > 0 else 1.0
 
     def _round_to_lot_size(self, position_size: float) -> float:
         """Round position size to broker lot step."""
         # Use constants from config
         from .config import MIN_LOT, LOT_STEP, MAX_LOT
+
+        # Hard block returns 0 - don't round up to MIN_LOT
+        if position_size <= 0:
+            return 0.0
 
         if position_size < MIN_LOT:
             return MIN_LOT

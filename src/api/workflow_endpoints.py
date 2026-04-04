@@ -195,6 +195,44 @@ def _get_agent_type_for_step(step_name: str) -> str:
     return agent_map.get(step_name, "system")
 
 
+def _serialize_model(model: BaseModel) -> Dict[str, Any]:
+    """Serialize a Pydantic model across v1/v2 without pulling in HTTP self-calls."""
+    if hasattr(model, "model_dump"):
+        return model.model_dump(mode="json")
+    return model.dict()
+
+
+def _get_workflow_gate_payload(workflow_id: str, pending_only: bool = False) -> Dict[str, Any]:
+    """
+    Read workflow approval gates directly from the local database.
+
+    This avoids split-host breakage from self-calling `localhost:8000`.
+    """
+    from src.api.approval_gate import (
+        ApprovalGateModel,
+        ApprovalStatus,
+        _model_to_response,
+    )
+    from src.database.engine import get_session
+
+    session = get_session()
+    try:
+        query = session.query(ApprovalGateModel).filter(ApprovalGateModel.workflow_id == workflow_id)
+        if pending_only:
+            query = query.filter(
+                ApprovalGateModel.status.in_([
+                    ApprovalStatus.PENDING,
+                    ApprovalStatus.PENDING_REVIEW,
+                ])
+            )
+
+        gates = query.order_by(ApprovalGateModel.created_at.asc()).all()
+        payload = [_serialize_model(_model_to_response(gate)) for gate in gates]
+        return {"gates": payload, "total": len(payload)}
+    finally:
+        session.close()
+
+
 # ============================================================================
 # API Endpoints
 # ============================================================================
@@ -546,19 +584,9 @@ async def get_workflow_approvals(workflow_id: str):
     This endpoint proxies to the approval-gates API to get workflow approvals.
     """
     try:
-        import aiohttp
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"http://localhost:8000/api/approval-gates/workflow/{workflow_id}",
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data
-                else:
-                    return {"gates": [], "total": 0, "error": "Failed to fetch approvals"}
+        return _get_workflow_gate_payload(workflow_id)
     except Exception as e:
+        logger.error("Failed to fetch approvals for workflow %s: %s", workflow_id, e)
         return {"gates": [], "total": 0, "error": str(e)}
 
 
@@ -650,21 +678,11 @@ async def get_workflow_pending_approval(workflow_id: str):
     Returns the pending gate if one exists.
     """
     try:
-        import aiohttp
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"http://localhost:8000/api/approval-gates/pending?workflow_id={workflow_id}",
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    # Filter to only this workflow's gates
-                    gates = [g for g in data.get("gates", []) if g.get("workflow_id") == workflow_id]
-                    return {"has_pending": len(gates) > 0, "gates": gates, "total": len(gates)}
-                else:
-                    return {"has_pending": False, "gates": [], "total": 0}
+        data = _get_workflow_gate_payload(workflow_id, pending_only=True)
+        gates = data.get("gates", [])
+        return {"has_pending": len(gates) > 0, "gates": gates, "total": len(gates)}
     except Exception as e:
+        logger.error("Failed to fetch pending approvals for workflow %s: %s", workflow_id, e)
         return {"has_pending": False, "gates": [], "total": 0, "error": str(e)}
 
 

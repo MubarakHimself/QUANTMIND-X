@@ -10,6 +10,7 @@ Story 6.1: PageIndex Integration & Knowledge API
 
 import asyncio
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -26,7 +27,7 @@ router = APIRouter(prefix="/api/knowledge", tags=["knowledge-unified"])
 # Pydantic models
 # ---------------------------------------------------------------------------
 
-KNOWN_COLLECTIONS: List[str] = ["articles", "books", "logs"]
+KNOWN_COLLECTIONS: List[str] = ["articles", "books", "logs", "ea_records"]
 
 
 class KnowledgeSourceStatus(BaseModel):
@@ -185,3 +186,25 @@ async def search_knowledge(request: KnowledgeSearchRequest) -> KnowledgeSearchRe
         query=request.query,
         warnings=warnings,
     )
+
+
+@router.get("/uploads")
+async def list_uploaded_files():
+    """
+    GET /api/knowledge/uploads
+
+    Returns all user-uploaded files from the personal knowledge base directory.
+    """
+    personal_dir = Path("data/knowledge_base/personal")
+    files = []
+    if personal_dir.exists():
+        for f in personal_dir.iterdir():
+            if f.is_file():
+                files.append({
+                    "filename": f.name,
+                    "path": str(f),
+                    "size_kb": f.stat().st_size // 1024,
+                    "modified": f.stat().st_mtime,
+                    "type": f.suffix.lower()
+                })
+    return {"files": files, "count": len(files)}

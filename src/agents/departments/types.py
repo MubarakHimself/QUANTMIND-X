@@ -8,6 +8,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from src.agents.prompts.department_contracts import (
+    compose_department_head_prompt,
+    compose_floor_manager_prompt,
+    get_department_prompt_seed,
+    get_floor_manager_prompt_seed,
+)
+
 
 class Department(str, Enum):
     """Trading Floor Departments."""
@@ -126,8 +133,8 @@ class DepartmentHeadConfig:
         department: Which department this head leads
         agent_type: Agent type identifier for SDK orchestrator
         system_prompt: System prompt for the department head
-        provider: LLM provider for this agent
-        model: LLM model for this agent
+        provider: Optional configured provider override for this agent
+        model: Optional configured model override for this agent
         sub_agents: List of spawnable worker agent types
         memory_namespace: Isolated memory namespace for this department
         max_workers: Maximum concurrent workers
@@ -136,8 +143,8 @@ class DepartmentHeadConfig:
     department: Department
     agent_type: str
     system_prompt: str
-    provider: str = "anthropic"
-    model: str = "claude-sonnet-4-20250514"
+    provider: str = ""
+    model: str = ""
     sub_agents: List[str] = field(default_factory=list)
     memory_namespace: str = ""
     max_workers: int = 5
@@ -625,36 +632,97 @@ When routing to a department, briefly explain what you are doing and why.
 When synthesizing results, highlight the key takeaway first, then details."""
 
 
+# Runtime prompt seeds stay slim for editable/system-overridden prompt composition.
+_RESEARCH_PROMPT_SEED = get_department_prompt_seed(
+    department="research",
+    persona_name=DEPARTMENT_PERSONALITIES["research"].name,
+    tagline=DEPARTMENT_PERSONALITIES["research"].tagline,
+    communication_style=DEPARTMENT_PERSONALITIES["research"].communication_style,
+)
+_DEVELOPMENT_PROMPT_SEED = get_department_prompt_seed(
+    department="development",
+    persona_name=DEPARTMENT_PERSONALITIES["analysis"].name,
+    tagline=DEPARTMENT_PERSONALITIES["analysis"].tagline,
+    communication_style=DEPARTMENT_PERSONALITIES["analysis"].communication_style,
+)
+_TRADING_PROMPT_SEED = get_department_prompt_seed(
+    department="trading",
+    persona_name=DEPARTMENT_PERSONALITIES["execution"].name,
+    tagline=DEPARTMENT_PERSONALITIES["execution"].tagline,
+    communication_style=DEPARTMENT_PERSONALITIES["execution"].communication_style,
+)
+_RISK_PROMPT_SEED = get_department_prompt_seed(
+    department="risk",
+    persona_name=DEPARTMENT_PERSONALITIES["risk"].name,
+    tagline=DEPARTMENT_PERSONALITIES["risk"].tagline,
+    communication_style=DEPARTMENT_PERSONALITIES["risk"].communication_style,
+)
+_PORTFOLIO_PROMPT_SEED = get_department_prompt_seed(
+    department="portfolio",
+    persona_name=DEPARTMENT_PERSONALITIES["portfolio"].name,
+    tagline=DEPARTMENT_PERSONALITIES["portfolio"].tagline,
+    communication_style=DEPARTMENT_PERSONALITIES["portfolio"].communication_style,
+)
+_FLOOR_MANAGER_PROMPT_SEED = get_floor_manager_prompt_seed()
+
+# Compatibility exports: the settings UI and some legacy paths still expect full defaults.
+_RESEARCH_SYSTEM_PROMPT = compose_department_head_prompt(
+    "research",
+    _RESEARCH_PROMPT_SEED,
+    sub_agents=["strategy_researcher", "market_analyst", "backtester"],
+)
+_DEVELOPMENT_SYSTEM_PROMPT = compose_department_head_prompt(
+    "development",
+    _DEVELOPMENT_PROMPT_SEED,
+    sub_agents=["python_dev", "pinescript_dev", "mql5_dev"],
+)
+_TRADING_SYSTEM_PROMPT = compose_department_head_prompt(
+    "trading",
+    _TRADING_PROMPT_SEED,
+    sub_agents=["order_executor", "fill_tracker", "trade_monitor"],
+)
+_RISK_SYSTEM_PROMPT = compose_department_head_prompt(
+    "risk",
+    _RISK_PROMPT_SEED,
+    sub_agents=["position_sizer", "drawdown_monitor", "var_calculator"],
+)
+_PORTFOLIO_SYSTEM_PROMPT = compose_department_head_prompt(
+    "portfolio",
+    _PORTFOLIO_PROMPT_SEED,
+    sub_agents=["allocation_manager", "rebalancer", "performance_tracker"],
+)
+_FLOOR_MANAGER_SYSTEM_PROMPT = compose_floor_manager_prompt(_FLOOR_MANAGER_PROMPT_SEED)
+
 # Default configurations for all departments
 DEFAULT_DEPARTMENT_CONFIGS: Dict[str, DepartmentHeadConfig] = {
     "research": DepartmentHeadConfig(
         department=Department.RESEARCH,
         agent_type="research_head",
-        system_prompt=_RESEARCH_SYSTEM_PROMPT,
+        system_prompt=_RESEARCH_PROMPT_SEED,
         sub_agents=["strategy_researcher", "market_analyst", "backtester"],
     ),
     "development": DepartmentHeadConfig(
         department=Department.DEVELOPMENT,
         agent_type="development_head",
-        system_prompt=_DEVELOPMENT_SYSTEM_PROMPT,
+        system_prompt=_DEVELOPMENT_PROMPT_SEED,
         sub_agents=["python_dev", "pinescript_dev", "mql5_dev"],
     ),
     "trading": DepartmentHeadConfig(
         department=Department.TRADING,
         agent_type="trading_head",
-        system_prompt=_TRADING_SYSTEM_PROMPT,
+        system_prompt=_TRADING_PROMPT_SEED,
         sub_agents=["order_executor", "fill_tracker", "trade_monitor"],
     ),
     "risk": DepartmentHeadConfig(
         department=Department.RISK,
         agent_type="risk_head",
-        system_prompt=_RISK_SYSTEM_PROMPT,
+        system_prompt=_RISK_PROMPT_SEED,
         sub_agents=["position_sizer", "drawdown_monitor", "var_calculator"],
     ),
     "portfolio": DepartmentHeadConfig(
         department=Department.PORTFOLIO,
         agent_type="portfolio_head",
-        system_prompt=_PORTFOLIO_SYSTEM_PROMPT,
+        system_prompt=_PORTFOLIO_PROMPT_SEED,
         sub_agents=["allocation_manager", "rebalancer", "performance_tracker"],
     ),
 }

@@ -12,6 +12,7 @@ from src.intent.patterns import (
     IntentClassification,
     get_matcher,
 )
+from src.config import get_internal_api_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -376,7 +377,7 @@ class IntentClassifier:
                 }
 
             # Get the server URL from canvas context or use default
-            base_url = canvas_context.get("server_url", "http://localhost:8000")
+            base_url = (canvas_context.get("server_url") or get_internal_api_base_url()).rstrip("/")
 
             # Call the node update API endpoint to execute the update and get results
             try:

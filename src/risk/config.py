@@ -23,6 +23,12 @@ MAX_LOT = 100.0
 MAX_RISK_PCT = 0.05  # Maximum 5% risk per trade
 DEFAULT_RISK_PCT = 0.02  # Default 2% risk per trade
 
+# 3/5/7 Risk Framework - Tiered Drawdown Limits
+# Daily: 3%, Weekly: 5%, Monthly: 7%
+DAILY_DRAWDOWN_LIMIT = 0.03   # 3% max daily drawdown
+WEEKLY_DRAWDOWN_LIMIT = 0.05  # 5% max weekly drawdown
+MONTHLY_DRAWDOWN_LIMIT = 0.07 # 7% max monthly drawdown
+
 PHYSICS_CACHE_TTL = 60  # Cache physics readings for 60 seconds
 ACCOUNT_CACHE_TTL = 300  # Cache account info for 5 minutes
 
@@ -134,10 +140,6 @@ RISK_TIERS: Dict[RiskTier, float] = {
 # =============================================================================
 # Kelly Criterion Configuration
 # =============================================================================
-
-KELLY_FRACTION_CAP = 0.25  # Never exceed 25% Kelly fraction
-KELLY_MIN_WIN_RATE = 0.45  # Minimum win rate to use Kelly
-KELLY_MIN_EXPECTANCY = 0.1  # Minimum positive expectancy
 
 # Kelly fraction multipliers for different market conditions
 KELLY_MULTIPLIERS = {

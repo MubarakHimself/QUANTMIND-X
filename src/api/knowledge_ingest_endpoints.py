@@ -445,3 +445,35 @@ async def ingest_personal(
         created_at_utc=created_at_utc,
         source_description=source_description,
     )
+
+
+@router.post("/ea-record")
+async def index_ea_record(
+    strategy_id: str = Form(...),
+    strategy_name: str = Form(...),
+    status: str = Form(...),
+    retirement_reason: str = Form(""),
+    backtest_summary: str = Form(""),
+    sessions_traded: str = Form(""),
+    notes: str = Form(""),
+):
+    content = f"""# EA Record: {strategy_name}
+**Strategy ID:** {strategy_id}
+**Status:** {status}
+**Retirement Reason:** {retirement_reason}
+## Backtest Summary
+{backtest_summary}
+## Sessions Traded
+{sessions_traded}
+## Notes
+{notes}
+"""
+    # Write to primary ea_records directory
+    path = Path("data/ea_records") / f"{strategy_id}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+    # Also write to scraped_articles/ea_records/ so PageIndex picks it up
+    scraped_path = SCRAPED_ARTICLES_DIR / "ea_records" / f"{strategy_id}.md"
+    scraped_path.parent.mkdir(parents=True, exist_ok=True)
+    scraped_path.write_text(content)
+    return {"status": "indexed", "namespace": "ea_records", "file": str(path)}

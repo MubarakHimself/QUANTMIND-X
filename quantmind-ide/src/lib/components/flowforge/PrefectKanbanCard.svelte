@@ -60,6 +60,7 @@
 <div
   class="kanban-card {workflow.state.toLowerCase()}"
   class:pulse-border={isRunning}
+  class:cancelled-state={workflow.state === 'CANCELLED'}
   onclick={handleClick}
   role="button"
   tabindex="0"
@@ -67,7 +68,8 @@
 >
   <!-- Card Header -->
   <div class="card-header">
-    <span class="workflow-name" title={workflow.name}>{workflow.name}</span>
+    <!-- AC5: Strikethrough visual for cancelled state -->
+    <span class="workflow-name" class:strikethrough={workflow.state === 'CANCELLED'} title={workflow.name}>{workflow.name}</span>
     <span class="department">{workflow.department}</span>
   </div>
 
@@ -277,6 +279,18 @@
   .kanban-card.cancelled {
     border-left: 3px solid #ef4444;
     opacity: 0.7;
+  }
+
+  /* AC5: Cancelled state visual with strikethrough */
+  .kanban-card.cancelled-state {
+    background: rgba(30, 32, 40, 0.6);
+  }
+
+  .workflow-name.strikethrough {
+    text-decoration: line-through;
+    text-decoration-color: #ef4444;
+    text-decoration-thickness: 2px;
+    color: #94a3b8;
   }
 
   .kanban-card.expired_review {

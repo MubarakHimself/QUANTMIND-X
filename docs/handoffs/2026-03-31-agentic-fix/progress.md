@@ -1,6 +1,552 @@
 # Progress
 
-Updated: 2026-04-03
+Updated: 2026-04-04
+
+## 2026-04-04 Incremental Slice (Trading canvas de-placeholder + paper-trading host-safe runtime)
+
+- Removed the remaining non-production Trading canvas placeholder tiles and replaced them with live summary surfaces:
+  - [TradingCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/TradingCanvas.svelte)
+    - now imports and renders:
+      - [TradingJournalSummaryTile.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/trading/tiles/TradingJournalSummaryTile.svelte)
+      - [RiskPhysicsSummaryTile.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/trading/tiles/RiskPhysicsSummaryTile.svelte)
+    - removed literal placeholder text:
+      - `— coming soon —`
+      - `— routed from Risk —`
+    - runtime attachment metadata now advertises live sources instead of placeholder statuses:
+      - `trading:trading-journal -> /api/journal/trades`
+      - `trading:risk-physics -> /api/risk/physics`
+- Added a real Trading Journal summary tile:
+  - [TradingJournalSummaryTile.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/trading/tiles/TradingJournalSummaryTile.svelte)
+    - reads the live journal endpoint:
+      - `GET /api/journal/trades?limit=25`
+    - shows:
+      - closed trade count
+      - win rate
+      - net P&L
+      - most recent entry metadata
+    - when the journal is empty, it now shows a production-style empty state instead of placeholder copy
+- Added a real Risk Physics summary tile in Trading:
+  - [RiskPhysicsSummaryTile.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/trading/tiles/RiskPhysicsSummaryTile.svelte)
+    - reuses the live/shared risk physics store
+    - on hosts without MT5 physics inputs, it shows the now-honest host-unavailable state rather than pretending Risk Physics is “routed from Risk”
+    - on live-capable hosts it will show regime/confidence/transition/Kelly summary metrics
+- Production-hardened the paper-trading API for hosts where `mcp_mt5` is intentionally unavailable:
+  - added [runtime.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/paper_trading/runtime.py)
+    - `PaperTradingUnavailableDeployer`
+    - `ensure_paper_trading_runtime(...)`
+    - `is_paper_trading_runtime_available(...)`
+  - wired the modular paper-trading routes to use that contract:
+    - [agents.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/paper_trading/agents.py)
+    - [deploy.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/paper_trading/deploy.py)
+    - [promotion.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/paper_trading/promotion.py)
+    - [routes.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/paper_trading/routes.py)
+  - result:
+    - read-only summary route `GET /api/paper-trading/active` now degrades to `200 {"items":[]}` instead of a 500 on this Linux/non-MT5 host
+    - write/mutation endpoints now fail explicitly with clean `503` host/runtime-unavailable errors rather than exploding at import time
+- Also hardened the legacy compatibility module so importing it no longer crashes on hosts without `mcp_mt5`:
+  - [paper_trading_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/paper_trading_endpoints.py)
+    - wrapped both the classic deployer import and the enhanced deployer/demo-account import chain with host-safe fallbacks
+    - backward-compatibility tests now pass without requiring the MT5 package locally
+- Verification completed:
+  - backend:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_paper_trading_runtime.py tests/api/test_paper_trading_split.py`
+      - result: `13 passed`
+  - frontend:
+    - `cd quantmind-ide && npx vitest run src/lib/components/canvas/TradingCanvas.test.ts src/lib/stores/risk.test.ts`
+      - result: `64 passed`
+  - live API:
+    - `GET /api/paper-trading/active`
+      - result: `200 {"items":[]}`
+    - `GET /api/journal/trades?limit=5`
+      - result: `[]`
+  - live Chrome verification on `http://127.0.0.1:3001/`:
+    - opened `Trading`
+    - confirmed `PAPER TRADING MONITOR` renders a clean no-EAs empty state instead of hiding a backend 500
+    - confirmed `TRADING JOURNAL` now renders:
+      - `No journal entries recorded yet.`
+    - confirmed `RISK PHYSICS` now renders:
+      - `Physics models are unavailable on this host.`
+      - `Live MT5 candle features unavailable; physics outputs cannot be computed on this host.`
+- Important deployment note:
+  - this is the correct production behavior for the current Linux workstation
+  - on the real Windows MT5/VPS environment, the same UI surfaces should populate from the live runtime instead of these honest empty/unavailable states
+
+## 2026-04-04 Incremental Slice (Claude SDK tool contract confirmation + live department mail verification)
+
+- Re-confirmed the active custom tool contract against the official Claude Agent SDK docs:
+  - official doc target used: `/websites/platform_claude_en_agent-sdk`
+  - confirmed Python tool definition shape:
+    - `name`
+    - `description`
+    - `input_schema`
+    - `handler`
+  - confirmed handler return shape:
+    - SDK-native result object with `content` blocks, e.g. `{"content":[{"type":"text","text":"..."}]}`
+  - this matches the new adapter direction already landed in:
+    - [tool_registry.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/tool_registry.py)
+- Completed the live end-to-end department mail verification in Chrome after the department streaming/runtime fix:
+  - Research canvas
+    - opened a fresh right-rail session
+    - sent:
+      - `Use the send_mail tool now. Send a short message to portfolio with subject 'UI mail test 2' and body 'Mail tool execution verification after SDK-style tool registry fix.' Then tell me the message id.`
+    - assistant returned a real tool-backed success response:
+      - `The message was sent successfully to the portfolio department.`
+      - `Message ID: 0efd5ca3-e389-4963-bfd0-9a48b6d00218`
+    - right-rail streaming status also rendered correctly:
+      - `thinking · started`
+      - `thinking · streaming`
+      - `thinking · completed`
+  - backend log evidence from the same live run:
+    - MiniMax request succeeded:
+      - `POST https://api.minimax.io/anthropic/v1/messages "HTTP/1.1 200 OK"`
+    - actual tool execution happened in the department runtime:
+      - `Executing tool 'send_mail' (id=...) for research`
+      - `Mail sent to portfolio: 0efd5ca3-e389-4963-bfd0-9a48b6d00218`
+    - downstream writeback executed:
+      - `Mail processed: 0efd5ca3-e389-4963-bfd0-9a48b6d00218 -> todo=todo_ec8e5440bc, kanban=kb_598b237942 (dept=portfolio)`
+  - Portfolio canvas
+    - switched to `MAIL` in the right-rail agent panel
+    - confirmed the inbound message appears in the live inbox list:
+      - sender label shown as `research · result`
+      - subject shown as `UI mail test 2`
+- Result:
+  - the department streaming path is now using the real department-head tool runtime, not the generic floor-manager fallback path
+  - `send_mail` works live in the UI
+  - inbound Portfolio mail projection also works live in the UI
+- Closed one real registry/tooling gap that was still violating the advertised department contract:
+  - [tool_registry.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/tool_registry.py)
+    - added a canonical `strategy_extraction` SDK-style adapter
+    - this tool was still permissioned in department access rules for Research, Development, and Portfolio but had no live registry builder
+    - the adapter now exposes:
+      - `extract_from_text`
+      - `extract_from_pdf`
+      - `extract_from_video`
+      - `validate`
+      - `generate_trd`
+  - Result:
+    - department prompts/tool surfaces no longer advertise `strategy_extraction` as a dead capability
+    - the active registry now exposes that capability with a real schema and runtime path
+- Hardened the verification surface so the touched API test suite no longer depends on accidental live provider/network behavior:
+  - [test_chat_per_agent.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_chat_per_agent.py)
+    - mocked `test_floor_manager_chat_endpoint`
+    - mocked `test_department_chat_endpoint`
+  - Root cause:
+    - those two tests were still using real endpoint runtime and could hang on provider/network state
+    - after the mocking cleanup, the focused suite is deterministic again
+- Verification completed:
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/agents/departments/test_tool_registry_runtime.py -k 'strategy_extraction or active_department_tools_expose_real_input_schemas'`
+    - result: `2 passed`
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/agents/departments/test_tool_registry_runtime.py tests/agents/departments/heads/test_base.py tests/api/test_chat_per_agent.py`
+    - result: `25 passed`
+  - `python3 -m compileall src/agents/departments/tool_registry.py src/api/chat_endpoints.py src/agents/departments/heads/base.py`
+    - result: clean compile
+- Remaining follow-up from this slice:
+  - the functional mail path and the right-rail mail detail workspace are now both verified live
+  - remaining follow-up is further mail viewport polish and space usage, not basic inspectability/delivery
+
+## 2026-04-04 Incremental Slice (right-rail mail split view)
+
+- Upgraded the right-rail `MAIL` tab in [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte) from a flat read-only list into a usable list/detail workspace:
+  - added per-canvas selected-mail state persistence
+  - inbox rows are now interactive buttons instead of static text blocks
+  - selecting a row opens a details pane in the same right rail
+  - the details pane renders:
+    - sender to recipient routing
+    - subject
+    - type
+    - priority
+    - timestamp
+    - full body
+  - added a clear-selection action and default-first-message selection on mail load
+- Live Chrome verification on `http://127.0.0.1:3001/`:
+  - switched to `Portfolio -> MAIL`
+  - confirmed mail rows now render as interactive entries
+  - confirmed the latest message `UI mail test 2` is selectable in the right rail
+  - confirmed the detail pane renders:
+    - `RESEARCH -> PORTFOLIO`
+    - subject `UI mail test 2`
+    - type `RESULT`
+    - priority `NORMAL`
+    - full body `Mail tool execution verification after SDK-style tool registry fix.`
+- Verification:
+  - live Chrome re-check passed after frontend reload
+  - `python3 -m compileall src/agents/departments/tool_registry.py`
+    - clean compile
+  - frontend build remains noisy because of large pre-existing Svelte warnings across unrelated files; no new AgentPanel build error remains after this slice
+
+## 2026-04-04 Incremental Slice (cross-canvas hint containment + MiniMax tool-call recovery)
+
+- Fixed the active cross-canvas chat-context leak in the right-rail agent panel:
+  - [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte)
+    - automatic `workspace_resource_hints` are now scoped to the active canvas for department chats
+    - `shared-assets` remains allowed as the neutral shared surface
+    - `workshop` and `flowforge` remain orchestration canvases and keep cross-canvas natural-search scope
+  - Root cause:
+    - department sends were still running `searchAttachableResources(...)` across every visible context surface
+    - because shared-asset visibility exposed research resources with primary canvas `research`, Development/Risk/Trading sessions were receiving foreign Research article hints by default
+    - this violated the manifest-first contract and made department runs unnecessarily heavy and brittle
+- Added backend enforcement so leaked foreign hints are dropped even if a client regresses later:
+  - [chat_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/chat_endpoints.py)
+    - `_normalize_chat_context(...)` now filters `workspace_resource_hints` to:
+      - the active/default department canvas
+      - `shared-assets`
+      - except for orchestration canvases (`workshop`, `flowforge`, `floor-manager`) where cross-canvas hints remain allowed
+- Fixed the live MiniMax tool-call regression in the base department runtime:
+  - [base.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/base.py)
+    - added parsing for MiniMax Anthropic-compatible XML fallback tool markup:
+      - `<minimax:tool_call>`
+      - `<invoke name="...">`
+      - `<parameter name="...">...`
+    - the department loop now synthesizes executable `tool_use` blocks from that markup instead of leaking it into chat as plain assistant text
+    - visible text is stripped of the XML tool wrapper before final chat projection
+  - Root cause:
+    - MiniMax sometimes returned tool invocations as text markup instead of native `tool_use` blocks
+    - the old loop only executed native `tool_use` blocks, so Development surfaced raw XML in the chat and never ran the requested tools
+- Regression tests added and passing:
+  - [test_chat_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_chat_endpoints.py)
+    - `test_filters_workspace_resource_hints_to_active_canvas_and_shared_assets`
+    - `test_keeps_cross_canvas_workspace_resource_hints_for_floor_manager`
+  - [test_base.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/agents/departments/heads/test_base.py)
+    - `test_extracts_minimax_tool_calls_from_text_markup`
+    - `test_strips_minimax_tool_markup_from_visible_text`
+  - [AgentPanel.context-attachment.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.context-attachment.test.ts)
+    - added coverage for active-canvas-only automatic hint scope
+- Verification completed:
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/agents/departments/heads/test_base.py -k 'extracts_minimax_tool_calls_from_text_markup or strips_minimax_tool_markup_from_visible_text'`
+    - result: `2 passed`
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_chat_endpoints.py -k 'filters_workspace_resource_hints_to_active_canvas_and_shared_assets or keeps_cross_canvas_workspace_resource_hints_for_floor_manager'`
+    - result: `2 passed`
+  - `cd quantmind-ide && npx vitest run src/lib/components/shell/AgentPanel.context-attachment.test.ts`
+    - result: `2 passed`
+- Live Chrome verification on `http://127.0.0.1:3001/` after backend restart:
+  - Development:
+    - simple identity/job prompt returned correctly
+    - bounded delegation prompt no longer leaked raw MiniMax XML tool markup
+    - backend logs showed actual executed tools:
+      - `Executing tool 'search_resources'`
+      - `Executing tool 'list_resources'`
+    - final chat answer returned:
+      - no EA-related files found in the current workspace
+      - no sub-agent used because the workspace was empty
+  - Risk:
+    - identity/job prompt returned correctly in the right-rail chat
+  - Trading:
+    - identity/job prompt returned correctly in the right-rail chat
+  - Portfolio:
+    - identity/job prompt returned correctly in the right-rail chat
+  - Research:
+    - already verified earlier in the active MiniMax/M2.5 path and remains the known-good department baseline
+- Active runtime/model observations:
+  - `GET /api/agent-config/research/model -> {"model":"MiniMax-M2.5","provider":"minimax"}`
+  - same for `development`, `risk`, `trading`, `portfolio`
+  - `GET /api/agent-config/floor_manager/model -> {"model":"MiniMax-M2.7","provider":"minimax"}`
+  - this confirms department heads are currently on `MiniMax-M2.5` while Floor Manager remains on `MiniMax-M2.7`
+- Remaining real issues after this slice:
+  - Risk canvas physics surface still fails live:
+    - `Failed to fetch physics data: HTTP 503: Service Unavailable`
+  - Trading canvas still contains non-production placeholders:
+    - `TRADING JOURNAL — coming soon —`
+    - `RISK PHYSICS — routed from Risk —`
+  - Department tool inventory is still partially degraded:
+    - backend logs show `ToolRegistry` warnings for missing tool classes/modules (`MemoryTools`, `KnowledgeTools`, `BacktestTools`, `task_list`, `shared_assets`, etc.)
+    - active chats now work, but the broader tool surface still needs a real rebuild/cleanup against the new contract
+  - Department mail is still falling back to SQLite because Redis is unavailable:
+    - this is functional for local/runtime continuity, but still needs production deployment confirmation
+
+## 2026-04-03 Incremental Slice (Settings dialog unstick + Agents runtime stabilization)
+
+- Fixed the live `Settings -> Agents` regression that made the dialog appear "stuck" after opening the Agents tab:
+  - [SettingsView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/SettingsView.svelte)
+    - removed the legacy `createBubbler` / `stopPropagation(bubble('click'))` wrapper on the settings panel
+    - replaced it with a direct `event.stopPropagation()` handler so inner settings controls are handled normally
+  - [AgentsPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/settings/AgentsPanel.svelte)
+    - removed the reactive `loadSystemPrompt(selectedAgent)` effect that was tracking and mutating the same agent prompt state
+    - prompt loading now happens explicitly on mount and on agent selection instead of through a self-referential effect
+- Root cause:
+  - the visible symptom looked like a click trap in the settings modal, but live Chrome console inspection showed:
+    - `Uncaught Svelte error: effect_update_depth_exceeded`
+  - once the Agents panel mounted, that effect loop destabilized the dialog, which is why tab switches and close behavior stopped working reliably
+- Side effect fixed at the same time:
+  - the `Model` combobox in `Settings -> Agents` now hydrates visibly with the live provider catalog again
+  - live Chrome now shows:
+    - Provider: `MiniMax`
+    - Model: `MiniMax M2.7`
+    - additional MiniMax options render in the select list
+- Live Chrome verification on `http://127.0.0.1:3001/`:
+  - opened `Settings`
+  - switched from `Appearance` to `Agents`
+  - confirmed the `Agents` content renders without freezing the dialog
+  - switched from `Agents` to `Providers`
+  - switched from `Providers` back to `Appearance`
+  - clicked `Close`
+  - confirmed the dialog closed and focus returned to the top-bar settings button
+  - confirmed the preserved console no longer logged a new `effect_update_depth_exceeded` during the reproduced flow
+- Verification completed:
+  - `cd quantmind-ide && npx vite build --mode development`
+    - build completed successfully
+    - repo-wide pre-existing Svelte warnings remain outside this slice
+
+## 2026-04-03 Incremental Slice (Agents settings panel cleanup + department coding)
+
+- The `Settings -> Agents` surface was trimmed into a cleaner production-style two-panel editor:
+  - [AgentsPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/settings/AgentsPanel.svelte)
+    - removed the old panel header chrome from the active agent editor surface:
+      - removed `Agent Configuration`
+      - removed the explanatory info block
+      - removed `Export`, `Import`, and top-level `Save`
+      - removed the `Visual Editor` / `Raw Markdown` toggle from the visible settings surface
+    - kept the left selector + right editor split as the primary layout
+    - color-coded department cards in the selector:
+      - Research: blue
+      - Development: green
+      - Trading: amber
+      - Risk: red
+      - Portfolio: violet
+      - Floor Manager remains on the standard accent path
+    - enlarged the system prompt editor so prompt authoring has primary visual weight
+    - restructured the right pane into:
+      - compact active-agent summary strip
+      - large prompt editor column
+      - secondary identity/model stack
+    - removed the effect-looping provider/model sync and replaced it with explicit sync helpers to keep the editor stable
+- Live Chrome verification on `http://127.0.0.1:3001/`:
+  - opened `Settings`
+  - navigated to `Agents`
+  - confirmed the old top agent-header/actions are gone from the active panel
+  - confirmed the left-side selector now renders department-specific accent colors
+  - confirmed the prompt editor renders with a much larger working area:
+    - DOM check showed `min-height: 420px`
+    - rendered prompt height was about `502px`
+  - confirmed the selector card accents in live DOM:
+    - Research `#4f8cff`
+    - Development `#28c17a`
+    - Trading `#d6a22a`
+    - Risk `#ff6b6b`
+    - Portfolio `#9b7bff`
+- Runtime note:
+  - during verification there were duplicate local Vite dev servers on `:3001`; these were collapsed to a single clean frontend process before re-verifying the panel
+- Verification completed:
+  - `cd quantmind-ide && npx vite build --mode development`
+    - build succeeded
+    - existing repo-wide Svelte warnings remain outside this slice
+- Remaining follow-up from this panel:
+  - the provider selector hydrates correctly and shows live options
+  - the model selector is still visually empty in Chrome even though `GET /api/agent-config/available-models` returns live MiniMax models
+  - this is now tracked as the next remaining functional gap on the Agents settings surface
+
+## 2026-04-03 Incremental Slice (Agents settings UX + live prompt visibility)
+
+- The `Settings -> Agents` surface is now aligned with the current department-based runtime instead of opening into an AGENTS.md-first workflow:
+  - [SettingsView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/SettingsView.svelte)
+    - default editor mode is now `Visual Editor` instead of `Raw Markdown`
+    - `show()` now calls `loadSettings()` so every dialog open rehydrates live backend state instead of reusing stale blank provider/model state from initial app bootstrap
+  - [AgentsPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/settings/AgentsPanel.svelte)
+    - redesigned the agent selector into a left-side card browser with grouped department/sub-agent sections
+    - moved the system prompt editor to the top of the visual agent configuration so prompts are immediately visible on open
+    - added an active-agent hero block that shows the selected canonical agent identity
+    - increased prompt editor prominence/height for real prompt review/editing
+    - fixed provider/model provider-state reload behavior so visual editor recoveries no longer get stuck after an earlier backend outage
+    - removed the accidental effect loop from the earlier retry logic (`effect_update_depth_exceeded`)
+- Live Chrome verification on `http://127.0.0.1:3001/`:
+  - opened `Settings`
+  - navigated to `Agents`
+  - confirmed the dialog now opens on the visual editor by default
+  - confirmed the left-side agent browser renders as grouped cards instead of a dense wrap layout
+  - confirmed the `Floor Manager` system prompt is immediately visible without switching editors or scrolling through model/tools first
+  - confirmed provider hydration now reloads on settings open:
+    - `Provider` showed `MiniMax`
+    - provider options rendered live (`Anthropic Claude`, `GLM (Zhipu AI)`, `MiniMax`)
+- Build verification:
+  - `cd quantmind-ide && npx vite build --mode development`
+    - build succeeded
+    - existing repo-wide Svelte warnings remain outside this slice
+- Follow-up still pending from this surface:
+  - the selected provider now hydrates correctly in the `Agents` panel after dialog open
+  - the selected model combobox text still needs a final pass so the active model value is rendered as clearly as the provider in the same view
+
+## 2026-04-03 Incremental Slice (Workshop transport fix + no-mock settings cleanup)
+
+- Root cause for the live Workshop regression is now identified and fixed:
+  - the active Floor Manager LLM transport was inheriting ambient machine HTTP environment behavior through plain `httpx.AsyncClient(...)`
+  - on this Pop!_OS/Linux workstation, that caused intermittent live failures on the MiniMax path (`/api/chat/floor-manager/message`) even though the same provider call succeeded when `httpx` was run with `trust_env=False`
+  - the broken browser symptom previously rendered as:
+    - `LLM call failed:`
+    - and in another reproduction path as:
+    - `Could not connect to LLM provider at https://api.minimax.io/anthropic...`
+- Production hardening landed in the active outbound LLM runtime paths:
+  - [floor_manager.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/floor_manager.py)
+    - both `_invoke_llm(...)` and `_invoke_llm_stream(...)` now use `httpx.AsyncClient(..., trust_env=False)`
+  - [client.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/providers/client.py)
+    - Anthropic/OpenAI/GLM transport helpers now also disable ambient env inheritance for outbound provider calls
+  - [workshop_copilot_service.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/services/workshop_copilot_service.py)
+    - direct-response, delegation, and streaming copilot service clients now also use `trust_env=False`
+- No-mock settings cleanup landed in an active UI surface:
+  - [AgentsPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/settings/AgentsPanel.svelte)
+    - removed synthetic provider rows (`OpenRouter`, `Anthropic`, `Zhipu`) that were invented when `/api/providers/available` failed
+    - removed hardcoded fallback model catalogs; agent settings now reflect only live API-provided provider/model state
+- New regression coverage added:
+  - [test_floor_manager_chat.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/agents/departments/test_floor_manager_chat.py)
+    - `test_invoke_llm_disables_httpx_env_inheritance`
+    - `test_invoke_llm_stream_disables_httpx_env_inheritance`
+- Live verification evidence:
+  - direct backend smoke after restart:
+    - `POST /api/chat/floor-manager/message`
+    - reply returned successfully with real Workshop-context content instead of the earlier provider transport failure
+  - Chrome verification on `http://127.0.0.1:3001/`:
+    - navigated to `Workshop`
+    - sent:
+      - `What canvas am I on right now?`
+    - UI rendered a real assistant answer:
+      - `You are on the workshop canvas...`
+      - including session type / workspace-contract details
+    - recent-session sidebar updated immediately with a fresh row:
+      - `Chat 2026-04-03 15:50`
+- Important notes:
+  - the previous “Workshop UI mismatch” was not a pure rendering bug; the primary blocker was the live provider transport path
+  - the Workshop sidebar/session creation behavior is now healthy again in Chrome for this path
+  - legacy/deprecated agent surfaces (`copilot`, `analyst`, `quantcode`) still exist in multiple non-canonical files and remain an active cleanup track, but the canonical chat runtime path is currently using the department/floor-manager architecture
+- Verification completed:
+  - `python3 -m compileall src/agents/departments/floor_manager.py src/agents/providers/client.py src/api/services/workshop_copilot_service.py`
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/agents/departments/test_floor_manager_chat.py -k 'invoke_llm_disables_httpx_env_inheritance or invoke_llm_stream_disables_httpx_env_inheritance'`
+    - result: `2 passed`
+  - `cd quantmind-ide && npx vite build --mode development`
+    - build succeeded
+    - existing repo-wide Svelte/a11y warnings remain, but this slice introduced no build break
+
+## 2026-04-03 Incremental Slice (provider-neutral model/runtime defaults)
+
+- Active provider-neutral defaulting is now enforced in the live agent-config/runtime path instead of assuming MiniMax when provider/model are omitted:
+  - [model_config_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/model_config_endpoints.py)
+    - canonical default agent entries are now blank-by-default and tier-based (`opus` for `floor_manager`, `sonnet` for department heads)
+    - `GET /api/agent-config/models` now returns normalized values resolved through the configured runtime edge
+    - `PATCH /api/agent-config/{agent}/model` no longer injects `provider=minimax` when provider is absent
+    - legacy shorthand model aliases (`opus`, `sonnet`, `haiku`, old Claude/GLM ids) now resolve through the current runtime resolver instead of coercing to MiniMax
+- Active settings surfaces no longer invent a vendor when the runtime is unconfigured:
+  - [SettingsView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/SettingsView.svelte)
+    - settings load now respects empty provider/model states
+    - available-model loading now short-circuits cleanly when no provider is selected
+  - [settingsStore.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/settingsStore.ts)
+    - default model config is now provider-neutral (`provider=''`, `model=''`, `availableModels=[]`)
+  - [settings_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/settings_endpoints.py)
+    - default agent settings no longer ship with `defaultModel=MiniMax-M2.5`
+- Important behavior clarification:
+  - the current live system still returns `{"provider":"minimax","model":"MiniMax-M2.7"}` from `GET /api/agent-config/floor_manager/model` because that is the currently saved edge configuration
+  - that is now a true configured value, not a hardcoded fallback injected by the runtime path
+- Research canvas browser verification remained healthy during this slice:
+  - Chrome page `http://127.0.0.1:3001/` stayed live on the Research canvas
+  - the right-rail agent session successfully returned a contextual reply to:
+    - `Summarize what research context is currently visible on this canvas.`
+  - the panel still showed structured stream status events (`thinking · started`, `thinking · streaming`, `thinking · completed`)
+- Regression tests added/updated:
+  - [test_model_config.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_model_config.py)
+    - added provider-neutral runtime-default coverage for `GET /models` and `PATCH /{agent}/model`
+    - updated stale assertions from the old list-shaped/legacy-agent contract to the current canonical API contract
+- Verification completed:
+  - `python3 -m compileall src/api/model_config_endpoints.py src/api/settings_endpoints.py`
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_model_config.py tests/agents/test_provider_router_runtime.py tests/api/test_chat_endpoints.py`
+    - result: `20 passed`
+  - `cd quantmind-ide && npx vite build --mode development`
+    - build succeeded
+    - existing repo-wide Svelte/a11y warnings remain, but this slice introduced no build break
+  - live API check:
+    - `GET /api/agent-config/floor_manager/model -> {"model":"MiniMax-M2.7","provider":"minimax"}`
+    - confirmed as persisted configuration, not a forced fallback
+  - live Chrome check:
+    - Research canvas chat remained functional after the backend/defaulting changes
+
+## 2026-04-03 Incremental Slice (MT5 docs-aligned bridge + no-mock IDE MT5 endpoints)
+
+- Official MT5 Python contract checked against MQL5 AlgoBook / official docs:
+  - `initialize(path?, login?, password?, server?, timeout?, portable?)`
+  - `login(account, password?, server?, timeout?)`
+  - `account_info()`, `terminal_info()`, `version()`, `order_send()`
+  - source used during this slice:
+    - https://www.mql5.com/en/book/advanced/python/python_init
+- Production hardening landed in [mt5-bridge/server.py](/home/mubarkahimself/Desktop/QUANTMINDX/mt5-bridge/server.py):
+  - bridge startup now honors env-driven MT5 initialization parameters instead of raw `mt5.initialize()`
+    - `MT5_TERMINAL_PATH`
+    - `MT5_LOGIN`
+    - `MT5_PASSWORD`
+    - `MT5_SERVER`
+    - `MT5_TIMEOUT_MS`
+    - `MT5_PORTABLE`
+  - bridge listen port is now env-driven through `MT5_BRIDGE_PORT` (default remains `5005`)
+  - bridge auth now accepts canonical `Authorization: Bearer <MT5_BRIDGE_TOKEN>` and keeps `X-Token` compatibility
+  - `/status` now reports honest configured terminal/login/server/version details instead of only a boolean
+  - `/trade` now preflights with `order_check(...)` before `order_send(...)` and returns structured failure payloads when MT5 rejects a request
+- No-mock IDE MT5 endpoint cleanup landed in [ide_mt5.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_mt5.py):
+  - removed fake `connected=False` stub status response
+  - `GET /api/ide/mt5/status` now attempts a real MT5 runtime probe and reports:
+    - current connection state
+    - terminal path
+    - version
+    - current account snapshot when available
+    - honest error when MetaTrader5 package/runtime is unavailable
+  - `POST /api/ide/mt5/scan` now performs real filesystem scanning across platform-specific MT5 paths plus caller-provided custom paths
+  - launch endpoint behavior is unchanged except it now sits beside real status/scan data instead of mock-only neighbors
+- Deployment contract/docs normalized to the shipped bridge behavior:
+  - [deployment-guide.md](/home/mubarkahimself/Desktop/QUANTMINDX/docs/deployment-guide.md)
+  - [development-guide.md](/home/mubarkahimself/Desktop/QUANTMINDX/docs/development-guide.md)
+  - [index.md](/home/mubarkahimself/Desktop/QUANTMINDX/docs/index.md)
+  - [architecture.md](/home/mubarkahimself/Desktop/QUANTMINDX/docs/architecture.md)
+  - [mt5-bridge/README.md](/home/mubarkahimself/Desktop/QUANTMINDX/mt5-bridge/README.md)
+  - normalized MT5 Bridge references to default port `5005` with `MT5_BRIDGE_PORT` override
+  - architecture docs now reflect the real bridge surface (`/health`, `/status`, `/account`, `/trade`)
+- Verification completed:
+  - `python3 -m compileall src/api/ide_mt5.py mt5-bridge/server.py`
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_ide_mt5_endpoints.py`
+    - result: `3 passed`
+  - live API checks after backend restart:
+    - `GET /health -> 200`
+    - `GET /api/ide/mt5/status -> {"connected": false, ... "error": "MetaTrader5 package not installed"}`
+    - `POST /api/ide/mt5/scan -> {"terminals": [], "count": 0, "platform": "Linux"}`
+  - Chrome verification resumed successfully on `http://127.0.0.1:3001/` after backend restart:
+    - Research canvas remained live with grouped article categories loaded
+    - Research Agent Panel created a live interactive session
+    - browser-side chat send showed structured stream state in the UI (`thinking · started`, streaming reasoning/status buttons)
+    - browser-side prompt `Send a mail to portfolio asking for total equity and use subject BrowserMailCheck.` completed successfully
+    - backend persistence verified immediately after browser send:
+      - `GET /api/departments/mail/inbox/portfolio` contained subject `BrowserMailCheck`
+      - persisted row showed `from_dept: research`
+- Follow-up still pending:
+  - some deeper MT5 integration helpers under `src/risk/integrations/mt5/*` still retain simulated fallback modes; they are not the active UI path touched in this slice, but they still need a production-hardening pass.
+
+## 2026-04-03 Incremental Slice (Minimax defaults + stream fallback + Workshop model selector)
+
+- Provider/model contract fixes for production routing:
+  - [AgentModelSelector.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/AgentModelSelector.svelte)
+    - fixed provider contract mismatch (`provider_type`/`name`) that caused empty/invalid selector states
+    - removed synthetic fallback model lists (no mock fallback)
+    - default provider now prefers `minimax` when available
+  - [provider_config_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/provider_config_endpoints.py)
+    - `/api/providers/available` now includes compatibility aliases `name` and `enabled` in response payload
+  - [chat_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/chat_endpoints.py)
+    - normalized chat context now defaults to `provider=minimax` and `model=MiniMax-M2.5` when absent
+  - [SettingsView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/SettingsView.svelte)
+    - Minimax default base URL aligned to Anthropic-compatible endpoint `https://api.minimax.io/anthropic`
+  - [llm_provider.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/llm_provider.py)
+    - legacy default/fallback behavior now Minimax-first, no OpenAI last-resort fallback
+    - Minimax base URL aligned to `https://api.minimax.io/anthropic`
+- Workshop model selector runtime bug fixed:
+  - [WorkshopCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/WorkshopCanvas.svelte)
+    - provider/model loading now uses DB-backed `/api/providers/available` models directly
+    - removed env-only model availability coupling that caused `Select model` to appear empty despite active providers
+    - default selection now prefers `minimax` with first available model
+- Streaming reliability fix for department/floor-manager chat:
+  - [chat_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/chat_endpoints.py)
+    - SSE handlers now delay terminal `done` emission until final content is resolved
+    - when provider emits only thinking/status events, backend now performs one non-streaming fallback call and emits a final `content` delta to prevent `No response received.`
+- Live Chrome verification (`http://127.0.0.1:3001/`):
+  - Workshop input model selector now shows real model (`MiniMax M2.7`) and opens full provider/model list
+  - Trading department panel now shows streamed status events and a final assistant reply instead of ending at `No response received.`
+  - Workshop send path still returns live Floor Manager responses with `delegation: null` for non-delegated checks
+- Context7 Claude Agent SDK lookup completed (official docs):
+  - library id used: `/websites/platform_claude_en_agent-sdk`
+  - key alignment points confirmed and applied:
+    - `ANTHROPIC_BASE_URL` proxy/base URL behavior
+    - streaming event handling via `StreamEvent` (`content_block_*`) with UI status/tool rendering
+    - model/session option handling through SDK option envelopes and agent model override patterns
+
 
 ## 2026-04-03 Incremental Slice (AgentPanel UX + Verification)
 
@@ -1190,3 +1736,86 @@ Tests added/updated:
     - confirmed Agent Panel attachment picker now shows mixed context + discovered resources
     - remaining UI regression observed during navigation:
       - Settings modal close trap persists in this run (existing issue; tracked for next slice)
+
+- 2026-04-03 Claude SDK contract alignment follow-up (`2026-04-03T14:40:00+03:00`):
+  - Context7 source used: `/websites/platform_claude_en_agent-sdk`
+    - validated env/base-url guidance: `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`
+    - validated stream event contract: `content_block_*`, terminal `message_stop`
+  - stream termination alignment:
+    - [floor_manager.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/floor_manager.py)
+    - `_invoke_llm_stream()` now emits `done` on `message_stop` (instead of `message_delta`)
+  - provider fallback alignment across department-head legacy branches:
+    - [research_head.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/research_head.py)
+    - [development_head.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/development_head.py)
+    - [portfolio_head.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/portfolio_head.py)
+    - [risk_head.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/risk_head.py)
+    - [execution_head.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/execution_head.py)
+    - fallback now consistently uses:
+      - `api_key = MINIMAX_API_KEY || ANTHROPIC_API_KEY`
+      - `base_url = MINIMAX_BASE_URL || ANTHROPIC_BASE_URL || https://api.minimax.io/anthropic`
+      - `model = MINIMAX_MODEL || MiniMax-M2.5`
+  - settings modal regression resolved:
+    - [SettingsView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/SettingsView.svelte)
+    - overlay now closes on backdrop click; visible overlay pointer handling fixed (`pointer-events: auto`)
+  - verification:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_chat_per_agent.py -k "floor_manager_chat_stream_uses_session_backed_sse or department_chat_stream_normalizes_content_chunks or floor_manager_chat_endpoint or forwards_request_context"` -> passed
+    - `python3 -m compileall` on all touched backend files -> passed
+    - `npx --prefix quantmind-ide svelte-check --workspace quantmind-ide/src/lib/components/SettingsView.svelte --no-tsconfig --diagnostic-sources svelte` -> passed
+    - Chrome MCP verification on `http://127.0.0.1:3001/`:
+      - Settings opens on click
+      - tab switching works (Appearance/Providers/etc)
+      - Close button now dismisses modal
+
+- 2026-04-03 slim-prompt + dynamic contract rollout (`2026-04-03T22:05:00+03:00`):
+  - Context7 source used: `/websites/platform_claude_en_agent-sdk`
+    - reconfirmed the target pattern for this slice:
+      - custom base system prompts
+      - session-specific prompt append / overlays
+      - explicit sub-agent prompt/tool definitions
+      - structured streaming/status events rather than raw hidden reasoning
+  - added a shared prompt-contract layer:
+    - [department_contracts.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/prompts/department_contracts.py)
+    - [__init__.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/prompts/__init__.py)
+    - new contracts now encode:
+      - direct-access topology (`user -> any agent surface`, not mandatory Copilot gateway)
+      - `interactive_session` + `workflow_session`
+      - manifest-first workspace access and natural resource search
+      - memory + OPINION node handling
+      - Kanban / Department Mail / workflow writeback expectations
+      - compaction continuity requirements
+      - dynamic skill and MCP sections
+  - replaced monolithic department/floor-manager default prompts with slim seeds + composed contracts:
+    - [types.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/types.py)
+      - default runtime configs now carry slim editable seeds
+      - compatibility exports (`_RESEARCH_SYSTEM_PROMPT`, etc.) now resolve to the new composed defaults for settings/reset surfaces
+    - [base.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/base.py)
+      - `_build_system_prompt()` now wraps saved/base prompt seeds with the new department contract before appending memory/context
+    - [floor_manager.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/floor_manager.py)
+      - `_get_system_prompt()` now uses the new Floor Manager contract and corrected direct-access topology
+      - restored explicit department-name delegation for imperative prompts like `Research EURUSD momentum breakout`
+    - [spawner.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/subagent/spawner.py)
+      - specialized sub-agent prompts now come from the shared contract builder instead of old hardcoded module prompt registry
+  - removed split prompt behavior in department-head fallback paths:
+    - [research_head.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/research_head.py)
+    - [development_head.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/development_head.py)
+    - [execution_head.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/execution_head.py)
+    - [risk_head.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/risk_head.py)
+    - [portfolio_head.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/portfolio_head.py)
+    - legacy fallback calls now use `_build_system_prompt(...)` so runtime memory/context/contracts stay consistent even outside the main `_invoke_claude()` loop
+  - fixed settings prompt surface to show effective runtime prompts, not raw stale saved overrides:
+    - [settings_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/settings_endpoints.py)
+      - `/api/settings/agents/all-prompts` now composes saved prompt seeds through the shared contract builders
+      - this preserves user overrides while still showing the actual runtime prompt seen by each agent
+  - tests added:
+    - [test_prompt_contracts.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/agents/departments/test_prompt_contracts.py)
+      - validates department contract sections, Floor Manager direct-access topology, sub-agent bounded worker contract, and `DepartmentHead._build_system_prompt()` integration
+  - verification:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/agents/departments/test_prompt_contracts.py tests/agents/departments/heads/test_base.py tests/agents/departments/test_floor_manager_chat.py` -> passed (`13 passed`)
+    - `python3 -c "import json,urllib.request; payload=json.load(urllib.request.urlopen('http://127.0.0.1:8000/api/settings/agents/all-prompts')); print('workflow_session' in payload['research_head']['system_prompt']); print('manifest-first' in payload['research_head']['system_prompt']); print('cross-department router' in payload['floor_manager']['system_prompt'])"` -> `True / True / True`
+    - `cd quantmind-ide && npx vite build --mode development` -> passed (existing Svelte warnings remain outside this slice)
+  - Chrome verification after backend/frontend restart:
+    - `Settings -> Agents` shows the new Floor Manager prompt contract (`User access model`, `manifest-first`, `Skill Forge`, `cross-department router`)
+    - Workshop live chat still works after the rewrite:
+      - prompt: `What canvas am I on right now?`
+      - response: `You're on the workshop canvas — an interactive session with a manifest-first workspace strategy.`
+      - recent-session row created in the Workshop sidebar

@@ -32,6 +32,15 @@ from src.agents.departments.subagents.pinescript_subagent import (
     PineScriptTask,
     create_pinescript_agent,
 )
+from src.agents.departments.subagents.backtest_report_subagent import (
+    BacktestReportSubAgent,
+)
+from src.agents.departments.subagents.bot_analyst_subagent import (
+    BotAnalystSubAgent,
+)
+from src.agents.departments.subagents.live_monitor_subagent import (
+    LiveMonitorSubAgent,
+)
 
 __all__ = [
     "ResearchSubAgent",
@@ -49,4 +58,7 @@ __all__ = [
     "PineScriptSubAgent",
     "PineScriptTask",
     "create_pinescript_agent",
+    "BacktestReportSubAgent",
+    "BotAnalystSubAgent",
+    "LiveMonitorSubAgent",
 ]

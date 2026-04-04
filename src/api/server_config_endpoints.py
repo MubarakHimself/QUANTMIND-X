@@ -16,6 +16,7 @@ Story 2.2: Server Connection Configuration
 import logging
 import uuid
 import time
+from contextlib import contextmanager
 from typing import Dict, Any, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -29,11 +30,28 @@ except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("paramiko not available - SSH connectivity testing disabled")
 
-from src.database.models import ServerConfig, get_db_session
+from src.database.models import ServerConfig, get_db_session, db_session_scope
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/servers", tags=["servers"])
+
+
+@contextmanager
+def _db_session_scope():
+    """Support both the FastAPI yield dependency and the existing patched tests."""
+    dependency = get_db_session()
+
+    if hasattr(dependency, "__enter__") and hasattr(dependency, "__exit__"):
+        with dependency as session:
+            yield session
+        return
+
+    session = next(dependency)
+    try:
+        yield session
+    finally:
+        dependency.close()
 
 
 # =============================================================================
@@ -101,7 +119,7 @@ async def list_servers():
     Returns servers without credentials exposed.
     """
     try:
-        with get_db_session() as db:
+        with _db_session_scope() as db:
             servers = db.query(ServerConfig).all()
 
             result = []
@@ -133,7 +151,7 @@ async def create_server(config: ServerConfigRequest):
     If is_primary is true, removes primary flag from other servers of same type.
     """
     try:
-        with get_db_session() as db:
+        with _db_session_scope() as db:
             # Check if another server of this type is already primary
             if config.is_primary:
                 existing_primary = db.query(ServerConfig).filter(
@@ -194,7 +212,7 @@ async def update_server(server_id: str, config: ServerConfigRequest):
     If password/username/api_key not provided, existing values are preserved.
     """
     try:
-        with get_db_session() as db:
+        with _db_session_scope() as db:
             server = db.query(ServerConfig).filter(ServerConfig.id == server_id).first()
 
             if not server:
@@ -257,7 +275,7 @@ async def delete_server(server_id: str):
     Returns 409 if the server is marked as primary.
     """
     try:
-        with get_db_session() as db:
+        with _db_session_scope() as db:
             server = db.query(ServerConfig).filter(ServerConfig.id == server_id).first()
 
             if not server:
@@ -292,7 +310,7 @@ async def test_server(server_id: str):
     Returns success status and latency.
     """
     try:
-        with get_db_session() as db:
+        with _db_session_scope() as db:
             server = db.query(ServerConfig).filter(ServerConfig.id == server_id).first()
 
             if not server:
@@ -344,9 +362,25 @@ async def _test_ssh_connection(server: ServerConfig, start_time: float) -> Dict[
         password = server.password
         ssh_key_path = server.ssh_key_path
 
-        # Try SSH connection
+        # Try SSH connection with proper host key validation
         client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        # Load known hosts from ~/.ssh/known_hosts for MITM protection
+        known_hosts_path = Path.home() / ".ssh" / "known_hosts"
+        if known_hosts_path.exists():
+            client.load_system_host_keys(str(known_hosts_path))
+
+        # Use RejectPolicy by default - deny unknown hosts to prevent MITM attacks
+        client.set_missing_host_key_policy(paramiko.RejectPolicy())
+
+        # Log warning if connecting to unknown host (host not in known_hosts)
+        host_keys = client.get_host_keys()
+        if server.host not in host_keys:
+            logger.warning(
+                f"Connecting to SSH host '{server.host}' which is not in known_hosts. "
+                f"Connection will be rejected by RejectPolicy. "
+                f"To allow, add the host key to ~/.ssh/known_hosts."
+            )
 
         connect_kwargs = {
             "hostname": server.host,
@@ -428,7 +462,7 @@ async def get_server(server_id: str):
     Get a specific server by ID.
     """
     try:
-        with get_db_session() as db:
+        with _db_session_scope() as db:
             server = db.query(ServerConfig).filter(ServerConfig.id == server_id).first()
 
             if not server:
@@ -498,7 +532,7 @@ async def get_morning_digest():
     pending_approvals = 0
     try:
         from src.database.models import ApprovalRequest
-        with get_db_session() as db:
+        with _db_session_scope() as db:
             pending_count = db.query(ApprovalRequest).filter(
                 ApprovalRequest.status == 'pending'
             ).count()
@@ -510,7 +544,7 @@ async def get_morning_digest():
     agent_activity = []
     try:
         from src.database.models import AgentActivity
-        with get_db_session() as db:
+        with _db_session_scope() as db:
             # Get last 24 hours of activity
             yesterday = datetime.now(timezone.utc) - datetime.timedelta(hours=24)
             activities = db.query(AgentActivity).filter(
@@ -570,7 +604,7 @@ async def _get_node_health_status() -> dict:
 
     # Check Contabo connectivity
     try:
-        with get_db_session() as db:
+        with _db_session_scope() as db:
             contabo = db.query(ServerConfig).filter(
                 ServerConfig.server_type == "contabo",
                 ServerConfig.is_active == True
@@ -603,7 +637,7 @@ async def _get_node_health_status() -> dict:
 
     # Check Cloudzy connectivity
     try:
-        with get_db_session() as db:
+        with _db_session_scope() as db:
             cloudzy = db.query(ServerConfig).filter(
                 ServerConfig.server_type == "cloudzy",
                 ServerConfig.is_active == True

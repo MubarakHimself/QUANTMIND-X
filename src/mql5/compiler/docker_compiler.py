@@ -37,6 +37,7 @@ class CompilationResult:
     warnings: List[str]
     compile_time_ms: int
     attempt_number: int
+    log: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -49,6 +50,7 @@ class CompilationResult:
             "warnings": self.warnings,
             "compile_time_ms": self.compile_time_ms,
             "attempt_number": self.attempt_number,
+            "log": self.log,
         }
 
 
@@ -356,3 +358,64 @@ class DockerMQL5Compiler:
 def get_compiler() -> DockerMQL5Compiler:
     """Get a configured compiler instance."""
     return DockerMQL5Compiler()
+
+
+class WindowsMetaEditorCompiler:
+    """
+    Compiles MQL5 on Windows using native MetaEditor64.exe.
+    Runs on Kamatera T2 (Windows VPS) — no Docker needed.
+    """
+
+    def __init__(self):
+        self.metaeditor_path = os.getenv(
+            "METAEDITOR_PATH",
+            r"C:\Program Files\MetaTrader 5\MetaEditor64.exe"
+        )
+
+    def compile(
+        self,
+        mq5_file_path: str,
+        strategy_id: str,
+        version: int,
+        attempt_number: int = 1,
+    ) -> CompilationResult:
+        """Write MQ5 file, call MetaEditor, return result."""
+        import pathlib
+        import time
+
+        start_time = time.time()
+        log_path = pathlib.Path(mq5_file_path).with_suffix(".log")
+        ex5_path = pathlib.Path(mq5_file_path).with_suffix(".ex5")
+
+        # Call MetaEditor
+        result = subprocess.run(
+            [self.metaeditor_path, f"/compile:{mq5_file_path}"],
+            capture_output=True,
+            timeout=120,
+        )
+
+        # Parse log for errors/warnings
+        log_content = ""
+        if log_path.exists():
+            try:
+                log_content = log_path.read_text(encoding="utf-16", errors="replace")
+            except Exception:
+                log_content = log_path.read_text(errors="replace")
+
+        errors = [l for l in log_content.splitlines() if "error" in l.lower()]
+        warnings = [l for l in log_content.splitlines() if "warning" in l.lower()]
+
+        success = ex5_path.exists() and len(errors) == 0
+
+        return CompilationResult(
+            success=success,
+            strategy_id=strategy_id,
+            version=version,
+            mq5_path=mq5_file_path,
+            ex5_path=str(ex5_path) if success else None,
+            errors=errors[:10],
+            warnings=warnings[:10],
+            compile_time_ms=int((time.time() - start_time) * 1000),
+            attempt_number=attempt_number,
+            log=log_content[-2000:],  # last 2000 chars of log
+        )

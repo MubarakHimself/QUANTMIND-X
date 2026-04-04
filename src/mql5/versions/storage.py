@@ -109,6 +109,7 @@ class EAVersionStorage:
         variant_type: VariantType = VariantType.VANILLA,
         improvement_cycle: int = 0,
         artifacts: Optional[EAVersionArtifacts] = None,
+        parent_id: Optional[str] = None,
     ) -> EAVersion:
         """
         Create a new version for a strategy.
@@ -123,6 +124,7 @@ class EAVersionStorage:
             variant_type: Classification of the variant
             improvement_cycle: Iteration number
             artifacts: Linked artifacts
+            parent_id: ID of parent version this was spawned from (for genealogy)
 
         Returns:
             Created EAVersion object
@@ -145,6 +147,7 @@ class EAVersionStorage:
             variant_type=variant_type,
             improvement_cycle=improvement_cycle,
             artifacts=artifacts or EAVersionArtifacts(),
+            parent_id=parent_id,
         )
 
         # Save version to disk
@@ -228,6 +231,7 @@ class EAVersionStorage:
                 "source_hash": v.source_hash,
                 "variant_type": v.variant_type.value,
                 "improvement_cycle": v.improvement_cycle,
+                "parent_id": v.parent_id,
             }
             for v in versions
         ]
@@ -362,6 +366,20 @@ class EAVersionStorage:
                 logger.error(f"Failed to load rollback audit {audit_file}: {e}")
 
         return rollbacks
+
+    # =========================================================================
+    # Strategy-level Operations
+    # =========================================================================
+
+    def list_strategies(self) -> List[str]:
+        """List all strategy IDs that have versions stored."""
+        if not self.storage_dir.exists():
+            return []
+        strategies = []
+        for d in self.storage_dir.iterdir():
+            if d.is_dir() and (d / VERSIONS_SUBDIR).exists():
+                strategies.append(d.name)
+        return sorted(strategies)
 
     # =========================================================================
     # Convenience Methods

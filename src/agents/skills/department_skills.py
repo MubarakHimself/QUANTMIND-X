@@ -240,13 +240,22 @@ DEPARTMENT_SKILL_REGISTRY: Dict[str, List[Dict[str, Any]]] = {
 # Department → MCP Config mapping
 # ============================================================================
 
-DEPARTMENT_MCP_CONFIGS: Dict[str, str] = {
+DEPARTMENT_MCP_CONFIG_SOURCES: Dict[str, str] = {
     "research": "analyst-mcp.json",
     "development": "quantcode-mcp.json",
     "trading": "executor-mcp.json",
     "risk": "analyst-mcp.json",
     "portfolio": "copilot-mcp.json",
     "floor_manager": "copilot-mcp.json",
+}
+
+DEPARTMENT_MCP_CONFIGS: Dict[str, str] = {
+    "research": "research-mcp.json",
+    "development": "development-mcp.json",
+    "trading": "trading-mcp.json",
+    "risk": "risk-mcp.json",
+    "portfolio": "portfolio-mcp.json",
+    "floor_manager": "floor-manager-mcp.json",
 }
 
 # Department → MCP server IDs that should be loaded
@@ -282,7 +291,12 @@ def get_department_skills(department: str) -> List[Dict[str, Any]]:
 
 def get_department_mcp_config(department: str) -> str:
     """Get the MCP config filename for a department."""
-    return DEPARTMENT_MCP_CONFIGS.get(department, "copilot-mcp.json")
+    return DEPARTMENT_MCP_CONFIGS.get(department, "floor-manager-mcp.json")
+
+
+def get_department_mcp_config_source(department: str) -> str:
+    """Get the compatibility MCP config source filename for a department."""
+    return DEPARTMENT_MCP_CONFIG_SOURCES.get(department, "copilot-mcp.json")
 
 
 def get_department_mcp_servers(department: str) -> List[str]:

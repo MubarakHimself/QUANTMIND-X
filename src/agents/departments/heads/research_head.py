@@ -140,22 +140,8 @@ class ResearchHead(DepartmentHead):
         ]
 
     def _format_tools_for_anthropic(self) -> list:
-        """Convert self._tools to Anthropic tool definition format."""
-        tools = []
-        for tool_name, tool_obj in (self._tools or {}).items():
-            try:
-                tools.append({
-                    "name": tool_name,
-                    "description": getattr(tool_obj, "description", f"{tool_name} tool"),
-                    "input_schema": getattr(
-                        tool_obj,
-                        "input_schema",
-                        {"type": "object", "properties": {}, "required": []},
-                    ),
-                })
-            except Exception:
-                pass
-        return tools
+        """Convert the full active tool surface to Anthropic tool definitions."""
+        return super()._format_tools_for_anthropic()
 
     async def process_task(self, task: str, context: dict = None) -> dict:
         """
@@ -171,21 +157,17 @@ class ResearchHead(DepartmentHead):
         import os
         import anthropic
 
-        # Build system prompt with department persona + graph memory
-        dept_system = self.system_prompt
-
-        memory_ctx = ""
+        memory_nodes = None
         try:
             if hasattr(self, "_read_relevant_memory"):
-                nodes = await self._read_relevant_memory(task)
-                if nodes:
-                    memory_ctx = "\n\n## Relevant Memory\n" + "\n".join(
-                        f"- {n['content']}" for n in nodes
-                    )
+                memory_nodes = await self._read_relevant_memory(task)
         except Exception:
             pass
 
-        full_system = dept_system + memory_ctx
+        full_system = self._build_system_prompt(
+            canvas_context=context,
+            memory_nodes=memory_nodes,
+        )
 
         # Get tools formatted for Anthropic
         tools = self._format_tools_for_anthropic()
@@ -199,9 +181,19 @@ class ResearchHead(DepartmentHead):
                     tools=tools if tools else None,
                 )
             else:
-                client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+                from src.agents.providers.router import get_router
+
+                runtime_config = get_router().resolve_runtime_config()
+                if not runtime_config or not runtime_config.api_key:
+                    raise RuntimeError(
+                        "No LLM runtime configured. Configure a provider in Settings or set QMX_LLM_* environment variables."
+                    )
+                client = anthropic.AsyncAnthropic(
+                    api_key=runtime_config.api_key,
+                    base_url=runtime_config.base_url,
+                )
                 kwargs = {
-                    "model": os.getenv("ANTHROPIC_MODEL_SONNET", "claude-sonnet-4-6"),
+                    "model": runtime_config.model,
                     "max_tokens": 4096,
                     "system": full_system,
                     "messages": [{"role": "user", "content": task}],
@@ -505,6 +497,7 @@ class ResearchHead(DepartmentHead):
             original_query: Original research query
         """
         try:
+            from src.memory.graph.facade import get_graph_memory
             from src.memory.graph.types import (
                 MemoryNode,
                 MemoryNodeType,
@@ -512,14 +505,7 @@ class ResearchHead(DepartmentHead):
                 MemoryTier,
                 SessionStatus,
             )
-            from src.memory.graph.store import GraphMemoryStore
-            from pathlib import Path
-
-            # Initialize graph store
-            db_path = Path(".quantmind/memory/graph.db")
-            db_path.parent.mkdir(parents=True, exist_ok=True)
-
-            store = GraphMemoryStore(db_path)
+            facade = get_graph_memory()
 
             # Create OPINION node
             opinion_node = MemoryNode(
@@ -542,8 +528,8 @@ class ResearchHead(DepartmentHead):
                 agent_role="research_head"
             )
 
-            store.create_node(opinion_node)
-            logger.info(f"Wrote OPINION node to memory graph: {opinion_node.id}")
+            created = facade.store.create_node(opinion_node)
+            logger.info(f"Wrote OPINION node to memory graph: {created.id}")
 
         except Exception as e:
             logger.error(f"Failed to write OPINION node: {e}")

@@ -37,6 +37,7 @@ class VersionManager:
         auto_increment: str = "patch",
         variant_type: VariantType = VariantType.VANILLA,
         improvement_cycle: int = 0,
+        parent_id: Optional[str] = None,
     ) -> EAVersion:
         """
         Create a new version with automatic version increment.
@@ -49,6 +50,7 @@ class VersionManager:
             auto_increment: Which version part to increment (major/minor/patch)
             variant_type: Variant classification
             improvement_cycle: Iteration number
+            parent_id: ID of parent version this was spawned from (for genealogy)
 
         Returns:
             Created EAVersion
@@ -64,6 +66,7 @@ class VersionManager:
             template_deps=template_deps,
             variant_type=variant_type,
             improvement_cycle=improvement_cycle,
+            parent_id=parent_id,
         )
 
         logger.info(f"Created new version {next_version} for strategy {strategy_id}")
@@ -187,6 +190,7 @@ class VersionManager:
                     "variant_type": v.variant_type.value,
                     "improvement_cycle": v.improvement_cycle,
                     "artifacts": v.artifacts.model_dump(),
+                    "parent_id": v.parent_id,
                     "is_active": active.version_tag == v.version_tag if active else False,
                 }
                 for v in versions

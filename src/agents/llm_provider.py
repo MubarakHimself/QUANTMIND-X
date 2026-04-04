@@ -5,9 +5,9 @@ This module provides centralized LLM provider configuration following AGENTS.md 
 Supports OpenRouter (primary), Z.ai (Zhipu), and direct Anthropic access.
 
 Provider Priority:
-1. OpenRouter (most flexible, best routing)
-2. Z.ai (cost-effective, fast)
-3. Anthropic direct (fallback for Claude models)
+1. MiniMax (production default for QuantMindX)
+2. Z.ai
+3. Anthropic direct
 
 DEPRECATED: LangChain imports removed. Use ClaudeOrchestrator instead.
 For backward compatibility, this module provides simple stubs.
@@ -26,7 +26,7 @@ class ProviderType(str, Enum):
     OPENROUTER = "openrouter"
     ZHIPU = "zhipu"
     ANTHROPIC = "anthropic"
-    OPENAI = "openai"  # Fallback for local development
+    OPENAI = "openai"
     MINIMAX = "minimax"  # Minimax M2.5, M2.1, M2 models (Anthropic-compatible)
 
 
@@ -45,37 +45,37 @@ class ModelConfig:
 # Primary uses direct Anthropic (via Agent SDK), fallbacks use GLM/Minimax
 AGENT_MODELS: Dict[str, ModelConfig] = {
     "copilot": ModelConfig(
-        model_id="claude-sonnet-4-20250514",
-        provider=ProviderType.ANTHROPIC,
+        model_id="MiniMax-M2.7",
+        provider=ProviderType.MINIMAX,
         fallback_model="MiniMax-M2.5",
         fallback_provider=ProviderType.MINIMAX,
         temperature=0.0,
     ),
     "quantcode": ModelConfig(
-        model_id="claude-sonnet-4-20250514",
-        provider=ProviderType.ANTHROPIC,
-        fallback_model="glm-4",
-        fallback_provider=ProviderType.ZHIPU,
+        model_id="MiniMax-M2.5",
+        provider=ProviderType.MINIMAX,
+        fallback_model="MiniMax-M2.1",
+        fallback_provider=ProviderType.MINIMAX,
         temperature=0.0,
     ),
     "analyst": ModelConfig(
-        model_id="claude-sonnet-4-20250514",
-        provider=ProviderType.ANTHROPIC,
+        model_id="MiniMax-M2.5",
+        provider=ProviderType.MINIMAX,
         fallback_model="MiniMax-M2.5",
         fallback_provider=ProviderType.MINIMAX,
         temperature=0.0,
     ),
     # Department head agents
     "research_head": ModelConfig(
-        model_id="claude-sonnet-4-20250514",
-        provider=ProviderType.ANTHROPIC,
+        model_id="MiniMax-M2.5",
+        provider=ProviderType.MINIMAX,
         fallback_model="MiniMax-M2.5",
         fallback_provider=ProviderType.MINIMAX,
         temperature=0.0,
     ),
     "execution_head": ModelConfig(
-        model_id="claude-sonnet-4-20250514",
-        provider=ProviderType.ANTHROPIC,
+        model_id="MiniMax-M2.5",
+        provider=ProviderType.MINIMAX,
         fallback_model="MiniMax-M2.1",
         fallback_provider=ProviderType.MINIMAX,
         temperature=0.0,
@@ -88,7 +88,7 @@ PROVIDER_BASE_URLS: Dict[ProviderType, str] = {
     ProviderType.ZHIPU: "https://open.bigmodel.cn/api/paas/v4",
     ProviderType.ANTHROPIC: "https://api.anthropic.com/v1",
     ProviderType.OPENAI: "https://api.openai.com/v1",
-    ProviderType.MINIMAX: "https://api.minimax.chat/v1",
+    ProviderType.MINIMAX: "https://api.minimax.io/anthropic",
 }
 
 # Environment variable names for API keys
@@ -194,8 +194,8 @@ def get_llm_for_agent(
     if not config:
         logger.warning(f"Unknown agent type: {agent_type}, using default config")
         config = ModelConfig(
-            model_id="gpt-4",
-            provider=ProviderType.OPENAI,
+            model_id="MiniMax-M2.5",
+            provider=ProviderType.MINIMAX,
             temperature=0.0,
         )
 
@@ -216,14 +216,6 @@ def get_llm_for_agent(
             )
             model_id = config.fallback_model
             provider = config.fallback_provider
-        elif has_api_key(ProviderType.OPENAI):
-            # Last resort fallback to OpenAI
-            logger.warning(
-                f"No configured providers available for {agent_type}, "
-                f"falling back to OpenAI gpt-4"
-            )
-            model_id = "gpt-4"
-            provider = ProviderType.OPENAI
         else:
             logger.warning(
                 f"No API keys available for agent {agent_type}. "

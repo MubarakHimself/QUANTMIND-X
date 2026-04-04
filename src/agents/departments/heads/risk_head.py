@@ -424,22 +424,8 @@ class RiskHead(DepartmentHead):
     # =========================================================================
 
     def _format_tools_for_anthropic(self) -> list:
-        """Format registered tools into Anthropic tool definitions."""
-        tools = []
-        for tool_name, tool_obj in (self._tools or {}).items():
-            try:
-                tools.append({
-                    "name": tool_name,
-                    "description": getattr(tool_obj, "description", f"{tool_name} tool"),
-                    "input_schema": getattr(
-                        tool_obj,
-                        "input_schema",
-                        {"type": "object", "properties": {}, "required": []},
-                    ),
-                })
-            except Exception:
-                pass
-        return tools
+        """Convert the full active tool surface to Anthropic tool definitions."""
+        return super()._format_tools_for_anthropic()
 
     async def process_task(self, task: str, context: dict = None) -> dict:
         """
@@ -452,32 +438,37 @@ class RiskHead(DepartmentHead):
         Returns:
             Result dict with status, department, content, and tool_calls.
         """
-        dept_system = self.system_prompt
-
-        # Read relevant memory
-        memory_ctx = ""
+        memory_nodes = None
         try:
             if hasattr(self, "_read_relevant_memory"):
-                nodes = await self._read_relevant_memory(task)
-                if nodes:
-                    memory_ctx = "\n\n## Relevant Memory\n" + "\n".join(
-                        f"- {n['content']}" for n in nodes
-                    )
+                memory_nodes = await self._read_relevant_memory(task)
         except Exception:
             pass
 
-        full_system = dept_system + memory_ctx
+        full_system = self._build_system_prompt(
+            canvas_context=context,
+            memory_nodes=memory_nodes,
+        )
         tools = self._format_tools_for_anthropic() if hasattr(self, "_format_tools_for_anthropic") else []
 
         try:
             if hasattr(self, "_invoke_claude"):
                 result = await self._invoke_claude(task=task, canvas_context=context, tools=tools if tools else None)
             else:
-                import os
                 import anthropic as _anthropic
-                client = _anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+                from src.agents.providers.router import get_router
+
+                runtime_config = get_router().resolve_runtime_config()
+                if not runtime_config or not runtime_config.api_key:
+                    raise RuntimeError(
+                        "No LLM runtime configured. Configure a provider in Settings or set QMX_LLM_* environment variables."
+                    )
+                client = _anthropic.AsyncAnthropic(
+                    api_key=runtime_config.api_key,
+                    base_url=runtime_config.base_url,
+                )
                 kwargs = {
-                    "model": os.getenv("ANTHROPIC_MODEL_SONNET", "claude-sonnet-4-6"),
+                    "model": runtime_config.model,
                     "max_tokens": 4096,
                     "system": full_system,
                     "messages": [{"role": "user", "content": task}],

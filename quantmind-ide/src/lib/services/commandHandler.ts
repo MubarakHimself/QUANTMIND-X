@@ -1,5 +1,6 @@
 // Command Handler Service - Manages slash commands for the agent panel
 import type { AgentType } from '../stores/chatStore';
+import { buildApiUrl } from '$lib/api';
 
 // Command interface
 export interface Command {
@@ -41,7 +42,7 @@ export interface ParsedCommand {
 const commands: Map<string, Command> = new Map();
 
 // Backend API base URL
-const API_BASE_URL = 'http://localhost:8000/api';
+const API_BASE_URL = buildApiUrl('/api');
 
 // Register default commands
 function registerDefaultCommands() {

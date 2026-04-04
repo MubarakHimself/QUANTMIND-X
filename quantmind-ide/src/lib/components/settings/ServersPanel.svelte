@@ -18,8 +18,8 @@
   }
 
   const SERVER_TYPES = [
-    { id: 'cloudzy', name: 'Cloudzy (MT5 Trading)', description: 'Live trading server' },
-    { id: 'contabo', name: 'Contabo', description: 'Agent/compute server' },
+    { id: 'cloudzy', name: 'node_trading (MT5 Trading)', description: 'Live trading server' },
+    { id: 'contabo', name: 'node_backend', description: 'Agent/compute server' },
     { id: 'mt5', name: 'MT5 Connection', description: 'MetaTrader 5 gateway' },
   ];
 
@@ -46,7 +46,7 @@
     isLoading = true;
     error = null;
     try {
-      const data = await apiFetch<{ servers: ServerConfig[] }>('/servers');
+      const data = await apiFetch<{ servers: ServerConfig[] }>('/api/servers');
       servers = data.servers || [];
     } catch (e) {
       error = 'Failed to load servers';
@@ -77,7 +77,7 @@
     const form = editForm[serverId];
     if (!form) { isSaving = false; return; }
     try {
-      await apiFetch(`/servers/${serverId}`, {
+      await apiFetch(`/api/servers/${serverId}`, {
         method: 'PUT',
         body: JSON.stringify({
           name: form.name, server_type: form.server_type,
@@ -100,7 +100,7 @@
     testResults[serverId] = { success: false };
     try {
       const result = await apiFetch<{ success: boolean; latency_ms?: number; error?: string }>(
-        `/servers/${serverId}/health`
+        `/api/servers/${serverId}/health`
       );
       testResults[serverId] = result;
     } catch (e) {
@@ -118,7 +118,7 @@
   async function deleteServer() {
     if (!deletingServerId) return;
     try {
-      await apiFetch(`/servers/${deletingServerId}`, { method: 'DELETE' });
+      await apiFetch(`/api/servers/${deletingServerId}`, { method: 'DELETE' });
       await loadServers();
     } catch (e) {
       error = 'Failed to delete server';
@@ -133,7 +133,7 @@
     isSaving = true;
     error = null;
     try {
-      await apiFetch('/servers', {
+      await apiFetch('/api/servers', {
         method: 'POST',
         body: JSON.stringify({
           name: newServerForm.name,
@@ -301,7 +301,7 @@
       <div class="modal-body">
         <div class="form-group">
           <label>Server Name</label>
-          <input type="text" class="text-input" bind:value={newServerForm.name} placeholder="e.g. Contabo Node 1" />
+          <input type="text" class="text-input" bind:value={newServerForm.name} placeholder="e.g. node_backend Node 1" />
         </div>
         <div class="form-group">
           <label>Server Type</label>

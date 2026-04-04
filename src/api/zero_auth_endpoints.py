@@ -17,6 +17,41 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/zero-auth", tags=["zero-auth"])
 
 
+# =============================================================================
+# Secure Credential Storage via keyring
+# =============================================================================
+
+def _store_secret(service: str, key: str, value: str) -> bool:
+    """Store a secret in the system keyring. Returns True on success."""
+    try:
+        import keyring
+        keyring.set_password(service, key, value)
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to store secret in keyring: {e}")
+        return False
+
+
+def _get_secret(service: str, key: str) -> Optional[str]:
+    """Retrieve a secret from the system keyring. Returns None if not found."""
+    try:
+        import keyring
+        return keyring.get_password(service, key)
+    except Exception as e:
+        logger.warning(f"Failed to retrieve secret from keyring: {e}")
+        return None
+
+
+def _delete_secret(service: str, key: str) -> bool:
+    """Delete a secret from the system keyring. Returns True on success."""
+    try:
+        import keyring
+        keyring.delete_password(service, key)
+        return True
+    except Exception:
+        return False
+
+
 class ZeroAuthStatus(BaseModel):
     qwen_configured: bool
     qwen_method: str  # "oauth" | "api_key" | "none"
@@ -156,12 +191,21 @@ def qwen_test():
 
 @router.post("/gemini/adc")
 def configure_gemini_adc(config: GeminiADCConfig):
-    """Store Gemini ADC config in .env"""
+    """Store Gemini ADC config securely using keyring for credentials."""
     env_path = Path(".env")
+    # Project ID is not sensitive, store in .env
     _update_env_var(env_path, "GOOGLE_CLOUD_PROJECT", config.project_id)
-    if config.credentials_path:
-        _update_env_var(env_path, "GOOGLE_APPLICATION_CREDENTIALS", config.credentials_path)
     os.environ["GOOGLE_CLOUD_PROJECT"] = config.project_id
+    if config.credentials_path:
+        # SECURITY: Store credentials path in keyring instead of plain .env
+        stored = _store_secret("quantmindx", "gemini_credentials_path", config.credentials_path)
+        if stored:
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = config.credentials_path
+            return {"status": "configured", "method": "adc", "project": config.project_id, "credentials_storage": "keyring"}
+        # Fallback to .env if keyring fails
+        _update_env_var(env_path, "GOOGLE_APPLICATION_CREDENTIALS", config.credentials_path)
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = config.credentials_path
+        return {"status": "configured", "method": "adc", "project": config.project_id, "credentials_storage": "env"}
     return {"status": "configured", "method": "adc", "project": config.project_id}
 
 
@@ -180,11 +224,15 @@ def test_gemini_connection():
 # ---------------------------------------------------------------------------
 
 def _store_qwen_api_key(api_key: str) -> dict:
-    """Persist QWEN_API_KEY to .env and current process environment."""
-    env_path = Path(".env")
-    _update_env_var(env_path, "QWEN_API_KEY", api_key)
+    """Persist QWEN_API_KEY to keyring and current process environment."""
+    # SECURITY: Store API key in secure keyring instead of plain .env
+    stored = _store_secret("quantmindx", "qwen_api_key", api_key)
     os.environ["QWEN_API_KEY"] = api_key
-    return {"status": "configured", "method": "api_key"}
+    if stored:
+        return {"status": "configured", "method": "api_key", "storage": "keyring"}
+    # Fallback: still set in environment but warn
+    logger.warning("Keyring storage failed; API key only in process environment")
+    return {"status": "configured", "method": "api_key", "storage": "memory"}
 
 
 def _update_env_var(env_path: Path, key: str, value: str):

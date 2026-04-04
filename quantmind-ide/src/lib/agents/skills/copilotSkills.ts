@@ -8,6 +8,7 @@
 import { z } from 'zod';
 import type { Skill, SkillContext } from './index';
 import { fileHistoryManager } from '../../services/fileHistoryManager';
+import { buildApiUrl } from '../../api';
 
 // ============================================================================
 // FILE OPERATIONS SKILLS
@@ -42,7 +43,7 @@ const readFile: Skill = {
   execute: async ({ path, encoding }, context) => {
     try {
       // Fetch from backend API
-      const response = await fetch('http://localhost:8000/api/files/read', {
+      const response = await fetch(buildApiUrl('/api/files/read'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path, encoding })
@@ -102,7 +103,7 @@ const writeFile: Skill = {
       // Get previous content for history tracking
       let previousContent: string | undefined;
       try {
-        const readResponse = await fetch('http://localhost:8000/api/files/read', {
+        const readResponse = await fetch(buildApiUrl('/api/files/read'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path })
@@ -115,7 +116,7 @@ const writeFile: Skill = {
         // File doesn't exist, that's okay
       }
 
-      const response = await fetch('http://localhost:8000/api/files/write', {
+      const response = await fetch(buildApiUrl('/api/files/write'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path, content, createBackup })
@@ -184,7 +185,7 @@ const listFiles: Skill = {
   defaultEnabled: true,
   execute: async ({ path, extension, recursive }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/files/list', {
+      const response = await fetch(buildApiUrl('/api/files/list'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path, extension, recursive })
@@ -256,7 +257,7 @@ const connectBroker: Skill = {
   defaultEnabled: true,
   execute: async (params, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/broker/connect', {
+      const response = await fetch(buildApiUrl('/api/broker/connect'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params)
@@ -319,7 +320,7 @@ const getAccountInfo: Skill = {
   defaultEnabled: true,
   execute: async ({ includePositions }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/broker/account', {
+      const response = await fetch(buildApiUrl('/api/broker/account'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ includePositions })
@@ -385,7 +386,7 @@ const deployEA: Skill = {
   defaultEnabled: true,
   execute: async ({ eaPath, symbol, timeframe, parameters, autoStart }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/deployment/deploy-ea', {
+      const response = await fetch(buildApiUrl('/api/deployment/deploy-ea'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ eaPath, symbol, timeframe, parameters, autoStart })
@@ -441,7 +442,7 @@ const stopEA: Skill = {
   defaultEnabled: true,
   execute: async ({ chartId, eaHandle }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/deployment/stop-ea', {
+      const response = await fetch(buildApiUrl('/api/deployment/stop-ea'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chartId, eaHandle })
@@ -504,7 +505,7 @@ const syncMT5: Skill = {
   defaultEnabled: true,
   execute: async ({ symbols, timeframe, daysBack, includePositions, includeOrders }, context) => {
     try {
-      const response = await fetch('http://localhost:8000/api/sync/mt5', {
+      const response = await fetch(buildApiUrl('/api/sync/mt5'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbols, timeframe, daysBack, includePositions, includeOrders })

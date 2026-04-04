@@ -14,6 +14,7 @@ import NodeHealthBadge from './NodeHealthBadge.svelte';
 import DegradedIndicator from './DegradedIndicator.svelte';
 import { nodeHealthState, checkNodeHealth, isContaboDegraded } from '$lib/stores/node-health';
 import { Sun, Bell, Server, AlertTriangle, Clock, Wifi, WifiOff } from 'lucide-svelte';
+import { buildApiUrl } from '$lib/api';
 
 // Morning digest data from API
 interface MorningDigestData {
@@ -57,7 +58,9 @@ async function fetchMorningDigest() {
     isLoading = true;
     error = null;
 
-    const response = await fetch('/api/v1/server/morning-digest');
+    const response = await fetch(buildApiUrl('/api/v1/server/morning-digest'), {
+      credentials: 'include'
+    });
     if (!response.ok) {
       throw new Error(`Failed to fetch digest: ${response.status}`);
     }

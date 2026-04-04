@@ -32,7 +32,7 @@ class CopilotKillSwitchService {
   private baseUrl: string;
 
   constructor() {
-    this.baseUrl = API_CONFIG.API_URL || 'http://localhost:8000';
+    this.baseUrl = API_CONFIG.API_URL;
   }
 
   /**

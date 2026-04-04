@@ -5,6 +5,7 @@
         "checkJs": true,
         "esModuleInterop": true,
         "forceConsistentCasingInFileNames": true,
+        "types": ["node", "vitest/globals"],
         "resolveJsonModule": true,
         "skipLibCheck": true,
         "sourceMap": true,

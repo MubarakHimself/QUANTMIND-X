@@ -104,8 +104,8 @@ class ContextCompactionTrigger:
                 continue
 
             # Skip recently accessed nodes
-            if node.last_accessed:
-                last_accessed = node.last_accessed
+            if node.last_accessed_utc:
+                last_accessed = node.last_accessed_utc
                 if last_accessed.tzinfo is None:
                     last_accessed = last_accessed.replace(tzinfo=timezone.utc)
                 if last_accessed >= cutoff_time:

@@ -15,15 +15,12 @@
     Calendar,
     BarChart3,
     Kanban,
-    Loader2,
     RefreshCw,
-    AlertTriangle,
     Clock,
     Lightbulb,
     ChevronDown,
     Trophy
   } from 'lucide-svelte';
-  import { apiFetch } from '$lib/api';
   import PhysicsSensorGrid from '$lib/components/risk/PhysicsSensorGrid.svelte';
   import ComplianceTile from '$lib/components/risk/ComplianceTile.svelte';
   import PropFirmConfigPanel from '$lib/components/risk/PropFirmConfigPanel.svelte';
@@ -105,6 +102,17 @@
   }
 
   $effect(() => {
+    const physicsResources =
+      physicsState.data && typeof physicsState.data === 'object'
+        ? Object.entries(physicsState.data as Record<string, unknown>).slice(0, 25).map(([key, value]) => ({
+            id: `risk:${key}`,
+            label: key.replace(/_/g, ' '),
+            canvas: 'risk',
+            resource_type: 'risk-metric',
+            metadata: { value },
+          }))
+        : [];
+
     canvasContextService.setRuntimeState('risk', {
       active_tab: activeTab,
       visible_tabs: tabs.map((tab) => tab.id),
@@ -112,6 +120,16 @@
       physics: physicsState.data,
       physics_loading: physicsState.loading,
       physics_error: physicsState.error,
+      attachable_resources: [
+        ...physicsResources,
+        ...tabs.map((tab) => ({
+          id: `risk-tab:${tab.id}`,
+          label: tab.label,
+          canvas: 'risk',
+          resource_type: 'risk-tab',
+          metadata: { active: activeTab === tab.id },
+        })),
+      ],
     });
   });
 
@@ -179,21 +197,6 @@
     {:else if activeTab === 'calendar'}
       <div class="calendar-grid">
         <CalendarGateTile />
-        <!-- Upcoming news events placeholder -->
-        <div class="placeholder-tile">
-          <div class="placeholder-icon">
-            <AlertTriangle size={20} />
-          </div>
-          <span class="placeholder-label">Upcoming News Events</span>
-          <span class="placeholder-hint">High-impact events will appear here</span>
-        </div>
-        <div class="placeholder-tile">
-          <div class="placeholder-icon">
-            <Calendar size={20} />
-          </div>
-          <span class="placeholder-label">Economic Calendar</span>
-          <span class="placeholder-hint">Fed decisions, NFP, CPI scheduled events</span>
-        </div>
       </div>
 
     {:else if activeTab === 'backtest'}
@@ -412,15 +415,9 @@
 
   .calendar-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 20px;
     align-items: start;
-  }
-
-  @media (max-width: 1100px) {
-    .calendar-grid {
-      grid-template-columns: 1fr;
-    }
   }
 
   .dpr-grid {
@@ -428,38 +425,6 @@
     grid-template-columns: 1fr;
     gap: 20px;
     height: 100%;
-  }
-
-  /* Placeholder tiles for future calendar integrations */
-  .placeholder-tile {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 32px 20px;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 59, 59, 0.1);
-    border-radius: 8px;
-    text-align: center;
-    min-height: 160px;
-  }
-
-  .placeholder-icon {
-    color: rgba(255, 59, 59, 0.4);
-  }
-
-  .placeholder-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.5);
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  }
-
-  .placeholder-hint {
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.25);
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
   }
 
   /* Kanban fills available space */

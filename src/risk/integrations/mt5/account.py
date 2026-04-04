@@ -1,10 +1,18 @@
 """Account data models and managers for MT5 integration."""
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _default_simulated_fallback() -> bool:
+    value = os.environ.get("MT5_ALLOW_SIMULATED_FALLBACK")
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 @dataclass
@@ -84,7 +92,7 @@ class AccountManager:
     and account switching capabilities.
     """
 
-    def __init__(self, account_manager=None, fallback_to_simulated: bool = True):
+    def __init__(self, account_manager=None, fallback_to_simulated: Optional[bool] = None):
         """
         Initialize Account Manager.
 
@@ -93,7 +101,11 @@ class AccountManager:
             fallback_to_simulated: Use simulated data when MT5 unavailable
         """
         self._account_manager = account_manager
-        self._fallback_to_simulated = fallback_to_simulated
+        self._fallback_to_simulated = (
+            _default_simulated_fallback()
+            if fallback_to_simulated is None
+            else fallback_to_simulated
+        )
 
     def get_account_balance(self) -> Optional[float]:
         """Get account balance."""

@@ -169,7 +169,11 @@ interface ProjectItem {
   let expandedToolCalls = $state<Set<string>>(new Set());
 
   // Model selector
-  interface ProviderOption { id: string; display_name: string; models: Array<{ id: string; name: string }> }
+  interface ProviderOption {
+    id: string;
+    display_name: string;
+    models: Array<{ id: string; name: string }>;
+  }
   let availableProviders = $state<ProviderOption[]>([]);
   let selectedProvider = $state('');
   let selectedModel = $state('');
@@ -292,37 +296,56 @@ interface ProjectItem {
 
   async function loadProviders() {
     try {
-      const data = await apiFetch<{ providers?: Array<{ has_api_key: boolean; id: string; name: string; display_name: string }> }>('/providers/available');
-      // Also fetch models
-      let modelsMap: Record<string, Array<{ id: string; name: string }>> = {};
-      try {
-        const mdata = await apiFetch<{ providers?: Record<string, { available: boolean; models: Array<{ id: string; name: string }> }> }>('/agent-config/available-models');
-        if (mdata.providers) {
-          for (const [pname, info] of Object.entries(mdata.providers)) {
-            const pi = info as { available: boolean; models: Array<{ id: string; name: string }> };
-            if (pi.available && pi.models) modelsMap[pname] = pi.models;
-          }
-        }
-      } catch { /* ignore */ }
+      const currentConfig = await apiFetch<{ provider?: string; model?: string }>('/agent-config/floor_manager/model')
+        .catch(() => ({}));
+      const data = await apiFetch<{
+        providers?: Array<{
+          id: string;
+          name?: string;
+          provider_type?: string;
+          display_name: string;
+          has_api_key?: boolean;
+          is_active?: boolean;
+          available?: boolean;
+          models?: Array<{ id: string; name: string }>;
+        }>;
+      }>('/providers/available');
 
       const providers: ProviderOption[] = (data.providers || [])
-        .filter((p: { has_api_key: boolean }) => p.has_api_key)
-        .map((p: { id: string; name: string; display_name: string }) => ({
-          id: p.name,
-          display_name: p.display_name,
-          models: modelsMap[p.name] || []
-        }));
+        .filter((p) => Boolean(p.available))
+        .map((p) => {
+          const providerId = p.provider_type || p.name || p.id;
+          return {
+            id: providerId,
+            display_name: p.display_name,
+            models: Array.isArray(p.models) ? p.models : [],
+          };
+        })
+        .filter((p) => Boolean(p.id) && p.models.length > 0);
 
       availableProviders = providers;
-      // Default to first provider+model
+
       if (providers.length > 0) {
-        selectedProvider = providers[0].id;
-        if (providers[0].models.length > 0) {
-          selectedModel = providers[0].models[0].id;
-        }
+        const configuredProvider = currentConfig.provider
+          ? providers.find((p) => p.id === currentConfig.provider)
+          : undefined;
+        const providerByModel = currentConfig.model
+          ? providers.find((p) => p.models.some((model) => model.id === currentConfig.model))
+          : undefined;
+        const chosen = configuredProvider || providerByModel || providers[0];
+        selectedProvider = chosen.id;
+        selectedModel = currentConfig.model && chosen.models.some((model) => model.id === currentConfig.model)
+          ? currentConfig.model
+          : (chosen.models[0]?.id || '');
+      } else {
+        selectedProvider = '';
+        selectedModel = '';
       }
     } catch (e) {
       console.error('Failed to load providers for model selector:', e);
+      availableProviders = [];
+      selectedProvider = '';
+      selectedModel = '';
     }
   }
 

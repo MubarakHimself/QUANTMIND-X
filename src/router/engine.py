@@ -57,7 +57,7 @@ class RegimeFetcher:
     def __init__(self):
         """Initialize RegimeFetcher with configuration."""
         # API configuration
-        self._api_url = os.environ.get("CONTABO_HMM_API_URL", "http://localhost:8001")
+        self._api_url = os.environ.get("CONTABO_HMM_API_URL", "http://hmm-inference-api:8001")
         self._api_key = os.environ.get("CONTABO_HMM_API_KEY", "")
         self._poll_interval = 300  # 5 minutes
         self._fallback_timeout = 900  # 15 minutes

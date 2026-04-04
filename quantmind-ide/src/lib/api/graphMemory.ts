@@ -262,6 +262,15 @@ export async function deleteMemoryNode(nodeId: string): Promise<{ success: boole
   });
 }
 
+/**
+ * Clear all memory nodes across all tiers
+ */
+export async function clearAllMemoryNodes(): Promise<{ success: boolean; deleted: number }> {
+  return apiFetch('/all', {
+    method: 'DELETE'
+  });
+}
+
 // =============================================================================
 // Convenience Functions
 // =============================================================================
@@ -287,4 +296,35 @@ export async function getAllNodes(): Promise<{
     getColdNodes(100)
   ]);
   return { hot, warm, cold };
+}
+
+// =============================================================================
+// Opinion Nodes
+// =============================================================================
+
+export interface OpinionNode {
+  id: string;
+  content: string;
+  confidence: number | null;
+  created_at: string;
+}
+
+/**
+ * List all opinion nodes
+ */
+export async function listOpinionNodes(limit: number = 50): Promise<OpinionNode[]> {
+  return apiFetch(`/opinions?limit=${limit}`);
+}
+
+/**
+ * Create a new user-written opinion node
+ */
+export async function createOpinionNode(
+  content: string,
+  confidence: number
+): Promise<{ success: boolean; node_id: string }> {
+  return apiFetch('/opinions', {
+    method: 'POST',
+    body: JSON.stringify({ content, confidence })
+  });
 }

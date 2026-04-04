@@ -4,6 +4,7 @@
   import type { AgentType, Skill } from '../../../stores/settingsStore';
   import { departmentList, DEPARTMENTS, type DepartmentId } from '../../../stores/departmentChatStore';
   import { onMount } from 'svelte';
+  import { buildApiUrl } from '$lib/api';
 
   // State
   let selectedAgent: AgentType = $state('research');
@@ -37,7 +38,7 @@
   async function loadBackendSkills() {
     isLoadingBackend = true;
     try {
-      const res = await fetch('http://localhost:8000/api/settings/skills');
+      const res = await fetch(buildApiUrl('/api/settings/skills'));
       if (res.ok) {
         backendSkills = await res.json();
       }
@@ -118,7 +119,7 @@
         }
       }
 
-      const res = await fetch(`http://localhost:8000/api/settings/skills/${skillId}/execute`, {
+      const res = await fetch(buildApiUrl(`/api/settings/skills/${skillId}/execute`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ params, context: {} })

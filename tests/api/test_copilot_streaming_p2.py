@@ -8,7 +8,8 @@ import asyncio
 class TestStreamingTokenRendering:
     """P2: Test streaming token-by-token rendering."""
 
-    def test_streaming_response_includes_token_count(self):
+    @pytest.mark.asyncio
+    async def test_streaming_response_includes_token_count(self):
         """[P2] Streaming response should include token count for verification."""
         # Mock streaming response
         async def mock_stream():

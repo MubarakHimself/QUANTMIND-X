@@ -225,3 +225,133 @@ class KellyStatisticsAnalyzer:
             'win_rate_change_pct': win_rate_change * 100,
             'alert': 'STRATEGY DECAY DETECTED' if decay_detected else 'OK'
         }
+
+
+def calculate_per_trade_ev(
+    win_rate: float,
+    risk_reward_ratio: float,
+    risk_pct: float = 0.02
+) -> float:
+    """
+    Calculate per-trade expectancy value (EV) as percentage of equity.
+
+    F-14 Correction: Uses correct baseline parameters:
+    - win_rate: 52% (was incorrectly 50%)
+    - risk_reward_ratio: 2.0 for 1:2 R:R (was incorrectly 1.2:1)
+    - risk_pct: 2% of equity (was incorrectly 1%)
+
+    Formula:
+        EV = p × (R_ratio × R) - q × R
+           = p × (2R) - q × (R)
+           = p × 2 × risk_pct - q × risk_pct
+
+    Args:
+        win_rate: Win probability (0 to 1, e.g., 0.52 for 52%)
+        risk_reward_ratio: Reward-to-risk ratio (e.g., 2.0 for 1:2 R:R)
+        risk_pct: Risk per trade as fraction of equity (default 0.02 for 2%)
+
+    Returns:
+        Expectancy as fraction of equity (e.g., 0.0112 for 1.12%)
+
+    Example:
+        >>> ev = calculate_per_trade_ev(win_rate=0.52, risk_reward_ratio=2.0, risk_pct=0.02)
+        >>> print(f"EV: {ev:.4f} ({ev*100:.2f}%)")
+        EV: 0.0112 (1.12%)
+    """
+    p = win_rate
+    q = 1.0 - p
+    R = risk_pct
+
+    # EV = p × (R_ratio × R) - q × R
+    ev_pct = p * (risk_reward_ratio * R) - q * R
+    return ev_pct
+
+
+def calculate_daily_ev(
+    per_trade_ev_pct: float,
+    trades_per_day: int,
+    account_balance: float
+) -> float:
+    """
+    Calculate expected daily profit/loss based on per-trade EV.
+
+    F-14 Correction: Uses correct per-trade EV of +1.12% and $200 baseline.
+
+    Args:
+        per_trade_ev_pct: Per-trade expectancy as fraction (e.g., 0.0112 for 1.12%)
+        trades_per_day: Number of trades expected per day (default 80)
+        account_balance: Account balance for dollar conversion (default $200)
+
+    Returns:
+        Expected daily profit/loss in dollars
+
+    Example:
+        >>> per_trade_ev = calculate_per_trade_ev(0.52, 2.0, 0.02)
+        >>> daily_ev = calculate_daily_ev(per_trade_ev, 80, 200.0)
+        >>> print(f"Daily EV: ${daily_ev:.2f}")
+        Daily EV: $179.20
+    """
+    ev_per_trade_dollars = account_balance * per_trade_ev_pct
+    daily_ev = trades_per_day * ev_per_trade_dollars
+    return daily_ev
+
+
+def verify_baseline_mathematics() -> Dict[str, Any]:
+    """
+    Verify the F-14 corrected baseline mathematics for Story 4.11.
+
+    Returns verification that all baseline values are correct:
+    - Per-trade risk: 2% ($4 on $200 equity)
+    - Minimum R:R ratio: 1:2 (ratio = 2.0)
+    - Baseline win rate: 52%
+    - Per-trade EV: +1.12% of equity
+    - Daily EV: +$179.20 at 80 trades/day
+
+    Returns:
+        Dictionary with verification results
+    """
+    baseline_equity = 200.0
+    baseline_risk_pct = 0.02  # 2%
+    baseline_risk_dollars = baseline_equity * baseline_risk_pct  # $4
+    baseline_win_rate = 0.52  # 52%
+    baseline_rr_ratio = 2.0  # 1:2 R:R means reward is 2x risk
+    trades_per_day = 80
+
+    # Verify per-trade risk
+    expected_risk_dollars = 4.0  # $4 on $200 = 2%
+    risk_correct = abs(baseline_risk_dollars - expected_risk_dollars) < 0.001
+
+    # Verify R:R ratio
+    expected_rr = 2.0  # 1:2 means 2x reward
+    rr_correct = abs(baseline_rr_ratio - expected_rr) < 0.001
+
+    # Verify win rate
+    expected_wr = 0.52  # 52%
+    wr_correct = abs(baseline_win_rate - expected_wr) < 0.001
+
+    # Calculate per-trade EV
+    per_trade_ev = calculate_per_trade_ev(baseline_win_rate, baseline_rr_ratio, baseline_risk_pct)
+    expected_ev_pct = 0.0112  # 1.12%
+    ev_correct = abs(per_trade_ev - expected_ev_pct) < 0.0001
+
+    # Calculate daily EV
+    daily_ev = calculate_daily_ev(per_trade_ev, trades_per_day, baseline_equity)
+    expected_daily_ev = 179.20  # $179.20
+    daily_ev_correct = abs(daily_ev - expected_daily_ev) < 0.01
+
+    return {
+        'per_trade_risk_pct': baseline_risk_pct,
+        'per_trade_risk_dollars': baseline_risk_dollars,
+        'expected_risk_dollars': expected_risk_dollars,
+        'risk_correct': risk_correct,
+        'win_rate': baseline_win_rate,
+        'win_rate_correct': wr_correct,
+        'rr_ratio': baseline_rr_ratio,
+        'rr_ratio_correct': rr_correct,
+        'per_trade_ev_pct': per_trade_ev,
+        'per_trade_ev_correct': ev_correct,
+        'daily_ev': daily_ev,
+        'expected_daily_ev': expected_daily_ev,
+        'daily_ev_correct': daily_ev_correct,
+        'all_correct': risk_correct and rr_correct and wr_correct and ev_correct and daily_ev_correct
+    }

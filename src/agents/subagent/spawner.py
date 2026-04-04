@@ -32,7 +32,7 @@ def get_provider_config() -> Dict[str, Any]:
 
 def get_model_for_tier(tier: str = "standard") -> str:
     """Deprecated - returns default model."""
-    return "claude-3-5-sonnet-20241022"
+    return "claude-sonnet-4-6"
 
 
 def get_thinking_config() -> Dict[str, Any]:
@@ -50,6 +50,7 @@ def load_system_prompt(name: str) -> str:
     return ""
 
 from src.agents.memory import AgentMemory
+from src.agents.prompts.department_contracts import compose_subagent_prompt
 from src.agents.checkpoint import (
     CheckpointManager,
     HeartbeatManager,
@@ -164,7 +165,6 @@ class AgentSpawner(BaseAgentSpawner):
         self._spawned_agents: Dict[str, SpawnedAgent] = {}
         self._max_agents = max_agents
         self._default_model_tier = default_model_tier
-        self._provider_config = get_provider_config()
         self._thinking_config = get_thinking_config()
         self._lock = asyncio.Lock()
         self._enable_memory = enable_memory
@@ -191,7 +191,6 @@ class AgentSpawner(BaseAgentSpawner):
 
         logger.info(
             f"AgentSpawner initialized: max_agents={max_agents}, "
-            f"provider={self._provider_config['provider']}, "
             f"memory={'enabled' if enable_memory else 'disabled'}, "
             f"mcp={'enabled' if enable_mcp and MCP_INTEGRATION_AVAILABLE else 'disabled'}, "
             f"checkpoint={'enabled' if enable_checkpoint else 'disabled'}"
@@ -199,16 +198,41 @@ class AgentSpawner(BaseAgentSpawner):
 
     @property
     def client(self) -> Optional["Anthropic"]:
-        """Lazy-initialize Anthropic-compatible client."""
+        """Lazy-initialize Anthropic-compatible client via ProviderRouter."""
         if self._client is None and SDK_AVAILABLE:
-            client_kwargs = {"api_key": self._provider_config["api_key"]}
+            try:
+                from src.agents.providers.router import get_router
+                provider = get_router().primary
+            except Exception:
+                provider = None
 
-            if self._provider_config.get("base_url"):
-                client_kwargs["base_url"] = self._provider_config["base_url"]
-
-            self._client = Anthropic(**client_kwargs)
-            logger.info(f"Agent spawner client initialized for provider: {self._provider_config['provider']}")
+            if provider and provider.api_key:
+                client_kwargs: Dict[str, Any] = {"api_key": provider.api_key}
+                if provider.base_url:
+                    client_kwargs["base_url"] = provider.base_url
+                self._client = Anthropic(**client_kwargs)
+                logger.info(f"Agent spawner client initialized for provider: {provider.provider_type}")
+            else:
+                # Fall back to env var
+                fallback_key = os.getenv("ANTHROPIC_API_KEY")
+                if fallback_key:
+                    self._client = Anthropic(api_key=fallback_key)
+                    logger.info("Agent spawner client initialized via ANTHROPIC_API_KEY env var")
+                else:
+                    logger.warning("No provider configured and ANTHROPIC_API_KEY not set; client unavailable")
         return self._client
+
+    def _get_model(self) -> str:
+        """Get model ID from primary provider or env var."""
+        try:
+            from src.agents.providers.router import get_router
+            provider = get_router().primary
+        except Exception:
+            provider = None
+
+        if provider and provider.model_list:
+            return provider.model_list[0].get("id") or provider.model_list[0].get("model_id", "claude-sonnet-4-6")
+        return os.getenv("AGENT_DEFAULT_MODEL", "claude-sonnet-4-6")
 
     def spawn(
         self,
@@ -307,15 +331,21 @@ class AgentSpawner(BaseAgentSpawner):
                 self._spawned_agents[agent_id].status = "completed"
                 return
 
-            # Get model for tier
-            model = get_model_for_tier(model_tier)
+            # Get model — prefer explicit override from options, else use provider default
+            model = options.get("model_name") or self._get_model()
 
             # Build system prompt based on agent type (with memory context)
             system_prompt = await self._build_agent_prompt(agent_id, options, memory_context)
 
             # Prepare thinking parameter for GLM models
             thinking_param = None
-            if self._provider_config.get("provider") == "zai" and self._thinking_config.get("type") != "disabled":
+            try:
+                from src.agents.providers.router import get_router
+                _prov = get_router().primary
+                _prov_type = _prov.provider_type if _prov else ""
+            except Exception:
+                _prov_type = ""
+            if _prov_type == "zai" and self._thinking_config.get("type") != "disabled":
                 thinking_param = self._thinking_config
 
             # Make API call
@@ -338,7 +368,7 @@ class AgentSpawner(BaseAgentSpawner):
                 "status": "completed",
                 "output": output,
                 "model": model,
-                "provider": self._provider_config["provider"],
+                "provider": _prov_type or "unknown",
                 "usage": {
                     "input_tokens": response.usage.input_tokens,
                     "output_tokens": response.usage.output_tokens,
@@ -402,19 +432,29 @@ class AgentSpawner(BaseAgentSpawner):
         options: Dict[str, Any],
         memory_context: str = "",
     ) -> str:
-        """Build system prompt for the agent based on its type."""
+        """Build system prompt for the agent based on its type and department."""
         agent_type = self._spawned_agents[agent_id].agent_type
         department = self._spawned_agents[agent_id].department
 
-        base_prompt = f"""You are a {agent_type} sub-agent in the QuantMind Trading Floor.
+        # Try to load a specialised system prompt for this agent type
+        specialised_prompt = self._get_specialised_prompt(agent_type, department)
+
+        if specialised_prompt:
+            base_prompt = specialised_prompt + "\n\n"
+        else:
+            base_prompt = f"""You are a {agent_type} sub-agent in the QUANTMINDX Trading Floor.
 
 Your role is to assist with tasks delegated to you by the Floor Manager or department heads.
-
-{memory_context}
+You are part of the {department or 'general'} department. Execute your assigned tasks with precision
+and report results in a structured format.
 """
 
-        if department:
-            base_prompt += f"Current department context: {department}\n\n"
+        # Append memory context
+        if memory_context:
+            base_prompt += f"\n{memory_context}\n"
+
+        if department and not specialised_prompt:
+            base_prompt += f"\nCurrent department context: {department}\n"
 
         # Add MCP tools information if available
         mcp_servers = options.get("mcp_servers")
@@ -424,9 +464,9 @@ Your role is to assist with tasks delegated to you by the Floor Manager or depar
                 if tools:
                     tool_descriptions = "\n".join([
                         f"- {tool.name}: {tool.description}"
-                        for tool in tools[:20]  # Limit to first 20 tools
+                        for tool in tools[:20]
                     ])
-                    base_prompt += f"""Available MCP tools:
+                    base_prompt += f"""\n## Available MCP Tools
 {tool_descriptions}
 """
                     if len(tools) > 20:
@@ -434,14 +474,27 @@ Your role is to assist with tasks delegated to you by the Floor Manager or depar
             except Exception as e:
                 logger.warning(f"Failed to load MCP tools for agent {agent_id}: {e}")
 
-        base_prompt += """Guidelines:
+        # Append operational guidelines
+        base_prompt += """
+## Operational Guidelines
 - Complete tasks efficiently and accurately
-- Report results clearly
-- If you encounter errors, explain them and suggest solutions
+- Report results in structured format (JSON or markdown as appropriate)
+- If you encounter errors, explain the root cause and suggest solutions
 - Follow best practices for your task type
+- Respect the 3/5/7 risk framework: 3% daily drawdown, 5% concurrent exposure, 7% weekly hard stop
+- Paper trading only — never reference or suggest live execution
 """
 
         return base_prompt
+
+    @staticmethod
+    def _get_specialised_prompt(agent_type: str, department: Optional[str]) -> Optional[str]:
+        """Look up a specialised system prompt for the given agent type."""
+        try:
+            return compose_subagent_prompt(agent_type=agent_type, department=department)
+        except Exception as e:
+            logger.debug(f"Could not compose specialised prompt for {agent_type}: {e}")
+            return None
 
     def list_agents(self) -> List[Dict[str, Any]]:
         """
@@ -729,14 +782,20 @@ Your role is to assist with tasks delegated to you by the Floor Manager or depar
                 return
 
             # Get model for tier
-            model = get_model_for_tier(model_tier)
+            model = self._get_model()
 
             # Build system prompt
             system_prompt = await self._build_agent_prompt(agent_id, options, memory_context)
 
             # Prepare thinking parameter for GLM models
             thinking_param = None
-            if self._provider_config.get("provider") == "zai" and self._thinking_config.get("type") != "disabled":
+            try:
+                from src.agents.providers.router import get_router
+                _prov = get_router().primary
+                _prov_type = _prov.provider_type if _prov else ""
+            except Exception:
+                _prov_type = ""
+            if _prov_type == "zai" and self._thinking_config.get("type") != "disabled":
                 thinking_param = self._thinking_config
 
             # Make API call
@@ -763,7 +822,7 @@ Your role is to assist with tasks delegated to you by the Floor Manager or depar
                 "status": "completed",
                 "output": output,
                 "model": model,
-                "provider": self._provider_config["provider"],
+                "provider": _prov_type or "unknown",
                 "usage": {
                     "input_tokens": response.usage.input_tokens,
                     "output_tokens": response.usage.output_tokens,

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { buildApiUrl } from "$lib/api";
 
   import DatabaseHeader from "./DatabaseHeader.svelte";
   import DatabaseStats from "./DatabaseStats.svelte";
@@ -110,7 +111,7 @@
   async function loadTables() {
     isLoading = true;
     try {
-      const res = await fetch("http://localhost:8000/api/database/tables");
+      const res = await fetch(buildApiUrl("/api/database/tables"));
       if (res.ok) {
         const data = await res.json();
         tables = data.tables || [];
@@ -128,7 +129,7 @@
 
   async function loadDatabaseStats() {
     try {
-      const res = await fetch("http://localhost:8000/api/database/stats");
+      const res = await fetch(buildApiUrl("/api/database/stats"));
       if (res.ok) {
         dbStats = await res.json();
       } else {
@@ -160,7 +161,7 @@
     try {
       const offset = (page - 1) * limit;
       const res = await fetch(
-        `http://localhost:8000/api/database/table/${tableName}?limit=${limit}&offset=${offset}`,
+        buildApiUrl(`/api/database/table/${tableName}?limit=${limit}&offset=${offset}`),
       );
       if (res.ok) {
         tableData = await res.json();
@@ -177,7 +178,7 @@
   async function loadTableSchema(tableName: string) {
     try {
       const res = await fetch(
-        `http://localhost:8000/api/database/schema/${tableName}`,
+        buildApiUrl(`/api/database/schema/${tableName}`),
       );
       if (res.ok) {
         const data = await res.json();
@@ -203,7 +204,7 @@
     const startTime = Date.now();
 
     try {
-      const res = await fetch("http://localhost:8000/api/database/query", {
+      const res = await fetch(buildApiUrl("/api/database/query"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: queryInput }),
@@ -285,7 +286,7 @@
 
     try {
       const res = await fetch(
-        `http://localhost:8000/api/database/table/${selectedTable.name}`,
+        buildApiUrl(`/api/database/table/${selectedTable.name}`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -301,13 +302,7 @@
       }
     } catch (e) {
       console.error("Failed to insert row:", e);
-      // For development, add locally
-      if (tableData) {
-        const newRow = { id: tableData.rows.length + 1, ...newRowData };
-        tableData.rows.push(newRow);
-        tableData.row_count++;
-      }
-      insertModalOpen = false;
+      alert("Failed to insert row");
     }
   }
 
@@ -321,7 +316,7 @@
 
     try {
       const res = await fetch(
-        `http://localhost:8000/api/database/table/${selectedTable.name}`,
+        buildApiUrl(`/api/database/table/${selectedTable.name}`),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -337,14 +332,7 @@
       }
     } catch (e) {
       console.error("Failed to update row:", e);
-      // For development, update locally
-      if (tableData) {
-        const index = tableData.rows.findIndex((r) => r.id === editingRow?.id);
-        if (index >= 0) {
-          tableData.rows[index] = editingRow;
-        }
-      }
-      editModalOpen = false;
+      alert("Failed to update row");
     }
   }
 
@@ -355,7 +343,7 @@
 
     try {
       const res = await fetch(
-        `http://localhost:8000/api/database/table/${selectedTable.name}`,
+        buildApiUrl(`/api/database/table/${selectedTable.name}`),
         {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
@@ -371,14 +359,7 @@
       }
     } catch (e) {
       console.error("Failed to delete rows:", e);
-      // For development, remove locally
-      if (tableData) {
-        tableData.rows = tableData.rows.filter(
-          (r) => !selectedRows.has(String(r.id)),
-        );
-        tableData.row_count -= selectedRows.size;
-      }
-      selectedRows.clear();
+      alert("Failed to delete rows");
     }
   }
 
@@ -387,7 +368,7 @@
 
     try {
       const res = await fetch(
-        `http://localhost:8000/api/database/export/${selectedTable.name}?format=${format}`,
+        buildApiUrl(`/api/database/export/${selectedTable.name}?format=${format}`),
       );
       if (res.ok) {
         const blob = await res.blob();
@@ -412,7 +393,7 @@
 
     try {
       const res = await fetch(
-        `http://localhost:8000/api/database/import/${selectedTable.name}`,
+        buildApiUrl(`/api/database/import/${selectedTable.name}`),
         {
           method: "POST",
           body: formData,

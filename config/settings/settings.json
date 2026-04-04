@@ -8,7 +8,24 @@
     "debugMode": false,
     "logLevel": "info"
   },
-  "apiKeys": [],
+  "apiKeys": [
+    {
+      "id": "minimax-main",
+      "name": "MiniMax API",
+      "key": "sk-api-T6JijCmmJHAeJHSOoWtQZDhNfYEBkWHAbzZQQukJSpOyruxzJwZYjGbw-AWgeblkR5C6CsGSPbodFzLPjPcAet372yX39uPe9zB0NU4dTrCJxKxylZJNNn4",
+      "service": "minimax",
+      "created": "2026-03-31T10:30:00Z",
+      "lastUsed": null
+    },
+    {
+      "id": "minimax-key-1",
+      "name": "MiniMax API Key",
+      "key": "sk-api-T6JijCmmJHAeJHSSoWtQZDhNfYEBkWHAbzZQQukJSpOyruxzJwZYjGbw-AWgeblkR5C6CsGSPbodFzLPjPcAet372yX39uPe9zB0NU4dTrCJxKxylZJNNn4",
+      "service": "minimax",
+      "created": "2026-03-31T10:00:00Z",
+      "lastUsed": null
+    }
+  ],
   "mcpServers": [
     {
       "id": "context7",
@@ -24,13 +41,16 @@
     }
   ],
   "agents": {
-    "defaultModel": "claude-sonnet-4",
+    "defaultModel": "MiniMax-M2.5",
     "temperature": 0.7,
     "maxTokens": 4096,
     "enableMemory": true,
     "memoryType": "hybrid",
     "skillsEnabled": true,
-    "autoDelegate": false
+    "autoDelegate": false,
+    "system_prompts": {
+      "research_head": "You are the research head at QuantMindX. Focus on deep market analysis."
+    }
   },
   "risk": {
     "houseMoneyEnabled": true,

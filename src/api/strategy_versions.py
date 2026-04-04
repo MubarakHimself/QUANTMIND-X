@@ -49,6 +49,71 @@ class CreateVersionRequest(BaseModel):
         default=None,
         description="Linked artifacts"
     )
+    parent_id: Optional[str] = Field(
+        default=None,
+        description="ID of parent version this was spawned from (for genealogy tracking)"
+    )
+
+
+class GenealogyResponse(BaseModel):
+    """Response model for version genealogy."""
+    strategy_id: str
+    root_version: Optional[Dict[str, Any]]
+    tree: Dict[str, Any]  # version_id -> { version, children }
+
+
+@router.get("/{strategy_id}/genealogy", response_model=GenealogyResponse)
+async def get_version_genealogy(
+    strategy_id: str,
+) -> GenealogyResponse:
+    """
+    Get the full genealogy tree for a strategy.
+
+    GET /api/strategies/{strategy_id}/genealogy
+
+    Returns the version tree with parent-child relationships for variant lifecycle tracking.
+    """
+    storage = get_ea_version_storage()
+    versions = storage.list_versions(strategy_id)
+
+    if not versions:
+        return GenealogyResponse(strategy_id=strategy_id, root_version=None, tree={})
+
+    # Build tree: version_id -> { version_dict, children }
+    tree: Dict[str, Dict[str, Any]] = {}
+    root_ids: List[str] = []
+
+    for v in versions:
+        version_dict = {
+            "version_tag": v.version_tag,
+            "id": v.id,
+            "created_at": v.created_at.isoformat() if v.created_at else None,
+            "author": v.author,
+            "source_hash": v.source_hash,
+            "variant_type": v.variant_type.value,
+            "improvement_cycle": v.improvement_cycle,
+            "parent_id": v.parent_id,
+            "is_active": storage.get_active_version(strategy_id).version_tag == v.version_tag
+            if storage.get_active_version(strategy_id) else False,
+        }
+        tree[v.id] = {"version": version_dict, "children": []}
+
+    # Wire parent-child relationships
+    for vid, node in tree.items():
+        parent_id = node["version"].get("parent_id")
+        if parent_id and parent_id in tree:
+            tree[parent_id]["children"].append(node["version"])
+        elif parent_id is None:
+            root_ids.append(vid)
+
+    # Pick first root as canonical root
+    root_version = tree[root_ids[0]]["version"] if root_ids else None
+
+    return GenealogyResponse(
+        strategy_id=strategy_id,
+        root_version=root_version,
+        tree={k: {"version": v["version"], "children": v["children"]} for k, v in tree.items()},
+    )
 
 
 class UpdateArtifactsRequest(BaseModel):
@@ -80,6 +145,7 @@ class VersionResponse(BaseModel):
     improvement_cycle: int
     artifacts: Dict[str, Any]
     is_active: bool
+    parent_id: Optional[str] = None
 
 
 class VersionListResponse(BaseModel):
@@ -160,6 +226,7 @@ async def list_strategy_versions(
                     improvement_cycle=m["improvement_cycle"],
                     artifacts={},
                     is_active=False,
+                    parent_id=m.get("parent_id"),
                 )
                 for m in metadata
             ],
@@ -186,6 +253,7 @@ async def list_strategy_versions(
                 improvement_cycle=v.improvement_cycle,
                 artifacts=v.artifacts.model_dump(),
                 is_active=active.version_tag == v.version_tag if active else False,
+                parent_id=v.parent_id,
             )
             for v in versions
         ],
@@ -223,6 +291,7 @@ async def get_strategy_version(
         improvement_cycle=version.improvement_cycle,
         artifacts=version.artifacts.model_dump(),
         is_active=active.version_tag == version.version_tag if active else False,
+        parent_id=version.parent_id,
     )
 
 
@@ -248,6 +317,7 @@ async def create_strategy_version(
         auto_increment=request.auto_increment,
         variant_type=request.variant_type,
         improvement_cycle=request.improvement_cycle,
+        parent_id=request.parent_id,
     )
 
     # Update artifacts if provided
@@ -269,6 +339,7 @@ async def create_strategy_version(
         improvement_cycle=version.improvement_cycle,
         artifacts=version.artifacts.model_dump(),
         is_active=True,
+        parent_id=version.parent_id,
     )
 
 
@@ -427,6 +498,7 @@ async def get_active_version(
         improvement_cycle=version.improvement_cycle,
         artifacts=version.artifacts.model_dump(),
         is_active=True,
+        parent_id=version.parent_id,
     )
 
 

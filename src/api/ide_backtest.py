@@ -6,6 +6,7 @@ API endpoints for backtesting.
 
 import logging
 import asyncio
+import re
 import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -24,6 +25,17 @@ router = APIRouter(prefix="/api/v1/backtest", tags=["backtest"])
 # In-memory storage for backtest sessions and results
 _backtest_sessions: Dict[str, Dict[str, Any]] = {}
 _backtest_results: Dict[str, Dict[str, Any]] = {}
+
+_OPTIMIZATION_PARAMETER_CANDIDATES: Dict[str, list[Any]] = {
+    "stop_loss": [10, 20, 30],
+    "take_profit": [20, 40, 60],
+    "ma_fast": [10, 20, 30],
+    "ma_slow": [50, 100, 200],
+    "lookback": [10, 20, 50],
+    "atr_period": [7, 14, 21],
+    "risk_percent": [0.5, 1.0, 2.0],
+}
+_MAX_OPTIMIZATION_COMBINATIONS = 27
 
 
 def _build_backtest_result_dict(comparison) -> dict:
@@ -89,6 +101,101 @@ def _derive_sit_result(comparison, backtest_result: dict) -> dict:
         degradation = abs(is_wr - oos_wr) / is_wr if is_wr else 0
 
     return {"passed": degradation < 0.15}
+
+
+def _build_parameter_sweep_grid(strategy_code: Optional[str]) -> Dict[str, list[Any]]:
+    """Derive a bounded optimization grid from templated strategy placeholders."""
+    if not strategy_code:
+        return {}
+
+    placeholders = []
+    seen = set()
+    for match in re.finditer(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}", strategy_code):
+        name = match.group(1)
+        if name in _OPTIMIZATION_PARAMETER_CANDIDATES and name not in seen:
+            placeholders.append(name)
+            seen.add(name)
+
+    if not placeholders:
+        return {}
+
+    grid: Dict[str, list[Any]] = {}
+    combinations = 1
+    for name in placeholders:
+        values = _OPTIMIZATION_PARAMETER_CANDIDATES[name]
+        prospective = combinations * len(values)
+        if prospective > _MAX_OPTIMIZATION_COMBINATIONS and grid:
+            break
+        grid[name] = values
+        combinations = prospective
+
+    return grid
+
+
+def _run_parameter_sweep(request: BacktestRunRequest) -> Optional[list[dict]]:
+    """Run a bounded parameter sweep when the strategy exposes template placeholders."""
+    parameters = _build_parameter_sweep_grid(request.strategy_code)
+    if not parameters:
+        return None
+
+    from src.agents.tools.backtest_tools import BacktestConfig, BacktestTools
+
+    config = BacktestConfig(
+        strategy_name=request.strategy_name or f"{request.symbol}_{request.variant}",
+        symbol=request.symbol,
+        timeframe=request.timeframe,
+        start_date=request.start_date,
+        end_date=request.end_date,
+        initial_deposit=request.initial_cash if request.initial_cash is not None else 10000.0,
+        lot_size=0.1,
+        spread=0,
+    )
+
+    results = BacktestTools().run_optimization(
+        config=config,
+        parameters=parameters,
+        optimization_criteria="profit",
+        strategy_code=request.strategy_code or "",
+    )
+    return results[:10]
+
+
+def _request_backtest_approval(
+    backtest_id: str,
+    request: BacktestRunRequest,
+    report_text: Optional[str],
+    optimization_results: Optional[list[dict]] = None,
+) -> None:
+    """Create a workflow-gate approval for a completed backtest."""
+    from src.agents.approval_manager import (
+        ApprovalType,
+        ApprovalUrgency,
+        get_approval_manager,
+    )
+
+    approval = get_approval_manager().request_approval(
+        approval_type=ApprovalType.WORKFLOW_GATE,
+        title=f"Backtest Ready: {request.symbol}_{request.variant}",
+        description=(
+            f"Backtest {backtest_id} completed for {request.symbol} {request.timeframe}. "
+            "Review the report before promoting to paper trading."
+        ),
+        department="trading",
+        agent_id="ide_backtest",
+        urgency=ApprovalUrgency.HIGH,
+        workflow_id=backtest_id,
+        workflow_stage="backtest_completed",
+        strategy_id=request.strategy_name,
+        context={
+            "backtest_id": backtest_id,
+            "symbol": request.symbol,
+            "timeframe": request.timeframe,
+            "variant": request.variant,
+            "report": report_text,
+            "optimization_results": optimization_results,
+        },
+    )
+    logger.info("Created backtest approval %s for %s", approval.id, backtest_id)
 
 
 
@@ -283,6 +390,15 @@ def on_bar(tester):
                 logger.warning(f"Report generation failed: {report_err}")
                 report_text = None
 
+            optimization_results = None
+            try:
+                optimization_results = await loop.run_in_executor(
+                    None,
+                    lambda: _run_parameter_sweep(request)
+                )
+            except Exception as optimization_err:
+                logger.warning(f"Parameter sweep failed: {optimization_err}")
+
             # Build full backtest_results JSON with all variant data
             backtest_results_json = {
                 "backtest_id": backtest_id,
@@ -302,7 +418,8 @@ def on_bar(tester):
                 "start_date": request.start_date,
                 "end_date": request.end_date,
                 "strategy_code": request.strategy_code,
-                "final_result": requested_result.to_dict() if hasattr(requested_result, 'to_dict') else {}
+                "final_result": requested_result.to_dict() if hasattr(requested_result, 'to_dict') else {},
+                "optimization_results": optimization_results,
             }
 
             # Persist to database
@@ -347,11 +464,22 @@ def on_bar(tester):
                     "risk_level": comparison.risk_level
                 },
                 "all_variants": comparison.to_dict(),
-                "report": report_text
+                "report": report_text,
+                "optimization_results": optimization_results,
             }
 
             _backtest_sessions[backtest_id]["status"] = "completed"
             _backtest_sessions[backtest_id]["completed_at"] = datetime.now().isoformat()
+
+            try:
+                _request_backtest_approval(
+                    backtest_id=backtest_id,
+                    request=request,
+                    report_text=report_text,
+                    optimization_results=optimization_results,
+                )
+            except Exception as approval_err:
+                logger.warning(f"Backtest approval request failed: {approval_err}")
 
             logger.info(f"Backtest {backtest_id} completed")
 

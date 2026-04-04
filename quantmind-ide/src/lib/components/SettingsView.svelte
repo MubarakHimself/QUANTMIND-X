@@ -1,8 +1,7 @@
 <script lang="ts">
-  import { run, createBubbler, stopPropagation } from 'svelte/legacy';
-
-  const bubble = createBubbler();
+  import { run } from 'svelte/legacy';
   import { createEventDispatcher } from 'svelte';
+  import { tick } from 'svelte';
   import { onMount, onDestroy } from 'svelte';
   import {
     Settings as SettingsIcon, Key, Server, Bot, Database, Sliders,
@@ -13,30 +12,27 @@
     Brain, Sparkles, FileText, Cpu as ModelIcon, Activity, Heart,
     Palette
   } from 'lucide-svelte';
-  import ThemeSelector from './ThemeSelector.svelte';
   import {
     ApiKeysPanel,
     McpServersPanel,
     AgentsPanel,
     RiskPanel,
-    DatabasePanel,
-    ConnectionPanel,
-    SecurityPanel,
     ProvidersPanel,
-    ServersPanel,
     NotificationSettingsPanel,
     ServerHealthPanel,
     AppearancePanel,
     DeployPanel
   } from './settings';
-  import { getRouterSettings, saveRouterSettings } from '$lib/api';
+  import { apiFetch, buildApiUrl, getRouterSettings, saveRouterSettings } from '$lib/api';
 
   const dispatch = createEventDispatcher();
 
   // Settings tabs
-  type SettingsTab = 'general' | 'appearance' | 'api-keys' | 'providers' | 'servers' | 'notifications' | 'server-health' | 'mcp-servers' | 'agents' | 'models' | 'risk' | 'database' | 'connection' | 'security' | 'deploy';
-  let activeTab: SettingsTab = $state('general');
+  type SettingsTab = 'appearance' | 'providers' | 'notifications' | 'server-health' | 'mcp-servers' | 'agents' | 'risk' | 'deploy';
+  let activeTab: SettingsTab = $state('appearance');
   let settingsVisible = $state(false);
+  let settingsPanelEl = $state<HTMLElement | null>(null);
+  let lastFocusedElement = $state<HTMLElement | null>(null);
 
   // General settings
   let generalSettings = $state({
@@ -140,7 +136,7 @@
     description: ''
   });
 
-  // Agent settings
+  // Agent settings - all agents from AgentsPanel
   let agentConfigs: Record<string, {
     name: string;
     role: string;
@@ -151,44 +147,273 @@
     systemPrompt: string;
     skills: Array<{ id: string; name: string; description: string; enabled: boolean }>;
     tools: string[];
+    permissions?: {
+      fileSystem: 'none' | 'read' | 'write' | 'full';
+      broker: 'none' | 'read' | 'write' | 'full';
+      database: 'none' | 'read' | 'write' | 'full';
+      external: boolean;
+      memory: boolean;
+    };
   }> = $state({
-    copilot: {
-      name: 'copilot',
-      role: 'Trading Assistant & Workflow Guide',
-      provider: 'openrouter',
-      model: 'anthropic/claude-sonnet-4',
+    // Floor Manager
+    floor_manager: {
+      name: 'Floor Manager',
+      role: 'Trading Floor Orchestrator',
+      provider: '',
+      model: '',
       temperature: 0.7,
-      maxTokens: 4096,
-      systemPrompt: '',
+      maxTokens: 8192,
+      systemPrompt: 'You are the Floor Manager, orchestrating the trading floor operations...',
       skills: [],
-      tools: []
+      tools: ['get_market_data', 'store_semantic_memory', 'search_semantic_memories'],
+      permissions: { fileSystem: 'read', broker: 'read', database: 'read', external: false, memory: true }
     },
-    quantcode: {
-      name: 'quantcode',
-      role: 'MQL5 Code Expert',
-      provider: 'openrouter',
-      model: 'anthropic/claude-sonnet-4',
+    // Department Heads
+    research_head: {
+      name: 'Research Head',
+      role: 'Strategy Research Lead',
+      provider: '',
+      model: '',
+      temperature: 0.5,
+      maxTokens: 8192,
+      systemPrompt: 'You are the Research Head, leading the research department...',
+      skills: [],
+      tools: ['get_market_data', 'run_backtest', 'store_semantic_memory'],
+      permissions: { fileSystem: 'read', broker: 'read', database: 'read', external: false, memory: true }
+    },
+    development_head: {
+      name: 'Development Head',
+      role: 'EA Development Lead',
+      provider: '',
+      model: '',
       temperature: 0.3,
       maxTokens: 8192,
-      systemPrompt: '',
+      systemPrompt: 'You are the Development Head, leading the development department...',
       skills: [],
-      tools: []
+      tools: ['get_market_data', 'run_backtest', 'store_semantic_memory'],
+      permissions: { fileSystem: 'write', broker: 'read', database: 'read', external: false, memory: true }
     },
-    analyst: {
-      name: 'analyst',
-      role: 'Trading Strategy Analyst',
-      provider: 'openrouter',
-      model: 'anthropic/claude-sonnet-4',
+    trading_head: {
+      name: 'Trading Head',
+      role: 'Order Execution Lead',
+      provider: '',
+      model: '',
       temperature: 0.5,
-      maxTokens: 6144,
-      systemPrompt: '',
+      maxTokens: 8192,
+      systemPrompt: 'You are the Trading Head, leading the trading department...',
       skills: [],
-      tools: []
+      tools: ['get_market_data', 'get_position_size', 'store_semantic_memory'],
+      permissions: { fileSystem: 'read', broker: 'write', database: 'read', external: false, memory: true }
+    },
+    risk_head: {
+      name: 'Risk Head',
+      role: 'Risk Management Lead',
+      provider: '',
+      model: '',
+      temperature: 0.4,
+      maxTokens: 8192,
+      systemPrompt: 'You are the Risk Head, leading the risk management department...',
+      skills: [],
+      tools: ['get_market_data', 'get_position_size', 'store_semantic_memory'],
+      permissions: { fileSystem: 'read', broker: 'read', database: 'read', external: false, memory: true }
+    },
+    portfolio_head: {
+      name: 'Portfolio Head',
+      role: 'Portfolio Management Lead',
+      provider: '',
+      model: '',
+      temperature: 0.5,
+      maxTokens: 8192,
+      systemPrompt: 'You are the Portfolio Head, leading the portfolio management department...',
+      skills: [],
+      tools: ['get_market_data', 'store_semantic_memory', 'search_semantic_memories'],
+      permissions: { fileSystem: 'read', broker: 'read', database: 'read', external: false, memory: true }
+    },
+    // Sub-agents
+    strategy_researcher: {
+      name: 'Strategy Researcher',
+      role: 'Research sub-agent',
+      provider: '',
+      model: '',
+      temperature: 0.5,
+      maxTokens: 4096,
+      systemPrompt: 'You are a Strategy Researcher...',
+      skills: [],
+      tools: ['get_market_data', 'run_backtest'],
+      permissions: { fileSystem: 'read', broker: 'none', database: 'read', external: false, memory: true }
+    },
+    market_analyst: {
+      name: 'Market Analyst',
+      role: 'Research sub-agent',
+      provider: '',
+      model: '',
+      temperature: 0.5,
+      maxTokens: 4096,
+      systemPrompt: 'You are a Market Analyst...',
+      skills: [],
+      tools: ['get_market_data'],
+      permissions: { fileSystem: 'read', broker: 'none', database: 'read', external: false, memory: true }
+    },
+    backtester: {
+      name: 'Backtester',
+      role: 'Research sub-agent',
+      provider: '',
+      model: '',
+      temperature: 0.3,
+      maxTokens: 4096,
+      systemPrompt: 'You are a Backtester...',
+      skills: [],
+      tools: ['run_backtest'],
+      permissions: { fileSystem: 'read', broker: 'none', database: 'read', external: false, memory: true }
+    },
+    python_dev: {
+      name: 'Python Developer',
+      role: 'Development sub-agent',
+      provider: '',
+      model: '',
+      temperature: 0.3,
+      maxTokens: 4096,
+      systemPrompt: 'You are a Python Developer...',
+      skills: [],
+      tools: [],
+      permissions: { fileSystem: 'write', broker: 'none', database: 'read', external: false, memory: true }
+    },
+    pinescript_dev: {
+      name: 'PineScript Developer',
+      role: 'Development sub-agent',
+      provider: '',
+      model: '',
+      temperature: 0.3,
+      maxTokens: 4096,
+      systemPrompt: 'You are a PineScript Developer...',
+      skills: [],
+      tools: [],
+      permissions: { fileSystem: 'write', broker: 'none', database: 'read', external: false, memory: true }
+    },
+    mql5_dev: {
+      name: 'MQL5 Developer',
+      role: 'Development sub-agent',
+      provider: '',
+      model: '',
+      temperature: 0.3,
+      maxTokens: 4096,
+      systemPrompt: 'You are an MQL5 Developer...',
+      skills: [],
+      tools: [],
+      permissions: { fileSystem: 'write', broker: 'none', database: 'read', external: false, memory: true }
+    },
+    order_executor: {
+      name: 'Order Executor',
+      role: 'Trading sub-agent',
+      provider: '',
+      model: '',
+      temperature: 0.5,
+      maxTokens: 4096,
+      systemPrompt: 'You are an Order Executor...',
+      skills: [],
+      tools: ['get_position_size'],
+      permissions: { fileSystem: 'read', broker: 'write', database: 'read', external: false, memory: true }
+    },
+    fill_tracker: {
+      name: 'Fill Tracker',
+      role: 'Trading sub-agent',
+      provider: '',
+      model: '',
+      temperature: 0.5,
+      maxTokens: 4096,
+      systemPrompt: 'You are a Fill Tracker...',
+      skills: [],
+      tools: [],
+      permissions: { fileSystem: 'read', broker: 'read', database: 'read', external: false, memory: true }
+    },
+    trade_monitor: {
+      name: 'Trade Monitor',
+      role: 'Trading sub-agent',
+      provider: '',
+      model: '',
+      temperature: 0.5,
+      maxTokens: 4096,
+      systemPrompt: 'You are a Trade Monitor...',
+      skills: [],
+      tools: ['get_market_data', 'get_position_size'],
+      permissions: { fileSystem: 'read', broker: 'read', database: 'read', external: false, memory: true }
+    },
+    position_sizer: {
+      name: 'Position Sizer',
+      role: 'Risk sub-agent',
+      provider: '',
+      model: '',
+      temperature: 0.4,
+      maxTokens: 4096,
+      systemPrompt: 'You are a Position Sizer...',
+      skills: [],
+      tools: ['get_position_size'],
+      permissions: { fileSystem: 'read', broker: 'read', database: 'read', external: false, memory: true }
+    },
+    drawdown_monitor: {
+      name: 'Drawdown Monitor',
+      role: 'Risk sub-agent',
+      provider: '',
+      model: '',
+      temperature: 0.4,
+      maxTokens: 4096,
+      systemPrompt: 'You are a Drawdown Monitor...',
+      skills: [],
+      tools: [],
+      permissions: { fileSystem: 'read', broker: 'read', database: 'read', external: false, memory: true }
+    },
+    var_calculator: {
+      name: 'VaR Calculator',
+      role: 'Risk sub-agent',
+      provider: '',
+      model: '',
+      temperature: 0.4,
+      maxTokens: 4096,
+      systemPrompt: 'You are a VaR Calculator...',
+      skills: [],
+      tools: [],
+      permissions: { fileSystem: 'read', broker: 'read', database: 'read', external: false, memory: true }
+    },
+    allocation_manager: {
+      name: 'Allocation Manager',
+      role: 'Portfolio sub-agent',
+      provider: '',
+      model: '',
+      temperature: 0.5,
+      maxTokens: 4096,
+      systemPrompt: 'You are an Allocation Manager...',
+      skills: [],
+      tools: [],
+      permissions: { fileSystem: 'read', broker: 'read', database: 'read', external: false, memory: true }
+    },
+    rebalancer: {
+      name: 'Rebalancer',
+      role: 'Portfolio sub-agent',
+      provider: '',
+      model: '',
+      temperature: 0.5,
+      maxTokens: 4096,
+      systemPrompt: 'You are a Rebalancer...',
+      skills: [],
+      tools: [],
+      permissions: { fileSystem: 'read', broker: 'read', database: 'read', external: false, memory: true }
+    },
+    performance_tracker: {
+      name: 'Performance Tracker',
+      role: 'Portfolio sub-agent',
+      provider: '',
+      model: '',
+      temperature: 0.5,
+      maxTokens: 4096,
+      systemPrompt: 'You are a Performance Tracker...',
+      skills: [],
+      tools: [],
+      permissions: { fileSystem: 'read', broker: 'read', database: 'read', external: false, memory: true }
     }
   });
 
-  let selectedAgent = $state('copilot');
-  let showRawEditor = $state(true);
+  let selectedAgent = $state('floor_manager');
+  let showRawEditor = $state(false);
 
   // AGENTS.md content
   let agentsMdContent = $state('');
@@ -258,21 +483,48 @@
   const providerBaseUrls: Record<string, string> = {
     anthropic: '',
     zhipu: 'https://api.z.ai/api/coding/paas/v4',
-    minimax: 'https://api.minimax.chat/v1',
+    minimax: 'https://api.minimax.io/anthropic',
     openai: 'https://api.openai.com/v1',
     deepseek: 'https://api.deepseek.com/v1',
     openrouter: 'https://openrouter.ai/api/v1'
   };
   let modelConfig = $state({
-    provider: 'anthropic' as ModelProvider,
+    provider: '' as ModelProvider,
     baseUrl: '',
     apiKey: '',
-    model: 'claude-sonnet-4-20250514',
+    model: '',
     availableModels: [] as Array<{ id: string; name: string; tier: string }>,
     showApiKey: false,
     isSaving: false,
     isLoading: false
   });
+
+  const AGENT_MODEL_CANONICAL_MAP: Record<string, string> = {
+    floor_manager: 'floor_manager',
+    research_head: 'research',
+    development_head: 'development',
+    trading_head: 'trading',
+    risk_head: 'risk',
+    portfolio_head: 'portfolio',
+  };
+
+  function getCanonicalAgentModelId(agentId: string): string | null {
+    return AGENT_MODEL_CANONICAL_MAP[agentId] || null;
+  }
+
+  function applyModelConfigToAgentEntries(models: Record<string, { provider?: ModelProvider; model?: string }>) {
+    for (const [agentId, canonicalId] of Object.entries(AGENT_MODEL_CANONICAL_MAP)) {
+      const runtimeModel = models[canonicalId];
+      if (!runtimeModel || !agentConfigs[agentId]) {
+        continue;
+      }
+      agentConfigs[agentId] = {
+        ...agentConfigs[agentId],
+        provider: runtimeModel.provider || '',
+        model: runtimeModel.model || '',
+      };
+    }
+  }
 
   // Handlers for API Keys
   async function addApiKey() {
@@ -287,20 +539,13 @@
     };
 
     try {
-      const res = await fetch('http://localhost:8000/api/settings/keys', {
+      const data = await apiFetch<typeof apiKey>('/settings/keys', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(apiKey)
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        apiKeys = [...apiKeys, data];
-        newApiKey = { name: '', key: '', service: 'openai' };
-        apiKeyModal = false;
-      } else {
-        throw new Error('Failed to add API key');
-      }
+      apiKeys = [...apiKeys, data];
+      newApiKey = { name: '', key: '', service: 'openai' };
+      apiKeyModal = false;
     } catch (e) {
       console.error('Failed to add API key:', e);
     }
@@ -310,8 +555,9 @@
     apiKeys = apiKeys.filter(k => k.id !== id);
 
     try {
-      await fetch(`http://localhost:8000/api/settings/keys/${id}`, {
-        method: 'DELETE'
+      await fetch(buildApiUrl(`/api/settings/keys/${id}`), {
+        method: 'DELETE',
+        credentials: 'include'
       });
     } catch (e) {
       console.error('Failed to remove API key:', e);
@@ -321,11 +567,8 @@
   // Handlers for Providers
   async function loadProviders() {
     try {
-      const res = await fetch('/api/providers');
-      if (res.ok) {
-        const data = await res.json();
-        providers = data.providers || [];
-      }
+      const data = await apiFetch<{ providers?: typeof providers }>('/providers');
+      providers = data.providers || [];
     } catch (e) {
       console.error('Failed to load providers:', e);
     }
@@ -334,14 +577,11 @@
   async function handleSaveProvider(event: CustomEvent) {
     const provider = event.detail;
     try {
-      const res = await fetch('/api/providers', {
+      await apiFetch('/providers', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(provider)
       });
-      if (res.ok) {
-        await loadProviders();
-      }
+      await loadProviders();
     } catch (e) {
       console.error('Failed to save provider:', e);
     }
@@ -350,8 +590,9 @@
   async function handleDeleteProvider(event: CustomEvent) {
     const { providerId } = event.detail;
     try {
-      const res = await fetch(`/api/providers/${providerId}`, {
-        method: 'DELETE'
+      const res = await fetch(buildApiUrl(`/api/providers/${providerId}`), {
+        method: 'DELETE',
+        credentials: 'include'
       });
       if (res.ok) {
         await loadProviders();
@@ -376,20 +617,13 @@
     };
 
     try {
-      const res = await fetch('http://localhost:8000/api/settings/mcp', {
+      const data = await apiFetch<typeof server>('/settings/mcp', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(server)
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        mcpServers = [...mcpServers, data];
-        newMcpServer = { name: '', command: '', args: '', description: '' };
-        mcpModalOpen = false;
-      } else {
-        throw new Error('Failed to add MCP server');
-      }
+      mcpServers = [...mcpServers, data];
+      newMcpServer = { name: '', command: '', args: '', description: '' };
+      mcpModalOpen = false;
     } catch (e) {
       console.error('Failed to add MCP server:', e);
     }
@@ -402,8 +636,9 @@
     const newStatus = server.status === 'running' ? 'stopped' : 'running';
 
     try {
-      await fetch(`http://localhost:8000/api/settings/mcp/${id}`, {
+      await fetch(buildApiUrl(`/api/settings/mcp/${id}`), {
         method: 'PATCH',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       });
@@ -418,8 +653,9 @@
     mcpServers = mcpServers.filter(s => s.id !== id);
 
     try {
-      await fetch(`http://localhost:8000/api/settings/mcp/${id}`, {
-        method: 'DELETE'
+      await fetch(buildApiUrl(`/api/settings/mcp/${id}`), {
+        method: 'DELETE',
+        credentials: 'include'
       });
     } catch (e) {
       console.error('Failed to remove MCP server:', e);
@@ -429,11 +665,8 @@
   // Handlers for Agents
   async function loadAgentsMd() {
     try {
-      const res = await fetch('http://localhost:8000/api/settings/agents-md');
-      if (res.ok) {
-        const data = await res.json();
-        agentsMdContent = data.content || '';
-      }
+      const data = await apiFetch<{ content?: string }>('/settings/agents-md');
+      agentsMdContent = data.content || '';
     } catch (e) {
       console.error('Failed to load AGENTS.md:', e);
       agentsMdContent = '# Agent Configuration\n\nConfigure your agent behavior here.';
@@ -443,18 +676,12 @@
   async function saveAgentsMd() {
     agentsMdLoading = true;
     try {
-      const res = await fetch('http://localhost:8000/api/settings/agents-md', {
+      await apiFetch('/settings/agents-md', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: agentsMdContent })
       });
-
-      if (res.ok) {
-        agentsMdSaved = true;
-        setTimeout(() => agentsMdSaved = false, 2000);
-      } else {
-        console.error('Failed to save AGENTS.md');
-      }
+      agentsMdSaved = true;
+      setTimeout(() => agentsMdSaved = false, 2000);
     } catch (e) {
       console.error('Failed to save AGENTS.md:', e);
     } finally {
@@ -499,6 +726,50 @@
     }
   }
 
+  // Handle saving agent configuration to backend
+  async function handleSaveAgentConfig(agent: string, config: Record<string, unknown>) {
+    try {
+      const requests: Promise<Response>[] = [];
+      const canonicalModelAgent = getCanonicalAgentModelId(agent);
+      const provider = typeof config.provider === 'string' ? config.provider : '';
+      const model = typeof config.model === 'string' ? config.model : '';
+      const systemPrompt = typeof config.systemPrompt === 'string' ? config.systemPrompt : '';
+
+      if (canonicalModelAgent && (provider || model)) {
+        requests.push(
+          fetch(buildApiUrl(`/api/agent-config/${canonicalModelAgent}/model`), {
+            method: 'PATCH',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provider, model })
+          })
+        );
+      }
+
+      if (systemPrompt) {
+        requests.push(
+          fetch(buildApiUrl(`/api/settings/agents/${agent}/system-prompt`), {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ system_prompt: systemPrompt })
+          })
+        );
+      }
+
+      if (requests.length === 0) {
+        return;
+      }
+
+      const results = await Promise.all(requests);
+      if (results.some((res) => !res.ok)) {
+        console.error('Failed to save agent config for', agent);
+      }
+    } catch (e) {
+      console.error('Failed to save agent config:', e);
+    }
+  }
+
   // Handlers for Risk
   function handleRiskUpdate(event: CustomEvent) {
     const { field, value } = event.detail;
@@ -528,14 +799,16 @@
   async function loadModelConfig() {
     modelConfig.isLoading = true;
     try {
-      const res = await fetch('/api/agent-config/available-models');
-      if (res.ok) {
-        const data = await res.json();
-        // Update available models for the current provider
-        const providerData = data.providers?.[modelConfig.provider];
-        if (providerData?.models) {
-          modelConfig.availableModels = providerData.models;
-        }
+      if (!modelConfig.provider) {
+        modelConfig.availableModels = [];
+        return;
+      }
+      const data = await apiFetch<{ providers?: Record<string, { models?: Array<{ id: string; name: string; tier: string }> }> }>('/agent-config/available-models');
+      const providerData = data.providers?.[modelConfig.provider];
+      if (providerData?.models) {
+        modelConfig.availableModels = providerData.models;
+      } else {
+        modelConfig.availableModels = [];
       }
     } catch (e) {
       console.error('Failed to load model config:', e);
@@ -547,11 +820,12 @@
   async function saveModelConfig() {
     modelConfig.isSaving = true;
     try {
-      // Save to each agent type with the selected provider/model
-      const agents = ['copilot', 'quantcode', 'analyst', 'floor_manager', 'research', 'development', 'trading', 'risk', 'portfolio'];
+      // Save only to canonical department-era agents.
+      const agents = ['floor_manager', 'research', 'development', 'trading', 'risk', 'portfolio'];
       const promises = agents.map(agent =>
-        fetch(`/api/agent-config/${agent}/model`, {
+        fetch(buildApiUrl(`/api/agent-config/${agent}/model`), {
           method: 'PATCH',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: modelConfig.model,
@@ -594,27 +868,10 @@
 
   async function loadSettings() {
     try {
-      const generalRes = await fetch('http://localhost:8000/api/settings/general');
-      if (generalRes.ok) {
-        const data = await generalRes.json();
-        generalSettings = { ...generalSettings, ...data };
-      }
-
-      const keysRes = await fetch('http://localhost:8000/api/settings/keys');
-      if (keysRes.ok) {
-        apiKeys = await keysRes.json();
-      }
-
-      const mcpRes = await fetch('http://localhost:8000/api/settings/mcp');
-      if (mcpRes.ok) {
-        mcpServers = await mcpRes.json();
-      }
-
-      const riskRes = await fetch('http://localhost:8000/api/settings/risk');
-      if (riskRes.ok) {
-        const data = await riskRes.json();
-        riskSettings = { ...riskSettings, ...data };
-      }
+      generalSettings = { ...generalSettings, ...await apiFetch<typeof generalSettings>('/settings/general') };
+      apiKeys = await apiFetch<typeof apiKeys>('/settings/keys');
+      mcpServers = await apiFetch<typeof mcpServers>('/settings/mcp');
+      riskSettings = { ...riskSettings, ...await apiFetch<typeof riskSettings>('/settings/risk') };
 
       // Load router settings
       try {
@@ -624,21 +881,16 @@
         console.error('Failed to load router settings:', e);
       }
 
-      const dbRes = await fetch('http://localhost:8000/api/settings/database');
-      if (dbRes.ok) {
-        const data = await dbRes.json();
-        dbSettings = { ...dbSettings, ...data };
-      }
+      dbSettings = { ...dbSettings, ...await apiFetch<typeof dbSettings>('/settings/database') };
 
       // Load model config
-      const modelRes = await fetch('/api/agent-config/models');
-      if (modelRes.ok) {
-        const data = await modelRes.json();
-        if (data.copilot) {
-          modelConfig.provider = data.copilot.provider || 'anthropic';
-          modelConfig.model = data.copilot.model || 'claude-sonnet-4-20250514';
-          modelConfig.baseUrl = providerBaseUrls[modelConfig.provider] || '';
-        }
+      const data = await apiFetch<Record<string, { provider?: ModelProvider; model?: string }>>('/agent-config/models');
+      applyModelConfigToAgentEntries(data);
+      const managerModel = data.floor_manager;
+      if (managerModel) {
+        modelConfig.provider = managerModel.provider || '';
+        modelConfig.model = managerModel.model || '';
+        modelConfig.baseUrl = modelConfig.provider ? (providerBaseUrls[modelConfig.provider] || '') : '';
       }
 
       // Load available models
@@ -651,13 +903,15 @@
   async function saveSettings() {
     try {
       await Promise.all([
-        fetch('http://localhost:8000/api/settings/general', {
+        fetch(buildApiUrl('/api/settings/general'), {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(generalSettings)
         }),
-        fetch('http://localhost:8000/api/settings/risk', {
+        fetch(buildApiUrl('/api/settings/risk'), {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(riskSettings)
         }),
@@ -687,12 +941,33 @@
   }
 
   export function show() {
+    const active = document.activeElement;
+    lastFocusedElement = active instanceof HTMLElement ? active : null;
     settingsVisible = true;
+    void loadSettings();
+    void tick().then(() => {
+      if (settingsPanelEl instanceof HTMLElement) {
+        settingsPanelEl.focus();
+      }
+    });
   }
 
   export function hide() {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.closest('.settings-panel')) {
+      active.blur();
+    }
     settingsVisible = false;
     dispatch('close');
+    void tick().then(() => {
+      if (lastFocusedElement?.isConnected) {
+        lastFocusedElement.focus();
+      }
+    });
+  }
+
+  function selectTab(tab: SettingsTab) {
+    activeTab = tab;
   }
 
   // Reactive statements
@@ -718,6 +993,12 @@
   let handleGlobalEscape: ((e: KeyboardEvent) => void) | null = null;
 
   onMount(() => {
+    // Force-close any auto-opened dialog on mount — dialogs can open via browser API independently of our state
+    const dialogEl = document.querySelector('.settings-overlay dialog');
+    if (dialogEl && dialogEl instanceof HTMLDialogElement) {
+      dialogEl.close();
+    }
+    settingsVisible = false;
     handleGlobalEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && settingsVisible) {
         e.preventDefault();
@@ -734,8 +1015,23 @@
   });
 </script>
 
-<div class="settings-overlay" class:visible={settingsVisible} onclick={() => hide()}>
-  <div class="settings-panel" onclick={stopPropagation(bubble('click'))} onkeydown={handleKeydown} tabindex="0" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+<div
+  class="settings-overlay"
+  class:visible={settingsVisible}
+  hidden={!settingsVisible}
+  inert={!settingsVisible}
+  onclick={hide}
+>
+  <div
+    class="settings-panel"
+    bind:this={settingsPanelEl}
+    onclick={(event) => event.stopPropagation()}
+    onkeydown={handleKeydown}
+    tabindex={settingsVisible ? 0 : -1}
+    role="dialog"
+    aria-modal="false"
+    aria-labelledby="settings-title"
+  >
     <!-- Header -->
     <div class="settings-header">
       <div class="header-left">
@@ -765,68 +1061,46 @@
       <!-- Sidebar Tabs -->
       <div class="settings-tabs">
         <button
-          class="tab"
-          class:active={activeTab === 'general'}
-          onclick={() => activeTab = 'general'}
-        >
-          <Sliders size={16} />
-          <span>General</span>
-        </button>
-        <button
+          type="button"
           class="tab"
           class:active={activeTab === 'appearance'}
-          onclick={() => activeTab = 'appearance'}
+          onclick={() => selectTab('appearance')}
         >
           <Palette size={16} />
           <span>Appearance</span>
         </button>
         <button
-          class="tab"
-          class:active={activeTab === 'api-keys'}
-          onclick={() => activeTab = 'api-keys'}
-        >
-          <Key size={16} />
-          <span>API Keys</span>
-          {#if apiKeys.length > 0}
-            <span class="badge">{apiKeys.length}</span>
-          {/if}
-        </button>
-        <button
+          type="button"
           class="tab"
           class:active={activeTab === 'providers'}
-          onclick={() => activeTab = 'providers'}
+          onclick={() => selectTab('providers')}
         >
           <Key size={16} />
           <span>Providers</span>
         </button>
         <button
-          class="tab"
-          class:active={activeTab === 'servers'}
-          onclick={() => activeTab = 'servers'}
-        >
-          <Server size={16} />
-          <span>Servers</span>
-        </button>
-        <button
+          type="button"
           class="tab"
           class:active={activeTab === 'notifications'}
-          onclick={() => activeTab = 'notifications'}
+          onclick={() => selectTab('notifications')}
         >
           <Bell size={16} />
           <span>Notifications</span>
         </button>
         <button
+          type="button"
           class="tab"
           class:active={activeTab === 'server-health'}
-          onclick={() => activeTab = 'server-health'}
+          onclick={() => selectTab('server-health')}
         >
           <Activity size={16} />
           <span>Server Health</span>
         </button>
         <button
+          type="button"
           class="tab"
           class:active={activeTab === 'mcp-servers'}
-          onclick={() => activeTab = 'mcp-servers'}
+          onclick={() => selectTab('mcp-servers')}
         >
           <Server size={16} />
           <span>MCP Servers</span>
@@ -835,57 +1109,28 @@
           {/if}
         </button>
         <button
+          type="button"
           class="tab"
           class:active={activeTab === 'agents'}
-          onclick={() => activeTab = 'agents'}
+          onclick={() => selectTab('agents')}
         >
           <Bot size={16} />
           <span>Agents</span>
         </button>
         <button
-          class="tab"
-          class:active={activeTab === 'models'}
-          onclick={() => activeTab = 'models'}
-        >
-          <ModelIcon size={16} />
-          <span>Models</span>
-        </button>
-        <button
+          type="button"
           class="tab"
           class:active={activeTab === 'risk'}
-          onclick={() => activeTab = 'risk'}
+          onclick={() => selectTab('risk')}
         >
           <Shield size={16} />
           <span>Risk</span>
         </button>
         <button
-          class="tab"
-          class:active={activeTab === 'database'}
-          onclick={() => activeTab = 'database'}
-        >
-          <Database size={16} />
-          <span>Database</span>
-        </button>
-        <button
-          class="tab"
-          class:active={activeTab === 'connection'}
-          onclick={() => activeTab = 'connection'}
-        >
-          <Server size={16} />
-          <span>Connection</span>
-        </button>
-        <button
-          class="tab"
-          class:active={activeTab === 'security'}
-          onclick={() => activeTab = 'security'}
-        >
-          <Lock size={16} />
-          <span>Security</span>
-        </button>
-        <button
+          type="button"
           class="tab"
           class:active={activeTab === 'deploy'}
-          onclick={() => activeTab = 'deploy'}
+          onclick={() => selectTab('deploy')}
         >
           <Upload size={16} />
           <span>Deploy</span>
@@ -894,13 +1139,6 @@
 
       <!-- Settings Panels -->
       <div class="settings-panels">
-        <!-- General Settings -->
-        {#if activeTab === 'general'}
-          <div class="panel">
-            <ThemeSelector />
-          </div>
-        {/if}
-
         <!-- Appearance Settings -->
         {#if activeTab === 'appearance'}
           <div class="panel">
@@ -908,19 +1146,9 @@
           </div>
         {/if}
 
-        <!-- API Keys -->
-        {#if activeTab === 'api-keys'}
-          <ApiKeysPanel />
-        {/if}
-
         <!-- Providers -->
         {#if activeTab === 'providers'}
           <ProvidersPanel />
-        {/if}
-
-        <!-- Servers -->
-        {#if activeTab === 'servers'}
-          <ServersPanel />
         {/if}
 
         <!-- Notifications -->
@@ -956,107 +1184,8 @@
                 (agentConfigs[agent] as Record<string, unknown>)[field] = value;
               }
             }}
+            onsaveAgentConfig={handleSaveAgentConfig}
           />
-        {/if}
-
-        <!-- Models -->
-        {#if activeTab === 'models'}
-          <div class="panel">
-            <div class="panel-header">
-              <h3>Model Configuration</h3>
-              <div class="header-actions">
-                <button class="icon-btn" onclick={loadModelConfig} title="Refresh">
-                  <RefreshCw size={16} />
-                </button>
-              </div>
-            </div>
-
-            <div class="info-box">
-              <Zap size={16} />
-              <span>Configure the default model provider and parameters for AI agents.</span>
-            </div>
-
-            <div class="setting-group">
-              <label>Provider</label>
-              <select bind:value={modelConfig.provider} onchange={handleProviderChange}>
-                <option value="anthropic">Anthropic (Claude)</option>
-                <option value="zhipu">Zhipu (GLM)</option>
-                <option value="minimax">MiniMax</option>
-                <option value="openai">OpenAI</option>
-                <option value="deepseek">DeepSeek</option>
-              </select>
-            </div>
-
-            {#if modelConfig.provider !== 'anthropic'}
-              <div class="setting-group">
-                <label>Base URL</label>
-                <input
-                  type="text"
-                  class="text-input"
-                  bind:value={modelConfig.baseUrl}
-                  placeholder={providerBaseUrls[modelConfig.provider] || 'Enter base URL'}
-                />
-                <small>Default: {providerBaseUrls[modelConfig.provider] || 'N/A'}</small>
-              </div>
-
-              <div class="setting-group">
-                <label>API Key</label>
-                <div class="password-input-wrapper">
-                  <input
-                    type={modelConfig.showApiKey ? 'text' : 'password'}
-                    class="text-input"
-                    bind:value={modelConfig.apiKey}
-                    placeholder="Enter API key"
-                  />
-                  <button
-                    class="icon-btn"
-                    type="button"
-                    onclick={() => modelConfig.showApiKey = !modelConfig.showApiKey}
-                  >
-                    {#if modelConfig.showApiKey}
-                      <EyeOff size={14} />
-                    {:else}
-                      <Eye size={14} />
-                    {/if}
-                  </button>
-                </div>
-              </div>
-            {/if}
-
-            <div class="setting-group">
-              <label>Model</label>
-              <select bind:value={modelConfig.model} disabled={modelConfig.availableModels.length === 0}>
-                {#if modelConfig.availableModels.length > 0}
-                  {#each modelConfig.availableModels as model}
-                    <option value={model.id}>{model.name} ({model.tier})</option>
-                  {/each}
-                {:else}
-                  {#if modelConfig.provider === 'anthropic'}
-                    <option value="claude-opus-4-20250514">Claude Opus 4</option>
-                    <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
-                    <option value="claude-haiku-3-20240307">Claude Haiku 3.5</option>
-                  {:else}
-                    <option value="">Loading models...</option>
-                  {/if}
-                {/if}
-              </select>
-              {#if modelConfig.availableModels.length === 0 && modelConfig.provider !== 'anthropic'}
-                <small>Configure API key to load available models</small>
-              {/if}
-            </div>
-
-            <div class="form-actions">
-              <button class="btn primary" onclick={saveModelConfig} disabled={modelConfig.isSaving}>
-                {#if modelConfig.isSaving}
-                  <RefreshCw size={14} class="spinning" />
-                  Saving...
-                {:else}
-                  <Save size={14} />
-                  Save Configuration
-                {/if}
-              </button>
-            </div>
-          </div>
         {/if}
 
         <!-- Risk -->
@@ -1064,29 +1193,6 @@
           <RiskPanel
             bind:riskSettings
             on:updateRiskSettings={handleRiskUpdate}
-          />
-        {/if}
-
-        <!-- Database -->
-        {#if activeTab === 'database'}
-          <DatabasePanel
-            bind:dbSettings
-            on:updateDbSettings={handleDbUpdate}
-          />
-        {/if}
-
-        <!-- Connection -->
-        {#if activeTab === 'connection'}
-          <ConnectionPanel
-            bind:connectionSettings
-            on:updateConnectionSettings={handleConnectionUpdate}
-          />
-        {/if}
-
-        <!-- Security -->
-        {#if activeTab === 'security'}
-          <SecurityPanel
-            bind:securitySettings
           />
         {/if}
 
@@ -1115,7 +1221,7 @@
 
   .settings-overlay.visible {
     opacity: 1;
-    pointer-events: all;
+    pointer-events: auto;
   }
 
   .settings-panel {
@@ -1128,6 +1234,7 @@
     display: flex;
     flex-direction: column;
     box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+    pointer-events: auto;
   }
 
   .settings-header {
@@ -1672,5 +1779,28 @@
   @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+  }
+
+  .model-assignment-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 6px;
+    margin-bottom: 8px;
+  }
+
+  .model-assignment-row .agent-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text-primary);
+  }
+
+  .model-assignment-row .provider-model {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    font-family: monospace;
   }
 </style>

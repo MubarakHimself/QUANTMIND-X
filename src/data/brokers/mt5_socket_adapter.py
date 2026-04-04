@@ -293,7 +293,92 @@ class MT5SocketAdapter(BrokerClient):
         
         logger.info(f"MT5 VPS positions: {len(positions)} open")
         return positions
-    
+
+    async def get_deal_history(
+        self,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None,
+        symbol: Optional[str] = None,
+        magic_number: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get deal history (closed trades) from MT5 VPS.
+
+        Args:
+            from_date: Start date in ISO format (optional)
+            to_date: End date in ISO format (optional)
+            symbol: Filter by symbol (optional)
+            magic_number: Filter by magic number (EA identifier) (optional)
+
+        Returns:
+            List of closed deals with entry/exit prices, P&L, close reason
+
+        Example deal structure:
+            {
+                "deal_id": "12345",
+                "symbol": "EURUSD",
+                "direction": "buy",
+                "entry_price": 1.1000,
+                "exit_price": 1.1010,
+                "volume": 0.1,
+                "pnl": 100.0,
+                "close_reason": "TP_HIT",
+                "entry_time": "2024-01-15T10:00:00",
+                "exit_time": "2024-01-15T11:30:00",
+                "magic_number": 123456,
+            }
+        """
+        message = {
+            'type': 'GET_DEAL_HISTORY',
+        }
+
+        if from_date:
+            message['from_date'] = from_date
+        if to_date:
+            message['to_date'] = to_date
+        if symbol:
+            message['symbol'] = symbol
+        if magic_number is not None:
+            message['magic_number'] = magic_number
+
+        response = await self._send_request(message)
+        deals = response.get('deals', [])
+
+        logger.info(f"MT5 VPS deal history: {len(deals)} deals retrieved")
+        return deals
+
+    async def get_closed_positions(
+        self,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get closed positions (alternative to deal history) from MT5 VPS.
+
+        This is useful when the EA uses position-based tracking rather than deals.
+
+        Args:
+            from_date: Start date in ISO format (optional)
+            to_date: End date in ISO format (optional)
+
+        Returns:
+            List of closed positions
+        """
+        message = {
+            'type': 'GET_CLOSED_POSITIONS',
+        }
+
+        if from_date:
+            message['from_date'] = from_date
+        if to_date:
+            message['to_date'] = to_date
+
+        response = await self._send_request(message)
+        positions = response.get('closed_positions', [])
+
+        logger.info(f"MT5 VPS closed positions: {len(positions)} retrieved")
+        return positions
+
     async def get_order_status(self, order_id: str) -> Dict[str, Any]:
         """
         Get order status from MT5 VPS.

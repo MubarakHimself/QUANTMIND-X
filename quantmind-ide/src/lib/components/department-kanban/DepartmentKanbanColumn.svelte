@@ -12,9 +12,11 @@
     status: TaskStatus;
     tasks: DepartmentTask[];
     onTaskDrop?: (taskId: string, newStatus: TaskStatus) => void;
+    onTaskSelect?: (task: DepartmentTask) => void;
+    selectedTaskId?: string | null;
   }
 
-  let { status, tasks, onTaskDrop }: Props = $props();
+  let { status, tasks, onTaskDrop, onTaskSelect, selectedTaskId = null }: Props = $props();
 
   // Column header config — colors reference CSS custom properties where possible
   const columnConfig: Record<TaskStatus, { label: string; cssVar: string; fallback: string }> = {
@@ -70,7 +72,11 @@
   <div class="column-content">
     {#each tasks as task (task.task_id)}
       <div class="task-wrapper" draggable="true">
-        <DepartmentKanbanCard {task} />
+        <DepartmentKanbanCard
+          {task}
+          onSelect={onTaskSelect}
+          selected={selectedTaskId === task.task_id}
+        />
       </div>
     {/each}
 

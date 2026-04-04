@@ -11,13 +11,28 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from .runtime import (
+    PaperTradingUnavailableDeployer,
+    ensure_paper_trading_runtime,
+)
+
 logger = logging.getLogger(__name__)
 
 
 def get_deployer():
     """Dependency injection for PaperTradingDeployer."""
-    from mcp_mt5.paper_trading.deployer import PaperTradingDeployer
-    return PaperTradingDeployer()
+    try:
+        from mcp_mt5.paper_trading.deployer import PaperTradingDeployer
+    except ImportError as e:
+        logger.warning("PaperTradingDeployer unavailable: %s", e)
+        return PaperTradingUnavailableDeployer(
+            "Paper trading runtime unavailable on this host. "
+            "Install and configure the MT5 paper trading runtime on the target VPS."
+        )
+
+    deployer = PaperTradingDeployer()
+    setattr(deployer, "available", True)
+    return deployer
 
 
 def get_validator():
@@ -72,6 +87,8 @@ def setup_promotion_routes(router: APIRouter):
         Promote a validated paper trading agent to live trading.
         """
         from .models import PromotionResult
+
+        ensure_paper_trading_runtime(deployer)
 
         # Check if agent exists
         agent = deployer.get_agent(agent_id)

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
+  import { API_CONFIG } from '../config/api';
   import { 
     WebSocketClient, 
     createBacktestClient
@@ -14,7 +15,7 @@
     strategyName?: string;
   }
 
-  let { baseUrl = 'http://localhost:8000', strategyCode = '', strategyName = 'MyStrategy' }: Props = $props();
+  let { baseUrl = API_CONFIG.API_URL, strategyCode = '', strategyName = 'MyStrategy' }: Props = $props();
   
   // Backtest parameters
   let symbol = $state('EURUSD');
@@ -59,7 +60,7 @@
   let autoScroll = $state(true);
   
   // Log container reference for auto-scroll
-  let logContainer: HTMLDivElement = $state();
+  let logContainer = $state<HTMLDivElement | null>(null);
   
   const dispatch = createEventDispatcher();
   

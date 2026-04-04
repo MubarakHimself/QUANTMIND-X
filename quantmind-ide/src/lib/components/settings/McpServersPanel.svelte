@@ -2,106 +2,257 @@
   import { onMount } from 'svelte';
   import {
     Server, Terminal, Plus, Play, Square, Trash2, RefreshCw,
-    AlertCircle, X, Check
+    AlertCircle, X, Check, Globe, Wifi, Edit2, Save
   } from 'lucide-svelte';
   import { apiFetch } from '$lib/api';
+  import { settingsStore } from '$lib/stores/settingsStore';
+  import type { MCPServer } from '$lib/stores/settingsTypes';
 
-  interface McpServer {
-    id: string;
-    name: string;
-    command: string;
-    args: string[];
-    status: 'running' | 'stopped' | 'error';
-    type: 'builtin' | 'custom';
-    description?: string;
-  }
+  const TRANSPORT_TYPES = [
+    { value: 'stdio', label: 'Stdio (Local Command)', icon: Terminal, hint: 'Local executable with stdin/stdout' },
+    { value: 'http', label: 'HTTP (Remote)', icon: Globe, hint: 'Remote HTTP endpoint' },
+    { value: 'sse', label: 'SSE (Server-Sent Events)', icon: Wifi, hint: 'Server-Sent Events endpoint' }
+  ] as const;
 
   const DEFAULT_MCP_SERVERS = [
-    { name: 'Context7 MCP', command: 'npx', args: ['-y', '@context7/mcp-server'], description: 'MQL5 documentation retrieval' },
-    { name: 'Filesystem MCP', command: 'npx', args: ['-y', '@anthropic-ai/mcp-server-filesystem', '--root', './workspace'], description: 'Local filesystem access' },
-    { name: 'MetaTrader 5 MCP', command: 'npx', args: ['-y', '@anthropic-ai/mcp-server-mt5'], description: 'MT5 integration' },
-    { name: 'Sequential Thinking MCP', command: 'npx', args: ['-y', '@anthropic-ai/mcp-server-sequential-thinking'], description: 'Task decomposition' },
-    { name: 'Svelte MCP', command: 'npx', args: ['-y', '@sveltejs/mcp'], description: 'Svelte development tools' },
-    { name: 'Chrome DevTools MCP', command: 'npx', args: ['-y', 'chrome-devtools-mcp@latest'], description: 'Browser automation' }
+    { name: 'Context7 MCP', type: 'http' as const, url: 'https://context7.com/mcp', description: 'MQL5 documentation retrieval' },
+    { name: 'Filesystem MCP', type: 'stdio' as const, command: 'npx', args: ['-y', '@anthropic-ai/mcp-server-filesystem', '--root', './workspace'], description: 'Local filesystem access' },
+    { name: 'MetaTrader 5 MCP', type: 'stdio' as const, command: 'npx', args: ['-y', '@anthropic-ai/mcp-server-mt5'], description: 'MT5 integration' },
+    { name: 'Sequential Thinking MCP', type: 'stdio' as const, command: 'npx', args: ['-y', '@anthropic-ai/mcp-server-sequential-thinking'], description: 'Task decomposition' },
+    { name: 'Svelte MCP', type: 'stdio' as const, command: 'npx', args: ['-y', '@sveltejs/mcp'], description: 'Svelte development tools' },
+    { name: 'Chrome DevTools MCP', type: 'stdio' as const, command: 'npx', args: ['-y', 'chrome-devtools-mcp@latest'], description: 'Browser automation' }
   ];
 
-  let mcpServers: McpServer[] = $state([]);
+  let servers = $state<MCPServer[]>([]);
   let isLoading = $state(false);
   let error = $state<string | null>(null);
   let success = $state<string | null>(null);
+  let isDirty = $state(false);
   let showAddModal = $state(false);
-  let newServer = $state({ name: '', command: '', args: '', description: '' });
+  let editingServer = $state<MCPServer | null>(null);
+
+  // New server form state
+  let formName = $state('');
+  let formType = $state<'stdio' | 'http' | 'sse'>('stdio');
+  let formCommand = $state('');
+  let formArgs = $state('');
+  let formUrl = $state('');
+  let formDescription = $state('');
+  let formAutoConnect = $state(false);
+
+  // Edit server form state
+  let editFormName = $state('');
+  let editFormType = $state<'stdio' | 'http' | 'sse'>('stdio');
+  let editFormCommand = $state('');
+  let editFormArgs = $state('');
+  let editFormUrl = $state('');
+  let editFormDescription = $state('');
+  let editFormAutoConnect = $state(false);
+
+  function loadFromStore() {
+    const state = $settingsStore;
+    servers = state.mcpServers;
+    isDirty = state.isDirty;
+  }
+
+  function resetForm() {
+    formName = '';
+    formType = 'stdio';
+    formCommand = '';
+    formArgs = '';
+    formUrl = '';
+    formDescription = '';
+    formAutoConnect = false;
+  }
+
+  function resetEditForm() {
+    editFormName = '';
+    editFormType = 'stdio';
+    editFormCommand = '';
+    editFormArgs = '';
+    editFormUrl = '';
+    editFormDescription = '';
+    editFormAutoConnect = false;
+  }
+
+  function applyTemplate(template: typeof DEFAULT_MCP_SERVERS[0]) {
+    formName = template.name;
+    formType = template.type;
+    formDescription = template.description || '';
+    if (template.type === 'http') {
+      formUrl = (template as typeof DEFAULT_MCP_SERVERS[0] & { url: string }).url || '';
+      formCommand = '';
+      formArgs = '';
+    } else {
+      formCommand = template.command || '';
+      formArgs = Array.isArray(template.args) ? template.args.join(' ') : '';
+      formUrl = '';
+    }
+  }
+
+  function openEditModal(server: MCPServer) {
+    editingServer = server;
+    editFormName = server.name;
+    editFormType = server.type;
+    editFormCommand = server.command || '';
+    editFormArgs = Array.isArray(server.args) ? server.args.join(' ') : '';
+    editFormUrl = server.url || '';
+    editFormDescription = server.description || '';
+    editFormAutoConnect = server.autoConnect;
+  }
+
+  function closeEditModal() {
+    editingServer = null;
+    resetEditForm();
+  }
 
   async function loadServers() {
     isLoading = true;
     error = null;
     try {
-      const data = await apiFetch<{ servers: McpServer[] }>('/api/settings/mcp');
-      mcpServers = data.servers || [];
+      // Try to get real-time status from backend
+      const data = await apiFetch<{ servers: any[] }>('/api/mcp/servers');
+      const backendServers = data.servers || [];
+
+      // Merge backend status with stored config
+      const storedIds = new Set(servers.map(s => s.id));
+      const merged = servers.map(s => {
+        const backend = backendServers.find((b: any) => b.server_id === s.id);
+        if (backend) {
+          return { ...s, status: backend.status === 'connected' ? 'connected' : backend.status === 'disconnected' ? 'disconnected' : 'error' };
+        }
+        return s;
+      });
+
+      // Add backend-only servers that aren't in store (shouldn't normally happen)
+      for (const b of backendServers) {
+        if (!storedIds.has(b.server_id)) {
+          merged.push({
+            id: b.server_id,
+            name: b.name,
+            description: b.description || '',
+            type: b.transport === 'http' ? 'http' : 'stdio',
+            url: b.url,
+            command: b.command,
+            args: b.args || [],
+            env: {},
+            status: b.status === 'connected' ? 'connected' : b.status === 'disconnected' ? 'disconnected' : 'error',
+            capabilities: [],
+            autoConnect: false
+          });
+        }
+      }
+
+      servers = merged as MCPServer[];
     } catch (e) {
-      console.warn('MCP settings endpoint unavailable');
+      // Backend unavailable - just use stored servers
+      console.warn('MCP servers status endpoint unavailable, using stored config');
     } finally {
       isLoading = false;
     }
   }
 
   async function toggleServer(id: string) {
-    const server = mcpServers.find(s => s.id === id);
+    const server = servers.find(s => s.id === id);
     if (!server) return;
     try {
-      const action = server.status === 'running' ? 'stop' : 'start';
-      await apiFetch(`/api/settings/mcp/${id}/${action}`, { method: 'POST' });
+      const action = server.status === 'connected' ? 'disconnect' : 'connect';
+      await apiFetch(`/api/mcp/servers/${id}/${action}`, { method: 'POST' });
       await loadServers();
     } catch (e) {
-      error = `Failed to ${server.status === 'running' ? 'stop' : 'start'} server`;
+      error = `Failed to ${server.status === 'connected' ? 'stop' : 'start'} server`;
       console.error(e);
     }
   }
 
   async function removeServer(id: string) {
+    settingsStore.removeMCPServer(id);
+    loadFromStore();
+    success = 'Server removed';
+    setTimeout(() => success = null, 3000);
     try {
-      await apiFetch(`/api/settings/mcp/${id}`, { method: 'DELETE' });
-      await loadServers();
-    } catch (e) {
-      error = 'Failed to remove server';
-      console.error(e);
+      await apiFetch(`/api/mcp/servers/${id}/disconnect`, { method: 'POST' });
+    } catch {
+      // Ignore disconnect errors when removing
     }
   }
 
   async function addServer() {
-    if (!newServer.name || !newServer.command) return;
+    if (!formName) return;
+
+    const serverData: Omit<MCPServer, 'id'> = {
+      name: formName,
+      type: formType,
+      description: formDescription,
+      command: formType === 'stdio' ? formCommand : undefined,
+      args: formType === 'stdio' ? formArgs.split(' ').filter(Boolean) : undefined,
+      url: formType !== 'stdio' ? formUrl : undefined,
+      headers: {},
+      env: {},
+      status: 'disconnected',
+      capabilities: [],
+      autoConnect: formAutoConnect
+    };
+
+    settingsStore.addMCPServer(serverData);
+    await settingsStore.save();
+    loadFromStore();
+    showAddModal = false;
+    resetForm();
+    success = 'Server added';
+    setTimeout(() => success = null, 3000);
+    await loadServers();
+  }
+
+  async function saveEditedServer() {
+    if (!editingServer || !editFormName) return;
+
+    const serverData: Partial<MCPServer> = {
+      name: editFormName,
+      type: editFormType,
+      description: editFormDescription,
+      command: editFormType === 'stdio' ? editFormCommand : undefined,
+      args: editFormType === 'stdio' ? editFormArgs.split(' ').filter(Boolean) : undefined,
+      url: editFormType !== 'stdio' ? editFormUrl : undefined,
+      autoConnect: editFormAutoConnect
+    };
+
+    settingsStore.updateMCPServer(editingServer.id, serverData);
+    await settingsStore.save();
+    loadFromStore();
+    closeEditModal();
+    success = 'Server updated';
+    setTimeout(() => success = null, 3000);
+  }
+
+  async function saveAll() {
     try {
-      await apiFetch('/api/settings/mcp', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: newServer.name,
-          command: newServer.command,
-          args: newServer.args.split(' ').filter(Boolean),
-          description: newServer.description,
-          type: 'custom'
-        })
-      });
-      showAddModal = false;
-      newServer = { name: '', command: '', args: '', description: '' };
-      success = 'Server added';
+      await settingsStore.save();
+      isDirty = false;
+      success = 'Settings saved';
       setTimeout(() => success = null, 3000);
-      await loadServers();
     } catch (e) {
-      error = 'Failed to add server';
+      error = 'Failed to save settings';
       console.error(e);
     }
   }
 
-  function applyTemplate(template: typeof DEFAULT_MCP_SERVERS[0]) {
-    newServer = {
-      name: template.name,
-      command: template.command,
-      args: template.args.join(' '),
-      description: template.description
-    };
+  onMount(() => {
+    loadFromStore();
+    loadServers();
+  });
+
+  function getTransportIcon(type: string) {
+    if (type === 'http') return Globe;
+    if (type === 'sse') return Wifi;
+    return Terminal;
   }
 
-  onMount(() => { loadServers(); });
+  function getStatusLabel(status: string) {
+    if (status === 'connected') return 'connected';
+    if (status === 'disconnected') return 'disconnected';
+    return 'error';
+  }
 </script>
 
 <div class="panel">
@@ -111,6 +262,11 @@
       <button class="icon-btn" onclick={loadServers} title="Refresh" disabled={isLoading}>
         <RefreshCw size={16} class={isLoading ? 'spinning' : ''} />
       </button>
+      {#if isDirty}
+        <button class="btn-sm save-btn" onclick={saveAll} title="Save Changes">
+          <Save size={13} /> Save
+        </button>
+      {/if}
       <button class="icon-btn accent" onclick={() => showAddModal = true} title="Add Server">
         <Plus size={16} />
       </button>
@@ -126,50 +282,59 @@
 
   <div class="info-box">
     <Server size={14} />
-    <span>MCP servers extend agent capabilities with external tools and data sources.</span>
+    <span>MCP servers extend agent capabilities with external tools and data sources. Configure stdio, HTTP, or SSE connections.</span>
   </div>
 
   <div class="servers-list">
-    {#each mcpServers as server}
+    {#each servers as server (server.id)}
+      {@const TransportIcon = getTransportIcon(server.type)}
       <div class="server-item">
         <div class="server-icon">
-          <Terminal size={16} />
+          <TransportIcon size={16} />
         </div>
         <div class="server-info">
           <div class="server-name">{server.name}</div>
           <div class="server-desc">{server.description || 'Custom MCP server'}</div>
           <div class="server-command">
-            <code>{server.command} {server.args.join(' ')}</code>
+            {#if server.type === 'stdio'}
+              <code>{server.command || ''} {server.args?.join(' ') || ''}</code>
+            {:else}
+              <code>{server.url || ''}</code>
+            {/if}
           </div>
+          {#if server.type !== 'stdio'}
+            <div class="server-type-badge">{server.type.toUpperCase()}</div>
+          {/if}
         </div>
         <div class="server-status">
           <span
             class="status-badge"
-            class:running={server.status === 'running'}
-            class:stopped={server.status === 'stopped'}
+            class:running={server.status === 'connected'}
+            class:stopped={server.status === 'disconnected'}
             class:error={server.status === 'error'}
           >
-            {server.status}
+            {getStatusLabel(server.status)}
           </span>
         </div>
         <div class="server-actions">
           <button
             class="icon-btn"
-            class:running={server.status === 'running'}
+            class:running={server.status === 'connected'}
             onclick={() => toggleServer(server.id)}
-            title={server.status === 'running' ? 'Stop' : 'Start'}
+            title={server.status === 'connected' ? 'Stop' : 'Start'}
           >
-            {#if server.status === 'running'}
+            {#if server.status === 'connected'}
               <Square size={13} />
             {:else}
               <Play size={13} />
             {/if}
           </button>
-          {#if server.type === 'custom'}
-            <button class="icon-btn danger" onclick={() => removeServer(server.id)} title="Remove">
-              <Trash2 size={13} />
-            </button>
-          {/if}
+          <button class="icon-btn" onclick={() => openEditModal(server)} title="Edit">
+            <Edit2 size={13} />
+          </button>
+          <button class="icon-btn danger" onclick={() => removeServer(server.id)} title="Remove">
+            <Trash2 size={13} />
+          </button>
         </div>
       </div>
     {:else}
@@ -186,10 +351,11 @@
   </div>
 </div>
 
+<!-- Add Modal -->
 {#if showAddModal}
   <div
     class="modal-backdrop"
-    onclick={() => showAddModal = false}
+    onclick={() => { showAddModal = false; resetForm(); }}
     role="button"
     tabindex="0"
     onkeydown={(e) => e.key === 'Escape' && (showAddModal = false)}
@@ -197,7 +363,7 @@
     <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog">
       <div class="modal-header">
         <h4>Add MCP Server</h4>
-        <button class="icon-btn" onclick={() => showAddModal = false}><X size={16} /></button>
+        <button class="icon-btn" onclick={() => { showAddModal = false; resetForm(); }}><X size={16} /></button>
       </div>
       <div class="modal-body">
         <div class="quick-add-section">
@@ -212,30 +378,140 @@
           </div>
         </div>
 
-        <div class="divider"><span>or add custom</span></div>
+        <div class="divider"><span>or configure manually</span></div>
 
         <div class="form-group">
           <label>Server Name</label>
-          <input type="text" class="text-input" placeholder="My Custom Server" bind:value={newServer.name} />
+          <input type="text" class="text-input" placeholder="My Custom Server" bind:value={formName} />
         </div>
+
         <div class="form-group">
-          <label>Command</label>
-          <input type="text" class="text-input" placeholder="npx" bind:value={newServer.command} />
-          <span class="hint">The executable or command to run</span>
+          <label>Transport Type</label>
+          <div class="transport-grid">
+            {#each TRANSPORT_TYPES as t}
+              <button
+                class="transport-card"
+                class:selected={formType === t.value}
+                onclick={() => { formType = t.value as 'stdio' | 'http' | 'sse'; }}
+                type="button"
+              >
+                <t.icon size={14} />
+                <span>{t.label}</span>
+              </button>
+            {/each}
+          </div>
+          <span class="hint">{TRANSPORT_TYPES.find(t => t.value === formType)?.hint || ''}</span>
         </div>
-        <div class="form-group">
-          <label>Arguments (space-separated)</label>
-          <input type="text" class="text-input" placeholder="-y @package/server --port 3000" bind:value={newServer.args} />
-        </div>
+
+        {#if formType === 'stdio'}
+          <div class="form-group">
+            <label>Command</label>
+            <input type="text" class="text-input" placeholder="npx" bind:value={formCommand} />
+            <span class="hint">The executable or command to run</span>
+          </div>
+          <div class="form-group">
+            <label>Arguments (space-separated)</label>
+            <input type="text" class="text-input" placeholder="-y @package/server --port 3000" bind:value={formArgs} />
+          </div>
+        {:else}
+          <div class="form-group">
+            <label>URL</label>
+            <input type="text" class="text-input" placeholder="https://mcp.example.com/sse" bind:value={formUrl} />
+            <span class="hint">{formType === 'sse' ? 'SSE endpoint URL' : 'HTTP endpoint URL'}</span>
+          </div>
+        {/if}
+
         <div class="form-group">
           <label>Description</label>
-          <textarea class="text-input textarea" placeholder="What this server does..." bind:value={newServer.description}></textarea>
+          <textarea class="text-input textarea" placeholder="What this server does..." bind:value={formDescription}></textarea>
+        </div>
+
+        <div class="form-group checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" bind:checked={formAutoConnect} />
+            <span>Auto-connect on startup</span>
+          </label>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn secondary" onclick={() => showAddModal = false}>Cancel</button>
-        <button class="btn primary" onclick={addServer} disabled={!newServer.name || !newServer.command}>
+        <button class="btn secondary" onclick={() => { showAddModal = false; resetForm(); }}>Cancel</button>
+        <button class="btn primary" onclick={addServer} disabled={!formName || (formType === 'stdio' && !formCommand) || (formType !== 'stdio' && !formUrl)}>
           Add Server
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Edit Modal -->
+{#if editingServer}
+  <div
+    class="modal-backdrop"
+    onclick={closeEditModal}
+    role="button"
+    tabindex="0"
+    onkeydown={(e) => e.key === 'Escape' && closeEditModal()}
+  >
+    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog">
+      <div class="modal-header">
+        <h4>Edit MCP Server</h4>
+        <button class="icon-btn" onclick={closeEditModal}><X size={16} /></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Server Name</label>
+          <input type="text" class="text-input" placeholder="My Custom Server" bind:value={editFormName} />
+        </div>
+
+        <div class="form-group">
+          <label>Transport Type</label>
+          <div class="transport-grid">
+            {#each TRANSPORT_TYPES as t}
+              <button
+                class="transport-card"
+                class:selected={editFormType === t.value}
+                onclick={() => { editFormType = t.value as 'stdio' | 'http' | 'sse'; }}
+                type="button"
+              >
+                <t.icon size={14} />
+                <span>{t.label}</span>
+              </button>
+            {/each}
+          </div>
+        </div>
+
+        {#if editFormType === 'stdio'}
+          <div class="form-group">
+            <label>Command</label>
+            <input type="text" class="text-input" placeholder="npx" bind:value={editFormCommand} />
+          </div>
+          <div class="form-group">
+            <label>Arguments (space-separated)</label>
+            <input type="text" class="text-input" placeholder="-y @package/server --port 3000" bind:value={editFormArgs} />
+          </div>
+        {:else}
+          <div class="form-group">
+            <label>URL</label>
+            <input type="text" class="text-input" placeholder="https://mcp.example.com/sse" bind:value={editFormUrl} />
+          </div>
+        {/if}
+
+        <div class="form-group">
+          <label>Description</label>
+          <textarea class="text-input textarea" placeholder="What this server does..." bind:value={editFormDescription}></textarea>
+        </div>
+
+        <div class="form-group checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" bind:checked={editFormAutoConnect} />
+            <span>Auto-connect on startup</span>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn secondary" onclick={closeEditModal}>Cancel</button>
+        <button class="btn primary" onclick={saveEditedServer} disabled={!editFormName || (editFormType === 'stdio' && !editFormCommand) || (editFormType !== 'stdio' && !editFormUrl)}>
+          Save Changes
         </button>
       </div>
     </div>
@@ -260,7 +536,25 @@
     letter-spacing: 0.04em;
   }
 
-  .header-actions { display: flex; gap: 8px; }
+  .header-actions { display: flex; gap: 8px; align-items: center; }
+
+  .save-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 10px;
+    background: rgba(0, 200, 150, 0.12);
+    border: 1px solid rgba(0, 200, 150, 0.3);
+    border-radius: 5px;
+    color: #00c896;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .save-btn:hover { background: rgba(0, 200, 150, 0.2); }
 
   .alert-error {
     display: flex;
@@ -332,7 +626,7 @@
     flex-shrink: 0;
   }
 
-  .server-info { flex: 1; min-width: 0; }
+  .server-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 
   .server-name {
     font-size: 13px;
@@ -360,6 +654,20 @@
     text-overflow: ellipsis;
     max-width: 260px;
     display: inline-block;
+  }
+
+  .server-type-badge {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 2px 6px;
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    color: rgba(0, 212, 255, 0.7);
+    letter-spacing: 0.06em;
   }
 
   .server-status { flex-shrink: 0; }
@@ -541,6 +849,41 @@
     background: rgba(0, 212, 255, 0.06);
   }
 
+  .transport-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .transport-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 10px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+  }
+
+  .transport-card:hover {
+    border-color: rgba(0, 212, 255, 0.3);
+    color: #00d4ff;
+    background: rgba(0, 212, 255, 0.06);
+  }
+
+  .transport-card.selected {
+    border-color: rgba(0, 212, 255, 0.5);
+    color: #00d4ff;
+    background: rgba(0, 212, 255, 0.1);
+  }
+
   .divider {
     display: flex;
     align-items: center;
@@ -595,6 +938,27 @@
   }
 
   .textarea { min-height: 72px; resize: vertical; }
+
+  .checkbox-group { flex-direction: row; align-items: center; }
+
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+    text-transform: none;
+    letter-spacing: 0;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  .checkbox-label input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    accent-color: #00d4ff;
+    cursor: pointer;
+  }
 
   .btn {
     display: inline-flex;

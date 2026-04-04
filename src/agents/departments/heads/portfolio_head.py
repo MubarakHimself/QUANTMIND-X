@@ -8,12 +8,24 @@ Responsible for:
 - Portfolio report generation
 """
 import logging
+from collections import defaultdict
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from math import sqrt
+
+from sqlalchemy import func
 
 from src.agents.departments.heads.base import DepartmentHead
 from src.agents.departments.types import Department, get_department_config
+from src.database.models import (
+    BrokerAccount,
+    HouseMoneyState,
+    StrategyPerformance,
+    TradeJournal,
+    TradingMode,
+    db_session_scope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +140,156 @@ class PortfolioHead(DepartmentHead):
     # Portfolio Report Methods
     # =========================================================================
 
+    def _load_account_snapshots(self) -> List[Dict[str, Any]]:
+        """Load currently registered and/or connected broker accounts."""
+        snapshots: Dict[str, Dict[str, Any]] = {}
+
+        try:
+            with db_session_scope() as db:
+                registered_accounts = (
+                    db.query(BrokerAccount)
+                    .filter(BrokerAccount.is_active.is_(True))
+                    .order_by(BrokerAccount.created_at.desc())
+                    .all()
+                )
+
+            for account in registered_accounts:
+                snapshots[account.account_number] = {
+                    "account_id": account.account_number,
+                    "broker_name": account.broker_name,
+                    "server": account.mt5_server,
+                    "account_type": account.account_type.value,
+                    "currency": account.currency,
+                    "balance": 0.0,
+                    "equity": 0.0,
+                    "connected": False,
+                    "is_active": False,
+                    "registered": True,
+                }
+        except Exception as exc:
+            logger.warning(f"Failed to load registered broker accounts: {exc}")
+
+        try:
+            from src.api.broker_endpoints import broker_registry, account_switcher
+
+            for broker in [*broker_registry.get_all(), *broker_registry.get_pending()]:
+                snapshot = snapshots.setdefault(
+                    broker.account_id,
+                    {
+                        "account_id": broker.account_id,
+                        "broker_name": broker.broker_name,
+                        "server": broker.server,
+                        "account_type": broker.type,
+                        "currency": broker.currency,
+                        "balance": 0.0,
+                        "equity": 0.0,
+                        "connected": False,
+                        "is_active": False,
+                        "registered": False,
+                    },
+                )
+                snapshot.update(
+                    {
+                        "broker_name": broker.broker_name or snapshot.get("broker_name"),
+                        "server": broker.server or snapshot.get("server"),
+                        "account_type": broker.type or snapshot.get("account_type"),
+                        "currency": broker.currency or snapshot.get("currency"),
+                        "balance": float(broker.balance or 0.0),
+                        "equity": float(broker.equity or broker.balance or 0.0),
+                        "connected": broker.status == "connected",
+                        "is_active": broker.account_id == account_switcher.active_account_id,
+                    }
+                )
+        except Exception as exc:
+            logger.debug(f"Broker registry unavailable for portfolio snapshots: {exc}")
+
+        return sorted(snapshots.values(), key=lambda item: item["account_id"])
+
+    def _load_latest_house_money_state(self) -> Dict[str, HouseMoneyState]:
+        """Load the latest house-money state per account."""
+        states: Dict[str, HouseMoneyState] = {}
+        try:
+            with db_session_scope() as db:
+                rows = (
+                    db.query(HouseMoneyState)
+                    .order_by(HouseMoneyState.updated_at.desc(), HouseMoneyState.created_at.desc())
+                    .all()
+                )
+            for row in rows:
+                states.setdefault(row.account_id, row)
+        except Exception as exc:
+            logger.warning(f"Failed to load house-money state: {exc}")
+        return states
+
+    def _period_start(self, period: str) -> Optional[datetime]:
+        """Translate a friendly period name into a UTC lower bound."""
+        period_map = {
+            "today": 1,
+            "day": 1,
+            "week": 7,
+            "month": 30,
+            "quarter": 90,
+            "year": 365,
+            "all": None,
+        }
+        days = period_map.get((period or "all").lower())
+        if days is None:
+            return None
+        return datetime.now(timezone.utc).replace(microsecond=0) - timedelta(days=days)
+
+    def _calculate_drawdown_pct(self, state: HouseMoneyState) -> float:
+        """Derive drawdown percentage from the latest house-money state."""
+        high_water_mark = float(state.high_water_mark or 0.0)
+        if high_water_mark <= 0:
+            return 0.0
+
+        current_equity = float(state.daily_start_balance or 0.0) + float(state.current_pnl or 0.0)
+        drawdown = max(high_water_mark - current_equity, 0.0)
+        return round((drawdown / high_water_mark) * 100, 2)
+
+    def _get_active_strategy_names(self) -> List[str]:
+        """Return live strategy names observed in persisted performance or journal data."""
+        strategy_names: List[str] = []
+
+        try:
+            with db_session_scope() as db:
+                live_names = (
+                    db.query(StrategyPerformance.strategy_name)
+                    .filter(StrategyPerformance.mode == TradingMode.LIVE)
+                    .distinct()
+                    .all()
+                )
+                strategy_names = [name for (name,) in live_names if name]
+
+                if not strategy_names:
+                    journal_names = (
+                        db.query(TradeJournal.bot_id)
+                        .filter(TradeJournal.bot_id.isnot(None))
+                        .distinct()
+                        .all()
+                    )
+                    strategy_names = [name for (name,) in journal_names if name]
+        except Exception as exc:
+            logger.warning(f"Failed to load active strategies: {exc}")
+
+        return sorted(strategy_names)
+
+    def _pearson_correlation(self, xs: List[float], ys: List[float]) -> float:
+        """Compute Pearson correlation for two aligned sequences."""
+        n = min(len(xs), len(ys))
+        if n < 2:
+            return 0.0
+
+        x_mean = sum(xs) / n
+        y_mean = sum(ys) / n
+        numerator = sum((x - x_mean) * (y - y_mean) for x, y in zip(xs, ys))
+        x_var = sum((x - x_mean) ** 2 for x in xs)
+        y_var = sum((y - y_mean) ** 2 for y in ys)
+        denominator = sqrt(x_var * y_var)
+        if denominator == 0:
+            return 0.0
+        return round(numerator / denominator, 4)
+
     def generate_portfolio_report(self) -> Dict[str, Any]:
         """
         Generate complete portfolio report.
@@ -183,22 +345,14 @@ class PortfolioHead(DepartmentHead):
         Returns:
             Total equity
         """
-        # Demo data — real data requires MT5 broker connection
-        # demo_mode: true means this data is simulated, not live
-        accounts = [
-            {"account_id": "acc_main", "balance": 50000.0},
-            {"account_id": "acc_backup", "balance": 25000.0},
-            {"account_id": "acc_paper", "balance": 10000.0},
-        ]
-
-        total_equity = sum(a["balance"] for a in accounts)
+        accounts = self._load_account_snapshots()
+        total_equity = round(sum(float(a.get("equity", 0.0) or 0.0) for a in accounts), 2)
 
         return {
             "total_equity": total_equity,
             "accounts": accounts,
             "account_count": len(accounts),
-            "demo_mode": True,
-            "demo_message": "Connect MT5 broker accounts to see live equity data",
+            "connected_account_count": sum(1 for a in accounts if a.get("connected")),
         }
 
     def get_strategy_pnl(self, period: str = "all") -> Dict[str, Any]:
@@ -211,13 +365,32 @@ class PortfolioHead(DepartmentHead):
         Returns:
             P&L by strategy
         """
-        # Demo data — real data requires trade history from MT5/broker
-        strategies = [
-            {"strategy": "TrendFollower_v2.1", "pnl": 2450.0},
-            {"strategy": "RangeTrader_v1.5", "pnl": 820.0},
-            {"strategy": "BreakoutScaler_v3.0", "pnl": 1530.0},
-            {"strategy": "ScalperPro_v1.0", "pnl": -320.0},
-        ]
+        period_start = self._period_start(period)
+        strategies: List[Dict[str, Any]] = []
+        try:
+            with db_session_scope() as db:
+                query = (
+                    db.query(
+                        TradeJournal.bot_id.label("strategy"),
+                        func.coalesce(func.sum(TradeJournal.pnl), 0.0).label("pnl"),
+                    )
+                    .filter(TradeJournal.pnl.isnot(None))
+                    .filter(TradeJournal.mode == TradingMode.LIVE)
+                )
+                if period_start is not None:
+                    query = query.filter(TradeJournal.timestamp >= period_start)
+                rows = (
+                    query.group_by(TradeJournal.bot_id)
+                    .order_by(func.coalesce(func.sum(TradeJournal.pnl), 0.0).desc())
+                    .all()
+                )
+            strategies = [
+                {"strategy": row.strategy, "pnl": float(row.pnl or 0.0)}
+                for row in rows
+                if row.strategy
+            ]
+        except Exception as exc:
+            logger.warning(f"Failed to load strategy P&L: {exc}")
 
         total_pnl = sum(s["pnl"] for s in strategies)
         for s in strategies:
@@ -227,8 +400,6 @@ class PortfolioHead(DepartmentHead):
             "period": period,
             "total_pnl": total_pnl,
             "by_strategy": strategies,
-            "demo_mode": True,
-            "demo_message": "Connect MT5 broker accounts to see live P&L data",
         }
 
     def get_broker_pnl(self, period: str = "all") -> Dict[str, Any]:
@@ -241,12 +412,33 @@ class PortfolioHead(DepartmentHead):
         Returns:
             P&L by broker
         """
-        # Demo data — real data requires broker account connections
-        brokers = [
-            {"broker": "ICMarkets", "pnl": 3100.0},
-            {"broker": "OANDA", "pnl": 1280.0},
-            {"broker": "Pepperstone", "pnl": 100.0},
-        ]
+        period_start = self._period_start(period)
+        brokers: List[Dict[str, Any]] = []
+        try:
+            with db_session_scope() as db:
+                query = (
+                    db.query(
+                        TradeJournal.broker.label("broker"),
+                        func.coalesce(func.sum(TradeJournal.pnl), 0.0).label("pnl"),
+                    )
+                    .filter(TradeJournal.pnl.isnot(None))
+                    .filter(TradeJournal.mode == TradingMode.LIVE)
+                    .filter(TradeJournal.broker.isnot(None))
+                )
+                if period_start is not None:
+                    query = query.filter(TradeJournal.timestamp >= period_start)
+                rows = (
+                    query.group_by(TradeJournal.broker)
+                    .order_by(func.coalesce(func.sum(TradeJournal.pnl), 0.0).desc())
+                    .all()
+                )
+            brokers = [
+                {"broker": row.broker, "pnl": float(row.pnl or 0.0)}
+                for row in rows
+                if row.broker
+            ]
+        except Exception as exc:
+            logger.warning(f"Failed to load broker P&L: {exc}")
 
         total_pnl = sum(b["pnl"] for b in brokers)
         for b in brokers:
@@ -256,8 +448,6 @@ class PortfolioHead(DepartmentHead):
             "period": period,
             "total_pnl": total_pnl,
             "by_broker": brokers,
-            "demo_mode": True,
-            "demo_message": "Connect broker accounts to see live attribution",
         }
 
     def get_account_drawdowns(self) -> Dict[str, Any]:
@@ -267,11 +457,13 @@ class PortfolioHead(DepartmentHead):
         Returns:
             Drawdown by account
         """
-        # Demo data - in production would calculate from equity curves
+        states = self._load_latest_house_money_state()
         accounts = [
-            {"account_id": "acc_main", "drawdown_pct": 8.3},
-            {"account_id": "acc_backup", "drawdown_pct": 5.1},
-            {"account_id": "acc_paper", "drawdown_pct": 2.4},
+            {
+                "account_id": account_id,
+                "drawdown_pct": self._calculate_drawdown_pct(state),
+            }
+            for account_id, state in sorted(states.items())
         ]
 
         return {
@@ -302,22 +494,21 @@ class PortfolioHead(DepartmentHead):
         drawdown_data = self.get_account_drawdowns()
         drawdowns = {d["account_id"]: d["drawdown_pct"] for d in drawdown_data.get("by_account", [])}
 
-        # Demo daily P&L - in production would calculate from positions
-        daily_pnl_values = {
-            "acc_main": 800.0,
-            "acc_backup": 350.50,
-            "acc_paper": 100.0,
-        }
+        latest_states = self._load_latest_house_money_state()
 
         # Build account summaries
         accounts = []
         for acc in accounts_data:
             acc_id = acc.get("account_id", "unknown")
+            state = latest_states.get(acc_id)
+            daily_pnl = float(state.current_pnl) if state else 0.0
+            drawdown = self._calculate_drawdown_pct(state) if state else drawdowns.get(acc_id, 0.0)
             accounts.append({
                 "account_id": acc_id,
-                "equity": acc.get("balance", 0.0),
-                "daily_pnl": daily_pnl_values.get(acc_id, 0.0),
-                "drawdown": drawdowns.get(acc_id, 0.0),
+                "equity": acc.get("equity", acc.get("balance", 0.0)),
+                "daily_pnl": daily_pnl,
+                "drawdown": drawdown,
+                "connected": acc.get("connected", False),
             })
 
         # Calculate totals
@@ -335,12 +526,7 @@ class PortfolioHead(DepartmentHead):
         else:
             total_drawdown = 0.0
 
-        # Active strategies (demo - would query running EAs)
-        active_strategies = [
-            "TrendFollower_v2.1",
-            "RangeTrader_v1.5",
-            "BreakoutScaler_v3.0",
-        ]
+        active_strategies = self._get_active_strategy_names()
 
         # AC4: Check drawdown threshold (10%)
         drawdown_alert = total_drawdown > 10.0
@@ -373,15 +559,6 @@ class PortfolioHead(DepartmentHead):
         strategy_pnl = self.get_strategy_pnl()
         total_pnl = strategy_pnl.get("total_pnl", 0)
 
-        # Calculate equity contribution for each strategy
-        # Demo equity contributions - in production would calculate from positions
-        equity_contributions = {
-            "TrendFollower_v2.1": 12000.0,
-            "RangeTrader_v1.5": 4000.0,
-            "BreakoutScaler_v3.0": 7500.0,
-            "ScalperPro_v1.0": -1500.0,
-        }
-
         by_strategy = []
         for s in strategy_pnl.get("by_strategy", []):
             strategy_name = s.get("strategy", "")
@@ -389,7 +566,8 @@ class PortfolioHead(DepartmentHead):
                 "strategy": strategy_name,
                 "pnl": s.get("pnl", 0.0),
                 "percentage": s.get("percentage", 0.0),
-                "equity_contribution": equity_contributions.get(strategy_name, 0.0),
+                "equity_contribution": 0.0,
+                "equity_contribution_available": False,
             })
 
         # Get broker P&L
@@ -422,33 +600,38 @@ class PortfolioHead(DepartmentHead):
         """
         logger.info(f"Generating correlation matrix for {period_days} days")
 
-        # Demo correlation data - in production would calculate from historical returns
-        # Using 30-day returns for each strategy
-        strategies = [
-            "TrendFollower_v2.1",
-            "RangeTrader_v1.5",
-            "BreakoutScaler_v3.0",
-            "ScalperPro_v1.0",
-        ]
+        period_start = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(days=period_days)
+        series_by_strategy: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
 
-        # Demo correlation matrix (Pearson correlation coefficients)
-        correlation_data = {
-            ("TrendFollower_v2.1", "RangeTrader_v1.5"): 0.45,
-            ("TrendFollower_v2.1", "BreakoutScaler_v3.0"): 0.78,
-            ("TrendFollower_v2.1", "ScalperPro_v1.0"): -0.12,
-            ("RangeTrader_v1.5", "BreakoutScaler_v3.0"): 0.32,
-            ("RangeTrader_v1.5", "ScalperPro_v1.0"): 0.05,
-            ("BreakoutScaler_v3.0", "ScalperPro_v1.0"): -0.08,
-        }
+        try:
+            with db_session_scope() as db:
+                rows = (
+                    db.query(TradeJournal.bot_id, TradeJournal.timestamp, TradeJournal.pnl)
+                    .filter(TradeJournal.bot_id.isnot(None))
+                    .filter(TradeJournal.pnl.isnot(None))
+                    .filter(TradeJournal.mode == TradingMode.LIVE)
+                    .filter(TradeJournal.timestamp >= period_start)
+                    .all()
+                )
+            for bot_id, timestamp, pnl in rows:
+                if not timestamp:
+                    continue
+                day_key = timestamp.date().isoformat()
+                series_by_strategy[bot_id][day_key] += float(pnl or 0.0)
+        except Exception as exc:
+            logger.warning(f"Failed to load strategy correlation data: {exc}")
 
-        # Build symmetric matrix (all pairs)
+        strategies = sorted(series_by_strategy)
         matrix = []
         high_correlation_threshold = 0.7
 
         for i, strat_a in enumerate(strategies):
             for j, strat_b in enumerate(strategies):
                 if i < j:  # Only upper triangle to avoid duplicates
-                    correlation = correlation_data.get((strat_a, strat_b), 0.0)
+                    days = sorted(set(series_by_strategy[strat_a]) | set(series_by_strategy[strat_b]))
+                    xs = [series_by_strategy[strat_a].get(day, 0.0) for day in days]
+                    ys = [series_by_strategy[strat_b].get(day, 0.0) for day in days]
+                    correlation = self._pearson_correlation(xs, ys)
                     matrix.append({
                         "strategy_a": strat_a,
                         "strategy_b": strat_b,
@@ -596,22 +779,8 @@ class PortfolioHead(DepartmentHead):
     # =========================================================================
 
     def _format_tools_for_anthropic(self) -> list:
-        """Format registered tools into Anthropic tool definitions."""
-        tools = []
-        for tool_name, tool_obj in (self._tools or {}).items():
-            try:
-                tools.append({
-                    "name": tool_name,
-                    "description": getattr(tool_obj, "description", f"{tool_name} tool"),
-                    "input_schema": getattr(
-                        tool_obj,
-                        "input_schema",
-                        {"type": "object", "properties": {}, "required": []},
-                    ),
-                })
-            except Exception:
-                pass
-        return tools
+        """Convert the full active tool surface to Anthropic tool definitions."""
+        return super()._format_tools_for_anthropic()
 
     async def process_task(self, task: str, context: dict = None) -> dict:
         """
@@ -624,32 +793,37 @@ class PortfolioHead(DepartmentHead):
         Returns:
             Result dict with status, department, content, and tool_calls.
         """
-        dept_system = self.system_prompt
-
-        # Read relevant memory
-        memory_ctx = ""
+        memory_nodes = None
         try:
             if hasattr(self, "_read_relevant_memory"):
-                nodes = await self._read_relevant_memory(task)
-                if nodes:
-                    memory_ctx = "\n\n## Relevant Memory\n" + "\n".join(
-                        f"- {n['content']}" for n in nodes
-                    )
+                memory_nodes = await self._read_relevant_memory(task)
         except Exception:
             pass
 
-        full_system = dept_system + memory_ctx
+        full_system = self._build_system_prompt(
+            canvas_context=context,
+            memory_nodes=memory_nodes,
+        )
         tools = self._format_tools_for_anthropic() if hasattr(self, "_format_tools_for_anthropic") else []
 
         try:
             if hasattr(self, "_invoke_claude"):
                 result = await self._invoke_claude(task=task, canvas_context=context, tools=tools if tools else None)
             else:
-                import os
                 import anthropic as _anthropic
-                client = _anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+                from src.agents.providers.router import get_router
+
+                runtime_config = get_router().resolve_runtime_config()
+                if not runtime_config or not runtime_config.api_key:
+                    raise RuntimeError(
+                        "No LLM runtime configured. Configure a provider in Settings or set QMX_LLM_* environment variables."
+                    )
+                client = _anthropic.AsyncAnthropic(
+                    api_key=runtime_config.api_key,
+                    base_url=runtime_config.base_url,
+                )
                 kwargs = {
-                    "model": os.getenv("ANTHROPIC_MODEL_SONNET", "claude-sonnet-4-6"),
+                    "model": runtime_config.model,
                     "max_tokens": 4096,
                     "system": full_system,
                     "messages": [{"role": "user", "content": task}],

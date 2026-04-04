@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { buildApiUrl } from '$lib/api';
   import { settingsStore } from '$lib/stores/settingsStore';
   import { CheckCircle, XCircle, AlertCircle, Key, User, Wifi, WifiOff } from 'lucide-svelte';
 
@@ -90,7 +91,7 @@
 
   async function testGeminiConnection(): Promise<boolean> {
     try {
-      const response = await fetch('http://localhost:8000/api/ai/test-connection', {
+      const response = await fetch(buildApiUrl('/api/ai/test-connection'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider: 'google' })
@@ -103,7 +104,7 @@
 
   async function testQwenConnection(): Promise<boolean> {
     try {
-      const response = await fetch('http://localhost:8000/api/ai/test-connection', {
+      const response = await fetch(buildApiUrl('/api/ai/test-connection'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider: 'qwen' })

@@ -7,12 +7,14 @@
    * Includes 3-dot menu for position close action and cross-canvas navigation
    */
   import GlassTile from './GlassTile.svelte';
-  import { pnlFlash, selectBot, type BotStatus } from '$lib/stores/trading';
+  import { pnlFlash, selectBot, activeBots, type BotStatus } from '$lib/stores/trading';
   import { activeCanvasStore } from '$lib/stores/canvasStore';
   import { navigationStore } from '$lib/stores/navigationStore';
-  import { TrendingUp, TrendingDown, Circle, Activity, Clock, MoreHorizontal, XCircle, Code, BarChart3, History } from 'lucide-svelte';
+  import { TrendingUp, TrendingDown, Circle, Activity, Clock, MoreHorizontal, XCircle, Code, BarChart3, History, AlertCircle, FileText } from 'lucide-svelte';
+  import { apiFetch } from '$lib/api';
   import PositionCloseModal from './PositionCloseModal.svelte';
   import { goto } from '$app/navigation';
+  import { browser } from '$app/environment';
 
   interface Props {
     bot: BotStatus;
@@ -23,6 +25,39 @@
   // Menu state
   let showMenu = $state(false);
   let showCloseModal = $state(false);
+
+  // SSL state
+  let sslData = $state<{ consecutive_losses: number; ssl_state: string; recovery_win_count: number } | null>(null);
+
+  $effect(() => {
+    if (!browser) return;  // SSR guard
+    if (bot.bot_id) {
+      fetchSSLState(bot.bot_id);
+      const interval = setInterval(() => fetchSSLState(bot.bot_id), 10000);
+      return () => clearInterval(interval);
+    }
+  });
+
+  async function fetchSSLState(botId: string) {
+    try {
+      const res = await apiFetch<any>(`/api/ssl/state/${botId}`);
+      sslData = res;
+      // Also update the store
+      activeBots.update((bots) => {
+        const idx = bots.findIndex((b) => b.bot_id === botId);
+        if (idx >= 0) {
+          bots[idx] = {
+            ...bots[idx],
+            consecutive_losses: res.consecutive_losses,
+            ssl_state: res.ssl_state as any
+          };
+        }
+        return [...bots];
+      });
+    } catch (e) {
+      // Silently fail — SSL data is supplementary
+    }
+  }
 
   let flashColor = $derived($pnlFlash.get(bot.bot_id));
   let pnlClass = $derived(bot.current_pnl > 0 ? 'positive' : bot.current_pnl < 0 ? 'negative' : 'neutral');
@@ -96,6 +131,15 @@
   <div class="bot-card">
     <div class="header">
       <span class="ea-name" title={bot.ea_name}>{bot.ea_name}</span>
+      {#if bot.ssl_state === 'paper'}
+        <span class="ssl-counter paper">
+          <FileText size={10} /> Paper Recovery (Win {(sslData?.recovery_win_count ?? 0)}/2)
+        </span>
+      {:else if (bot.consecutive_losses ?? 0) > 0}
+        <span class="ssl-counter" class:amber={(bot.consecutive_losses ?? 0) >= 2 && (bot.consecutive_losses ?? 0) < 3} class:red={(bot.consecutive_losses ?? 0) >= 3}>
+          <AlertCircle size={10} /> {bot.consecutive_losses} consec. losses
+        </span>
+      {/if}
       <div class="header-actions">
         <span class="symbol">{bot.symbol}</span>
         <button class="menu-btn" onclick={toggleMenu} aria-label="More options">
@@ -208,6 +252,18 @@
     padding: 2px 6px;
     border-radius: 4px;
   }
+
+  .ssl-counter {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: #888;
+  }
+  .ssl-counter.amber { color: #F59E0B; }
+  .ssl-counter.red { color: #EF4444; }
+  .ssl-counter.paper { color: #3B82F6; }
 
   .metrics {
     display: flex;

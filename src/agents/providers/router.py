@@ -13,7 +13,7 @@ import os
 from typing import Optional, Dict, Any, List, TypeVar, Callable
 from dataclasses import dataclass
 
-from src.database.models import ProviderConfig, get_db_session
+from src.database.models import ProviderConfig, db_session_scope
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,17 @@ class ProviderInfo:
     tier_assignment: Dict[str, str]
 
 
+@dataclass
+class RuntimeLLMConfig:
+    """Resolved runtime configuration for an anthropic-compatible client."""
+    provider_type: str
+    api_key: str
+    base_url: str
+    model: str
+    source: str
+    display_name: str = ""
+
+
 class ProviderRouter:
     """
     Routes AI requests to configured providers.
@@ -45,13 +56,15 @@ class ProviderRouter:
     """
 
     # Default base URLs for each provider type
+    # MiniMax & GLM use Anthropic-compatible API (Claude SDK format)
+    # Anthropic, OpenAI, DeepSeek, etc. use standard OpenAI-compatible format
     DEFAULT_BASE_URLS = {
         "anthropic": "https://api.anthropic.com/v1",
         "openai": "https://api.openai.com/v1",
         "openrouter": "https://openrouter.ai/api/v1",
         "deepseek": "https://api.deepseek.com/v1",
-        "glm": "https://open.bigmodel.cn/api/paas/v4",
-        "minimax": "https://api.minimax.chat/v1",
+        "glm": "https://api.z.ai/api/anthropic",
+        "minimax": "https://api.minimax.io/anthropic",
         "google": "https://generativelanguage.googleapis.com/v1",
         "cohere": "https://api.cohere.ai/v1",
         "mistral": "https://api.mistral.ai/v1",
@@ -69,7 +82,7 @@ class ProviderRouter:
     def _load_providers(self) -> None:
         """Load all provider configurations from database."""
         try:
-            with get_db_session() as db:
+            with db_session_scope() as db:
                 providers = db.query(ProviderConfig).all()
 
                 self._all_providers = {}
@@ -199,6 +212,151 @@ class ProviderRouter:
 
         # Fall back to primary
         return self._primary_provider
+
+    @staticmethod
+    def _first_model_id(model_list: Optional[List[Dict[str, str]]]) -> Optional[str]:
+        """Return the first usable model id from a provider model list."""
+        if not model_list:
+            return None
+        for entry in model_list:
+            if not isinstance(entry, dict):
+                continue
+            model_id = entry.get("id") or entry.get("model_id") or entry.get("name")
+            if model_id:
+                return str(model_id)
+        return None
+
+    @staticmethod
+    def _provider_env_prefix(provider_type: str) -> str:
+        return str(provider_type or "").strip().upper().replace("-", "_")
+
+    def _resolve_env_runtime_config(
+        self,
+        *,
+        preferred_provider: Optional[str] = None,
+        preferred_model: Optional[str] = None,
+        tier: Optional[str] = None,
+        default_model: Optional[str] = None,
+    ) -> Optional[RuntimeLLMConfig]:
+        """
+        Resolve generic environment-driven runtime config.
+
+        This keeps active node/session logic provider-neutral while preserving
+        legacy env compatibility for existing deployments.
+        """
+        provider_type = (
+            preferred_provider
+            or os.getenv("QMX_LLM_PROVIDER")
+            or os.getenv("MODEL_PROVIDER")
+            or ""
+        ).strip().lower()
+
+        if not provider_type:
+            if os.getenv("MINIMAX_API_KEY"):
+                provider_type = "minimax"
+            elif os.getenv("ANTHROPIC_API_KEY"):
+                provider_type = "anthropic"
+            elif os.getenv("OPENAI_API_KEY"):
+                provider_type = "openai"
+
+        provider_prefix = self._provider_env_prefix(provider_type) if provider_type else ""
+
+        api_key = (
+            os.getenv("QMX_LLM_API_KEY")
+            or os.getenv("MODEL_API_KEY")
+            or (os.getenv(f"{provider_prefix}_API_KEY") if provider_prefix else None)
+            or os.getenv("MINIMAX_API_KEY")
+            or os.getenv("ANTHROPIC_API_KEY")
+        )
+        if not api_key:
+            return None
+
+        base_url = (
+            os.getenv("QMX_LLM_BASE_URL")
+            or os.getenv("MODEL_BASE_URL")
+            or (os.getenv(f"{provider_prefix}_BASE_URL") if provider_prefix else None)
+            or self.DEFAULT_BASE_URLS.get(provider_type or "", "")
+            or os.getenv("MINIMAX_BASE_URL")
+            or os.getenv("ANTHROPIC_BASE_URL")
+        )
+
+        tier_model = None
+        if tier:
+            normalized_tier = str(tier).strip().lower()
+            if normalized_tier == "opus":
+                tier_model = os.getenv("QMX_LLM_MODEL_OPUS") or os.getenv("MODEL_OPUS")
+            elif normalized_tier == "haiku":
+                tier_model = os.getenv("QMX_LLM_MODEL_HAIKU") or os.getenv("MODEL_HAIKU")
+
+        model = (
+            preferred_model
+            or tier_model
+            or os.getenv("QMX_LLM_MODEL")
+            or os.getenv("MODEL_ID")
+            or (os.getenv(f"{provider_prefix}_MODEL") if provider_prefix else None)
+            or os.getenv("MINIMAX_MODEL")
+            or os.getenv("ANTHROPIC_MODEL")
+            or default_model
+            or ""
+        )
+
+        return RuntimeLLMConfig(
+            provider_type=provider_type or "env",
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            source="env",
+            display_name=provider_type or "env",
+        )
+
+    def resolve_runtime_config(
+        self,
+        *,
+        preferred_provider: Optional[str] = None,
+        preferred_model: Optional[str] = None,
+        tier: Optional[str] = None,
+        default_model: Optional[str] = None,
+    ) -> Optional[RuntimeLLMConfig]:
+        """
+        Resolve the configured runtime LLM without hardcoding a vendor path.
+
+        Order:
+        1. Explicit configured provider
+        2. Primary configured provider
+        3. Generic env contract (`QMX_LLM_*` / `MODEL_*`)
+        4. Legacy provider-specific env compatibility
+        """
+        if not self._initialized or self._should_refresh():
+            self._load_providers()
+
+        provider = self.get_provider(preferred_provider) if preferred_provider else self.primary
+        if provider is None and preferred_provider:
+            provider = self.primary
+
+        if provider:
+            model = (
+                preferred_model
+                or provider.tier_assignment.get(tier or "")
+                or self._first_model_id(provider.model_list)
+                or default_model
+                or ""
+            )
+            base_url = provider.base_url or self.DEFAULT_BASE_URLS.get(provider.provider_type, "")
+            return RuntimeLLMConfig(
+                provider_type=provider.provider_type,
+                api_key=provider.api_key,
+                base_url=base_url,
+                model=model,
+                source="provider_config",
+                display_name=provider.display_name,
+            )
+
+        return self._resolve_env_runtime_config(
+            preferred_provider=preferred_provider,
+            preferred_model=preferred_model,
+            tier=tier,
+            default_model=default_model,
+        )
 
     def execute_with_fallback(
         self,

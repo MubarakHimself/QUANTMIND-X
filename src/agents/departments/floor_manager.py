@@ -8,6 +8,8 @@ Model Tier: Opus (highest reasoning capability)
 """
 import json
 import logging
+import os
+import re
 import uuid
 from typing import Dict, List, Optional, Any, AsyncIterator
 from pathlib import Path
@@ -20,9 +22,7 @@ from src.agents.departments.types import (
     get_model_tier,
 )
 from src.agents.departments.department_mail import (
-    DepartmentMailService,
-    RedisDepartmentMailService,
-    get_redis_mail_service,
+    create_mail_service,
     MessageType,
     Priority,
 )
@@ -37,6 +37,10 @@ from src.agents.departments.task_router import (
 from src.router.copilot_kill_switch import get_copilot_kill_switch
 from src.intent.classifier import IntentClassifier, get_intent_classifier
 from src.intent.patterns import CommandIntent
+from src.agents.prompts.department_contracts import (
+    compose_floor_manager_prompt,
+    get_floor_manager_prompt_seed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +92,26 @@ class FloorManager:
         ],
     }
 
+    _EXPLICIT_DELEGATION_PATTERNS = (
+        r"\b(delegate|dispatch|assign|route|forward|hand[\s-]*off|handoff)\b",
+        r"\b(send\s+mail\s+to|message\s+the)\b",
+        r"\b(ask|have|let|tell)\s+(the\s+)?(research|development|risk|trading|portfolio)\b",
+        r"\b(run|start|kick[\s-]*off|execute)\s+(a\s+)?(workflow|pipeline)\b",
+    )
+
+    _CONVERSATIONAL_PREFIXES = (
+        "what", "why", "how", "when", "where", "who",
+        "can you", "could you", "would you",
+        "explain", "summarize", "help", "show me",
+        "stream check", "hello", "hi",
+    )
+
+    _ACTION_VERBS_FOR_DELEGATION = {
+        "analyze", "backtest", "develop", "build", "implement", "code",
+        "execute", "trade", "rebalance", "optimize", "monitor", "calculate",
+        "compile", "ingest", "generate", "create", "route",
+    }
+
     def __init__(
         self,
         mail_db_path: str = ".quantmind/department_mail.db",
@@ -102,10 +126,10 @@ class FloorManager:
             max_workers_per_dept: Maximum workers per department
             use_redis_mail: If True, use Redis Streams for mail (recommended)
         """
-        if use_redis_mail:
-            self.mail_service = get_redis_mail_service()
-        else:
-            self.mail_service = DepartmentMailService(db_path=mail_db_path)
+        self.mail_service = create_mail_service(
+            db_path=mail_db_path,
+            use_redis=use_redis_mail,
+        )
         self._init_spawner()
         self.departments = self._init_departments()
         self.model_tier = "opus"
@@ -1607,20 +1631,64 @@ Starting system restore from backup (FR69: machine portability)...
             saved_prompts = load_settings().get("agents", {}).get("system_prompts", {})
             saved = saved_prompts.get("floor_manager", "") or saved_prompts.get("floor_manager_head", "")
             if saved and saved.strip():
-                return saved
+                base_prompt = compose_floor_manager_prompt(saved)
+            else:
+                base_prompt = None
         except Exception:
-            pass
-        try:
-            from src.agents.departments.types import _FLOOR_MANAGER_SYSTEM_PROMPT
-            base_prompt = _FLOOR_MANAGER_SYSTEM_PROMPT
-        except ImportError:
-            base_prompt = "You are the Floor Manager at QUANTMINDX, the senior orchestrator of a multi-department algorithmic trading operation."
+            base_prompt = None
+
+        if base_prompt is None:
+            try:
+                from src.agents.departments.types import _FLOOR_MANAGER_PROMPT_SEED
+                base_prompt = compose_floor_manager_prompt(_FLOOR_MANAGER_PROMPT_SEED)
+            except ImportError:
+                base_prompt = compose_floor_manager_prompt(get_floor_manager_prompt_seed())
 
         if context:
+            summary: Dict[str, Any] = {}
+            for key in (
+                "canvas",
+                "department",
+                "session_type",
+                "workflow_id",
+                "workflow_step",
+                "workflow_run_id",
+                "provider",
+                "llm_provider",
+                "model",
+                "llm_model",
+            ):
+                value = context.get(key) if isinstance(context, dict) else None
+                if isinstance(value, str) and value.strip():
+                    summary[key] = value.strip()
+
+            workspace_contract = context.get("workspace_contract") if isinstance(context, dict) else None
+            if isinstance(workspace_contract, dict):
+                summary["workspace_contract"] = {
+                    "version": str(workspace_contract.get("version") or "manifest-v1"),
+                    "strategy": str(workspace_contract.get("strategy") or "manifest-first"),
+                    "natural_resource_search": bool(
+                        workspace_contract.get("natural_resource_search", True)
+                    ),
+                }
+
+            hints = context.get("workspace_resource_hints") if isinstance(context, dict) else None
+            if isinstance(hints, list):
+                summary["workspace_resource_hints"] = [
+                    {
+                        "id": str(item.get("id", ""))[:256],
+                        "path": str(item.get("path", ""))[:384],
+                        "canvas": str(item.get("canvas", ""))[:64],
+                        "label": str(item.get("label", ""))[:160],
+                    }
+                    for item in hints[:24]
+                    if isinstance(item, dict)
+                ]
+
             return (
                 f"{base_prompt}\n\n"
-                "## Current Canvas Context\n"
-                f"{json.dumps(context, indent=2, default=str)}\n\n"
+                "## Current Canvas Context (manifest-first summary)\n"
+                f"{json.dumps(summary, indent=2, default=str)}\n\n"
                 "Ground your answer in the current canvas context when it is present. "
                 "If the user asks what canvas they are on or what is visible, answer from this context first."
             )
@@ -1633,6 +1701,7 @@ Starting system restore from backup (FR69: machine portability)...
         history: Optional[List[Dict[str, str]]] = None,
         model_name: Optional[str] = None,
         system_prompt: Optional[str] = None,
+        preferred_provider: Optional[str] = None,
     ) -> str:
         """
         Call the LLM via ProviderRouter using Anthropic-compatible API.
@@ -1647,30 +1716,30 @@ Starting system restore from backup (FR69: machine portability)...
         """
         import os
         import httpx
+        from urllib.parse import urlparse
 
         try:
             from src.agents.providers.router import get_router
             router = get_router()
-            provider = router.primary
+            runtime_config = router.resolve_runtime_config(
+                preferred_provider=preferred_provider,
+                preferred_model=model_name,
+                default_model=model_name,
+            )
+            if not runtime_config or not runtime_config.api_key:
+                return (
+                    "No LLM runtime configured. Configure a provider in Settings "
+                    "or set QMX_LLM_* environment variables."
+                )
 
-            if not provider:
-                # Fallback: try environment variables directly
-                api_key = os.getenv("ANTHROPIC_API_KEY")
-                base_url = os.getenv("ANTHROPIC_BASE_URL")
-                model = model_name or os.getenv("ANTHROPIC_MODEL_SONNET", "claude-sonnet-4-6")
-            else:
-                api_key = provider.api_key
-                base_url = provider.base_url
-                # Use first available model from the provider's model list
-                if model_name:
-                    model = model_name
-                elif provider.model_list:
-                    model = provider.model_list[0].get("id") or provider.model_list[0].get("model_id", "claude-sonnet-4-6")
-                else:
-                    model = "claude-sonnet-4-6"
+            api_key = runtime_config.api_key
+            base_url = runtime_config.base_url
+            model = runtime_config.model or model_name or ""
 
-            if not api_key:
-                return "No LLM provider configured. Please set ANTHROPIC_API_KEY or configure a provider in Settings."
+            # Ensure base_url is fully qualified to avoid httpx URL errors
+            parsed = urlparse(base_url)
+            if not parsed.scheme:
+                base_url = f"https://{base_url.lstrip('/')}"
 
             # Build messages array for Anthropic format
             messages = []
@@ -1682,9 +1751,18 @@ Starting system restore from backup (FR69: machine portability)...
                     messages.append({"role": role, "content": h.get("content", "")})
             messages.append({"role": "user", "content": message})
 
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            request_timeout = float(os.getenv("FLOOR_MANAGER_LLM_TIMEOUT_SECONDS", "30"))
+            connect_timeout = float(os.getenv("FLOOR_MANAGER_LLM_CONNECT_TIMEOUT_SECONDS", "8"))
+            timeout = httpx.Timeout(request_timeout, connect=connect_timeout)
+            base_stripped = base_url.rstrip("/")
+            messages_url = (
+                f"{base_stripped}/messages"
+                if base_stripped.endswith("/v1")
+                else f"{base_stripped}/v1/messages"
+            )
+            async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
                 response = await client.post(
-                    f"{base_url}/v1/messages",
+                    messages_url,
                     headers={
                         "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json",
@@ -1714,6 +1792,8 @@ Starting system restore from backup (FR69: machine portability)...
 
         except httpx.ConnectError:
             return f"Could not connect to LLM provider at {base_url}. Please check your internet connection and provider settings."
+        except httpx.HTTPError as e:
+            return f"LLM call failed: {str(e)[:200]}"
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
             return f"LLM call failed: {str(e)[:100]}"
@@ -1724,6 +1804,7 @@ Starting system restore from backup (FR69: machine portability)...
         history: Optional[List[Dict[str, str]]] = None,
         model_name: Optional[str] = None,
         system_prompt: Optional[str] = None,
+        preferred_provider: Optional[str] = None,
     ):
         """
         Stream the LLM response with thinking support via SSE.
@@ -1743,29 +1824,33 @@ Starting system restore from backup (FR69: machine portability)...
         """
         import os
         import httpx
+        from urllib.parse import urlparse
 
         try:
             from src.agents.providers.router import get_router
             router = get_router()
-            provider = router.primary
-
-            if not provider:
-                api_key = os.getenv("ANTHROPIC_API_KEY")
-                base_url = os.getenv("ANTHROPIC_BASE_URL")
-                model = model_name or os.getenv("ANTHROPIC_MODEL_SONNET", "claude-sonnet-4-6")
-            else:
-                api_key = provider.api_key
-                base_url = provider.base_url
-                if model_name:
-                    model = model_name
-                elif provider.model_list:
-                    model = provider.model_list[0].get("id") or provider.model_list[0].get("model_id", "claude-sonnet-4-6")
-                else:
-                    model = "claude-sonnet-4-6"
-
-            if not api_key:
-                yield {"type": "error", "content": "No LLM provider configured. Please set ANTHROPIC_API_KEY or configure a provider in Settings."}
+            runtime_config = router.resolve_runtime_config(
+                preferred_provider=preferred_provider,
+                preferred_model=model_name,
+                default_model=model_name,
+            )
+            if not runtime_config or not runtime_config.api_key:
+                yield {
+                    "type": "error",
+                    "content": (
+                        "No LLM runtime configured. Configure a provider in Settings "
+                        "or set QMX_LLM_* environment variables."
+                    ),
+                }
                 return
+
+            api_key = runtime_config.api_key
+            base_url = runtime_config.base_url
+            model = runtime_config.model or model_name or ""
+
+            parsed = urlparse(base_url)
+            if not parsed.scheme:
+                base_url = f"https://{base_url.lstrip('/')}"
 
             # Build messages array
             messages = []
@@ -1806,7 +1891,8 @@ Starting system restore from backup (FR69: machine portability)...
             if is_claude:
                 request_body["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
 
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            timeout = httpx.Timeout(20.0, connect=5.0, read=15.0)
+            async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
                 async with client.stream(
                     "POST",
                     messages_url,
@@ -1857,7 +1943,8 @@ Starting system restore from backup (FR69: machine portability)...
                                     text_chunk = delta.get("text", "")
                                     content_buffer += text_chunk
                                     yield {"type": "content", "content": text_chunk}
-                            elif event_type == "message_delta":
+                            elif event_type == "message_stop":
+                                # Claude/Anthropic stream contract emits terminal completion on message_stop.
                                 yield {"type": "done"}
                         except Exception:
                             continue
@@ -1875,6 +1962,8 @@ Starting system restore from backup (FR69: machine portability)...
         context: Optional[Dict[str, Any]] = None,
         history: Optional[List[Dict[str, str]]] = None,
         stream: bool = False,
+        model_name: Optional[str] = None,
+        preferred_provider: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Chat with the Floor Manager.
@@ -1890,6 +1979,8 @@ Starting system restore from backup (FR69: machine portability)...
         Returns:
             Dict with status, content, and optional delegation info
         """
+        import os
+
         # Check if kill switch is activated (Story 5.6)
         try:
             self._check_kill_switch()
@@ -1930,9 +2021,12 @@ Starting system restore from backup (FR69: machine portability)...
         # Classify the task to determine department
         department = self.classify_task(message)
 
-        # Check if task should be delegated based on keywords
-        delegation_keywords = ["run", "research", "analyze", "execute", "trade", "check", "get", "fetch"]
-        should_delegate = any(kw in message.lower() for kw in delegation_keywords)
+        # Delegate only when intent is explicit/actionable, not on broad keywords.
+        should_delegate = self._should_delegate_to_department(
+            message=message,
+            context=context,
+            department=department,
+        )
 
         if should_delegate:
             delegated_response = await self._delegate_to_department_head(
@@ -1944,17 +2038,90 @@ Starting system restore from backup (FR69: machine portability)...
                 return delegated_response
 
         # Direct response via LLM
-        response_content = await self._invoke_llm(
-            message,
-            history,
-            system_prompt=self._get_system_prompt(context),
-        )
+        import asyncio
+        try:
+            llm_timeout_seconds = float(
+                os.getenv("FLOOR_MANAGER_CHAT_TIMEOUT_SECONDS", "45")
+            )
+            response_content = await asyncio.wait_for(
+                self._invoke_llm(
+                    message,
+                    history,
+                    model_name=model_name,
+                    system_prompt=self._get_system_prompt(context),
+                    preferred_provider=preferred_provider,
+                ),
+                timeout=llm_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            response_content = (
+                "LLM provider timeout. Verify network access and provider settings "
+                f"(preferred: {preferred_provider or 'auto'}, model: {model_name or 'auto'})."
+            )
 
         return {
             "status": "success",
             "content": response_content,
-            "model": f"claude-opus-{self.model_tier}",
+            "model": model_name or (context or {}).get("model") or self._resolve_department_model(None),
         }
+
+    def _should_delegate_to_department(
+        self,
+        message: str,
+        context: Optional[Dict[str, Any]],
+        department: Department,
+    ) -> bool:
+        """
+        Decide whether Floor Manager should delegate to a department head.
+
+        Delegation should be explicit or imperative (action execution).
+        Conversational/status prompts should stay on Floor Manager LLM.
+        """
+        text = (message or "").strip().lower()
+        if not text:
+            return False
+
+        if isinstance(context, dict):
+            if context.get("force_delegate") is True:
+                return True
+            session_type = str(context.get("session_type") or "").lower()
+            if session_type == "workflow_session":
+                return True
+
+        for pattern in self._EXPLICIT_DELEGATION_PATTERNS:
+            if re.search(pattern, text):
+                return True
+
+        if text.endswith("?"):
+            return False
+
+        if any(text.startswith(prefix) for prefix in self._CONVERSATIONAL_PREFIXES):
+            return False
+
+        parts = text.split()
+        first_word = parts[0] if parts else ""
+        if first_word in {
+            Department.RESEARCH.value,
+            Department.DEVELOPMENT.value,
+            Department.TRADING.value,
+            Department.RISK.value,
+            Department.PORTFOLIO.value,
+        } and len(parts) >= 2:
+            return True
+
+        if first_word in self._ACTION_VERBS_FOR_DELEGATION and len(parts) >= 3:
+            return True
+
+        # Keep read/query style verbs local to Floor Manager to avoid over-delegation.
+        if first_word in {"check", "get", "fetch", "list", "show"}:
+            return False
+
+        # Live execution or risk-sensitive intents remain delegatable.
+        if department in {Department.TRADING, Department.RISK}:
+            if any(token in text for token in ("execute", "order", "position", "slippage", "drawdown", "var")):
+                return True
+
+        return False
 
     async def _delegate_to_department_head(
         self,
@@ -2017,15 +2184,25 @@ Starting system restore from backup (FR69: machine portability)...
         if config and getattr(config, "model", None):
             return config.model
         tier = getattr(head, "model_tier", None)
-        if isinstance(tier, str) and tier:
-            return f"claude-{tier}"
-        return "claude-sonnet"
+        try:
+            from src.agents.providers.router import get_router
+
+            runtime_config = get_router().resolve_runtime_config(
+                tier=tier if isinstance(tier, str) else None,
+            )
+            if runtime_config and runtime_config.model:
+                return runtime_config.model
+        except Exception:
+            pass
+        return ""
 
     async def chat_stream(
         self,
         message: str,
         context: Optional[Dict[str, Any]] = None,
         history: Optional[List[Dict[str, str]]] = None,
+        model_name: Optional[str] = None,
+        preferred_provider: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Stream chat response token by token.
@@ -2075,7 +2252,9 @@ Starting system restore from backup (FR69: machine portability)...
         async for event in self._invoke_llm_stream(
             message,
             history,
+            model_name=model_name,
             system_prompt=self._get_system_prompt(context),
+            preferred_provider=preferred_provider,
         ):
             event_type = event.get("type", "")
             if event_type == "thinking_start":

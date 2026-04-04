@@ -1,5 +1,5 @@
 // Settings Types - Shared type definitions for settings
-export type AgentType = 'copilot' | 'quantcode' | 'analyst';
+export type AgentType = 'copilot' | 'quantcode' | 'analyst' | 'research' | 'development' | 'trading' | 'risk' | 'portfolio' | 'floor_manager';
 
 export type ModelProvider = 'anthropic' | 'zhipu' | 'minimax' | 'openai' | 'openrouter' | 'deepseek';
 
@@ -22,6 +22,9 @@ export interface GeneralSettings {
   compactMode: boolean;
   notifications: boolean;
   soundEffects: boolean;
+  emailAlerts: boolean;
+  webhookUrl: string;
+  notificationFrequency: 'immediate' | 'daily' | 'weekly';
 }
 
 export interface APIKeys {
@@ -37,9 +40,9 @@ export interface MCPServer {
   id: string;
   name: string;
   description?: string;
-  // Server type: 'http' (URL-based) or 'stdio' (command-based)
-  type: 'http' | 'stdio';
-  // For HTTP servers
+  // Server transport type: 'stdio' (local command), 'http' (remote HTTP), 'sse' (Server-Sent Events)
+  type: 'stdio' | 'http' | 'sse';
+  // For HTTP and SSE servers
   url?: string;
   headers?: Record<string, string>;
   // For Stdio servers
@@ -122,6 +125,11 @@ export interface AgentPermissions {
   customRules: string[];
 }
 
+export interface ConnectionSettings {
+  t1Url: string;  // Cloudzy — trading backend (Kamatera T1)
+  t2Url: string;  // Contabo — HMM/research backend (Kamatera T2)
+}
+
 // Settings state interface
 export interface SettingsStoreState {
   general: GeneralSettings;
@@ -133,6 +141,7 @@ export interface SettingsStoreState {
   workflows: Workflow[];
   permissions: Record<AgentType, AgentPermissions>;
   modelConfig: ModelConfig;
+  connections: ConnectionSettings;
   isLoading: boolean;
   isDirty: boolean;
   error: string | null;

@@ -7,15 +7,17 @@
    */
   import { onMount, onDestroy } from 'svelte';
   import type { DepartmentTask, TaskPriority } from './types';
-  import { Clock } from 'lucide-svelte';
+  import { Clock, ArrowRightLeft, MessageSquareText } from 'lucide-svelte';
 
   // Props via Svelte 5 $state
   interface Props {
     task: DepartmentTask;
     onStatusChange?: (taskId: string, newStatus: DepartmentTask['status']) => void;
+    onSelect?: (task: DepartmentTask) => void;
+    selected?: boolean;
   }
 
-  let { task, onStatusChange }: Props = $props();
+  let { task, onStatusChange, onSelect, selected = false }: Props = $props();
 
   // Priority colors per AC-1 — use CSS custom properties at runtime via getComputedStyle if available
   const priorityColors: Record<TaskPriority, string> = {
@@ -90,11 +92,25 @@
 <div
   class="task-card"
   class:flashing={isFlashing}
+  class:selected
   style="--priority-color: {priorityColor}; --dept-color: {deptColor};"
+  role="button"
+  tabindex="0"
+  onclick={() => onSelect?.(task)}
+  onkeydown={(event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onSelect?.(task);
+    }
+  }}
 >
   <div class="card-header">
     <span class="task-name">{task.task_name}</span>
   </div>
+
+  {#if task.description}
+    <div class="task-preview">{task.description}</div>
+  {/if}
 
   <div class="card-badges">
     <!-- Department Badge -->
@@ -106,6 +122,21 @@
     <span class="badge priority-badge" style="background: {priorityColor}20; color: {priorityColor}; border-color: {priorityColor}40;">
       {task.priority}
     </span>
+  </div>
+
+  <div class="card-meta">
+    {#if task.source_dept}
+      <span class="meta-chip">
+        <ArrowRightLeft size={11} />
+        {task.source_dept}
+      </span>
+    {/if}
+    {#if task.message_type}
+      <span class="meta-chip">
+        <MessageSquareText size={11} />
+        {task.message_type}
+      </span>
+    {/if}
   </div>
 
   <div class="card-footer">
@@ -128,6 +159,12 @@
   .task-card:hover {
     background: rgba(40, 45, 60, 0.7);
     border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .task-card.selected {
+    border-color: rgba(var(--color-accent-cyan-rgb, 0, 212, 255), 0.45);
+    box-shadow: 0 0 0 1px rgba(var(--color-accent-cyan-rgb, 0, 212, 255), 0.2);
+    background: rgba(30, 44, 60, 0.72);
   }
 
   /* AC-2: 400ms cyan border flash on card move */
@@ -160,6 +197,17 @@
     font-weight: 500;
     color: rgba(255, 255, 255, 0.9);
     line-height: 1.4;
+  }
+
+  .task-preview {
+    margin-bottom: 10px;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 12px;
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 
   .card-badges {
@@ -195,6 +243,26 @@
     color: rgba(255, 255, 255, 0.4);
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
+  }
+
+  .card-meta {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+
+  .meta-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
   .duration {

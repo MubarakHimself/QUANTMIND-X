@@ -157,11 +157,11 @@ class ResearchSubAgent:
     def _initialize_llm(self) -> None:
         """Initialize LLM client for research analysis."""
         try:
-            from anthropic import Anthropic
-            self._llm_client = Anthropic()
-            logger.info("ResearchSubAgent: LLM client initialized")
-        except ImportError:
-            logger.warning("ResearchSubAgent: Anthropic SDK not available")
+            from src.agents.departments.subagents.llm_utils import get_subagent_client
+            self._llm_client, self._llm_model = get_subagent_client()
+            logger.info(f"ResearchSubAgent: LLM client initialized (model={self._llm_model})")
+        except Exception as e:
+            logger.warning(f"ResearchSubAgent: LLM init failed: {e}")
 
     def _call_llm(
         self,
@@ -182,9 +182,8 @@ class ResearchSubAgent:
             raise RuntimeError("LLM client not initialized")
 
         try:
-            # Use Haiku model for cost efficiency
             response = self._llm_client.messages.create(
-                model="claude-3-haiku-20240307",
+                model=self._llm_model,
                 max_tokens=2000,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],

@@ -3,13 +3,16 @@ Database Manager for SQLAlchemy ORM sessions.
 """
 
 import os
+import logging
 from contextlib import contextmanager
 from typing import Optional
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, NoSuchModuleError
 
 from .models import Base
+
+logger = logging.getLogger(__name__)
 
 
 # Default database paths
@@ -44,8 +47,7 @@ class DBManager:
                 else:
                     # HOT requested but no URL - fall back to default
                     db_url = DEFAULT_SQLITE_PATH
-                    import logging
-                    logging.getLogger(__name__).warning(
+                    logger.warning(
                         "HOT tier requested but HOT_DB_URL not set, falling back to default SQLite"
                     )
             else:
@@ -107,10 +109,18 @@ class HOTDBManager(DBManager):
         if db_url is None:
             db_url = get_hot_db_url()
             if db_url is None:
-                import logging
-                logging.getLogger(__name__).error(
+                logger.error(
                     "HOTDBManager initialized without HOT_DB_URL environment variable set. "
                     "Tick cache queries will fail."
                 )
-        
-        super().__init__(db_url=db_url, is_hot=False)
+
+        try:
+            super().__init__(db_url=db_url, is_hot=False)
+        except (ModuleNotFoundError, ImportError, NoSuchModuleError) as exc:
+            logger.warning(
+                "HOTDBManager could not initialize HOT_DB_URL=%s (%s). "
+                "Falling back to default SQLite.",
+                db_url,
+                exc,
+            )
+            super().__init__(db_url=DEFAULT_SQLITE_PATH, is_hot=False)

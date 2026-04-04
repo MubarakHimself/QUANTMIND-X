@@ -16,7 +16,7 @@ brokers:
     server: "Exness-MT5Demo"
     login: "12345678"
     initial_balance: 10000.0
-    enabled: true
+    enabled: false
     description: "Mock MT5 account for local development"
   
   # ============================================================================
@@ -60,7 +60,7 @@ brokers:
     api_key: "${BINANCE_TESTNET_KEY}"
     api_secret: "${BINANCE_TESTNET_SECRET}"
     testnet: true
-    enabled: true  # Safe to enable for testing
+    enabled: false
     description: "Binance Spot testnet account"
   
   # ============================================================================

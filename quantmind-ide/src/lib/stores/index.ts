@@ -262,3 +262,142 @@ export {
   type ThemePreset,
   type ThemeConfig
 } from './theme';
+
+// SVSS Store (Story: SVSS REST API - VWAP, RVOL, Volume Profile, MFI)
+export {
+  svssStore,
+  svssVWAP,
+  svssRVOL,
+  svssProfile,
+  svssMFI,
+  svssSymbols,
+  svssSelectedSymbol,
+  svssLoading,
+  svssError,
+  svssLastUpdated,
+  selectedSymbolVWAP,
+  selectedSymbolRVOL,
+  getMFIZoneColor,
+  getRVOLColor,
+  getRVOLInterpretation
+} from './svssStore';
+export type {
+  VWAPData,
+  RVOLData,
+  VolumeProfileData,
+  MFIData,
+  SVSSSummary,
+  SVSSState
+} from './svssStore';
+
+// Inter-Session Cooldown Store (Story 16.3: Inter-Session Cooldown Panel)
+export {
+  cooldownStatus,
+  cooldownStateEvent,
+  cooldownLoading,
+  cooldownError,
+  isCooldownActive,
+  cooldownCountdown,
+  sessionTransition,
+  cooldownProgressPercent,
+  cooldownStepName,
+  areActionsBlocked,
+  isIntelligenceWindowActive,
+  cooldownStatusColor,
+  cooldownCurrentStep,
+  COOLDOWN_STEP_INFO,
+  fetchCooldownStatus,
+  fetchCooldownStateEvent,
+  startCooldownPolling,
+  stopCooldownPolling
+} from './cooldownStore';
+export type {
+  CooldownStatus,
+  CooldownStateEvent,
+  CooldownPhase
+} from './cooldownStore';
+
+// Correlation Sensor Store (Story 4-7: Correlation Sensor Dashboard)
+export {
+  correlationSensorStore,
+  correlationData,
+  correlationLoading,
+  correlationError,
+  correlationLastUpdated,
+  correlationRegime,
+  eigenvalueStatus,
+  eigenvalueColor,
+  regimeColor
+} from './correlationSensor';
+export type {
+  CorrelationSensorData,
+  CorrelationMatrixData,
+  CorrelationSensorState
+} from './correlationSensor';
+
+// Session Kelly Store (Story 4.10: Session-Scoped Kelly Modifiers)
+export { sessionKellyStore } from './sessionKellyStore';
+export type {
+  SessionKellyData,
+  KellyCurrentState,
+  KellyHistoryEntry,
+  KellyHistoryState,
+  KellyStatus
+} from './sessionKellyStore';
+
+// Bot Lifecycle Store (P2: Bot Lifecycle Stage Report Viewer)
+export {
+  lifecycleStore,
+  selectedBotLifecycle,
+  selectedStageReport,
+  stageProgress,
+  isInRecovery,
+  failedQuestions,
+  passedQuestions,
+  lifecycleLoading,
+  lifecycleError,
+  lifecycleStats,
+  lifecycleBotList,
+  lifecycleTotalBots
+} from './lifecycleStore';
+export type {
+  LifecycleStage,
+  DeclineRecoveryStatus,
+  QAAnswer,
+  StageMetrics,
+  StageReport,
+  BotLifecycle,
+  LifecycleStats,
+  BotLifecycleSummary,
+  LifecycleListResponse
+} from './lifecycleStore';
+
+// WFA Store (Walk-Forward Analysis Calibrator)
+export { wfaStore } from './wfaStore';
+export type {
+  WfaCalibration,
+  WfaHistoryEntry,
+  WfaHistory
+} from './wfaStore';
+
+// Economic Calendar Store (P3: Economic Calendar Full View)
+export {
+  economicCalendarStore,
+  economicCalendarData,
+  economicCalendarEvents,
+  economicCalendarBlackouts,
+  economicCalendarLoading,
+  economicCalendarError,
+  economicCalendarLastUpdated,
+  getImpactColor,
+  getCurrencyBadge,
+  getTimeUntilEvent,
+  isBlackoutActive,
+  getNextEvent
+} from './economicCalendarStore';
+export type {
+  EconomicEvent,
+  BlackoutWindow,
+  EconomicCalendarData,
+  EconomicCalendarState
+} from './economicCalendarStore';

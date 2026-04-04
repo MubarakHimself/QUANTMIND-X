@@ -2,6 +2,7 @@
   import { X, FileText, Code, BookOpen, Image } from 'lucide-svelte';
   import MonacoEditor from './MonacoEditor.svelte';
   import CodeEditor from './CodeEditor.svelte';
+  import { buildApiUrl } from '$lib/api';
 
   
   interface Props {
@@ -12,8 +13,6 @@
   }
 
   let { openFiles = $bindable([]), activeTabId = $bindable(''), useMonaco = $bindable(true) }: Props = $props();
-
-  const API_BASE = 'http://localhost:8000/api';
 
   // File type icons
   function getFileIcon(name: string) {
@@ -45,9 +44,9 @@
     // Determine endpoint based on view type
     let endpoint = '';
     if (file.view === 'knowledge') {
-      endpoint = `${API_BASE}/knowledge/${file.id}/content`;
+      endpoint = buildApiUrl(`/api/knowledge/${file.id}/content`);
     } else if (file.view === 'assets') {
-      endpoint = `${API_BASE}/assets/${file.id}/content`;
+      endpoint = buildApiUrl(`/api/assets/${file.id}/content`);
     }
 
     let content = '';

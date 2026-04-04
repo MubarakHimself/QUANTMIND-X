@@ -72,13 +72,17 @@
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let destroyed = false;
 
+  function normalizeDepartment(value: string): string {
+    return value.trim().toLowerCase().replace(/[\s_]+/g, '');
+  }
+
   // ── Derived ──────────────────────────────────────────────────────────────
 
   const filteredThoughts = $derived(
     activeFilter === 'all'
       ? thoughts
       : thoughts.filter(
-          t => t.department.toLowerCase() === activeFilter.toLowerCase()
+          t => normalizeDepartment(t.department) === normalizeDepartment(activeFilter)
         )
   );
 

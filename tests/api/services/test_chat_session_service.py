@@ -71,3 +71,18 @@ async def test_add_message(service):
     )
     assert message.role == "user"
     assert message.content == "Hello"
+
+
+@pytest.mark.asyncio
+async def test_update_session_title(service):
+    """Test updating a chat session title."""
+    session = await service.create_session(
+        agent_type="floor-manager",
+        agent_id="floor-manager",
+        user_id="user-1",
+        title="Initial title",
+    )
+
+    updated = await service.update_session_title(session.id, "Renamed session")
+    assert updated is not None
+    assert updated.title == "Renamed session"

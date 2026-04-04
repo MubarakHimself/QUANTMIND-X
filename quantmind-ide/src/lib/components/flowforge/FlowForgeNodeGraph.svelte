@@ -9,18 +9,20 @@
    * - Zoom + pan controls
    * - Minimap
    * - Node selection with detail tooltip
+   * - Failed node red highlight with error detail panel (Story 11.8 AC7)
    */
 
-  import type { PrefectWorkflow, PrefectTask } from '$lib/stores/flowforge';
-  import { X, ZoomIn, ZoomOut, Maximize2, Map } from 'lucide-svelte';
+  import type { PrefectWorkflow, PrefectTask, NodeErrorInfo } from '$lib/stores/flowforge';
+  import { X, ZoomIn, ZoomOut, Maximize2, Map, AlertTriangle, RefreshCw } from 'lucide-svelte';
   import { onMount } from 'svelte';
 
   interface Props {
     workflow: PrefectWorkflow;
     onClose: () => void;
+    nodeErrors?: NodeErrorInfo[];  // Story 11.8: Errors from SSE events
   }
 
-  let { workflow, onClose }: Props = $props();
+  let { workflow, onClose, nodeErrors = [] }: Props = $props();
 
   // SVG dimensions
   const SVG_WIDTH = 1000;
@@ -41,6 +43,10 @@
   // Show/hide minimap
   let showMinimap = $state(true);
 
+  // Story 11.8 AC7: Error panel state
+  let showErrorPanel = $state(false);
+  let selectedError = $state<NodeErrorInfo | null>(null);
+
   // State colors
   const stateColors: Record<string, string> = {
     PENDING: '#94a3b8',
@@ -49,6 +55,30 @@
     CANCELLED: '#ef4444',
     FAILED: '#dc2626',
   };
+
+  // Story 11.8 AC7: Get error for a specific task
+  function getErrorForTask(taskId: string): NodeErrorInfo | undefined {
+    return nodeErrors.find((e) => e.taskName === taskId || e.taskName === workflow.tasks.find((t) => t.id === taskId)?.name);
+  }
+
+  // Story 11.8 AC7: Check if a task has an error
+  function hasError(taskId: string): boolean {
+    return getErrorForTask(taskId) !== undefined;
+  }
+
+  // Story 11.8 AC7: Open error panel for a task
+  function openErrorPanel(task: PrefectTask, event: MouseEvent | KeyboardEvent) {
+    const error = getErrorForTask(task.id);
+    if (error) {
+      selectedError = error;
+      showErrorPanel = true;
+      // Prevent node selection when clicking error
+      event.stopPropagation();
+    } else {
+      // Normal node selection
+      handleNodeClick(task, event);
+    }
+  }
 
   // Calculate viewBox based on scale - properly center content
   function updateViewBox() {
@@ -234,23 +264,27 @@
         <!-- Nodes (Tasks) -->
         <g class="nodes">
           {#each workflow.tasks as task}
+            {@const hasError = hasError(task.id)}
             <g
               class="task-node"
               class:selected={selectedTask?.id === task.id}
+              class:has-error={hasError}
               transform="translate({task.x}, {task.y})"
-              onclick={(e) => handleNodeClick(task, e)}
+              onclick={(e) => openErrorPanel(task, e)}
               onkeydown={(e) => handleNodeKeydown(task, e)}
               role="button"
               tabindex="0"
             >
+              <!-- Story 11.8 AC7: Failed node red highlight -->
               <rect
                 width={NODE_WIDTH}
                 height={NODE_HEIGHT}
                 rx="6"
                 class="task-rect state-{task.state.toLowerCase()}"
+                class:error-rect={hasError}
                 fill="rgba(30, 32, 40, 0.9)"
-                stroke={stateColors[task.state]}
-                stroke-width="2"
+                stroke={hasError ? '#ef4444' : stateColors[task.state]}
+                stroke-width={hasError ? '3' : '2'}
               />
               <text
                 x={NODE_WIDTH / 2}
@@ -276,6 +310,14 @@
                   fill="none"
                 />
               {/if}
+
+              <!-- Story 11.8 AC7: Error indicator -->
+              {#if hasError}
+                <g class="error-indicator" transform="translate({NODE_WIDTH - 20}, -8)">
+                  <circle r="10" fill="#ef4444" />
+                  <AlertTriangle size="12" x="-6" y="-6" color="white" />
+                </g>
+              {/if}
             </g>
           {/each}
         </g>
@@ -295,6 +337,42 @@
           </div>
           <div class="tooltip-body">
             <span>ID: {selectedTask.id}</span>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Story 11.8 AC7: Error detail panel -->
+      {#if showErrorPanel && selectedError}
+        <div class="error-panel">
+          <div class="error-panel-header">
+            <div class="error-title">
+              <AlertTriangle size={16} color="#ef4444" />
+              <span>Task Error</span>
+            </div>
+            <button class="close-btn" onclick={() => { showErrorPanel = false; selectedError = null; }}>
+              <X size={16} />
+            </button>
+          </div>
+          <div class="error-panel-body">
+            <div class="error-field">
+              <span class="error-label">Task:</span>
+              <span class="error-value">{selectedError.taskName}</span>
+            </div>
+            <div class="error-field">
+              <span class="error-label">Error Type:</span>
+              <span class="error-value error-type">{selectedError.errorType}</span>
+            </div>
+            <div class="error-field">
+              <span class="error-label">Message:</span>
+              <span class="error-value error-message">{selectedError.errorMessage}</span>
+            </div>
+            <div class="error-field">
+              <span class="error-label">Retry Count:</span>
+              <span class="error-value">
+                <RefreshCw size={12} />
+                {selectedError.retryCount}
+              </span>
+            </div>
           </div>
         </div>
       {/if}
@@ -548,5 +626,132 @@
     border: 2px solid #06b6d4;
     background: rgba(6, 182, 212, 0.1);
     pointer-events: none;
+  }
+
+  /* Story 11.8 AC7: Error highlighting */
+  .task-node.has-error .task-rect {
+    filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.6));
+  }
+
+  .task-node.has-error .task-label {
+    fill: #fca5a5;
+  }
+
+  .error-rect {
+    animation: errorPulse 2s ease-in-out infinite;
+  }
+
+  @keyframes errorPulse {
+    0%, 100% {
+      stroke-opacity: 1;
+    }
+    50% {
+      stroke-opacity: 0.6;
+    }
+  }
+
+  .error-indicator {
+    cursor: pointer;
+    animation: errorBounce 1s ease-in-out infinite;
+  }
+
+  @keyframes errorBounce {
+    0%, 100% {
+      transform: translate(100px, -8px);
+    }
+    50% {
+      transform: translate(100px, -12px);
+    }
+  }
+
+  /* Story 11.8 AC7: Error detail panel */
+  .error-panel {
+    position: absolute;
+    top: 60px;
+    right: 20px;
+    width: 320px;
+    background: rgba(30, 32, 40, 0.95);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 20px rgba(239, 68, 68, 0.2);
+    z-index: 100;
+    overflow: hidden;
+  }
+
+  .error-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    background: rgba(239, 68, 68, 0.15);
+    border-bottom: 1px solid rgba(239, 68, 68, 0.3);
+  }
+
+  .error-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    color: #fca5a5;
+  }
+
+  .close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    border-radius: 4px;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .close-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #f1f5f9;
+  }
+
+  .error-panel-body {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .error-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .error-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #64748b;
+    letter-spacing: 0.5px;
+  }
+
+  .error-value {
+    font-size: 13px;
+    color: #f1f5f9;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .error-type {
+    color: #fca5a5;
+    font-family: monospace;
+    font-size: 12px;
+  }
+
+  .error-message {
+    color: #f87171;
+    word-break: break-word;
   }
 </style>

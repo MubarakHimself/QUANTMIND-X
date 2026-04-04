@@ -7,6 +7,7 @@ AC2: PUT /api/notifications - toggles event notifications
 AC3: High-priority events (kill_switch, loss_cap, system_critical) are always-on
 """
 import pytest
+import asyncio
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 from unittest.mock import patch, MagicMock
@@ -171,3 +172,18 @@ class TestAlwaysOnEvents:
         )
         assert response.status_code == 400
         assert "always-on" in response.json().get("detail", "").lower()
+
+
+class TestNotificationLogging:
+    def test_send_notification_uses_quantmind_data_dir(self, monkeypatch, tmp_path):
+        from src.api.notification_config_endpoints import send_notification
+
+        monkeypatch.setenv("QUANTMIND_DATA_DIR", str(tmp_path))
+
+        result = asyncio.run(
+            send_notification("Deploy ready", "notification body", "system_notification")
+        )
+
+        assert result is True
+        notif_files = list((tmp_path / "notifications").glob("notif_*.json"))
+        assert len(notif_files) == 1

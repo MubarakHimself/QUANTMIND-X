@@ -44,10 +44,16 @@ class TieredStorageRouter:
         self._hot_db_url = os.environ.get("HOT_DB_URL") or os.environ.get("CLOUDZY_HOT_DB_URL")
         
         # WARM tier
-        self._warm_db_path = os.environ.get("WARM_DB_PATH", "/data/market_data.duckdb")
+        warm_path = Path(os.environ.get("WARM_DB_PATH", "/data/market_data.duckdb")).expanduser()
+        warm_path.parent.mkdir(parents=True, exist_ok=True)
+        self._warm_db_path = str(warm_path)
         
         # COLD tier
-        self._cold_storage_path = os.environ.get("COLD_STORAGE_PATH", "/data/cold_storage")
+        cold_path = Path(os.environ.get("COLD_STORAGE_PATH", "/data/cold_storage")).expanduser()
+        cold_path.mkdir(parents=True, exist_ok=True)
+        self._cold_storage_path = str(cold_path)
+        
+        logger.info(f"TieredStorageRouter data paths: WARM={self._warm_db_path} COLD={self._cold_storage_path}")
         
         logger.info(f"TieredStorageRouter initialized:")
         logger.info(f"  HOT: {self._hot_db_url or 'not configured'}")

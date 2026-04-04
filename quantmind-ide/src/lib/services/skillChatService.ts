@@ -45,6 +45,7 @@ export interface SkillMessageMetadata {
   params?: Record<string, any>;
   result?: SkillResult;
   executionTime?: number;
+  [key: string]: unknown;
 }
 
 // ============================================================================
