@@ -45,9 +45,11 @@ jobs:
               -i ~/.ssh/id_ed25519 "${DEPLOY_USER}@${DEPLOY_HOST}" << 'ROLLBACK_SCRIPT'
             set -e
             cd "${DEPLOY_PATH}"
+            COMPOSE="docker compose -f docker-compose.production.yml -f docker-compose.contabo.yml -f docker-compose.contabo.override.yml"
+            CORE_SERVICES="redis quantmind-api prefect-server prefect-worker hmm-inference-api hmm-scheduler"
             git fetch --all --tags
             git checkout --force "$GIT_REF"
-            docker compose -f docker-compose.production.yml -f docker-compose.contabo.yml up -d --build --remove-orphans
+            $COMPOSE up -d --build $CORE_SERVICES
             echo "Rolled back to: $GIT_REF"
           ROLLBACK_SCRIPT
 

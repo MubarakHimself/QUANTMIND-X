@@ -47,7 +47,6 @@ RUN pip3 install --break-system-packages \
     psutil \
     pyarrow \
     python-snappy \
-    prometheus-remote-write \
     opentelemetry-api \
     opentelemetry-sdk \
     opentelemetry-instrumentation-fastapi \

@@ -96,6 +96,8 @@ jobs:
             set -e
 
             cd "${DEPLOY_PATH}"
+            COMPOSE="docker compose -f docker-compose.production.yml -f docker-compose.contabo.yml -f docker-compose.contabo.override.yml"
+            CORE_SERVICES="redis quantmind-api prefect-server prefect-worker hmm-inference-api hmm-scheduler"
 
             # Save previous commit for rollback
             git rev-parse HEAD > /tmp/quantmindx-prev-commit.txt
@@ -105,8 +107,8 @@ jobs:
             git checkout --force "$DEPLOY_SHA"
 
             # Reconcile the Docker-based production topology in place
-            docker compose -f docker-compose.production.yml -f docker-compose.contabo.yml pull || true
-            docker compose -f docker-compose.production.yml -f docker-compose.contabo.yml up -d --build --remove-orphans
+            $COMPOSE pull || true
+            $COMPOSE up -d --build $CORE_SERVICES
 
             echo "Deployed: $(git rev-parse --short $DEPLOY_SHA)"
           DEPLOY_SCRIPT
@@ -134,10 +136,12 @@ jobs:
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 "${DEPLOY_USER}@${DEPLOY_HOST}" << 'ROLLBACK_SCRIPT'
             set -e
             cd "${DEPLOY_PATH}"
+            COMPOSE="docker compose -f docker-compose.production.yml -f docker-compose.contabo.yml -f docker-compose.contabo.override.yml"
+            CORE_SERVICES="redis quantmind-api prefect-server prefect-worker hmm-inference-api hmm-scheduler"
             PREV_COMMIT=$(cat /tmp/quantmindx-prev-commit.txt)
             echo "Rolling back to: $PREV_COMMIT"
             git fetch origin "$PREV_COMMIT"
             git checkout --force "$PREV_COMMIT"
-            docker compose -f docker-compose.production.yml -f docker-compose.contabo.yml up -d --build --remove-orphans
+            $COMPOSE up -d --build $CORE_SERVICES
             echo "Rollback complete"
           ROLLBACK_SCRIPT

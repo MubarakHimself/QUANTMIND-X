@@ -47,3 +47,23 @@ def test_default_pageindex_mcp_package_matches_official_package_name() -> None:
         "npx",
         ["-y", "@pageindex/mcp"],
     )
+
+
+def test_server_dockerfile_does_not_install_nonexistent_prometheus_remote_write() -> None:
+    dockerfile_path = PROJECT_ROOT / "server" / "Dockerfile"
+    content = dockerfile_path.read_text(encoding="utf-8")
+
+    assert "prometheus-remote-write" not in content
+    assert "python-snappy" in content
+
+
+def test_deploy_workflows_use_targeted_contabo_service_bringup() -> None:
+    deploy_workflow = (PROJECT_ROOT / ".github" / "workflows" / "deploy-contabo.yml").read_text(encoding="utf-8")
+    rollback_workflow = (PROJECT_ROOT / ".github" / "workflows" / "rollback.yml").read_text(encoding="utf-8")
+
+    expected_services = "redis quantmind-api prefect-server prefect-worker hmm-inference-api hmm-scheduler"
+
+    assert expected_services in deploy_workflow
+    assert expected_services in rollback_workflow
+    assert "--remove-orphans" not in deploy_workflow
+    assert "--remove-orphans" not in rollback_workflow
