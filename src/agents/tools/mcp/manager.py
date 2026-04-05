@@ -158,7 +158,7 @@ class MCPClientManager:
         type_to_package = {
             "context7": ("npx", ["-y", "@context7/mcp-server"]),
             "sequential_thinking": ("npx", ["-y", "@modelcontextprotocol/server-sequential-thinking"]),
-            "pageindex": ("npx", ["-y", "@pageindex/mcp-server"]),
+            "pageindex": ("npx", ["-y", "@pageindex/mcp"]),
             "backtest": ("python", ["-m", "mcp_servers.backtest_mcp_server.main"]),
             "mt5_compiler": ("python", ["-m", "mcp_servers.mt5_compiler"]),
         }

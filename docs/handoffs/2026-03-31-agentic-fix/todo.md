@@ -242,3 +242,27 @@ Last updated: 2026-04-05
   - [ ] remove old QuantMindX deployment state from the server before pulling fresh code
   - [ ] pull the pushed repo state
   - [ ] migrate shared assets / PDFs / scraped articles into server-managed storage instead of keeping them as long-term repo payload
+
+## Current Contabo next actions
+
+- [x] isolate the current deployment blocker:
+  - stale local PageIndex docker services are built from a non-existent npm package (`@pageindex/server`)
+- [x] make production startup independent from those legacy local PageIndex containers
+- [x] correct the canonical PageIndex MCP package references to `@pageindex/mcp`
+- [ ] commit the PageIndex deployment unblock
+- [ ] push the new commit to `origin/main`
+- [ ] reset `/opt/quantmindx` on Contabo to the pushed SHA
+- [ ] rerun targeted bring-up without the legacy PageIndex services:
+  - `redis`
+  - `quantmind-api`
+  - `prefect-server`
+  - `prefect-worker`
+  - `hmm-inference-api`
+  - `hmm-scheduler`
+- [ ] verify remote health:
+  - `quantmind-api /health`
+  - `prefect-server /api/health`
+  - `docker compose ps`
+- [ ] treat PageIndex deployment as a separate follow-up:
+  - prefer official MCP / hosted API integration
+  - do not reintroduce the broken local `@pageindex/server` assumption

@@ -131,7 +131,7 @@ DEFAULT_MCP_SERVERS = [
         "name": "PageIndex MCP",
         "description": "PDF indexing and search",
         "command": "npx",
-        "args": ["-y", "@pageindex/mcp-server"],
+        "args": ["-y", "@pageindex/mcp"],
         "env": {},
         "auto_connect": False,
     },

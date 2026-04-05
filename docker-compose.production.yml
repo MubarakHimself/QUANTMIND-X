@@ -36,6 +36,8 @@ services:
       context: .
       dockerfile: docker/pageindex/Dockerfile.articles
     container_name: quantmindx-pageindex-articles
+    profiles:
+      - pageindex
     volumes:
       - ./data/scraped_articles:/data/articles:ro
     ports:
@@ -57,6 +59,8 @@ services:
       context: .
       dockerfile: docker/pageindex/Dockerfile.books
     container_name: quantmindx-pageindex-books
+    profiles:
+      - pageindex
     volumes:
       - ./data/knowledge_base/books:/data/books:ro
     ports:
@@ -78,6 +82,8 @@ services:
       context: .
       dockerfile: docker/pageindex/Dockerfile.logs
     container_name: quantmindx-pageindex-logs
+    profiles:
+      - pageindex
     volumes:
       - ./data/logs:/data/logs:ro
     ports:
@@ -176,9 +182,6 @@ services:
       - quantmind-network
     depends_on:
       - redis
-      - pageindex-articles
-      - pageindex-books
-      - pageindex-logs
     labels:
       - "com.docker.compose.project=quantmindx"
       - "service=api"

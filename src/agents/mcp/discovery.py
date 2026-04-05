@@ -82,7 +82,7 @@ class MCPServerDiscovery:
         "@anthropic-ai/mcp-server-puppeteer": "Browser automation via Puppeteer",
         "@context7/mcp-server": "Context7 documentation search",
         "@modelcontextprotocol/server-sequential-thinking": "Sequential thinking/reasoning",
-        "@pageindex/mcp-server": "PDF indexing and search",
+        "@pageindex/mcp": "PDF indexing and search",
     }
 
     def __init__(self, project_root: Optional[Path] = None):

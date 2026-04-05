@@ -3869,3 +3869,35 @@ Tests added/updated:
     - the duplicate `Pipeline` tab is gone from the Development canvas
   - live API:
     - `GET /api/prefect/workflows` no longer returns placeholder WF1 roots like `probe`, `test`, `video_ingest`, `playlist_batch`, `my_strategy_vwap`
+
+## 2026-04-05 Contabo deployment unblock: PageIndex decoupling + official MCP package (`2026-04-05T16:18:00+03:00`)
+
+- Root cause found during Contabo bring-up:
+  - the deployment stack was still trying to build local PageIndex HTTP services from `docker/pageindex/Dockerfile.*`
+  - those Dockerfiles install `@pageindex/server`, which does not exist in npm
+  - the active MCP defaults were also stale and still referenced `@pageindex/mcp-server` instead of the official `@pageindex/mcp`
+- Deployment-safe correction landed:
+  - [docker-compose.production.yml](/home/mubarkahimself/Desktop/QUANTMINDX/docker-compose.production.yml)
+    - `pageindex-articles`
+    - `pageindex-books`
+    - `pageindex-logs`
+    - are now opt-in only via `profiles: [pageindex]`
+    - `quantmind-api` no longer hard-depends on them for production startup
+  - [mcp_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/mcp_endpoints.py)
+    - default PageIndex MCP server args now use `@pageindex/mcp`
+  - [manager.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/tools/mcp/manager.py)
+    - stdio package mapping for `pageindex` now uses `@pageindex/mcp`
+  - [discovery.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/mcp/discovery.py)
+    - known MCP package catalog now uses `@pageindex/mcp`
+- Added regression coverage:
+  - [test_pageindex_deploy_config.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_pageindex_deploy_config.py)
+    - production compose does not force `quantmind-api` to wait on local PageIndex containers
+    - local PageIndex services are opt-in profile-only
+    - canonical MCP defaults use the official `@pageindex/mcp` package name
+- Verification:
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_pageindex_deploy_config.py` -> passed (`3 passed`)
+  - `python3 -m py_compile src/api/mcp_endpoints.py src/agents/tools/mcp/manager.py src/agents/mcp/discovery.py` -> passed
+  - `docker compose -f docker-compose.production.yml -f docker-compose.contabo.yml config -q` -> passed locally
+- Operational consequence:
+  - Contabo boot can proceed now without trying to build the stale local PageIndex services
+  - proper PageIndex deployment remains a separate follow-up and should be handled through the official MCP / hosted API path instead of the broken legacy local HTTP container assumption
