@@ -127,8 +127,8 @@ services:
       - GRAFANA_INSTANCE_ID=${GRAFANA_INSTANCE_ID}
       - GRAFANA_API_KEY=${GRAFANA_API_KEY}
       - GRAFANA_TEMPO_OTLP_ENDPOINT=${GRAFANA_TEMPO_OTLP_ENDPOINT:-http://otel-collector:4317}
-      - GRAFANA_TEMPO_USER=${GRAFANA_TEMPO_USER:}
-      - GRAFANA_TEMPO_API_KEY=${GRAFANA_TEMPO_API_KEY:}
+      - GRAFANA_TEMPO_USER=${GRAFANA_TEMPO_USER:-}
+      - GRAFANA_TEMPO_API_KEY=${GRAFANA_TEMPO_API_KEY:-}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       - OTEL_SERVICE_NAME=quantmind-api
       - NODE_ENVIRONMENT=production
@@ -310,8 +310,8 @@ services:
       - ./docker/otel/collector-config.yml:/etc/otelcol-contrib/config.yaml:ro
     environment:
       - GRAFANA_TEMPO_ENDPOINT=${GRAFANA_TEMPO_ENDPOINT}
-      - GRAFANA_TEMPO_USER=${GRAFANA_TEMPO_USER:}
-      - GRAFANA_TEMPO_API_KEY=${GRAFANA_TEMPO_API_KEY:}
+      - GRAFANA_TEMPO_USER=${GRAFANA_TEMPO_USER:-}
+      - GRAFANA_TEMPO_API_KEY=${GRAFANA_TEMPO_API_KEY:-}
       - NODE_ENVIRONMENT=production
     deploy:
       resources:

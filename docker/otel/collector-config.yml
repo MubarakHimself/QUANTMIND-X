@@ -64,8 +64,8 @@ exporters:
 extensions:
   basicauth/tempo:
     client_auth:
-      username: ${GRAFANA_TEMPO_USER:}
-      password: ${GRAFANA_TEMPO_API_KEY:}
+      username: ${GRAFANA_TEMPO_USER:-}
+      password: ${GRAFANA_TEMPO_API_KEY:-}
 
   health_check:
     endpoint: 0.0.0.0:13133
