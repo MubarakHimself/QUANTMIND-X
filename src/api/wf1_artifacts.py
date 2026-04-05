@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, Dict, Iterator, Optional, Tuple
 
-from src.api.ide_models import ASSETS_DIR
+from src.api.ide_models import ASSETS_DIR, STRATEGIES_DIR
 
 
 WF1_STRATEGIES_ROOT = ASSETS_DIR / "strategies"
@@ -195,7 +196,121 @@ def ensure_bundle(
     return bundle
 
 
+def _infer_source_bucket_for_legacy_root(path: Path) -> str:
+    name = path.name.lower()
+    return "playlists" if "playlist" in name else "single-videos"
+
+
+def _load_legacy_status(path: Path) -> Dict[str, Any]:
+    status_path = path / "status.json"
+    if not status_path.exists():
+        return {}
+    try:
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _move_tree_contents(source: Path, destination: Path) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    for item in list(source.iterdir()):
+        target = destination / item.name
+        if item.is_dir():
+            if target.exists() and target.is_dir():
+                _move_tree_contents(item, target)
+                shutil.rmtree(item, ignore_errors=True)
+            elif target.exists():
+                target.unlink()
+                shutil.move(str(item), str(target))
+            else:
+                shutil.move(str(item), str(target))
+        else:
+            if target.exists():
+                target.unlink()
+            shutil.move(str(item), str(target))
+
+
+def migrate_legacy_strategy_root(legacy_root: Path) -> Optional[Path]:
+    if not legacy_root.exists() or not legacy_root.is_dir():
+        return None
+
+    legacy_status = _load_legacy_status(legacy_root)
+    bundle = ensure_bundle(
+        strategy_name=legacy_root.name,
+        is_playlist=_infer_source_bucket_for_legacy_root(legacy_root) == "playlists",
+        workflow_id=legacy_status.get("workflow_id"),
+        strategy_family=legacy_status.get("strategy_family"),
+    )
+
+    mapping = {
+        "backtest": bundle.backtests_dir,
+        "ea": bundle.development_dir,
+        "trd": bundle.research_dir / "trd",
+        "nprd": bundle.research_dir / "nprd",
+    }
+
+    for child in list(legacy_root.iterdir()):
+        if child.name == "status.json":
+            continue
+        destination = mapping.get(child.name)
+        if destination is None:
+            destination = bundle.source_dir / "legacy" / child.name
+        if child.is_dir():
+            _move_tree_contents(child, destination)
+            shutil.rmtree(child, ignore_errors=True)
+        else:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.exists():
+                destination.unlink()
+            shutil.move(str(child), str(destination))
+
+    legacy_status_path = legacy_root / "status.json"
+    if legacy_status_path.exists():
+        legacy_status_path.unlink()
+
+    if legacy_root.exists():
+        try:
+            legacy_root.rmdir()
+        except OSError:
+            pass
+
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        meta = json.loads(bundle.meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        meta = {}
+    meta.update(
+        {
+            "name": legacy_root.name,
+            "status": legacy_status.get("status", meta.get("status", "pending")),
+            "created_at": legacy_status.get("created_at", meta.get("created_at", now)),
+            "updated_at": now,
+            "workflow_id": legacy_status.get("workflow_id", meta.get("workflow_id", bundle.workflow_id)),
+            "strategy_family": legacy_status.get("strategy_family", meta.get("strategy_family", bundle.strategy_family)),
+            "source_bucket": meta.get("source_bucket", bundle.source_bucket),
+            "has_video_ingest": bundle.source_dir.exists(),
+            "has_trd": bundle.research_dir.exists() and any(bundle.research_dir.rglob("*")),
+            "has_ea": bundle.development_dir.exists() and any(bundle.development_dir.rglob("*")),
+            "has_backtest": bundle.backtests_dir.exists() and any(bundle.backtests_dir.rglob("*")),
+            "migrated_from_legacy": True,
+        }
+    )
+    bundle.meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    return bundle.root
+
+
+def migrate_legacy_strategy_roots() -> None:
+    if not STRATEGIES_DIR.exists():
+        return
+    for legacy_root in list(STRATEGIES_DIR.iterdir()):
+        if not legacy_root.is_dir():
+            continue
+        migrate_legacy_strategy_root(legacy_root)
+
+
 def iter_strategy_roots() -> Iterator[Path]:
+    migrate_legacy_strategy_roots()
     if not WF1_STRATEGIES_ROOT.exists():
         return
     for meta_path in WF1_STRATEGIES_ROOT.rglob(".meta.json"):
@@ -226,3 +341,56 @@ def find_strategy_root_by_workflow_id(workflow_id: str) -> Optional[Path]:
         if manifest.get("workflow_id") == workflow_id:
             return root
     return None
+
+
+def iter_workflow_manifests() -> Iterator[Tuple[Path, Dict[str, Any]]]:
+    """Yield WF1 strategy roots with their parsed workflow manifests."""
+    for root in iter_strategy_roots() or []:
+        manifest_path = root / "workflow" / "manifest.json"
+        if not manifest_path.exists():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if isinstance(manifest, dict):
+            yield root, manifest
+
+
+def strategy_root_has_operator_visible_signal(root: Path) -> bool:
+    """Return True when a WF1 strategy root has enough real signal to show in operator-facing lists."""
+    manifest_path = root / "workflow" / "manifest.json"
+    manifest: Dict[str, Any] = {}
+    if manifest_path.exists():
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                manifest = payload
+        except Exception:
+            manifest = {}
+
+    if manifest.get("blocking_error"):
+        return True
+
+    for candidate_dir in ("research", "development", "backtests", "reports", "compilation", "variants"):
+        directory = root / candidate_dir
+        if directory.exists() and any(item.is_file() for item in directory.rglob("*")):
+            return True
+
+    request_path = root / "source" / "request.json"
+    if request_path.exists():
+        try:
+            request = json.loads(request_path.read_text(encoding="utf-8"))
+        except Exception:
+            request = {}
+        if isinstance(request, dict) and str(request.get("source_url") or "").strip():
+            return True
+
+    status = str(manifest.get("status") or "").strip().lower()
+    current_stage = str(manifest.get("current_stage") or "").strip().lower()
+    normalized_stage = current_stage.replace(" ", "_").replace("-", "_")
+    if status not in {"", "pending", "created", "scheduled"}:
+        return True
+    if normalized_stage not in {"", "video_ingest"}:
+        return True
+    return False

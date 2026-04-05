@@ -710,24 +710,27 @@ async def startup_event():
 
         # Wire NewsBlackoutService into ProgressiveKillSwitch (after router is ready)
         try:
-            from src.market.news_blackout import NewsBlackoutService
+            from src.market.news_blackout import NewsBlackoutService, is_news_blackout_configured
             from src.api.websocket_endpoints import manager as ws_manager
 
-            news_blackout = NewsBlackoutService()
-            news_blackout.set_ws_manager(ws_manager)
+            if not is_news_blackout_configured():
+                logger.info("NewsBlackoutService skipped: Finnhub dependency or FINNHUB_API_KEY not configured")
+            else:
+                news_blackout = NewsBlackoutService()
+                news_blackout.set_ws_manager(ws_manager)
 
-            # Force PKS creation by accessing the property, then wire NewsSensor
-            pks = router.progressive_kill_switch
-            if pks and hasattr(pks, "session_monitor") and pks.session_monitor:
-                pks.session_monitor.set_news_sensor(news_blackout._news_sensor)
-                logger.info("NewsBlackoutService wired to ProgressiveKillSwitch SessionMonitor")
+                # Force PKS creation by accessing the property, then wire NewsSensor
+                pks = router.progressive_kill_switch
+                if pks and hasattr(pks, "session_monitor") and pks.session_monitor:
+                    pks.session_monitor.set_news_sensor(news_blackout._news_sensor)
+                    logger.info("NewsBlackoutService wired to ProgressiveKillSwitch SessionMonitor")
 
-            # Wire into app.state for API endpoint access
-            app.state.news_blackout = news_blackout
+                # Wire into app.state for API endpoint access
+                app.state.news_blackout = news_blackout
 
-            # Start the service (background scheduler)
-            news_blackout.start()
-            logger.info("NewsBlackoutService started")
+                # Start the service (background scheduler)
+                news_blackout.start()
+                logger.info("NewsBlackoutService started")
         except Exception as e:
             logger.warning(f"Could not start NewsBlackoutService: {e}")
 
@@ -751,9 +754,15 @@ async def startup_event():
     
     # Initialize and start GitHub EA scheduler
     try:
-        from src.integrations.github_ea_scheduler import start_scheduler, get_scheduler
+        from src.integrations.github_ea_scheduler import (
+            start_scheduler,
+            get_scheduler,
+            is_scheduler_configured,
+        )
         
-        if start_scheduler():
+        if not is_scheduler_configured():
+            logger.info("GitHub EA scheduler skipped: GITHUB_EA_REPO_URL is not configured")
+        elif start_scheduler():
             scheduler = get_scheduler()
             if scheduler:
                 logger.info(f"GitHub EA scheduler started: {scheduler.get_status()}")

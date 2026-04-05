@@ -59,6 +59,7 @@ class SessionResponse(BaseModel):
     user_id: str
     created_at: str
     updated_at: str
+    message_count: int = 0
     context: Dict[str, Any] = {}  # includes prior_session_memory, canvas_context
 
 
@@ -153,15 +154,28 @@ def _compact_attachment_context(item: Any) -> Optional[Dict[str, Any]]:
     if not isinstance(item, dict):
         return None
 
+    payload = item.get("context") if isinstance(item.get("context"), dict) else item
+
     compact: Dict[str, Any] = {
-        "canvas": _safe_text(item.get("canvas"), limit=64),
-        "strategy": _safe_text(item.get("strategy"), limit=64),
+        "canvas": _safe_text(item.get("canvas") or payload.get("canvas"), limit=64),
+        "label": _safe_text(item.get("label") or payload.get("label"), limit=160),
+        "strategy": _safe_text(item.get("strategy") or payload.get("strategy"), limit=64),
         "manifest_version": _safe_text(
-            item.get("manifest_version") or item.get("version"), limit=32
+            payload.get("manifest_version") or payload.get("version"), limit=32
         ),
     }
 
-    template = item.get("template")
+    attachment_type = _safe_text(payload.get("attachment_type"), limit=32)
+    if attachment_type:
+        compact["attachment_type"] = attachment_type
+
+    resource = payload.get("resource")
+    if isinstance(resource, dict):
+        compact_resource = _compact_hint(resource)
+        if compact_resource:
+            compact["resource"] = compact_resource
+
+    template = payload.get("template") or payload.get("template_manifest")
     if isinstance(template, dict):
         compact["template"] = {
             "base_descriptor": _safe_text(template.get("base_descriptor"), limit=160),
@@ -169,7 +183,7 @@ def _compact_attachment_context(item: Any) -> Optional[Dict[str, Any]]:
         }
 
     # Keep memory references if present (used by existing tests/logic)
-    memory_identifiers = item.get("memory_identifiers")
+    memory_identifiers = payload.get("memory_identifiers")
     if isinstance(memory_identifiers, list):
         compact["memory_identifiers"] = [
             _safe_text(mid, limit=_MAX_ID_LEN)
@@ -177,7 +191,7 @@ def _compact_attachment_context(item: Any) -> Optional[Dict[str, Any]]:
             if mid
         ]
 
-    resources = item.get("resources")
+    resources = payload.get("resources")
     if isinstance(resources, list):
         compact_resources: List[Dict[str, Any]] = []
         for resource in resources[:_MAX_HINTS]:
@@ -186,6 +200,26 @@ def _compact_attachment_context(item: Any) -> Optional[Dict[str, Any]]:
                 compact_resources.append(compact_resource)
         if compact_resources:
             compact["resources"] = compact_resources
+
+    runtime_manifest = payload.get("runtime_manifest")
+    if isinstance(runtime_manifest, dict):
+        compact["runtime_manifest"] = {
+            "canvas": _safe_text(runtime_manifest.get("canvas"), limit=64),
+            "total_resources": runtime_manifest.get("total_resources"),
+            "by_type": runtime_manifest.get("by_type"),
+            "sample": [
+                hint
+                for hint in (
+                    _compact_hint(sample) for sample in (runtime_manifest.get("sample") or [])[:12]
+                )
+                if hint
+            ],
+        }
+        compact["runtime_manifest"] = {
+            key: value
+            for key, value in compact["runtime_manifest"].items()
+            if value not in ("", None, [], {})
+        }
 
     # Remove empty keys
     compact = {
@@ -537,6 +571,7 @@ async def create_session(request: CreateSessionRequest):
         user_id=session.user_id,
         created_at=session.created_at.isoformat() if session.created_at else datetime.now(timezone.utc).isoformat(),
         updated_at=session.updated_at.isoformat() if session.updated_at else datetime.now(timezone.utc).isoformat(),
+        message_count=0,
         context=getattr(session, "context", {}) or {},
     )
 
@@ -554,7 +589,8 @@ async def get_session(session_id: str):
         title=session.title,
         user_id=session.user_id,
         created_at=session.created_at.isoformat() if session.created_at else datetime.now(timezone.utc).isoformat(),
-        updated_at=session.updated_at.isoformat() if session.updated_at else datetime.now(timezone.utc).isoformat()
+        updated_at=session.updated_at.isoformat() if session.updated_at else datetime.now(timezone.utc).isoformat(),
+        message_count=len(await _session_service.get_messages(session_id=session.id, limit=1000)),
     )
 
 
@@ -577,14 +613,25 @@ async def update_session(session_id: str, request: UpdateSessionRequest):
         user_id=session.user_id,
         created_at=session.created_at.isoformat() if session.created_at else datetime.now(timezone.utc).isoformat(),
         updated_at=session.updated_at.isoformat() if session.updated_at else datetime.now(timezone.utc).isoformat(),
+        message_count=len(await _session_service.get_messages(session_id=session.id, limit=1000)),
         context=getattr(session, "context", {}) or {},
     )
 
 
 @router.get("/sessions", response_model=List[SessionResponse])
-async def list_sessions(user_id: Optional[str] = None, agent_type: Optional[str] = None):
+async def list_sessions(
+    user_id: Optional[str] = None,
+    agent_type: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    exclude_empty: bool = False,
+):
     """List chat sessions with optional filtering."""
-    sessions = await _session_service.list_sessions(user_id=user_id, agent_type=agent_type)
+    sessions = await _session_service.list_sessions(
+        user_id=user_id,
+        agent_type=agent_type,
+        agent_id=agent_id,
+        exclude_empty=exclude_empty,
+    )
     return [
         SessionResponse(
             id=s.id,
@@ -593,7 +640,8 @@ async def list_sessions(user_id: Optional[str] = None, agent_type: Optional[str]
             title=s.title,
             user_id=s.user_id,
             created_at=s.created_at.isoformat() if s.created_at else datetime.now(timezone.utc).isoformat(),
-            updated_at=s.updated_at.isoformat() if s.updated_at else datetime.now(timezone.utc).isoformat()
+            updated_at=s.updated_at.isoformat() if s.updated_at else datetime.now(timezone.utc).isoformat(),
+            message_count=int(getattr(s, "message_count", 0) or 0),
         )
         for s in sessions
     ]

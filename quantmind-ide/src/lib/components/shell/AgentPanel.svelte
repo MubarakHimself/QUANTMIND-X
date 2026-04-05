@@ -6,6 +6,11 @@
     type CanvasAttachableResource,
     type CanvasContextState,
   } from '$lib/services/canvasContextService';
+  import {
+    buildAttachmentResourceGroups,
+    getAttachmentCanvasLabel,
+    getAttachmentGroupResources,
+  } from '$lib/services/attachmentBrowser';
   import { API_CONFIG } from '$lib/config/api';
   import RichRenderer from '$lib/components/shared/RichRenderer.svelte';
   import { listOpinionNodes, type OpinionNode } from '$lib/api/graphMemory';
@@ -37,6 +42,7 @@
     canvasId: string;
     canvasContext?: Record<string, unknown> | CanvasContextState | null;
     messages: AgentMessage[];
+    messageCount?: number;
     workflowName?: string;
     workflowStage?: string;
     workflowElapsed?: number;
@@ -260,6 +266,8 @@
   let resizeStartWidth = 380;
   let panelWidthsHydrated = false;
   let panelWidthByCanvas = $state<Record<string, number>>({});
+  let attachMenuCanvasId = $state<string | null>(null);
+  let attachMenuGroupPath = $state<string[]>([]);
 
   const PANEL_WIDTH_MIN = 320;
   const PANEL_WIDTH_DEFAULT = 380;
@@ -316,6 +324,16 @@
             : [];
           return [...primary, ...includeSharedAssets];
         })()
+  );
+
+  let currentAttachGroupId = $derived(attachMenuGroupPath.at(-1) ?? null);
+  let currentAttachGroups = $derived(
+    attachMenuCanvasId
+      ? buildAttachmentResourceGroups(attachableResources, attachMenuCanvasId, currentAttachGroupId)
+      : []
+  );
+  let currentAttachResources = $derived(
+    currentAttachGroupId ? getAttachmentGroupResources(attachableResources, currentAttachGroupId) : []
   );
 
   // Filter slash commands based on current input
@@ -756,9 +774,21 @@
       canvasId: fallbackCanvas,
       canvasContext: cached?.canvasContext ?? null,
       messages: cached?.messages ?? [],
+      messageCount: session.message_count ?? cached?.messageCount ?? 0,
       createdAt: session.created_at,
       status: 'active',
     };
+  }
+
+  function getSessionHistoryBadge(session: AgentSession): { label: string; tone: 'current' | 'info' | 'draft' } {
+    if (session.id === activeSessionId) {
+      return { label: 'Current', tone: 'current' };
+    }
+    if ((session.messageCount ?? 0) > 0) {
+      const count = session.messageCount ?? 0;
+      return { label: `${count} msg${count === 1 ? '' : 's'}`, tone: 'info' };
+    }
+    return { label: 'Draft', tone: 'draft' };
   }
 
   async function loadMemoryTab() {
@@ -856,7 +886,7 @@
       const agentId = getChatSessionAgentId(activeCanvas);
       if (!agentType || !agentId) return;
 
-      const fetched = await chatApi.listSessions(undefined, agentType);
+      const fetched = await chatApi.listSessions(undefined, agentType, agentId, true);
       const filtered = agentType === 'department'
         ? fetched.filter((session) => session.agent_id === agentId)
         : fetched.filter((session) => session.agent_id === 'floor-manager');
@@ -918,7 +948,6 @@
       sessions = [session, ...sessions.filter((entry) => entry.id !== session.id)];
       showSessionHistory = false;
       activeSessionId = session.id;
-      await loadSessionHistory();
     } catch (error) {
       const failureMessage: AgentMessage = {
         id: crypto.randomUUID(),
@@ -1081,6 +1110,23 @@
     return { ...session, messages: [...session.messages, finalMessage] };
   }
 
+  function upsertStreamingToolMessage(
+    session: AgentSession,
+    streamEventMessageId: string,
+    nextMessage: AgentMessage,
+  ): AgentSession {
+    const existingIndex = session.messages.findIndex((message) => message.id === streamEventMessageId);
+    if (existingIndex === -1) {
+      return { ...session, messages: [...session.messages, nextMessage] };
+    }
+    return {
+      ...session,
+      messages: session.messages.map((message, index) =>
+        index === existingIndex ? nextMessage : message,
+      ),
+    };
+  }
+
   async function submitMessage() {
     if (!inputValue.trim() || !activeSessionId || isSending) return;
 
@@ -1161,6 +1207,7 @@
 
     isSending = true;
     const pendingReplyId = crypto.randomUUID();
+    const streamEventMessageId = `${pendingReplyId}:stream-event`;
     sessions = sessions.map((session) =>
       session.id === targetSessionId
         ? {
@@ -1273,7 +1320,7 @@
                 const toolName = String(event.tool ?? 'tool');
                 const status = String(event.status ?? '');
                 const toolMsg: AgentMessage = {
-                  id: crypto.randomUUID(),
+                  id: streamEventMessageId,
                   type: 'tool',
                   content: `${toolName}${status ? ` · ${status}` : ''}`,
                   tool: toolName,
@@ -1285,7 +1332,7 @@
                 };
                 sessions = sessions.map((session) =>
                   session.id === targetSessionId
-                    ? { ...session, messages: [...session.messages, toolMsg] }
+                    ? upsertStreamingToolMessage(session, streamEventMessageId, toolMsg)
                     : session,
                 );
                 continue;
@@ -1296,7 +1343,7 @@
                 const status = String(event.status ?? 'progress');
                 const statusMessage = String(event.message ?? '');
                 const toolMsg: AgentMessage = {
-                  id: crypto.randomUUID(),
+                  id: streamEventMessageId,
                   type: 'tool',
                   content: `${phase} · ${status}${statusMessage ? ` · ${statusMessage}` : ''}`,
                   tool: 'status',
@@ -1309,7 +1356,7 @@
                 };
                 sessions = sessions.map((session) =>
                   session.id === targetSessionId
-                    ? { ...session, messages: [...session.messages, toolMsg] }
+                    ? upsertStreamingToolMessage(session, streamEventMessageId, toolMsg)
                     : session,
                 );
                 continue;
@@ -1399,7 +1446,7 @@
       submitMessage();
     }
     if (e.key === 'Escape') {
-      showAttachMenu = false;
+      closeAttachMenu();
     }
   }
 
@@ -1411,8 +1458,13 @@
     const nextOpen = !showAttachMenu;
     showAttachMenu = nextOpen;
     if (!nextOpen) {
+      attachMenuCanvasId = null;
+      attachMenuGroupPath = [];
       return;
     }
+
+    attachMenuCanvasId = null;
+    attachMenuGroupPath = [];
 
     const resourcesById = new Map<string, CanvasAttachableResource>();
     const options = canvasContextOptions.length > 0
@@ -1420,18 +1472,13 @@
       : [{ id: activeCanvas, label: `${deptHead.label} context` }];
 
     for (const option of options) {
-      await canvasContextService.getEnrichedContext(option.id);
-      for (const resource of canvasContextService.getAttachableResources(option.id)) {
+      for (const resource of await canvasContextService.getMenuAttachableResources(option.id, 200)) {
         const uniqueId = `${resource.canvas}:${resource.id}`;
         if (resourcesById.has(uniqueId)) {
           continue;
         }
 
-        const shouldPrefixLabel = option.id !== activeCanvas;
-        resourcesById.set(uniqueId, {
-          ...resource,
-          label: shouldPrefixLabel ? `${option.label}: ${resource.label}` : resource.label,
-        });
+        resourcesById.set(uniqueId, resource);
       }
     }
 
@@ -1445,14 +1492,7 @@
       for (const resource of workspaceResources) {
         const uniqueId = `${resource.canvas}:${resource.id}`;
         if (resourcesById.has(uniqueId)) continue;
-        const sourceOption = options.find((option) => option.id === resource.canvas);
-        const shouldPrefixLabel = !!sourceOption && resource.canvas !== activeCanvas;
-        resourcesById.set(uniqueId, {
-          ...resource,
-          label: shouldPrefixLabel && sourceOption
-            ? `${sourceOption.label}: ${resource.label}`
-            : resource.label,
-        });
+        resourcesById.set(uniqueId, resource);
       }
     } catch (error) {
       console.warn('Workspace attachment discovery fallback', error);
@@ -1461,10 +1501,34 @@
     attachableResources = Array.from(resourcesById.values()).slice(0, 200);
   }
 
+  function closeAttachMenu() {
+    showAttachMenu = false;
+    attachMenuCanvasId = null;
+    attachMenuGroupPath = [];
+  }
+
+  function openAttachCanvas(canvasId: string) {
+    attachMenuCanvasId = canvasId;
+    attachMenuGroupPath = [];
+  }
+
+  function openAttachGroup(groupId: string) {
+    attachMenuGroupPath = [...attachMenuGroupPath, groupId];
+  }
+
+  function navigateAttachBack() {
+    if (attachMenuGroupPath.length > 0) {
+      attachMenuGroupPath = attachMenuGroupPath.slice(0, -1);
+      return;
+    }
+    attachMenuCanvasId = null;
+    attachMenuGroupPath = [];
+  }
+
   function attachCanvas(opt: CanvasContextOption) {
     // Avoid duplicate attachments
     if (attachments.find(a => a.canvasId === opt.id)) {
-      showAttachMenu = false;
+      closeAttachMenu();
       return;
     }
     attachments = [...attachments, {
@@ -1473,7 +1537,7 @@
       canvasId: opt.id,
       kind: 'canvas',
     }];
-    showAttachMenu = false;
+    closeAttachMenu();
   }
 
   function attachResource(resource: CanvasAttachableResource) {
@@ -1483,7 +1547,7 @@
       attachment.resource &&
       `${attachment.resource.canvas}:${attachment.resource.id}` === resourceKey
     )) {
-      showAttachMenu = false;
+      closeAttachMenu();
       return;
     }
     attachments = [...attachments, {
@@ -1493,7 +1557,7 @@
       kind: 'resource',
       resource,
     }];
-    showAttachMenu = false;
+    closeAttachMenu();
   }
 
   function removeAttachment(id: string) {
@@ -1676,7 +1740,9 @@
             {/if}
             <span class="ap-session-meta">
               <span class="ap-session-date">{formatLocalDate(session.createdAt)}</span>
-              <span class="ap-session-badge" data-status={session.status}>{session.status}</span>
+              <span class="ap-session-badge" data-status={getSessionHistoryBadge(session).tone}>
+                {getSessionHistoryBadge(session).label}
+              </span>
             </span>
             <span class="ap-session-actions">
               {#if renamingSessionId === session.id}
@@ -1847,28 +1913,62 @@
             <!-- Attach menu (canvas picker) -->
             {#if showAttachMenu}
               <div class="attach-menu" role="menu" aria-label="Canvas context picker">
-                <div class="attach-header">Attach context from canvas</div>
-                {#each canvasContextOptions as opt}
-                  <button
-                    class="attach-option"
-                    onclick={() => attachCanvas(opt)}
-                    role="menuitem"
-                  >
-                    <span class="opt-label">{opt.label}</span>
-                  </button>
-                {/each}
-                {#if attachableResources.length > 0}
-                  <div class="attach-header attach-subheader">Attach a visible file or tile</div>
-                  {#each attachableResources as resource}
+                {#if !attachMenuCanvasId}
+                  <div class="attach-header">Attach context from canvas</div>
+                  {#each canvasContextOptions as opt}
                     <button
-                      class="attach-option attach-resource"
-                      onclick={() => attachResource(resource)}
+                      class="attach-option"
+                      onclick={() => openAttachCanvas(opt.id)}
                       role="menuitem"
                     >
-                      <span class="opt-label">{resource.label}</span>
-                      <span class="opt-meta">{resource.resource_type}</span>
+                      <span class="opt-label">{opt.label}</span>
+                      <span class="opt-meta">browse</span>
                     </button>
                   {/each}
+                {:else}
+                  <div class="attach-header">{getAttachmentCanvasLabel(attachMenuCanvasId)}</div>
+                  <button
+                    class="attach-option"
+                    onclick={navigateAttachBack}
+                    role="menuitem"
+                  >
+                    <span class="opt-label">{attachMenuGroupPath.length > 0 ? 'Back to folders' : 'Back to canvases'}</span>
+                  </button>
+                  {#if attachMenuGroupPath.length === 0}
+                    {#each canvasContextOptions.filter((opt) => opt.id === attachMenuCanvasId) as opt}
+                      <button
+                        class="attach-option"
+                        onclick={() => attachCanvas(opt)}
+                        role="menuitem"
+                      >
+                        <span class="opt-label">Attach full {getAttachmentCanvasLabel(opt.id)} context</span>
+                        <span class="opt-meta">canvas</span>
+                      </button>
+                    {/each}
+                  {/if}
+                  {#if currentAttachGroups.length > 0}
+                    {#each currentAttachGroups as group}
+                      <button
+                        class="attach-option attach-resource"
+                        onclick={() => openAttachGroup(group.id)}
+                        role="menuitem"
+                      >
+                        <span class="opt-label">{group.label}</span>
+                        <span class="opt-meta">{group.count}</span>
+                      </button>
+                    {/each}
+                  {:else}
+                    {#each currentAttachResources as resource}
+                      <button
+                        class="attach-option attach-resource"
+                        onclick={() => attachResource(resource)}
+                        role="menuitem"
+                      >
+                        <span class="opt-label">{resource.label}</span>
+                        <span class="opt-meta">{resource.resource_type}</span>
+                      </button>
+                    {/each}
+                  {/if}
                 {/if}
               </div>
             {/if}
@@ -2234,16 +2334,16 @@
     letter-spacing: 0.05em;
   }
 
-  .ap-session-badge[data-status="active"] {
+  .ap-session-badge[data-status="current"] {
     color: var(--ap-dept-accent);
   }
 
-  .ap-session-badge[data-status="completed"] {
+  .ap-session-badge[data-status="info"] {
     color: var(--color-text-muted);
   }
 
-  .ap-session-badge[data-status="error"] {
-    color: var(--color-accent-red);
+  .ap-session-badge[data-status="draft"] {
+    color: color-mix(in srgb, var(--color-text-muted) 82%, transparent);
   }
 
   .ap-session-actions {

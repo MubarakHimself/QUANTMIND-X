@@ -23,6 +23,7 @@ import logging
 import os
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Any
 
 from src.agents.departments.department_mail import (
@@ -302,6 +303,240 @@ class DepartmentWorkflowCoordinator:
         except Exception as e:
             logger.debug(f"Kanban SSE update skipped: {e}")
 
+    def _find_latest_artifact(self, strategy_root: Optional[Path]) -> Optional[Dict[str, Any]]:
+        if not strategy_root or not strategy_root.exists():
+            return None
+
+        latest_path: Optional[Path] = None
+        latest_mtime = -1.0
+        ignored_names = {".meta.json", "manifest.json", "request.json"}
+        for path in strategy_root.rglob("*"):
+            if not path.is_file() or path.name in ignored_names:
+                continue
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            if mtime > latest_mtime:
+                latest_path = path
+                latest_mtime = mtime
+
+        if not latest_path:
+            return None
+
+        return {
+            "name": latest_path.name,
+            "path": str(latest_path.relative_to(strategy_root)).replace("\\", "/"),
+            "updated_at": datetime.fromtimestamp(latest_mtime).isoformat(),
+        }
+
+    @staticmethod
+    def _parse_dt(value: Optional[str]) -> datetime:
+        if not value:
+            return datetime.now()
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return datetime.now()
+
+    @staticmethod
+    def _db_status_to_workflow_status(status: Optional[str]) -> WorkflowStatus:
+        normalized = (status or "").strip().lower()
+        mapping = {
+            "pending": WorkflowStatus.PENDING,
+            "created": WorkflowStatus.PENDING,
+            "scheduled": WorkflowStatus.PENDING,
+            "running": WorkflowStatus.RUNNING,
+            "in_progress": WorkflowStatus.RUNNING,
+            "waiting": WorkflowStatus.WAITING,
+            "pending_review": WorkflowStatus.PENDING_REVIEW,
+            "paused": WorkflowStatus.WAITING,
+            "completed": WorkflowStatus.COMPLETED,
+            "success": WorkflowStatus.COMPLETED,
+            "failed": WorkflowStatus.FAILED,
+            "cancelled": WorkflowStatus.CANCELLED,
+            "canceled": WorkflowStatus.CANCELLED,
+            "expired_review": WorkflowStatus.EXPIRED_REVIEW,
+        }
+        return mapping.get(normalized, WorkflowStatus.PENDING)
+
+    def _hydrate_workflow_from_persistence(
+        self,
+        workflow_id: str,
+    ) -> Optional[DepartmentWorkflow]:
+        if workflow_id in self._workflows:
+            return self._workflows[workflow_id]
+
+        db = self._get_workflow_db()
+        if not db:
+            return None
+
+        try:
+            run = db.get_workflow_run(workflow_id)
+        except Exception as exc:
+            logger.debug(f"Workflow hydration lookup failed for {workflow_id}: {exc}")
+            return None
+
+        if not run:
+            return None
+
+        workflow_name = (run.get("workflow_name") or "").strip() or WorkflowType.CUSTOM.value
+        try:
+            workflow_type = WorkflowType(workflow_name)
+        except ValueError:
+            workflow_type = WorkflowType.CUSTOM
+
+        manifest_payload: Dict[str, Any] = {}
+        strategy_id: Optional[str] = None
+        try:
+            from src.api.wf1_artifacts import find_strategy_root_by_workflow_id
+
+            strategy_root = find_strategy_root_by_workflow_id(workflow_id)
+            if strategy_root:
+                manifest_path = strategy_root / "workflow" / "manifest.json"
+                if manifest_path.exists():
+                    manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+                meta_path = strategy_root / ".meta.json"
+                if meta_path.exists():
+                    meta_payload = json.loads(meta_path.read_text(encoding="utf-8"))
+                    strategy_id = meta_payload.get("strategy_id") or meta_payload.get("name")
+        except Exception as exc:
+            logger.debug(f"Workflow manifest hydration skipped for {workflow_id}: {exc}")
+
+        stage_results = db.get_stage_results(workflow_id)
+        current_stage_name = (
+            manifest_payload.get("current_stage")
+            or (stage_results[-1].get("stage_name") if stage_results else None)
+            or WORKFLOW_INITIAL_STAGES.get(workflow_type, WorkflowStage.COMPLETED).value
+        )
+        try:
+            current_stage = WorkflowStage(current_stage_name)
+        except ValueError:
+            current_stage = WORKFLOW_INITIAL_STAGES.get(workflow_type, WorkflowStage.COMPLETED)
+
+        workflow = DepartmentWorkflow(
+            workflow_id=workflow_id,
+            workflow_type=workflow_type,
+            status=self._db_status_to_workflow_status(run.get("status")),
+            current_stage=current_stage,
+            created_at=self._parse_dt(run.get("created_at")),
+            updated_at=self._parse_dt(run.get("updated_at")),
+            metadata={
+                "manual_pause": bool(manifest_payload.get("manual_pause")),
+                "pause_reason": manifest_payload.get("pause_reason"),
+                "retry_count": int(manifest_payload.get("retry_count", 0) or 0),
+                "hydrated_from_persistence": True,
+            },
+            error=run.get("error_message") or manifest_payload.get("blocking_error"),
+            strategy_id=strategy_id or manifest_payload.get("strategy_id"),
+        )
+
+        stage_department_map = WORKFLOW_STAGE_DEPARTMENTS.get(workflow_type, {})
+        task_status_overrides = {
+            WorkflowStatus.RUNNING: WorkflowStatus.RUNNING,
+            WorkflowStatus.WAITING: WorkflowStatus.WAITING,
+            WorkflowStatus.PENDING_REVIEW: WorkflowStatus.WAITING,
+            WorkflowStatus.CANCELLED: WorkflowStatus.CANCELLED,
+            WorkflowStatus.FAILED: WorkflowStatus.FAILED,
+        }
+
+        for index, stage_result in enumerate(stage_results, start=1):
+            stage_name = stage_result.get("stage_name") or current_stage.value
+            try:
+                stage = WorkflowStage(stage_name)
+            except ValueError:
+                continue
+
+            stage_status = self._db_status_to_workflow_status(stage_result.get("status"))
+            if stage == current_stage:
+                stage_status = task_status_overrides.get(workflow.status, stage_status)
+
+            workflow.tasks.append(
+                WorkflowTask(
+                    task_id=f"{workflow_id}-hydrated-{index}",
+                    stage=stage,
+                    from_dept="floor_manager",
+                    to_dept=stage_department_map.get(stage, "floor_manager"),
+                    message_id=f"hydrated:{workflow_id}:{index}",
+                    status=stage_status,
+                    created_at=self._parse_dt(stage_result.get("started_at") or run.get("created_at")),
+                    completed_at=(
+                        self._parse_dt(stage_result.get("completed_at"))
+                        if stage_result.get("completed_at")
+                        else None
+                    ),
+                    payload={},
+                    result=(
+                        json.loads(stage_result["result_data"])
+                        if stage_result.get("result_data")
+                        else None
+                    ),
+                    error=stage_result.get("error_message"),
+                )
+            )
+
+        if not workflow.tasks:
+            workflow.tasks.append(
+                WorkflowTask(
+                    task_id=f"{workflow_id}-hydrated-current",
+                    stage=current_stage,
+                    from_dept="floor_manager",
+                    to_dept=stage_department_map.get(current_stage, "floor_manager"),
+                    message_id=f"hydrated:{workflow_id}:current",
+                    status=task_status_overrides.get(workflow.status, workflow.status),
+                    created_at=workflow.created_at,
+                    payload={},
+                )
+            )
+
+        self._workflows[workflow_id] = workflow
+        return workflow
+
+    def _persist_workflow_manifest(
+        self,
+        workflow: DepartmentWorkflow,
+        *,
+        waiting_reason: Optional[str] = None,
+    ) -> None:
+        try:
+            from src.api.wf1_artifacts import find_strategy_root, find_strategy_root_by_workflow_id
+
+            strategy_root = (
+                find_strategy_root(workflow.strategy_id)
+                if workflow.strategy_id else None
+            ) or find_strategy_root_by_workflow_id(workflow.workflow_id)
+            if not strategy_root:
+                return
+
+            manifest_path = strategy_root / "workflow" / "manifest.json"
+            payload: Dict[str, Any] = {}
+            if manifest_path.exists():
+                try:
+                    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+                except Exception:
+                    payload = {}
+
+            payload.update({
+                "workflow_id": workflow.workflow_id,
+                "workflow_type": workflow.workflow_type.value,
+                "strategy_id": workflow.strategy_id,
+                "status": workflow.status.value,
+                "current_stage": workflow.current_stage.value,
+                "active_department": workflow.tasks[-1].to_dept if workflow.tasks else "floor_manager",
+                "updated_at": datetime.now().isoformat(),
+                "latest_artifact": self._find_latest_artifact(strategy_root),
+                "blocking_error": workflow.error,
+                "waiting_reason": waiting_reason,
+                "manual_pause": bool(workflow.metadata.get("manual_pause")),
+                "pause_reason": workflow.metadata.get("pause_reason"),
+                "retry_count": int(workflow.metadata.get("retry_count", 0) or 0),
+            })
+
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.debug(f"Workflow manifest persistence skipped: {e}")
+
     async def _trigger_prefect_flow(
         self, workflow_type: WorkflowType,
         workflow_id: str, payload: Dict[str, Any],
@@ -441,6 +676,7 @@ class DepartmentWorkflowCoordinator:
 
         # --- Integration: Kanban board ---
         self._update_kanban_status(strategy_id, resolved_initial_stage, workflow_id)
+        self._persist_workflow_manifest(workflow)
 
         logger.info(
             f"Started {workflow_type.value} workflow {workflow_id} "
@@ -492,6 +728,7 @@ class DepartmentWorkflowCoordinator:
             self._update_kanban_status(
                 workflow.strategy_id, WorkflowStage.COMPLETED, workflow_id,
             )
+            self._persist_workflow_manifest(workflow)
 
             logger.info(f"Workflow {workflow_id} completed")
             return {
@@ -509,6 +746,7 @@ class DepartmentWorkflowCoordinator:
             workflow.current_stage = next_stage
             workflow.status = WorkflowStatus.WAITING
             workflow.updated_at = datetime.now()
+            workflow.metadata["pending_gate"] = next_stage.value
 
             # Create approval request via ApprovalManager
             try:
@@ -557,6 +795,7 @@ class DepartmentWorkflowCoordinator:
                 logger.warning(f"HITL gate approval request failed: {e}")
 
             self._update_kanban_status(workflow.strategy_id, next_stage, workflow_id)
+            self._persist_workflow_manifest(workflow, waiting_reason=next_stage.value)
 
             logger.info(
                 f"Workflow {workflow_id} paused at HITL gate: {next_stage.value}"
@@ -570,76 +809,13 @@ class DepartmentWorkflowCoordinator:
                 "approval_id": workflow.metadata.get("pending_approval_id"),
             }
 
-        # Move to next stage (non-gate stages)
-        workflow.current_stage = next_stage
-        workflow.status = WorkflowStatus.RUNNING
-        workflow.updated_at = datetime.now()
-
-        # Resolve target department
-        dept_map = WORKFLOW_STAGE_DEPARTMENTS.get(workflow.workflow_type, {})
-        to_dept = dept_map.get(next_stage, "floor_manager")
-
-        # Get previous results
-        previous_results = {}
-        if workflow.tasks:
-            last = workflow.tasks[-1]
-            if last.result:
-                previous_results = last.result
-
-        from_dept = workflow.tasks[-1].to_dept if workflow.tasks else "floor_manager"
-
-        task = self._create_task(
-            workflow=workflow,
+        return self._dispatch_stage(
+            workflow,
             stage=next_stage,
-            from_dept=from_dept,
-            to_dept=to_dept,
-            payload={
-                "workflow_id": workflow_id,
-                "stage": next_stage.value,
-                "strategy_id": workflow.strategy_id,
-                "from_previous_stage": previous_results,
-            },
-            priority=TaskPriority(workflow.metadata.get("priority", "medium")),
+            previous_stage=current_stage.value,
+            event_tag="advance",
+            event_verb="advanced",
         )
-
-        if self.on_progress:
-            self.on_progress(workflow_id, workflow.get_progress(), next_stage)
-
-        # --- Integration: Prefect DB stage tracking ---
-        self._persist_stage_to_prefect(
-            workflow_id=workflow_id,
-            stage_name=next_stage.value,
-            status="running",
-        )
-        self._update_prefect_db_status(workflow_id, "running")
-
-        # --- Integration: Graph memory ---
-        self._write_memory(
-            workflow_id=workflow_id,
-            content=(
-                f"Workflow {workflow_id} advanced: "
-                f"{current_stage.value} → {next_stage.value} → dept:{to_dept}"
-            ),
-            node_type="ACTION",
-            tags=["workflow", "advance", workflow_id, next_stage.value],
-        )
-
-        # --- Integration: Kanban board ---
-        self._update_kanban_status(workflow.strategy_id, next_stage, workflow_id)
-
-        logger.info(
-            f"Workflow {workflow_id} advanced: {current_stage.value} → {next_stage.value} → dept:{to_dept}"
-        )
-
-        return {
-            "workflow_id": workflow_id,
-            "task_id": task.task_id,
-            "previous_stage": current_stage.value,
-            "current_stage": next_stage.value,
-            "to_dept": to_dept,
-            "status": workflow.status.value,
-            "progress": workflow.get_progress(),
-        }
 
     def handle_department_response(
         self,
@@ -690,6 +866,7 @@ class DepartmentWorkflowCoordinator:
             node_type="RESULT",
             tags=["workflow", "stage_complete", from_dept, workflow_id],
         )
+        self._persist_workflow_manifest(workflow)
 
         return {
             "workflow_id": workflow_id,
@@ -803,6 +980,7 @@ class DepartmentWorkflowCoordinator:
         else:
             # Rejection — archive the workflow
             workflow.status = WorkflowStatus.FAILED
+            workflow.error = reason or f"Rejected at {gate_stage.value}"
             workflow.updated_at = datetime.now()
             self._update_ea_lifecycle(
                 workflow, gate_stage, {"approved": False},
@@ -811,6 +989,7 @@ class DepartmentWorkflowCoordinator:
             self._update_kanban_status(
                 workflow.strategy_id, WorkflowStage.FAILED, workflow_id,
             )
+            self._persist_workflow_manifest(workflow, waiting_reason=gate_stage.value)
             self._write_memory(
                 workflow_id=workflow_id,
                 content=(
@@ -930,6 +1109,83 @@ class DepartmentWorkflowCoordinator:
         logger.info(f"Task {task_id}: {stage.value} → {to_dept} (pri={priority.value})")
         return task
 
+    def _dispatch_stage(
+        self,
+        workflow: DepartmentWorkflow,
+        *,
+        stage: WorkflowStage,
+        previous_stage: str,
+        event_tag: str,
+        event_verb: str,
+    ) -> Dict[str, Any]:
+        workflow.current_stage = stage
+        workflow.status = WorkflowStatus.RUNNING
+        workflow.updated_at = datetime.now()
+        workflow.metadata.pop("pending_gate", None)
+
+        dept_map = WORKFLOW_STAGE_DEPARTMENTS.get(workflow.workflow_type, {})
+        to_dept = dept_map.get(stage, "floor_manager")
+
+        previous_results: Dict[str, Any] = {}
+        for task in reversed(workflow.tasks):
+            if task.result:
+                previous_results = task.result
+                break
+
+        last_task = workflow.tasks[-1] if workflow.tasks else None
+        from_dept = last_task.to_dept if last_task else "floor_manager"
+
+        task = self._create_task(
+            workflow=workflow,
+            stage=stage,
+            from_dept=from_dept,
+            to_dept=to_dept,
+            payload={
+                "workflow_id": workflow.workflow_id,
+                "stage": stage.value,
+                "strategy_id": workflow.strategy_id,
+                "from_previous_stage": previous_results,
+                "retry_count": int(workflow.metadata.get("retry_count", 0) or 0),
+            },
+            priority=TaskPriority(workflow.metadata.get("priority", "medium")),
+        )
+
+        if self.on_progress:
+            self.on_progress(workflow.workflow_id, workflow.get_progress(), stage)
+
+        self._persist_stage_to_prefect(
+            workflow_id=workflow.workflow_id,
+            stage_name=stage.value,
+            status="running",
+        )
+        self._update_prefect_db_status(workflow.workflow_id, "running")
+        self._write_memory(
+            workflow_id=workflow.workflow_id,
+            content=(
+                f"Workflow {workflow.workflow_id} {event_verb}: "
+                f"{previous_stage} → {stage.value} → dept:{to_dept}"
+            ),
+            node_type="ACTION",
+            tags=["workflow", event_tag, workflow.workflow_id, stage.value],
+        )
+        self._update_kanban_status(workflow.strategy_id, stage, workflow.workflow_id)
+        self._persist_workflow_manifest(workflow)
+
+        logger.info(
+            f"Workflow {workflow.workflow_id} {event_verb}: "
+            f"{previous_stage} → {stage.value} → dept:{to_dept}"
+        )
+        return {
+            "workflow_id": workflow.workflow_id,
+            "task_id": task.task_id,
+            "previous_stage": previous_stage,
+            "current_stage": stage.value,
+            "to_dept": to_dept,
+            "status": workflow.status.value,
+            "progress": workflow.get_progress(),
+            "retry_count": int(workflow.metadata.get("retry_count", 0) or 0),
+        }
+
     # -----------------------------------------------------------------------
     # Query Methods
     # -----------------------------------------------------------------------
@@ -941,7 +1197,7 @@ class DepartmentWorkflowCoordinator:
         return data
 
     def get_workflow_status(self, workflow_id: str) -> Optional[Dict[str, Any]]:
-        workflow = self._workflows.get(workflow_id)
+        workflow = self._workflows.get(workflow_id) or self._hydrate_workflow_from_persistence(workflow_id)
         return self._serialize_workflow(workflow) if workflow else None
 
     def get_all_workflows(self) -> List[Dict[str, Any]]:
@@ -962,7 +1218,7 @@ class DepartmentWorkflowCoordinator:
         ]
 
     def cancel_workflow(self, workflow_id: str) -> bool:
-        workflow = self._workflows.get(workflow_id)
+        workflow = self._workflows.get(workflow_id) or self._hydrate_workflow_from_persistence(workflow_id)
         if not workflow:
             return False
         if workflow.status in (WorkflowStatus.COMPLETED, WorkflowStatus.CANCELLED):
@@ -976,8 +1232,166 @@ class DepartmentWorkflowCoordinator:
                 task.status = WorkflowStatus.CANCELLED
                 task.completed_at = datetime.now()
 
+        self._update_prefect_db_status(workflow_id, "cancelled")
+        self._persist_workflow_manifest(workflow)
         logger.info(f"Workflow {workflow_id} cancelled")
         return True
+
+    def pause_workflow(
+        self,
+        workflow_id: str,
+        *,
+        paused_by: str = "operator",
+        reason: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        workflow = self._workflows.get(workflow_id) or self._hydrate_workflow_from_persistence(workflow_id)
+        if not workflow:
+            return {"error": f"Workflow {workflow_id} not found"}
+        if workflow.status != WorkflowStatus.RUNNING:
+            return {
+                "error": (
+                    f"Can only pause running workflows, current status: "
+                    f"{workflow.status.value}"
+                )
+            }
+
+        pause_reason = reason or f"Paused by {paused_by}"
+        workflow.status = WorkflowStatus.WAITING
+        workflow.updated_at = datetime.now()
+        workflow.metadata["manual_pause"] = True
+        workflow.metadata["pause_reason"] = pause_reason
+        workflow.metadata["paused_by"] = paused_by
+        workflow.metadata["paused_at"] = workflow.updated_at.isoformat()
+
+        for task in workflow.tasks:
+            if task.status == WorkflowStatus.RUNNING:
+                task.status = WorkflowStatus.WAITING
+
+        self._update_prefect_db_status(workflow_id, "paused")
+        self._persist_workflow_manifest(workflow, waiting_reason=pause_reason)
+        self._write_memory(
+            workflow_id=workflow_id,
+            content=f"Workflow {workflow_id} paused by {paused_by}. Reason: {pause_reason}",
+            node_type="DECISION",
+            tags=["workflow", "paused", workflow_id],
+        )
+        logger.info(f"Workflow {workflow_id} paused: {pause_reason}")
+        return {
+            "workflow_id": workflow_id,
+            "status": workflow.status.value,
+            "current_stage": workflow.current_stage.value,
+            "waiting_reason": pause_reason,
+            "manual_pause": True,
+        }
+
+    def resume_workflow(
+        self,
+        workflow_id: str,
+        *,
+        resumed_by: str = "operator",
+    ) -> Dict[str, Any]:
+        workflow = self._workflows.get(workflow_id) or self._hydrate_workflow_from_persistence(workflow_id)
+        if not workflow:
+            return {"error": f"Workflow {workflow_id} not found"}
+        if workflow.status != WorkflowStatus.WAITING:
+            return {
+                "error": (
+                    f"Can only resume waiting workflows, current status: "
+                    f"{workflow.status.value}"
+                )
+            }
+        if not workflow.metadata.get("manual_pause"):
+            return {
+                "error": (
+                    "Workflow is waiting on a human approval gate and cannot be "
+                    "resumed directly"
+                )
+            }
+
+        workflow.status = WorkflowStatus.RUNNING
+        workflow.updated_at = datetime.now()
+        workflow.metadata.pop("manual_pause", None)
+        workflow.metadata.pop("pause_reason", None)
+        workflow.metadata["resumed_by"] = resumed_by
+        workflow.metadata["resumed_at"] = workflow.updated_at.isoformat()
+
+        for task in workflow.tasks:
+            if task.status == WorkflowStatus.WAITING:
+                task.status = WorkflowStatus.RUNNING
+
+        self._update_prefect_db_status(workflow_id, "running")
+        self._persist_workflow_manifest(workflow)
+        self._write_memory(
+            workflow_id=workflow_id,
+            content=f"Workflow {workflow_id} resumed by {resumed_by}",
+            node_type="ACTION",
+            tags=["workflow", "resumed", workflow_id],
+        )
+        logger.info(f"Workflow {workflow_id} resumed by {resumed_by}")
+        return {
+            "workflow_id": workflow_id,
+            "status": workflow.status.value,
+            "current_stage": workflow.current_stage.value,
+        }
+
+    def retry_workflow(
+        self,
+        workflow_id: str,
+        *,
+        retried_by: str = "operator",
+    ) -> Dict[str, Any]:
+        workflow = self._workflows.get(workflow_id) or self._hydrate_workflow_from_persistence(workflow_id)
+        if not workflow:
+            return {"error": f"Workflow {workflow_id} not found"}
+        if workflow.status not in (
+            WorkflowStatus.CANCELLED,
+            WorkflowStatus.FAILED,
+            WorkflowStatus.EXPIRED_REVIEW,
+        ):
+            return {
+                "error": (
+                    f"Can only retry cancelled/failed workflows, current status: "
+                    f"{workflow.status.value}"
+                )
+            }
+
+        retry_stage = workflow.current_stage
+        if retry_stage == WorkflowStage.COMPLETED:
+            return {"error": "Completed workflows cannot be retried"}
+
+        workflow.error = None
+        workflow.updated_at = datetime.now()
+        workflow.metadata.pop("manual_pause", None)
+        workflow.metadata.pop("pause_reason", None)
+        workflow.metadata.pop("pending_gate", None)
+        workflow.metadata["retry_count"] = int(workflow.metadata.get("retry_count", 0) or 0) + 1
+        workflow.metadata["last_retried_by"] = retried_by
+        workflow.metadata["last_retried_at"] = workflow.updated_at.isoformat()
+
+        for task in workflow.tasks:
+            if task.status in (
+                WorkflowStatus.RUNNING,
+                WorkflowStatus.WAITING,
+                WorkflowStatus.CANCELLED,
+            ):
+                task.completed_at = task.completed_at or workflow.updated_at
+
+        self._write_memory(
+            workflow_id=workflow_id,
+            content=(
+                f"Workflow {workflow_id} retry requested by {retried_by} "
+                f"from stage {retry_stage.value}"
+            ),
+            node_type="ACTION",
+            tags=["workflow", "retry", workflow_id, retry_stage.value],
+        )
+        return self._dispatch_stage(
+            workflow,
+            stage=retry_stage,
+            previous_stage=retry_stage.value,
+            event_tag="retry",
+            event_verb="retried",
+        )
 
     def check_department_inbox(
         self, workflow_id: str, department: str,

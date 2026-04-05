@@ -188,6 +188,11 @@
    * Handle task drop from drag
    */
   function handleTaskDrop(taskId: string, newStatus: TaskStatus) {
+    const task = allTasks.find((candidate) => candidate.task_id === taskId);
+    if (!task || task.read_only) {
+      return;
+    }
+
     const oldStatus = findTaskStatus(taskId);
     if (oldStatus && oldStatus !== newStatus) {
       moveTask(taskId, oldStatus, newStatus);
@@ -349,12 +354,58 @@
             </div>
             <div class="detail-card">
               <div class="detail-card-label">
+                <Workflow size={13} />
+                Stage
+              </div>
+              <div class="detail-card-value">{selectedTask.current_stage || 'Unknown'}</div>
+            </div>
+            <div class="detail-card">
+              <div class="detail-card-label">
                 <Clock size={13} />
                 Updated
               </div>
               <div class="detail-card-value">{formatDateTime(selectedTask.updated_at || selectedTask.created_at)}</div>
             </div>
           </section>
+
+          <section class="detail-grid">
+            <div class="detail-card">
+              <div class="detail-card-label">Strategy</div>
+              <div class="detail-card-value">{selectedTask.strategy_id || 'Not linked'}</div>
+            </div>
+            <div class="detail-card">
+              <div class="detail-card-label">Source</div>
+              <div class="detail-card-value">{selectedTask.source_kind || 'mail'}</div>
+            </div>
+            <div class="detail-card">
+              <div class="detail-card-label">Next Step</div>
+              <div class="detail-card-value">{selectedTask.next_step || 'None'}</div>
+            </div>
+            <div class="detail-card">
+              <div class="detail-card-label">Editability</div>
+              <div class="detail-card-value">{selectedTask.read_only ? 'Workflow state only' : 'Interactive task'}</div>
+            </div>
+          </section>
+
+          {#if selectedTask.blocking_error || selectedTask.waiting_reason || selectedTask.latest_artifact}
+            <section class="detail-section">
+              <h4>Workflow State</h4>
+              <dl class="trace-list">
+                <div>
+                  <dt>Waiting Reason</dt>
+                  <dd>{selectedTask.waiting_reason || 'None'}</dd>
+                </div>
+                <div>
+                  <dt>Blocking Error</dt>
+                  <dd>{selectedTask.blocking_error || 'None'}</dd>
+                </div>
+                <div>
+                  <dt>Latest Artifact</dt>
+                  <dd>{selectedTask.latest_artifact?.path || selectedTask.latest_artifact?.name || 'Unavailable'}</dd>
+                </div>
+              </dl>
+            </section>
+          {/if}
 
           <section class="detail-section">
             <h4>Trace</h4>

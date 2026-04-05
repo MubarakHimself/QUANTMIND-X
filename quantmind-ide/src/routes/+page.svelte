@@ -135,12 +135,14 @@
     on:openFile={handleOpenFile}
     on:closeTab={handleCloseTab}
   />
-  <AgentPanel
-    activeCanvas={currentCanvas}
-    bind:collapsed={agentPanelCollapsed}
-    bind:panelWidth={agentPanelWidth}
-    hidden={!showAgentPanel}
-  />
+  {#if showAgentPanel}
+    <AgentPanel
+      activeCanvas={currentCanvas}
+      bind:collapsed={agentPanelCollapsed}
+      bind:panelWidth={agentPanelWidth}
+      hidden={!showAgentPanel}
+    />
+  {/if}
 </div>
 
 <style>

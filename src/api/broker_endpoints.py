@@ -292,15 +292,6 @@ async def list_pending_brokers(
     )
 
 
-@router.get("/{broker_id}", response_model=BrokerInfo)
-async def get_broker(broker_id: str):
-    """Get broker by ID."""
-    broker = broker_connections.get(broker_id)
-    if not broker:
-        raise HTTPException(status_code=404, detail="Broker not found")
-    return broker
-
-
 @router.post("/heartbeat")
 async def broker_heartbeat(heartbeat: BrokerHeartbeat):
     """
@@ -548,3 +539,12 @@ async def clear_active_account():
         success=True,
         message="Active account cleared"
     )
+
+
+@router.get("/{broker_id}", response_model=BrokerInfo)
+async def get_broker(broker_id: str):
+    """Get broker by ID."""
+    broker = broker_connections.get(broker_id)
+    if not broker:
+        raise HTTPException(status_code=404, detail="Broker not found")
+    return broker

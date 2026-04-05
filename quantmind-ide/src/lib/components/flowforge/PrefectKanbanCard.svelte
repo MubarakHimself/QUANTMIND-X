@@ -10,15 +10,28 @@
    */
 
   import type { PrefectWorkflow } from '$lib/stores/flowforge';
-  import { Square, Clock, BarChart3, ArrowRight } from 'lucide-svelte';
+  import {
+    Square,
+    Clock,
+    BarChart3,
+    ArrowRight,
+    AlertTriangle,
+    FolderTree,
+    Pause,
+    Play,
+    RotateCcw,
+  } from 'lucide-svelte';
 
   interface Props {
     workflow: PrefectWorkflow;
     onKillSwitch?: (workflow: PrefectWorkflow) => void;
+    onPause?: (workflow: PrefectWorkflow) => void;
+    onResume?: (workflow: PrefectWorkflow) => void;
+    onRetry?: (workflow: PrefectWorkflow) => void;
     onClick?: (workflow: PrefectWorkflow) => void;
   }
 
-  let { workflow, onKillSwitch, onClick }: Props = $props();
+  let { workflow, onKillSwitch, onPause, onResume, onRetry, onClick }: Props = $props();
 
   // Format duration
   function formatDuration(seconds: number): string {
@@ -35,6 +48,21 @@
     if (onKillSwitch) {
       onKillSwitch(workflow);
     }
+  }
+
+  function handlePause(e: MouseEvent) {
+    e.stopPropagation();
+    onPause?.(workflow);
+  }
+
+  function handleResume(e: MouseEvent) {
+    e.stopPropagation();
+    onResume?.(workflow);
+  }
+
+  function handleRetry(e: MouseEvent) {
+    e.stopPropagation();
+    onRetry?.(workflow);
   }
 
   // Handle card click
@@ -55,6 +83,10 @@
   };
 
   const isRunning = $derived(workflow.state === 'RUNNING');
+  const hasBlockingError = $derived(!!workflow.blocking_error);
+  const canPause = $derived(Boolean(workflow.can_pause && onPause));
+  const canResume = $derived(Boolean(workflow.can_resume && onResume));
+  const canRetry = $derived(Boolean(workflow.can_retry && onRetry));
 </script>
 
 <div
@@ -99,14 +131,65 @@
       <ArrowRight size={14} />
       <span class="detail-value" title={workflow.next_step}>{workflow.next_step}</span>
     </div>
+
+    {#if workflow.current_stage}
+      <div class="detail-row">
+        <span class="detail-label">Stage</span>
+        <span class="detail-value" title={workflow.current_stage}>{workflow.current_stage}</span>
+      </div>
+    {/if}
+
+    {#if workflow.waiting_reason}
+      <div class="detail-row waiting">
+        <Clock size={14} />
+        <span class="detail-value" title={workflow.waiting_reason}>Waiting: {workflow.waiting_reason}</span>
+      </div>
+    {/if}
+
+    {#if workflow.latest_artifact}
+      <div class="detail-row artifact">
+        <FolderTree size={14} />
+        <span class="detail-value" title={workflow.latest_artifact.path}>
+          {workflow.latest_artifact.name}
+        </span>
+      </div>
+    {/if}
+
+    {#if hasBlockingError}
+      <div class="detail-row error">
+        <AlertTriangle size={14} />
+        <span class="detail-value" title={workflow.blocking_error ?? undefined}>
+          {workflow.blocking_error}
+        </span>
+      </div>
+    {/if}
   </div>
 
-  <!-- Kill Switch (only for RUNNING) -->
-  {#if workflow.state === 'RUNNING' && onKillSwitch}
-    <button class="kill-switch" onclick={handleKillSwitch} title="Stop Workflow">
-      <Square size={16} />
-    </button>
-  {/if}
+  <div class="card-actions">
+    {#if canPause}
+      <button class="action-button pause" onclick={handlePause} title="Pause Workflow">
+        <Pause size={14} />
+      </button>
+    {/if}
+
+    {#if canResume}
+      <button class="action-button resume" onclick={handleResume} title="Resume Workflow">
+        <Play size={14} />
+      </button>
+    {/if}
+
+    {#if canRetry}
+      <button class="action-button retry" onclick={handleRetry} title="Retry Workflow">
+        <RotateCcw size={14} />
+      </button>
+    {/if}
+
+    {#if workflow.state === 'RUNNING' && onKillSwitch}
+      <button class="action-button kill-switch" onclick={handleKillSwitch} title="Stop Workflow">
+        <Square size={16} />
+      </button>
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -121,6 +204,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    padding-bottom: 44px;
   }
 
   .kanban-card:hover {
@@ -214,6 +298,14 @@
     font-size: 12px;
   }
 
+  .detail-label {
+    min-width: 36px;
+    color: #64748b;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+  }
+
   .detail-value {
     color: #cbd5e1;
     overflow: hidden;
@@ -222,40 +314,79 @@
     max-width: 140px;
   }
 
+  .card-actions {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .action-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(15, 23, 42, 0.9);
+    color: #cbd5e1;
+    transition: all 0.16s ease;
+  }
+
+  .action-button:hover {
+    transform: translateY(-1px);
+    border-color: rgba(255, 255, 255, 0.16);
+  }
+
+  .action-button.pause {
+    color: #f8fafc;
+    background: rgba(148, 163, 184, 0.14);
+  }
+
+  .action-button.resume {
+    color: #86efac;
+    background: rgba(34, 197, 94, 0.12);
+  }
+
+  .action-button.retry {
+    color: #fbbf24;
+    background: rgba(245, 158, 11, 0.12);
+  }
+
   .next-step .detail-value {
     color: #64748b;
     font-style: italic;
   }
 
-  /* Kill Switch Button - always visible for accessibility */
-  .kill-switch {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    border-radius: 6px;
-    color: #ef4444;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    opacity: 0.7;
+  .detail-row.waiting .detail-value {
+    color: #f59e0b;
   }
 
-  .kill-switch:hover,
-  .kill-switch:focus {
-    opacity: 1;
-    background: rgba(239, 68, 68, 0.35);
+  .detail-row.artifact .detail-value {
+    color: #7dd3fc;
+  }
+
+  .detail-row.error .detail-value {
+    color: #fca5a5;
+  }
+
+  .action-button.kill-switch {
+    color: #fca5a5;
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.22);
+  }
+
+  .action-button.kill-switch:hover,
+  .action-button.kill-switch:focus {
+    background: rgba(239, 68, 68, 0.22);
     border-color: rgba(239, 68, 68, 0.7);
-    transform: scale(1.05);
     outline: none;
   }
 
-  .kill-switch:focus-visible {
+  .action-button.kill-switch:focus-visible {
     box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.5);
   }
 

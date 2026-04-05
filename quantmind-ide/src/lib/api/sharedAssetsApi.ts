@@ -32,7 +32,7 @@ async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> 
 // Types
 // =============================================================================
 
-export type AssetType = 'docs' | 'strategy-templates' | 'indicators' | 'skills' | 'flow-components' | 'mcp-configs';
+export type AssetType = 'docs' | 'strategy-templates' | 'indicators' | 'skills' | 'flow-components' | 'mcp-configs' | 'strategies';
 
 export interface AssetMetadata {
   version: string;
@@ -50,6 +50,7 @@ export interface SharedAsset {
   content?: string;
   language?: string;
   source_path?: string;
+  details?: Record<string, any>;
 }
 
 // =============================================================================
@@ -62,7 +63,8 @@ export const ASSET_TYPE_INFO: Record<AssetType, { label: string; icon: string }>
   'indicators': { label: 'Indicators', icon: 'Code' },
   'skills': { label: 'Skills', icon: 'Sparkles' },
   'flow-components': { label: 'Flow Components', icon: 'Workflow' },
-  'mcp-configs': { label: 'MCP Configs', icon: 'Settings' }
+  'mcp-configs': { label: 'MCP Configs', icon: 'Settings' },
+  'strategies': { label: 'Strategies', icon: 'FolderTree' }
 };
 
 // =============================================================================
@@ -75,7 +77,8 @@ const typeToBackendCategory: Record<AssetType, string> = {
   'indicators': 'indicators',
   'skills': 'skills',
   'flow-components': 'flow-components',
-  'mcp-configs': 'mcp-configs'
+  'mcp-configs': 'mcp-configs',
+  'strategies': 'strategies'
 };
 
 const typeCategoryAliases: Record<AssetType, string[]> = {
@@ -85,6 +88,7 @@ const typeCategoryAliases: Record<AssetType, string[]> = {
   'skills': ['skills', 'skill'],
   'flow-components': ['flow-components', 'flow_components', 'flow components'],
   'mcp-configs': ['mcp-configs', 'mcp_configs', 'mcp configs', 'mcp'],
+  'strategies': ['strategies', 'strategy', 'wf1', 'workflow-artifacts', 'workflow_artifacts'],
 };
 
 function normalizeCategory(value: unknown): string {
@@ -129,6 +133,23 @@ function getAssetCategoryToken(asset: Record<string, any>): unknown {
   return asset.category ?? asset.type ?? asset.asset_type;
 }
 
+function describeStrategy(detail: Record<string, any> | undefined, fallback: string | undefined): string | undefined {
+  if (!detail) return fallback;
+  const signals = [
+    detail.has_video_ingest ? 'video ingest' : null,
+    detail.has_trd ? 'trd' : null,
+    detail.has_ea ? 'ea' : null,
+    detail.has_backtest ? 'backtest' : null,
+    detail.has_source_captions ? 'captions' : null,
+    detail.has_source_audio ? 'audio' : null,
+    detail.has_chunk_manifest ? 'chunks' : null,
+  ].filter(Boolean);
+  if (signals.length === 0) {
+    return fallback || `status: ${detail.status || 'pending'}`;
+  }
+  return `${detail.status || 'pending'} · ${signals.join(' · ')}`;
+}
+
 async function listSharedAssetsRaw(): Promise<Record<string, any>[]> {
   try {
     const shared = await apiFetch<Record<string, any>[]>('/assets/shared');
@@ -156,6 +177,50 @@ export async function listAssetsByType(type: AssetType): Promise<SharedAsset[]> 
     }
   }
 
+  if (type === 'strategies') {
+    const strategyDetails = await apiFetch<Record<string, any>[]>('/strategies').catch(() => []);
+    const detailByAssetId = new Map(
+      strategyDetails.map((detail) => [String(detail.asset_id || detail.relative_root || detail.id || detail.name), detail])
+    );
+    if (strategyDetails.length > 0) {
+      for (const asset of preferred) {
+        const detail = detailByAssetId.get(String(asset.id));
+        const mapped = mapBackendAsset(
+          {
+            ...asset,
+            description: describeStrategy(detail, asset.description),
+          },
+          type,
+        );
+        mapped.details = detail;
+        byId.set(mapped.id, mapped);
+      }
+      for (const detail of strategyDetails) {
+        const detailAssetId = String(detail.asset_id || detail.relative_root || detail.id || detail.name);
+        const existing = byId.get(detailAssetId)
+          || Array.from(byId.values()).find((asset) => asset.name === detail.name || asset.id === detailAssetId);
+        if (existing) {
+          existing.details = detail;
+          existing.metadata.description = describeStrategy(detail, existing.metadata.description);
+          continue;
+        }
+        const mapped = mapBackendAsset(
+          {
+            id: detailAssetId.startsWith('strategies/') ? detailAssetId : `strategies/${detailAssetId}`,
+            name: detail.name || detail.id,
+            type: 'strategies',
+            description: describeStrategy(detail, undefined),
+            updated_at: detail.created_at,
+          },
+          type,
+        );
+        mapped.details = detail;
+        byId.set(mapped.id, mapped);
+      }
+    }
+    return Array.from(byId.values());
+  }
+
   const sharedAssets = await listSharedAssetsRaw();
   const filtered = sharedAssets.filter((asset) => categoryMatchesType(type, getAssetCategoryToken(asset)));
   for (const asset of filtered) {
@@ -171,15 +236,11 @@ export async function listAssetsByType(type: AssetType): Promise<SharedAsset[]> 
  * Get all assets grouped by type
  */
 export async function listAllAssets(): Promise<Record<AssetType, SharedAsset[]>> {
-  const types: AssetType[] = ['docs', 'strategy-templates', 'indicators', 'skills', 'flow-components', 'mcp-configs'];
-  const result: Record<AssetType, SharedAsset[]> = {} as Record<AssetType, SharedAsset[]>;
-  const sharedAssets = await listSharedAssetsRaw();
-
-  for (const type of types) {
-    const filtered = sharedAssets.filter((asset) => categoryMatchesType(type, getAssetCategoryToken(asset)));
-    result[type] = filtered.map((asset) => mapBackendAsset(asset, type));
-  }
-
+  const types: AssetType[] = ['docs', 'strategy-templates', 'indicators', 'skills', 'flow-components', 'mcp-configs', 'strategies'];
+  const entries = await Promise.all(
+    types.map(async (type) => [type, await listAssetsByType(type)] as const)
+  );
+  const result = Object.fromEntries(entries) as Record<AssetType, SharedAsset[]>;
   return result;
 }
 
@@ -202,19 +263,5 @@ export async function getAssetDetail(assetId: string, type: AssetType): Promise<
  * Errors propagate to the caller — no silent mock fallback.
  */
 export async function getAssetCounts(): Promise<Record<AssetType, number>> {
-  const allAssets = await listAllAssets();
-  const counts: Record<AssetType, number> = {
-    'docs': 0,
-    'strategy-templates': 0,
-    'indicators': 0,
-    'skills': 0,
-    'flow-components': 0,
-    'mcp-configs': 0
-  };
-
-  for (const type of Object.keys(allAssets) as AssetType[]) {
-    counts[type] = allAssets[type]?.length || 0;
-  }
-
-  return counts;
+  return apiFetch<Record<AssetType, number>>('/assets/counts');
 }

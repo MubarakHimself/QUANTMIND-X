@@ -228,3 +228,43 @@ class TestDepartmentHeadBase:
             assert captured["anthropic_kwargs"]["base_url"] == "https://api.minimax.io/anthropic"
             assert captured["anthropic_kwargs"]["http_client"].__class__ is FakeAsyncClient
             head.close()
+
+    def test_prompt_context_summary_keeps_resource_attachment_references(self):
+        from src.agents.departments.heads.base import DepartmentHead
+        from src.agents.departments.types import Department, DepartmentHeadConfig
+
+        config = DepartmentHeadConfig(
+            department=Department.DEVELOPMENT,
+            agent_type="development_head",
+            system_prompt="Test prompt",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "test_mail.db")
+            head = DepartmentHead(config=config, mail_db_path=db_path)
+
+            summary = head._summarize_canvas_context_for_prompt(
+                {
+                    "canvas": "development",
+                    "attached_contexts": [
+                        {
+                            "canvas": "shared-assets",
+                            "label": "MQL5 Reference",
+                            "attachment_type": "resource",
+                            "resource": {
+                                "id": "knowledge/books/mql5.pdf",
+                                "path": "knowledge/books/mql5.pdf",
+                                "label": "MQL5 Reference",
+                                "type": "book",
+                            },
+                        }
+                    ],
+                }
+            )
+
+            assert summary["attached_contexts"][0]["label"] == "MQL5 Reference"
+            assert summary["attached_contexts"][0]["attachment_type"] == "resource"
+            assert summary["attached_contexts"][0]["resource"]["id"] == "knowledge/books/mql5.pdf"
+            assert summary["attached_contexts"][0]["resource"]["path"] == "knowledge/books/mql5.pdf"
+
+            head.close()

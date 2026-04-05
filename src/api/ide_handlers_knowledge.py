@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from src.api.ide_models import KNOWLEDGE_DIR, SCRAPED_ARTICLES_DIR
+from src.api.knowledge_bootstrap import bootstrap_reference_books
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ class KnowledgeAPIHandler:
 
     def __init__(self):
         KNOWLEDGE_DIR.mkdir(parents=True, exist_ok=True)
+        bootstrap_reference_books(knowledge_dir=KNOWLEDGE_DIR)
 
     def list_knowledge(self, category: Optional[str] = None) -> List[Dict[str, Any]]:
         """List knowledge items including scraped articles."""

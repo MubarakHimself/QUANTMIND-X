@@ -146,8 +146,26 @@
     if (accountsLoading) return;
     accountsLoading = true;
     try {
-      const data = await apiFetch<AccountRow[]>('/portfolio/accounts');
-      accountsData = data;
+      const data = await apiFetch<Array<{
+        account_number: string;
+        broker_name: string;
+        account_type: string;
+        mt5_server: string;
+        currency: string;
+        is_active: boolean;
+      }>>('/portfolio/brokers');
+      accountsData = data.map((account) => ({
+        account_id: account.account_number,
+        broker_name: account.broker_name,
+        balance: 0,
+        equity: 0,
+        open_trades: 0,
+        pnl_today: 0,
+        currency: account.currency || 'USD',
+        connected: !!account.is_active,
+        account_type: (account.account_type || 'standard').toUpperCase(),
+        server: account.mt5_server || '—'
+      }));
     } catch {
       const storeAccounts = $accounts as AccountRow[];
       accountsData = storeAccounts.length > 0 ? [...storeAccounts] : [];

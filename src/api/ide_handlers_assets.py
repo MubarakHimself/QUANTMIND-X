@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.api.ide_models import ASSETS_DIR, KNOWLEDGE_DIR, SCRAPED_ARTICLES_DIR
+from src.api.knowledge_bootstrap import bootstrap_reference_books
+from src.api.wf1_artifacts import WF1_STRATEGIES_ROOT, iter_strategy_roots, strategy_root_has_operator_visible_signal
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +23,21 @@ logger = logging.getLogger(__name__)
 class AssetsAPIHandler:
     """Handler for shared assets operations."""
 
+    _COUNT_CATEGORY_ALIASES = {
+        "docs": {"docs", "doc", "articles", "article", "books", "book", "libraries", "library", "risk", "utils"},
+        "strategy-templates": {"templates", "template", "strategy-templates", "strategy_templates"},
+        "indicators": {"indicators", "indicator"},
+        "skills": {"skills", "skill"},
+        "flow-components": {"flow-components", "flow_components", "flow components"},
+        "mcp-configs": {"mcp-configs", "mcp_configs", "mcp configs", "mcp"},
+        "strategies": {"strategies", "strategy", "wf1", "workflow-artifacts", "workflow_artifacts"},
+    }
+
     def __init__(self):
         ASSETS_DIR.mkdir(parents=True, exist_ok=True)
         KNOWLEDGE_DIR.mkdir(parents=True, exist_ok=True)
         SCRAPED_ARTICLES_DIR.mkdir(parents=True, exist_ok=True)
+        bootstrap_reference_books(knowledge_dir=KNOWLEDGE_DIR)
         self._meta_dir = ASSETS_DIR / ".meta"
         self._meta_dir.mkdir(parents=True, exist_ok=True)
 
@@ -32,6 +45,8 @@ class AssetsAPIHandler:
         categories = [category] if category else ["indicators", "libraries", "templates", "risk", "docs"]
 
         for cat in categories:
+            if cat == "strategies":
+                continue
             cat_path = ASSETS_DIR / cat
             if not cat_path.exists():
                 continue
@@ -49,6 +64,86 @@ class AssetsAPIHandler:
         if path.suffix.lower() == ".md":
             candidates.append(path.with_suffix(".json"))
         return candidates
+
+    def _frontmatter_value(self, text: str, key: str) -> Optional[Any]:
+        if not text.startswith("---\n"):
+            return None
+        lines = text.splitlines()
+        values: List[str] = []
+        in_block = False
+        current_key = f"{key}:"
+        for line in lines[1:]:
+            if line.strip() == "---":
+                break
+            stripped = line.strip()
+            if stripped.startswith(current_key):
+                value = stripped[len(current_key):].strip().strip("'\"")
+                if value:
+                    return value
+                in_block = True
+                continue
+            if in_block:
+                if stripped.startswith("- "):
+                    values.append(stripped[2:].strip().strip("'\""))
+                    continue
+                break
+        if values:
+            return values
+        return None
+
+    def _markdown_heading_title(self, text: str) -> Optional[str]:
+        if text.startswith("---\n"):
+            parts = text.split("\n---\n", 1)
+            if len(parts) == 2:
+                text = parts[1]
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("# "):
+                title = stripped[2:].strip()
+                if title:
+                    return title
+        return None
+
+    def _pretty_title(self, name: str) -> str:
+        return Path(name).stem.replace("_", " ").replace("-", " ").strip().title()
+
+    def _looks_generated_name(self, name: str) -> bool:
+        stem = Path(name).stem.strip().lower()
+        if re.fullmatch(r"[0-9a-f]{8,}", stem):
+            return True
+        if re.fullmatch(r"[0-9a-f]{8}-[0-9a-f-]{27}", stem):
+            return True
+        return False
+
+    def _asset_display_title(self, item: Path, metadata: Dict[str, Any]) -> str:
+        if isinstance(metadata.get("title"), str) and metadata["title"].strip():
+            return metadata["title"].strip()
+
+        text = ""
+        try:
+            if item.suffix.lower() == ".md":
+                text = item.read_text(encoding="utf-8")
+        except Exception:
+            text = ""
+
+        frontmatter_title = self._frontmatter_value(text, "title")
+        if isinstance(frontmatter_title, str) and frontmatter_title.strip():
+            return frontmatter_title.strip()
+
+        heading_title = self._markdown_heading_title(text)
+        if heading_title:
+            return heading_title
+
+        return self._pretty_title(item.name)
+
+    def _is_synthetic_scraped_asset(self, rel_path: Path, item: Path, title: str) -> bool:
+        if rel_path.parent != Path("."):
+            return False
+
+        # Shared Assets should expose the categorized scrape corpus only.
+        # Root-level scrape files are legacy scratch/retry artifacts and create
+        # the random-number/UUID rows the user flagged in the UI.
+        return True
 
     def _read_any_metadata(self, path: Path, rel_path: Optional[Path] = None) -> Dict[str, Any]:
         candidates: List[Path] = []
@@ -113,7 +208,7 @@ class AssetsAPIHandler:
 
         return {
             "id": asset_id,
-            "name": item.name,
+            "name": metadata.get("title") or item.name,
             "category": metadata.get("category") or category,
             "version": metadata.get("version") or checksum[:8],
             "filesystem_path": str(item),
@@ -161,13 +256,18 @@ class AssetsAPIHandler:
             f"knowledge/{str(rel_path).replace('\\', '/')}",
             category,
             item,
-            metadata=metadata,
+            metadata={**metadata, "title": self._asset_display_title(item, metadata)},
             description=f"{category} file",
         )
 
-    def _legacy_scraped_asset(self, item: Path) -> Dict[str, Any]:
+    def _legacy_scraped_asset(self, item: Path) -> Optional[Dict[str, Any]]:
         rel_path = item.relative_to(SCRAPED_ARTICLES_DIR)
         metadata = self._read_any_metadata(item)
+        resolved_title = self._asset_display_title(item, metadata)
+        if self._is_synthetic_scraped_asset(rel_path, item, resolved_title):
+            return None
+        if self._looks_generated_name(item.name) and resolved_title == self._pretty_title(item.name):
+            return None
         metadata.setdefault("category", "Articles")
         metadata.setdefault("created_by", "QuantCode")
         metadata.setdefault("description", f"Scraped article from {rel_path.parent.name or 'root'}")
@@ -175,7 +275,7 @@ class AssetsAPIHandler:
             f"scraped/{str(rel_path).replace('\\', '/')}",
             "Articles",
             item,
-            metadata=metadata,
+            metadata={**metadata, "title": resolved_title},
             description=f"Scraped article from {rel_path.parent.name or 'root'}",
         )
 
@@ -184,7 +284,95 @@ class AssetsAPIHandler:
             return KNOWLEDGE_DIR / asset_id.removeprefix("knowledge/")
         if asset_id.startswith("scraped/"):
             return SCRAPED_ARTICLES_DIR / asset_id.removeprefix("scraped/")
+        if asset_id.startswith("strategies/"):
+            return WF1_STRATEGIES_ROOT / asset_id.removeprefix("strategies/")
         return ASSETS_DIR / asset_id
+
+    def _iter_strategy_assets(self):
+        for root in iter_strategy_roots() or []:
+            if strategy_root_has_operator_visible_signal(root):
+                yield root
+
+    def _strategy_asset_metadata(self, root: Path) -> Dict[str, Any]:
+        meta_path = root / ".meta.json"
+        workflow_path = root / "workflow" / "manifest.json"
+        meta: Dict[str, Any] = {}
+        workflow_meta: Dict[str, Any] = {}
+
+        if meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except Exception as exc:
+                logger.warning(f"Failed to read strategy metadata for {root}: {exc}")
+        if workflow_path.exists():
+            try:
+                workflow_meta = json.loads(workflow_path.read_text(encoding="utf-8"))
+            except Exception as exc:
+                logger.warning(f"Failed to read workflow metadata for {root}: {exc}")
+
+        created_at = meta.get("created_at")
+        updated_at = meta.get("updated_at") or workflow_meta.get("updated_at")
+        stat = root.stat()
+        return {
+            "name": meta.get("name") or root.name,
+            "description": (
+                f"{meta.get('strategy_family', 'strategy')} · "
+                f"{meta.get('source_bucket', 'workflow')} · "
+                f"{meta.get('status', workflow_meta.get('status', 'pending'))}"
+            ),
+            "version": workflow_meta.get("workflow_id", "")[-8:] or "wf1",
+            "created_at": created_at or datetime.fromtimestamp(stat.st_ctime, timezone.utc).isoformat(),
+            "updated_at": updated_at or datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+            "workflow_id": workflow_meta.get("workflow_id"),
+            "strategy_id": workflow_meta.get("strategy_id") or root.name,
+            "strategy_family": meta.get("strategy_family") or workflow_meta.get("strategy_family"),
+            "source_bucket": meta.get("source_bucket") or workflow_meta.get("source_bucket"),
+            "status": meta.get("status") or workflow_meta.get("status"),
+        }
+
+    def _strategy_tree(self, path: Path, root: Path) -> List[Dict[str, Any]]:
+        children: List[Dict[str, Any]] = []
+        for item in sorted(path.iterdir(), key=lambda candidate: (candidate.is_file(), candidate.name.lower())):
+            rel_path = str(item.relative_to(root)).replace("\\", "/")
+            if item.is_dir():
+                children.append({
+                    "name": item.name,
+                    "path": rel_path,
+                    "type": "directory",
+                    "children": self._strategy_tree(item, root),
+                })
+            else:
+                children.append({
+                    "name": item.name,
+                    "path": rel_path,
+                    "type": "file",
+                    "size_bytes": item.stat().st_size,
+                    "updated_at": datetime.fromtimestamp(item.stat().st_mtime, timezone.utc).isoformat(),
+                })
+        return children
+
+    def _legacy_strategy_asset(self, root: Path) -> Dict[str, Any]:
+        rel_path = root.relative_to(WF1_STRATEGIES_ROOT)
+        metadata = self._strategy_asset_metadata(root)
+        return {
+            "id": f"strategies/{str(rel_path).replace('\\', '/')}",
+            "name": metadata["name"],
+            "category": "Strategies",
+            "version": metadata["version"],
+            "filesystem_path": str(root),
+            "dependencies": [],
+            "checksum": None,
+            "created_by": "QuantCode",
+            "used_by_count": 0,
+            "created_at": metadata["created_at"],
+            "updated_at": metadata["updated_at"],
+            "description": metadata["description"],
+            "workflow_id": metadata["workflow_id"],
+            "strategy_id": metadata["strategy_id"],
+            "strategy_family": metadata["strategy_family"],
+            "source_bucket": metadata["source_bucket"],
+            "status": metadata["status"],
+        }
 
     def _delete_metadata_sidecars(self, asset_path: Path, asset_id: str) -> None:
         if asset_id.startswith("knowledge/") or asset_id.startswith("scraped/"):
@@ -205,44 +393,81 @@ class AssetsAPIHandler:
         """List shared assets."""
         assets = []
 
-        for cat, item in self._iter_asset_files(category):
+        file_categories: Optional[List[str]] = None
+        if category == "docs":
+            # Shared Assets treats docs as the broader operator-facing knowledge bucket:
+            # canonical docs, supporting library files, and risk/runbook utilities all
+            # live under the same docs root alongside books/articles.
+            file_categories = ["libraries", "risk", "docs"]
+        elif category:
+            file_categories = [category]
+
+        for cat, item in self._iter_asset_files() if file_categories is None else (
+            (cat, item)
+            for requested in file_categories
+            for cat, item in self._iter_asset_files(requested)
+        ):
+            rel_path = item.relative_to(ASSETS_DIR)
+            metadata = self._read_metadata(rel_path)
             assets.append({
-                "id": str(item.relative_to(ASSETS_DIR)).replace("\\", "/"),
-                "name": item.name,
+                "id": str(rel_path).replace("\\", "/"),
+                "name": self._asset_display_title(item, metadata),
                 "type": cat,
                 "path": str(item),
-                "description": f"{cat} file",
+                "description": metadata.get("description") or f"{cat} file",
                 "used_in": [],
             })
 
-        if category in (None, "books"):
+        if category in (None, "books", "docs"):
             for item in self._iter_knowledge_files("books") or []:
+                metadata = self._read_any_metadata(item)
                 assets.append({
                     "id": f"knowledge/{str(item.relative_to(KNOWLEDGE_DIR)).replace('\\', '/')}",
-                    "name": item.name,
+                    "name": self._asset_display_title(item, metadata),
                     "type": "books",
                     "path": str(item),
-                    "description": "books file",
+                    "description": metadata.get("description") or "books file",
                     "used_in": [],
                 })
 
-        if category in (None, "articles"):
+        if category in (None, "articles", "docs"):
             for item in self._iter_knowledge_files("articles") or []:
+                metadata = self._read_any_metadata(item)
                 assets.append({
                     "id": f"knowledge/{str(item.relative_to(KNOWLEDGE_DIR)).replace('\\', '/')}",
-                    "name": item.name,
+                    "name": self._asset_display_title(item, metadata),
                     "type": "articles",
                     "path": str(item),
-                    "description": "articles file",
+                    "description": metadata.get("description") or "articles file",
                     "used_in": [],
                 })
             for item in self._iter_scraped_files() or []:
+                rel_path = item.relative_to(SCRAPED_ARTICLES_DIR)
+                metadata = self._read_any_metadata(item)
+                resolved_title = self._asset_display_title(item, metadata)
+                if self._is_synthetic_scraped_asset(rel_path, item, resolved_title):
+                    continue
+                if self._looks_generated_name(item.name) and resolved_title == self._pretty_title(item.name):
+                    continue
                 assets.append({
-                    "id": f"scraped/{str(item.relative_to(SCRAPED_ARTICLES_DIR)).replace('\\', '/')}",
-                    "name": item.name,
+                    "id": f"scraped/{str(rel_path).replace('\\', '/')}",
+                    "name": resolved_title,
                     "type": "articles",
                     "path": str(item),
-                    "description": "scraped article",
+                    "description": metadata.get("description") or "scraped article",
+                    "used_in": [],
+                })
+
+        if category in (None, "strategies"):
+            for root in self._iter_strategy_assets():
+                rel_path = root.relative_to(WF1_STRATEGIES_ROOT)
+                metadata = self._strategy_asset_metadata(root)
+                assets.append({
+                    "id": f"strategies/{str(rel_path).replace('\\', '/')}",
+                    "name": metadata["name"],
+                    "type": "strategies",
+                    "path": str(root),
+                    "description": metadata["description"],
                     "used_in": [],
                 })
 
@@ -253,9 +478,31 @@ class AssetsAPIHandler:
         assets = [self._legacy_shared_asset(cat, item) for cat, item in self._iter_asset_files()]
         assets.extend(self._legacy_knowledge_asset(item, "Books") for item in self._iter_knowledge_files("books") or [])
         assets.extend(self._legacy_knowledge_asset(item, "Articles") for item in self._iter_knowledge_files("articles") or [])
-        assets.extend(self._legacy_scraped_asset(item) for item in self._iter_scraped_files() or [])
+        assets.extend(asset for item in self._iter_scraped_files() or [] if (asset := self._legacy_scraped_asset(item)))
+        assets.extend(self._legacy_strategy_asset(root) for root in self._iter_strategy_assets())
         assets.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
         return assets
+
+    def get_asset_counts(self) -> Dict[str, int]:
+        """Return canonical shared-asset counts keyed by frontend asset type."""
+        counts = {
+            "docs": 0,
+            "strategy-templates": 0,
+            "indicators": 0,
+            "skills": 0,
+            "flow-components": 0,
+            "mcp-configs": 0,
+            "strategies": 0,
+        }
+
+        for asset in self.list_assets():
+            token = str(asset.get("category") or asset.get("type") or "").strip().lower().replace("_", "-")
+            for bucket, aliases in self._COUNT_CATEGORY_ALIASES.items():
+                if token in aliases:
+                    counts[bucket] += 1
+                    break
+
+        return counts
 
     def get_asset_content(self, asset_id: str) -> Optional[str]:
         """Get asset file content."""
@@ -264,6 +511,24 @@ class AssetsAPIHandler:
             return None
         if not asset_path.exists():
             return None
+
+        if asset_id.startswith("strategies/"):
+            metadata = self._strategy_asset_metadata(asset_path)
+            strategy_detail = None
+            try:
+                from src.api.ide_handlers_strategy import StrategyAPIHandler
+
+                strategy_detail = StrategyAPIHandler().get_strategy(asset_id)
+            except Exception as exc:
+                logger.debug("Strategy detail lookup failed for %s: %s", asset_id, exc)
+            payload = {
+                "type": "strategy_tree",
+                "strategy": metadata,
+                "detail": strategy_detail,
+                "root": str(asset_path.relative_to(WF1_STRATEGIES_ROOT)).replace("\\", "/"),
+                "tree": self._strategy_tree(asset_path, asset_path),
+            }
+            return json.dumps(payload, indent=2)
 
         try:
             return asset_path.read_text(encoding="utf-8")

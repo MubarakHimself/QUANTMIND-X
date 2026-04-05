@@ -151,6 +151,19 @@ export interface PrefectWorkflow {
   completed_steps: number;
   total_steps: number;
   next_step: string;
+  current_stage?: string;
+  blocking_error?: string | null;
+  waiting_reason?: string | null;
+  latest_artifact?: {
+    name: string;
+    path: string;
+    updated_at?: string;
+  } | null;
+  strategy_id?: string;
+  is_manual_pause?: boolean;
+  can_pause?: boolean;
+  can_resume?: boolean;
+  can_retry?: boolean;
   tasks: PrefectTask[];
   dependencies: { from: string; to: string }[];
 }
@@ -344,29 +357,8 @@ export const flowForgeStore = {
         throw new Error(error.detail || 'Failed to cancel workflow');
       }
 
-      const result = await response.json();
-
-      // Update local state to reflect the change
-      flowForgeState.update((s) => {
-        const updatedWorkflows = s.workflows.map((w) =>
-          w.id === workflowId ? { ...w, state: 'CANCELLED' as WorkflowState } : w
-        );
-
-        const updatedByState = { ...s.workflowsByState };
-        // Move from RUNNING to CANCELLED
-        updatedByState.RUNNING = updatedByState.RUNNING.filter((w) => w.id !== workflowId);
-        updatedByState.CANCELLED = [
-          ...updatedByState.CANCELLED,
-          { ...updatedWorkflows.find((w) => w.id === workflowId)!, state: 'CANCELLED' as WorkflowState },
-        ];
-
-        return {
-          ...s,
-          workflows: updatedWorkflows,
-          workflowsByState: updatedByState,
-        };
-      });
-
+      await response.json();
+      await flowForgeStore.fetchWorkflows();
       return true;
     } catch (err) {
       flowForgeState.update((s) => ({
@@ -378,7 +370,33 @@ export const flowForgeStore = {
   },
 
   /**
-   * Resume a cancelled workflow
+   * Pause a running workflow
+   */
+  async pauseWorkflow(workflowId: string): Promise<boolean> {
+    try {
+      const response = await fetch(getFlowForgeApiUrl(`/api/prefect/workflows/${workflowId}/pause`), {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to pause workflow');
+      }
+
+      await response.json();
+      await flowForgeStore.fetchWorkflows();
+      return true;
+    } catch (err) {
+      flowForgeState.update((s) => ({
+        ...s,
+        error: err instanceof Error ? err.message : 'Failed to pause workflow',
+      }));
+      return false;
+    }
+  },
+
+  /**
+   * Resume a manually paused workflow
    */
   async resumeWorkflow(workflowId: string): Promise<boolean> {
     try {
@@ -386,33 +404,44 @@ export const flowForgeStore = {
         method: 'POST',
       });
 
-      if (!response.ok) throw new Error('Failed to resume workflow');
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to resume workflow');
+      }
 
-      // Update local state
-      flowForgeState.update((s) => {
-        const updatedWorkflows = s.workflows.map((w) =>
-          w.id === workflowId ? { ...w, state: 'RUNNING' as WorkflowState } : w
-        );
-
-        const updatedByState = { ...s.workflowsByState };
-        updatedByState.CANCELLED = updatedByState.CANCELLED.filter((w) => w.id !== workflowId);
-        updatedByState.RUNNING = [
-          ...updatedByState.RUNNING,
-          { ...updatedWorkflows.find((w) => w.id === workflowId)!, state: 'RUNNING' as WorkflowState },
-        ];
-
-        return {
-          ...s,
-          workflows: updatedWorkflows,
-          workflowsByState: updatedByState,
-        };
-      });
-
+      await response.json();
+      await flowForgeStore.fetchWorkflows();
       return true;
     } catch (err) {
       flowForgeState.update((s) => ({
         ...s,
         error: err instanceof Error ? err.message : 'Failed to resume workflow',
+      }));
+      return false;
+    }
+  },
+
+  /**
+   * Retry a cancelled/failed workflow from its current stage
+   */
+  async retryWorkflow(workflowId: string): Promise<boolean> {
+    try {
+      const response = await fetch(getFlowForgeApiUrl(`/api/prefect/workflows/${workflowId}/retry`), {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to retry workflow');
+      }
+
+      await response.json();
+      await flowForgeStore.fetchWorkflows();
+      return true;
+    } catch (err) {
+      flowForgeState.update((s) => ({
+        ...s,
+        error: err instanceof Error ? err.message : 'Failed to retry workflow',
       }));
       return false;
     }

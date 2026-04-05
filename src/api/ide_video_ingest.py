@@ -92,6 +92,30 @@ class VideoIngestProcessResponse(BaseModel):
     job_ids: Optional[list[str]] = None
 
 
+class VideoIngestJobStatusResponse(BaseModel):
+    job_id: str
+    status: str
+    progress: Optional[int] = None
+    video_url: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    result_path: Optional[str] = None
+    error: Optional[str] = None
+    current_stage: Optional[str] = None
+    workflow_id: Optional[str] = None
+    workflow_status: Optional[str] = None
+    waiting_reason: Optional[str] = None
+    blocking_error: Optional[str] = None
+    blocking_error_detail: Optional[str] = None
+    strategy_id: Optional[str] = None
+    strategy_folder: Optional[str] = None
+    strategy_asset_id: Optional[str] = None
+    strategy_status: Optional[str] = None
+    strategy_family: Optional[str] = None
+    source_bucket: Optional[str] = None
+    has_video_ingest: Optional[bool] = None
+
+
 async def process_video_async(url: str, strategy_name: str = "video_ingest", is_playlist: bool = False) -> dict:
     """
     Async wrapper for video processing.
@@ -160,6 +184,15 @@ async def get_video_ingest_job(job_id: str):
     if not result:
         raise HTTPException(404, f"Job {job_id} not found")
     return result
+
+
+@router.get("/jobs", response_model=list[VideoIngestJobStatusResponse])
+async def list_video_ingest_jobs(limit: int = 25, status: Optional[str] = None):
+    """List recent persisted video ingest jobs for the IDE workflow surface."""
+    try:
+        return video_ingest_handler.list_jobs(limit=limit, status=status)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
 
 
 @router.get("/auth-status", response_model=VideoIngestAuthStatus)

@@ -21,7 +21,7 @@ async def list_strategies():
     return strategy_handler.list_strategies()
 
 
-@router.get("/{strategy_id}")
+@router.get("/{strategy_id:path}")
 async def get_strategy(strategy_id: str):
     """Get strategy folder details."""
     result = strategy_handler.get_strategy(strategy_id)

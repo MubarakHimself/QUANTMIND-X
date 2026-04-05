@@ -40,6 +40,12 @@ async def list_shared_assets():
     return assets_handler.list_assets_legacy()
 
 
+@router.get("/counts")
+async def get_asset_counts():
+    """Return canonical shared-asset counts for grid/bootstrap UI surfaces."""
+    return assets_handler.get_asset_counts()
+
+
 @router.post("")
 async def create_asset(request: CreateAssetRequest):
     """Create a shared asset."""

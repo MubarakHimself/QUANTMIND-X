@@ -10,6 +10,7 @@ import { API_BASE } from '$lib/constants';
 const apiBase = API_BASE || '';
 
 export interface BrokerAccount {
+  id?: number;
   broker_id: string;
   broker_name: string;
   account_id: string;
@@ -41,11 +42,15 @@ export interface RoutingRule {
   enabled: boolean;
   regime_filter?: string;
   strategy_type_filter?: string;
+  account_db_id?: number;
+  rule_id?: number | null;
+  priority?: number | null;
 }
 
 export interface Strategy {
   id: string;
   name: string;
+  strategy_type_filter?: string;
   type: 'SCALPER' | 'HFT' | 'STRUCTURAL' | 'SWING';
   current_account?: string;
 }
@@ -128,11 +133,35 @@ function createPortfolioStore() {
       update(state => ({ ...state, loading: true, error: null }));
 
       try {
-        const response = await fetch(`${apiBase}/api/brokers/accounts`);
+        const response = await fetch(`${apiBase}/api/portfolio/brokers`);
         if (!response.ok) {
           throw new Error(`Failed to fetch accounts: ${response.statusText}`);
         }
-        const accounts = await response.json();
+        const data = await response.json();
+        const accounts: BrokerAccount[] = (Array.isArray(data) ? data : []).map((account: {
+          id: number;
+          broker_name: string;
+          account_number: string;
+          mt5_server: string;
+          account_type: string;
+          leverage: number;
+          currency: string;
+          is_active: boolean;
+        }) => ({
+          id: account.id,
+          broker_id: String(account.id),
+          broker_name: account.broker_name,
+          account_id: account.account_number,
+          server: account.mt5_server,
+          account_type: account.account_type?.toUpperCase() || 'STANDARD',
+          balance: 0,
+          equity: 0,
+          leverage: account.leverage,
+          currency: account.currency,
+          connected: !!account.is_active,
+          is_active: !!account.is_active,
+          status: account.is_active ? 'connected' : 'inactive'
+        }));
 
         // Calculate portfolio summary
         const totalEquity = accounts.reduce((sum: number, acc: BrokerAccount) => sum + (acc.equity || 0), 0);
@@ -182,16 +211,48 @@ function createPortfolioStore() {
       update(state => ({ ...state, loading: true, error: null }));
 
       try {
-        const response = await fetch(`${apiBase}/api/routing-matrix`);
+        const response = await fetch(`${apiBase}/api/portfolio/routing-matrix`);
         if (!response.ok) {
           throw new Error(`Failed to fetch routing matrix: ${response.statusText}`);
         }
         const data = await response.json();
 
+        const strategyRows: Strategy[] = (data.strategies || []).map((strategy: string) => {
+          const upper = String(strategy).toUpperCase();
+          return {
+            id: upper,
+            name: upper,
+            strategy_type_filter: upper,
+            type: (['SCALPER', 'HFT', 'STRUCTURAL', 'SWING'].includes(upper) ? upper : 'SCALPER') as Strategy['type']
+          };
+        });
+
+        const rules: RoutingRule[] = [];
+        (data.matrix || []).forEach((row: Array<{
+          account_id: number;
+          assigned: boolean;
+          rule_id?: number | null;
+          priority?: number | null;
+        }>, strategyIndex: number) => {
+          const strategyType = strategyRows[strategyIndex]?.id ?? `STRATEGY_${strategyIndex}`;
+          row.forEach((cell) => {
+            rules.push({
+              strategy_id: strategyType,
+              strategy_name: strategyType,
+              account_id: String(cell.account_id),
+              enabled: !!cell.assigned,
+              strategy_type_filter: strategyType,
+              account_db_id: cell.account_id,
+              rule_id: cell.rule_id ?? null,
+              priority: cell.priority ?? null
+            });
+          });
+        });
+
         update(state => ({
           ...state,
-          routingRules: data.rules || [],
-          strategies: data.strategies || [],
+          routingRules: rules,
+          strategies: strategyRows,
           loading: false
         }));
       } catch (error) {
@@ -208,12 +269,25 @@ function createPortfolioStore() {
     /**
      * Toggle routing rule
      */
-    async toggleRoutingRule(strategyId: string, enabled: boolean) {
+    async toggleRoutingRule(strategyId: string, accountId: string, enabled: boolean) {
+      const state = get({ subscribe });
+      const account = state.accounts.find(acc => String(acc.id ?? acc.account_id) === accountId);
+      if (!account?.id) {
+        return;
+      }
+
+      const strategyType = strategyId.toLowerCase();
       try {
-        await fetch(`${apiBase}/api/routing-matrix/rules`, {
+        await fetch(`${apiBase}/api/portfolio/brokers/${account.id}/routing-rules`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ strategy_id: strategyId, enabled })
+          body: JSON.stringify({
+            account_tag: null,
+            regime_filter: null,
+            strategy_type: strategyType,
+            priority: 100,
+            is_active: enabled
+          })
         });
       } catch (error) {
         console.error('[Portfolio] Failed to toggle routing rule:', error);
@@ -222,7 +296,7 @@ function createPortfolioStore() {
       update(state => ({
         ...state,
         routingRules: state.routingRules.map(rule =>
-          rule.strategy_id === strategyId ? { ...rule, enabled } : rule
+          rule.strategy_id === strategyId && rule.account_id === accountId ? { ...rule, enabled } : rule
         )
       }));
     },

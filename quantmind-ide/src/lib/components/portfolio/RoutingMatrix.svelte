@@ -10,6 +10,7 @@
   import {
     portfolioStore,
     accounts,
+    strategies,
     routingRules,
     portfolioLoading
   } from '$lib/stores/portfolio';
@@ -43,9 +44,16 @@
   ];
 
   // Filtered rules based on dropdown selection
+  let strategyRows = $derived(
+    ($strategies ?? []).filter(strategy => {
+      const typeMatch = selectedStrategyType === 'all' || strategy.strategy_type_filter === selectedStrategyType;
+      return typeMatch;
+    })
+  );
+
   let filteredRules = $derived(
     ($routingRules ?? []).filter(rule => {
-      const regimeMatch = selectedRegime === 'all' || rule.regime_filter === selectedRegime;
+      const regimeMatch = selectedRegime === 'all' || !rule.regime_filter || rule.regime_filter === selectedRegime;
       const typeMatch = selectedStrategyType === 'all' || rule.strategy_type_filter === selectedStrategyType;
       return regimeMatch && typeMatch;
     })
@@ -54,7 +62,7 @@
   // Get unique accounts for matrix columns
   let accountList = $derived(
     ($accounts ?? []).map(acc => ({
-      id: acc.account_id,
+      id: String(acc.id ?? acc.account_id),
       name: acc.broker_name,
       type: acc.account_type
     }))
@@ -71,8 +79,8 @@
     return labels[type] || type;
   }
 
-  async function handleToggleRule(strategyId: string, currentEnabled: boolean) {
-    await portfolioStore.toggleRoutingRule(strategyId, !currentEnabled);
+  async function handleToggleRule(strategyId: string, accountId: string, currentEnabled: boolean) {
+    await portfolioStore.toggleRoutingRule(strategyId, accountId, !currentEnabled);
   }
 
   function getRuleForStrategyAccount(strategyId: string, accountId: string) {
@@ -133,27 +141,24 @@
         </div>
 
         <!-- Strategy Rows -->
-        {#each filteredRules as rule}
+        {#each strategyRows as strategy}
           <div class="matrix-row">
             <div class="matrix-cell strategy-col">
-              <span class="strategy-name">{rule.strategy_name}</span>
+              <span class="strategy-name">{strategy.name}</span>
               <span class="strategy-filters">
-                {#if rule.regime_filter}
-                  <span class="filter-tag">{rule.regime_filter}</span>
-                {/if}
-                {#if rule.strategy_type_filter}
-                  <span class="filter-tag">{rule.strategy_type_filter}</span>
+                {#if strategy.strategy_type_filter}
+                  <span class="filter-tag">{strategy.strategy_type_filter}</span>
                 {/if}
               </span>
             </div>
 
             {#each accountList as account}
-              {@const isAssigned = getRuleForStrategyAccount(rule.strategy_id, account.id)?.enabled}
+              {@const isAssigned = getRuleForStrategyAccount(strategy.id, account.id)?.enabled}
               <div class="matrix-cell toggle-col">
                 <button
                   class="toggle-btn"
                   class:active={isAssigned}
-                  onclick={() => handleToggleRule(rule.strategy_id, isAssigned || false)}
+                  onclick={() => handleToggleRule(strategy.id, account.id, isAssigned || false)}
                   title={isAssigned ? 'Disable routing' : 'Enable routing'}
                 >
                   {#if isAssigned}
@@ -167,7 +172,7 @@
           </div>
         {/each}
 
-        {#if filteredRules.length === 0}
+        {#if strategyRows.length === 0}
           <div class="no-results">
             No routing rules match the current filters.
           </div>

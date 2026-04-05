@@ -13,9 +13,7 @@
     Code2,
     GitBranch,
     FlaskConical,
-    Rocket,
     TestTube2,
-    Kanban,
     Inbox,
     Loader2,
     Play,
@@ -40,20 +38,18 @@
   import { canvasContextService } from '$lib/services/canvasContextService';
   import DepartmentKanban from '$lib/components/department-kanban/DepartmentKanban.svelte';
   import AgentTilePanel from '$lib/components/AgentTilePanel.svelte';
-  import PipelineBoard from '$lib/components/development/PipelineBoard.svelte';
   import VariantBrowser from '$lib/components/development/VariantBrowser.svelte';
   import ABComparisonView from '$lib/components/development/ABComparisonView.svelte';
   import ProvenanceChain from '$lib/components/development/ProvenanceChain.svelte';
   import MonacoEditorStub from '$lib/components/development/MonacoEditorStub.svelte';
   import MonacoEditor from '$lib/components/MonacoEditor.svelte';
   import BacktestRunner from '$lib/components/BacktestRunner.svelte';
-  import { alphaForgeStore } from '$lib/stores/alpha-forge';
 
   // =============================================================================
   // Types
   // =============================================================================
 
-  type DevTab = 'active-eas' | 'variants' | 'backtest' | 'pipeline' | 'workflows' | 'dept-tasks';
+  type DevTab = 'active-eas' | 'variants' | 'backtest' | 'workflows' | 'dept-tasks';
 
   interface ActiveEA {
     id: string;
@@ -93,6 +89,14 @@
     deployments?: DeploymentListItem[];
   }
 
+  interface ReferenceBook {
+    id: string;
+    title: string;
+    author: string;
+    topics: string[];
+    year?: number;
+  }
+
   // =============================================================================
   // State
   // =============================================================================
@@ -114,6 +118,7 @@
   // Agent insights strip
   let insightsExpanded = $state(false);
   let insightsUnread = $state(0);
+  let referenceBooks = $state<ReferenceBook[]>([]);
 
   // =============================================================================
   // Tab config
@@ -123,7 +128,6 @@
     { id: 'active-eas',  label: 'Active EAs',  icon: Cpu       },
     { id: 'variants',    label: 'Variants',     icon: GitBranch },
     { id: 'backtest',    label: 'Backtest',     icon: FlaskConical },
-    { id: 'pipeline',    label: 'Pipeline',     icon: Kanban    },
     { id: 'workflows',   label: 'Workflows',    icon: GitBranch },
     { id: 'dept-tasks',  label: 'Dept Tasks',   icon: CheckCircle2 },
   ];
@@ -330,9 +334,10 @@ if __name__ == "__main__":
       // canvas context is optional
     }
 
-    alphaForgeStore.startPolling(10000);
-
-    await loadTab('active-eas');
+    await Promise.all([
+      loadReferenceBooks(),
+      loadTab('active-eas'),
+    ]);
   });
 
   // =============================================================================
@@ -340,7 +345,7 @@ if __name__ == "__main__":
   // =============================================================================
 
   async function loadTab(tab: DevTab) {
-    if (tab === 'dept-tasks' || tab === 'variants' || tab === 'pipeline' || tab === 'workflows') return;
+    if (tab === 'dept-tasks' || tab === 'variants' || tab === 'workflows') return;
     if (loadingTab === tab) return;
 
     loadingTab = tab;
@@ -387,6 +392,20 @@ if __name__ == "__main__":
   async function handleTabChange(tab: DevTab) {
     activeTab = tab;
     await loadTab(tab);
+  }
+
+  async function loadReferenceBooks() {
+    try {
+      const books = await apiFetch<ReferenceBook[]>('/knowledge/books');
+      referenceBooks = books
+        .filter((book) => {
+          const haystack = `${book.title} ${book.author} ${(book.topics || []).join(' ')}`.toLowerCase();
+          return /(mql5|metatrader|mt5)/.test(haystack);
+        })
+        .slice(0, 10);
+    } catch {
+      referenceBooks = [];
+    }
   }
 
   // =============================================================================
@@ -453,6 +472,18 @@ if __name__ == "__main__":
           loading: loadingTab === activeTab,
         },
       },
+      ...referenceBooks.map((book) => ({
+        id: book.id,
+        label: book.title,
+        canvas: 'development',
+        resource_type: 'reference-book',
+        metadata: {
+          author: book.author,
+          topics: book.topics,
+          year: book.year,
+          source: 'knowledge/books',
+        },
+      })),
     ];
 
     if (activeTab === 'active-eas') {
@@ -516,30 +547,6 @@ if __name__ == "__main__":
       ];
     }
 
-    if (activeTab === 'pipeline') {
-      return [
-        ...baseResources,
-        {
-          id: 'development:pipeline-board',
-          label: 'Pipeline Board',
-          canvas: 'development',
-          resource_type: 'board',
-          metadata: {
-            active_tab: activeTab,
-          },
-        },
-        {
-          id: 'development:department-kanban',
-          label: 'Department Task Board',
-          canvas: 'development',
-          resource_type: 'kanban',
-          metadata: {
-            department: 'development',
-          },
-        },
-      ];
-    }
-
     if (activeTab === 'variants') {
       return [
         ...baseResources,
@@ -588,6 +595,7 @@ if __name__ == "__main__":
       loading_tab: loadingTab,
       active_ea_count: activeEAs.length,
       backtest_result_count: backtestResults.length,
+      reference_book_count: referenceBooks.length,
       attachable_resources: getDevelopmentAttachableResources(),
     });
   });
@@ -635,21 +643,6 @@ if __name__ == "__main__":
       <!-- ---- Dept Tasks: inline kanban ---- -->
       <div class="kanban-wrapper">
         <DepartmentKanban department="development" />
-      </div>
-
-    {:else if activeTab === 'pipeline'}
-      <!-- ---- Pipeline: full PipelineBoard + kanban sub-section ---- -->
-      <div class="pipeline-wrapper">
-        <div class="pipeline-board-section">
-          <PipelineBoard />
-        </div>
-        <div class="kanban-sub-section">
-          <div class="sub-section-label">
-            <Kanban size={13} />
-            <span>Department Task Board</span>
-          </div>
-          <DepartmentKanban department="development" />
-        </div>
       </div>
 
     {:else if activeTab === 'variants'}
@@ -1409,51 +1402,6 @@ if __name__ == "__main__":
   .mc-threshold {
     color: rgba(255, 255, 255, 0.25);
     font-size: 9px;
-  }
-
-  /* =========================================================
-     Pipeline pane (PipelineBoard + DepartmentKanban sub-section)
-     ========================================================= */
-  .pipeline-wrapper {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .pipeline-board-section {
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .kanban-sub-section {
-    flex-shrink: 0;
-    max-height: 320px;
-    display: flex;
-    flex-direction: column;
-    border-top: 1px solid rgba(0, 212, 255, 0.1);
-    overflow: hidden;
-  }
-
-  .sub-section-label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    background: rgba(8, 13, 20, 0.45);
-    border-bottom: 1px solid rgba(0, 212, 255, 0.08);
-    font-family: var(--font-ambient);
-    font-size: 11px;
-    color: rgba(0, 212, 255, 0.6);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    flex-shrink: 0;
-  }
-
-  .kanban-sub-section :global(.department-kanban) {
-    flex: 1;
-    min-height: 0;
   }
 
   /* =========================================================

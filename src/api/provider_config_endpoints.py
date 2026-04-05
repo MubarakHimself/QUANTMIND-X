@@ -755,11 +755,13 @@ async def refresh_providers():
     """
     try:
         from src.agents.providers import refresh_router, get_router
+        from src.api.ide_handlers_video_ingest import refresh_runtime as refresh_video_ingest_runtime
 
         router = get_router()
         last_refresh = router.last_refresh_timestamp
 
         refresh_router()
+        refresh_video_ingest_runtime(force=True)
 
         return {
             "success": True,

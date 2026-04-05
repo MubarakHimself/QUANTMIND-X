@@ -17,6 +17,7 @@ export interface ChatSession {
   user_id: string;
   created_at: string;
   updated_at: string;
+  message_count?: number;
 }
 
 export interface ChatMessageRequest {
@@ -86,10 +87,17 @@ export const chatApi = {
     return response.json();
   },
 
-  async listSessions(userId?: string, agentType?: string): Promise<ChatSession[]> {
+  async listSessions(
+    userId?: string,
+    agentType?: string,
+    agentId?: string,
+    excludeEmpty: boolean = false,
+  ): Promise<ChatSession[]> {
     const params = new URLSearchParams();
     if (userId) params.set('user_id', userId);
     if (agentType) params.set('agent_type', agentType);
+    if (agentId) params.set('agent_id', agentId);
+    if (excludeEmpty) params.set('exclude_empty', 'true');
 
     const response = await fetch(`${API_BASE}/sessions?${params}`, {
       credentials: 'include'

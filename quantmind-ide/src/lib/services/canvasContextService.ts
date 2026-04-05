@@ -55,6 +55,18 @@ export interface WorkspaceResourceManifest {
   }>;
 }
 
+interface SharedAssetMenuEntry {
+  id?: string;
+  path?: string;
+  filesystem_path?: string;
+  name?: string;
+  title?: string;
+  category?: string;
+  type?: string;
+  asset_type?: string;
+  description?: string;
+}
+
 interface WorkspaceResourceSearchResponse {
   query: string;
   count: number;
@@ -71,6 +83,8 @@ interface WorkspaceResourceSearchResponse {
     relevance?: number;
   }>;
 }
+
+type SharedAssetMenuBucket = 'books' | 'articles' | 'docs' | 'strategies' | 'other';
 
 export interface CanvasSuggestionChip {
   id: string;
@@ -471,6 +485,193 @@ class CanvasContextService {
       }));
   }
 
+  private mapSharedAssetMenuResources(payload: unknown): CanvasAttachableResource[] {
+    if (!Array.isArray(payload)) {
+      return [];
+    }
+
+    return payload
+      .filter((entry): entry is SharedAssetMenuEntry => !!entry && typeof entry === 'object')
+      .map((entry) => ({
+        id: String(entry.id || entry.path || entry.filesystem_path || entry.name || entry.title || ''),
+        label: String(entry.name || entry.title || entry.id || 'Untitled Asset'),
+        canvas: 'shared-assets',
+        resource_type: String(entry.category || entry.type || entry.asset_type || 'doc'),
+        path: entry.path || entry.filesystem_path,
+        description: entry.description,
+      }))
+      .filter((entry) => entry.id.length > 0 && entry.label.length > 0);
+  }
+
+  private getSharedAssetMenuBucket(resource: CanvasAttachableResource): SharedAssetMenuBucket {
+    const resourceType = String(resource.resource_type || '').trim().toLowerCase();
+    const resourceId = String(resource.id || '').toLowerCase();
+    const resourcePath = String(resource.path || '').toLowerCase();
+
+    if (
+      resourceType === 'books'
+      || resourceType === 'book'
+      || resourceId.startsWith('knowledge/books/')
+      || resourcePath.includes('/books/')
+    ) {
+      return 'books';
+    }
+
+    if (
+      resourceType === 'articles'
+      || resourceType === 'article'
+      || resourceId.startsWith('knowledge/articles/')
+      || resourceId.startsWith('scraped/')
+      || resourcePath.includes('/articles/')
+      || resourcePath.includes('/scraped/')
+    ) {
+      return 'articles';
+    }
+
+    if (resourceType === 'strategies' || resourceType === 'strategy' || resourceId.startsWith('strategies/')) {
+      return 'strategies';
+    }
+
+    if (
+      resourceType === 'doc'
+      || resourceType === 'docs'
+      || resourceType === 'libraries'
+      || resourceType === 'library'
+      || resourceType === 'risk'
+    ) {
+      return 'docs';
+    }
+
+    return 'other';
+  }
+
+  private sharedAssetsMenuNeedsHydration(
+    existing: CanvasAttachableResource[],
+    runtimeState: Record<string, unknown> | undefined,
+  ): boolean {
+    if (existing.length === 0) {
+      return true;
+    }
+
+    const counts = runtimeState?.counts;
+    if (!counts || typeof counts !== 'object') {
+      return false;
+    }
+
+    const countRecord = counts as Record<string, unknown>;
+    const docCount = Number(countRecord.docs ?? 0);
+    const strategyCount = Number(countRecord.strategies ?? 0);
+    const buckets = new Set(existing.map((resource) => this.getSharedAssetMenuBucket(resource)));
+
+    if (strategyCount > 0 && !buckets.has('strategies')) {
+      return true;
+    }
+
+    if (docCount > 0 && !buckets.has('books') && !buckets.has('articles') && !buckets.has('docs')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private curateSharedAssetMenuResources(
+    resources: CanvasAttachableResource[],
+    limit: number,
+  ): CanvasAttachableResource[] {
+    const buckets: Record<SharedAssetMenuBucket, CanvasAttachableResource[]> = {
+      books: [],
+      articles: [],
+      docs: [],
+      strategies: [],
+      other: [],
+    };
+
+    for (const resource of resources) {
+      buckets[this.getSharedAssetMenuBucket(resource)].push(resource);
+    }
+
+    const orderedBuckets: SharedAssetMenuBucket[] = ['books', 'articles', 'docs', 'strategies', 'other'];
+    const deduped = new Map<string, CanvasAttachableResource>();
+
+    for (const bucket of orderedBuckets) {
+      const first = buckets[bucket].shift();
+      if (!first) continue;
+      deduped.set(`${first.canvas}:${first.id}`, first);
+      if (deduped.size >= limit) {
+        return Array.from(deduped.values()).slice(0, limit);
+      }
+    }
+
+    let bucketIndex = 0;
+    while (deduped.size < limit) {
+      const bucket = orderedBuckets[bucketIndex % orderedBuckets.length];
+      const next = buckets[bucket].shift();
+      bucketIndex += 1;
+      if (!next) {
+        const remaining = orderedBuckets.some((candidate) => buckets[candidate].length > 0);
+        if (!remaining) break;
+        continue;
+      }
+      const key = `${next.canvas}:${next.id}`;
+      if (!deduped.has(key)) {
+        deduped.set(key, next);
+      }
+    }
+
+    return Array.from(deduped.values()).slice(0, limit);
+  }
+
+  async getMenuAttachableResources(canvasName: string, limit: number = 250): Promise<CanvasAttachableResource[]> {
+    const canvasId = this.getCanvasId(canvasName);
+    await this.getEnrichedContext(canvasId);
+
+    const existing = this.getAttachableResources(canvasId);
+    const runtimeState = this.getCanvasContext(canvasId)?.runtime_state as Record<string, unknown> | undefined;
+    if (canvasId !== 'shared-assets' && existing.length > 0) {
+      return existing.slice(0, limit);
+    }
+
+    if (canvasId === 'shared-assets' && existing.length > 0 && !this.sharedAssetsMenuNeedsHydration(existing, runtimeState)) {
+      return existing.slice(0, limit);
+    }
+
+    if (canvasId !== 'shared-assets') {
+      return [];
+    }
+
+    try {
+      const response = await fetch(`${API_CONFIG.API_BASE}/assets/shared`);
+      if (!response.ok) {
+        return [];
+      }
+
+      const payload = await response.json();
+      const fallbackResources = this.curateSharedAssetMenuResources(
+        this.mapSharedAssetMenuResources(payload),
+        limit,
+      );
+      if (fallbackResources.length === 0) {
+        return [];
+      }
+
+      const existingContext = this.getCanvasContext(canvasId);
+      const mergedResources = Array.from(
+        new Map(
+          [...existing, ...fallbackResources].map((resource) => [`${resource.canvas}:${resource.id}`, resource] as const),
+        ).values(),
+      ).slice(0, limit);
+
+      this.setRuntimeState(canvasId, {
+        ...(existingContext?.runtime_state ?? {}),
+        attachable_resources: mergedResources,
+      });
+      return mergedResources;
+    } catch (error) {
+      console.warn('Failed to hydrate shared-assets attachable resources for menu', error);
+      return [];
+    }
+  }
+
   buildResourceAttachmentContext(resource: CanvasAttachableResource): Record<string, unknown> {
     return {
       id: resource.id,
@@ -545,13 +746,21 @@ class CanvasContextService {
     canvasNames: string[],
     limit: number = 12,
   ): Promise<CanvasAttachableResource[]> {
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) {
+      // Empty attach menus should stay canvas-curated. Backend/global search is for
+      // natural language retrieval during active chat requests, not for dumping the
+      // entire workspace into the picker.
+      return [];
+    }
+
     const canvasIds = Array.from(new Set(canvasNames.map((name) => this.getCanvasId(name))));
     try {
       const response = await fetch(`${API_CONFIG.API_BASE}/canvas-context/resources/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query,
+          query: normalizedQuery,
           canvases: canvasIds,
           limit: Math.max(1, Math.min(limit, 200)),
         }),
@@ -559,24 +768,26 @@ class CanvasContextService {
 
       if (response.ok) {
         const payload = await response.json() as WorkspaceResourceSearchResponse;
-        const mapped = (payload.resources ?? []).map((resource) => ({
-          id: resource.resource_id,
-          label: resource.label,
-          canvas: this.getCanvasId(resource.canvas),
-          resource_type: resource.type,
-          path: resource.path,
-          description: typeof resource.metadata?.description === 'string'
-            ? resource.metadata.description
-            : '',
-          metadata: {
-            ...(resource.metadata ?? {}),
-            resource_id: resource.resource_id,
-            tab: resource.tab,
-            version: resource.version,
-            updated_at: resource.updated_at,
-            relevance: resource.relevance,
-          },
-        }));
+        const mapped = (payload.resources ?? [])
+          .map((resource) => ({
+            id: resource.resource_id,
+            label: resource.label,
+            canvas: this.getCanvasId(resource.canvas),
+            resource_type: resource.type,
+            path: resource.path,
+            description: typeof resource.metadata?.description === 'string'
+              ? resource.metadata.description
+              : '',
+            metadata: {
+              ...(resource.metadata ?? {}),
+              resource_id: resource.resource_id,
+              tab: resource.tab,
+              version: resource.version,
+              updated_at: resource.updated_at,
+              relevance: resource.relevance,
+            },
+          }))
+          .filter((resource) => canvasIds.includes(resource.canvas));
         if (mapped.length > 0) {
           return mapped.slice(0, limit);
         }
@@ -593,7 +804,7 @@ class CanvasContextService {
     const allResources = canvasIds.flatMap((canvasId) => this.getAttachableResources(canvasId));
     if (allResources.length === 0) return [];
 
-    const tokens = this.tokenize(query);
+    const tokens = this.tokenize(normalizedQuery);
     const scored = allResources
       .map((resource) => ({ resource, score: this.scoreResourceMatch(resource, tokens) }))
       .filter((entry) => (tokens.length === 0 ? true : entry.score > 0))

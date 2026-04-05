@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 
+from sqlalchemy import func
 from src.database.engine import Session
 from src.database.models import ChatSession, ChatMessage
 
@@ -36,6 +37,33 @@ class ChatSessionService:
         if any(ctx.get(key) for key in ("workflow_id", "workflow_run_id", "workflow_step")):
             return "workflow_session"
         return "interactive_session"
+
+    @staticmethod
+    def _looks_like_default_title(title: Optional[str]) -> bool:
+        normalized = str(title or "").strip().lower()
+        return not normalized or normalized.startswith("chat ")
+
+    @staticmethod
+    def _derive_session_title_from_message(content: str) -> str:
+        text = " ".join(str(content or "").strip().split())
+        if not text:
+            return "Untitled session"
+        candidate = text[:72].rstrip(" .,;:-")
+        return candidate or "Untitled session"
+
+    def _derive_session_title_preview(self, db, session_id: str, current_title: Optional[str]) -> str:
+        if not self._looks_like_default_title(current_title):
+            return str(current_title or "").strip() or "Untitled session"
+
+        first_user_message = (
+            db.query(ChatMessage.content)
+            .filter(ChatMessage.session_id == session_id, ChatMessage.role == "user")
+            .order_by(ChatMessage.created_at.asc())
+            .first()
+        )
+        if first_user_message and first_user_message[0]:
+            return self._derive_session_title_from_message(first_user_message[0])
+        return str(current_title or "").strip() or "Untitled session"
 
     async def create_session(
         self,
@@ -232,6 +260,17 @@ class ChatSessionService:
             if not session:
                 raise ValueError(f"Session {session_id} not found")
 
+            existing_message_count = db.query(func.count(ChatMessage.id)).filter(
+                ChatMessage.session_id == session_id
+            ).scalar() or 0
+
+            if (
+                role == "user"
+                and existing_message_count == 0
+                and self._looks_like_default_title(session.title)
+            ):
+                session.title = self._derive_session_title_from_message(content)
+
             # Update session's last_message_at
             session.last_message_at = now
 
@@ -273,22 +312,37 @@ class ChatSessionService:
         self,
         user_id: Optional[str] = None,
         agent_type: Optional[str] = None,
-        limit: int = 100
+        agent_id: Optional[str] = None,
+        limit: int = 100,
+        exclude_empty: bool = False,
     ) -> List[ChatSession]:
         """List sessions with optional filtering."""
         db = Session()
         try:
-            query = db.query(ChatSession)
+            query = (
+                db.query(ChatSession, func.count(ChatMessage.id).label("message_count"))
+                .outerjoin(ChatMessage, ChatMessage.session_id == ChatSession.id)
+                .group_by(ChatSession.id)
+            )
 
             if user_id:
                 query = query.filter(ChatSession.user_id == user_id)
             if agent_type:
                 query = query.filter(ChatSession.agent_type == agent_type)
+            if agent_id:
+                query = query.filter(ChatSession.agent_id == agent_id)
+            if exclude_empty:
+                query = query.having(func.count(ChatMessage.id) > 0)
 
-            sessions = query.order_by(ChatSession.updated_at.desc()).limit(limit).all()
+            rows = query.order_by(ChatSession.updated_at.desc()).limit(limit).all()
 
-            for session in sessions:
+            sessions: List[ChatSession] = []
+            for session, message_count in rows:
+                setattr(session, "message_count", int(message_count or 0))
+                if int(message_count or 0) > 0:
+                    session.title = self._derive_session_title_preview(db, session.id, session.title)
                 db.expunge(session)
+                sessions.append(session)
             return sessions
         finally:
             db.close()

@@ -9,11 +9,13 @@ Tests the session CRUD endpoints:
 - PATCH /api/chat/sessions/{session_id} - Rename session
 """
 
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 
 from src.api.server import app
-from src.api.chat_endpoints import _normalize_chat_context
+from src.api.chat_endpoints import _normalize_chat_context, _session_service
 
 
 @pytest.fixture
@@ -97,6 +99,47 @@ class TestListSessionsEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
+
+    def test_list_sessions_supports_agent_id_and_exclude_empty(self, client):
+        empty_resp = client.post(
+            "/api/chat/sessions",
+            json={
+                "agent_type": "department",
+                "agent_id": "research",
+                "user_id": "user-1",
+                "title": "Empty research",
+            },
+        )
+        assert empty_resp.status_code == 200
+
+        populated_resp = client.post(
+            "/api/chat/sessions",
+            json={
+                "agent_type": "department",
+                "agent_id": "research",
+                "user_id": "user-1",
+                "title": "Populated research",
+            },
+        )
+        assert populated_resp.status_code == 200
+        session_id = populated_resp.json()["id"]
+
+        asyncio.run(_session_service.add_message(session_id, "user", "Hello research"))
+
+        response = client.get(
+            "/api/chat/sessions",
+            params={
+                "user_id": "user-1",
+                "agent_type": "department",
+                "agent_id": "research",
+                "exclude_empty": "true",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["id"] == session_id
+        assert data[0]["message_count"] == 1
 
 
 class TestUpdateSessionEndpoint:
@@ -194,3 +237,38 @@ class TestContextNormalization:
 
         hints = normalized["workspace_resource_hints"]
         assert [hint["canvas"] for hint in hints] == ["risk", "research"]
+
+    def test_preserves_resource_attachment_shape_in_compact_context(self):
+        normalized = _normalize_chat_context(
+            {
+                "canvas": "development",
+                "active_canvas": "development",
+                "attached_contexts": [
+                    {
+                        "canvas": "shared-assets",
+                        "label": "MQL5 Reference",
+                        "context": {
+                            "attachment_type": "resource",
+                            "resource": {
+                                "id": "knowledge/books/mql5.pdf",
+                                "label": "MQL5 Reference",
+                                "canvas": "shared-assets",
+                                "type": "book",
+                                "resource_type": "book",
+                                "path": "knowledge/books/mql5.pdf",
+                                "description": "Core MQL5 reference guide",
+                            },
+                        },
+                    }
+                ],
+            },
+            default_canvas="development",
+            default_department="development",
+        )
+
+        attachment = normalized["attached_contexts"][0]
+        assert attachment["canvas"] == "shared-assets"
+        assert attachment["label"] == "MQL5 Reference"
+        assert attachment["attachment_type"] == "resource"
+        assert attachment["resource"]["id"] == "knowledge/books/mql5.pdf"
+        assert attachment["resource"]["label"] == "MQL5 Reference"

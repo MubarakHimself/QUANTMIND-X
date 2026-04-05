@@ -231,15 +231,16 @@ describe('WorkshopCanvas.svelte — sendMessage logic', () => {
     expect(src).toContain("inputMessage = ''");
   });
 
-  it('sends workshop messages through chatApi session persistence', () => {
-    expect(src).toContain("chatApi.sendMessage('workshop'");
-    expect(src).not.toContain('/floor-manager/chat');
+  it('sends workshop messages through the floor-manager chat session contract', () => {
+    expect(src).toContain("chatApi.sendMessage(\n        'floor-manager'");
+    expect(src).not.toContain("chatApi.sendMessage('workshop'");
   });
 
   it('sets isLoading to false in finally block', () => {
     expect(src).toContain('finally {');
     expect(src).toContain('isLoading = false');
   });
+
 });
 
 // ─── Keyboard handler ─────────────────────────────────────────────────────
@@ -357,9 +358,14 @@ describe('WorkshopCanvas.svelte — Session management', () => {
     expect(src).toContain('e.stopPropagation()');
   });
 
-  it('loads both floor-manager and legacy workshop sessions into the recent sidebar', () => {
-    expect(src).toContain("chatApi.listSessions(undefined, 'floor-manager')");
-    expect(src).toContain("chatApi.listSessions(undefined, 'workshop')");
+  it('loads non-empty floor-manager and legacy workshop sessions into the recent sidebar', () => {
+    expect(src).toContain("chatApi.listSessions(undefined, 'floor-manager', undefined, true)");
+    expect(src).toContain("chatApi.listSessions(undefined, 'workshop', undefined, true)");
+  });
+
+  it('keeps the current local draft session mounted while recent history excludes older empty sessions', () => {
+    expect(src).toContain('const activeLocalSession = currentSessionId');
+    expect(src).toContain('!fetched.some((session) => session.id === activeLocalSession.id)');
   });
 
   it('renders a clear-history control that deletes all recent sessions', () => {

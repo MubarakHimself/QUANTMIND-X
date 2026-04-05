@@ -10,7 +10,6 @@
 import { writable, derived, get } from 'svelte/store';
 import {
   listAssetsByType,
-  listAllAssets,
   getAssetDetail,
   getAssetCounts,
   type SharedAsset,
@@ -45,9 +44,10 @@ const defaultState: SharedAssetsState = {
     'indicators': [],
     'skills': [],
     'flow-components': [],
-    'mcp-configs': []
+    'mcp-configs': [],
+    'strategies': []
   },
-  isLoading: false,
+  isLoading: true,
   error: null,
   selectedAsset: null,
   selectedType: null,
@@ -57,7 +57,8 @@ const defaultState: SharedAssetsState = {
     'indicators': 0,
     'skills': 0,
     'flow-components': 0,
-    'mcp-configs': 0
+    'mcp-configs': 0,
+    'strategies': 0
   }
 };
 
@@ -74,12 +75,10 @@ function createSharedAssetsStore() {
       update(state => ({ ...state, isLoading: true, error: null }));
 
       try {
-        const assets = await listAllAssets();
         const counts = await getAssetCounts();
 
         update(state => ({
           ...state,
-          assets,
           assetCounts: counts,
           isLoading: false
         }));
@@ -101,9 +100,19 @@ function createSharedAssetsStore() {
 
       try {
         const assets = await listAssetsByType(type);
+        let refreshedCounts: Record<AssetType, number> | null = null;
+        try {
+          refreshedCounts = await getAssetCounts();
+        } catch {
+          // Keep UI responsive even if one category count fetch fails.
+        }
+
         update(state => ({
           ...state,
           assets: { ...state.assets, [type]: assets },
+          assetCounts: refreshedCounts
+            ? refreshedCounts
+            : { ...state.assetCounts, [type]: assets.length },
           isLoading: false
         }));
       } catch (e) {
@@ -141,6 +150,16 @@ function createSharedAssetsStore() {
         ...state,
         selectedAsset: null,
         selectedType: null
+      }));
+    },
+
+    /**
+     * Clear only the selected asset while preserving the active type/category.
+     */
+    clearSelectedAsset() {
+      update(state => ({
+        ...state,
+        selectedAsset: null
       }));
     },
 
@@ -197,6 +216,27 @@ function createSharedAssetsStore() {
      */
     reset() {
       set({ ...defaultState });
+    },
+
+    async fetchAssetCounts() {
+      update(state => ({ ...state, isLoading: true, error: null }));
+
+      try {
+        const counts = await getAssetCounts();
+
+        update(state => ({
+          ...state,
+          assetCounts: counts,
+          isLoading: false
+        }));
+      } catch (e) {
+        const errorMessage = e instanceof Error ? e.message : 'Failed to fetch asset counts';
+        update(state => ({
+          ...state,
+          isLoading: false,
+          error: errorMessage
+        }));
+      }
     }
   };
 }

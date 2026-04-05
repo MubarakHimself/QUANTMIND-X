@@ -26,6 +26,14 @@ export interface DepartmentTask {
   updated_at?: string;
   started_at?: string;
   completed_at?: string;
+  strategy_id?: string;
+  current_stage?: string;
+  next_step?: string;
+  blocking_error?: string | null;
+  waiting_reason?: string | null;
+  latest_artifact?: { name?: string; path?: string; updated_at?: string } | null;
+  source_kind?: 'workflow' | 'mail' | 'workflow+mail';
+  read_only?: boolean;
 }
 
 export interface TaskUpdate {

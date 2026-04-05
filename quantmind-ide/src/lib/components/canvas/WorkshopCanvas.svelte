@@ -30,8 +30,14 @@
   import { chatApi, type ChatSession, type StoredChatMessage } from '$lib/api/chatApi';
   import { listSkills, type Skill } from '$lib/api/skillsApi';
   import { listAllAssets } from '$lib/api/sharedAssetsApi';
+  import VideoIngestWorkflow from '$lib/components/VideoIngestWorkflow.svelte';
   import { getHotNodes, getWarmNodes, type GraphMemoryNode, listOpinionNodes, createOpinionNode, type OpinionNode } from '$lib/api/graphMemory';
   import { canvasContextService, type CanvasAttachableResource } from '$lib/services/canvasContextService';
+  import {
+    buildAttachmentResourceGroups,
+    getAttachmentCanvasLabel,
+    getAttachmentGroupResources,
+  } from '$lib/services/attachmentBrowser';
   import { navigationStore } from '$lib/stores/navigationStore';
   import { copilotKillSwitchService } from '$lib/services/copilotKillSwitchService';
   import { getBaseUrl } from '$lib/config/api';
@@ -87,7 +93,7 @@ interface ProjectItem {
 
   // ── State ────────────────────────────────────────────────────────────────────
 
-  let activeSection = $state<'chat' | 'projects' | 'memory' | 'skills' | 'workflows' | 'subagents'>('chat');
+  let activeSection = $state<'chat' | 'projects' | 'memory' | 'skills' | 'workflows' | 'video-ingest' | 'subagents'>('chat');
 
   // Chat
   let messages = $state<Message[]>([]);
@@ -98,6 +104,8 @@ interface ProjectItem {
   let attachments = $state<WorkshopAttachment[]>([]);
   let showAttachMenu = $state(false);
   let attachableResources = $state<CanvasAttachableResource[]>([]);
+  let attachMenuCanvasId = $state<string | null>(null);
+  let attachMenuGroupPath = $state<string[]>([]);
 
   // Sessions (recent history in sidebar)
   let sessions = $state<ChatSession[]>([]);
@@ -231,6 +239,16 @@ interface ProjectItem {
     loadCanvasContext();
   });
 
+  const currentAttachGroupId = $derived(attachMenuGroupPath.at(-1) ?? null);
+  const currentAttachGroups = $derived(
+    attachMenuCanvasId
+      ? buildAttachmentResourceGroups(attachableResources, attachMenuCanvasId, currentAttachGroupId)
+      : []
+  );
+  const currentAttachResources = $derived(
+    currentAttachGroupId ? getAttachmentGroupResources(attachableResources, currentAttachGroupId) : []
+  );
+
   // ── Data loaders ─────────────────────────────────────────────────────────────
 
   async function loadCanvasContext() {
@@ -245,25 +263,47 @@ interface ProjectItem {
     const nextOpen = !showAttachMenu;
     showAttachMenu = nextOpen;
     if (!nextOpen) {
+      attachMenuCanvasId = null;
+      attachMenuGroupPath = [];
       return;
     }
 
+    attachMenuCanvasId = null;
+    attachMenuGroupPath = [];
     const resources: CanvasAttachableResource[] = [];
     for (const option of ATTACH_CANVAS_OPTIONS) {
-      await canvasContextService.getEnrichedContext(option.id);
-      resources.push(
-        ...canvasContextService.getAttachableResources(option.id).map((resource) => ({
-          ...resource,
-          label: `${option.label}: ${resource.label}`,
-        })),
-      );
+      resources.push(...await canvasContextService.getMenuAttachableResources(option.id, 150));
     }
     attachableResources = resources.slice(0, 150);
   }
 
+  function closeAttachMenu() {
+    showAttachMenu = false;
+    attachMenuCanvasId = null;
+    attachMenuGroupPath = [];
+  }
+
+  function openAttachCanvas(canvasId: string) {
+    attachMenuCanvasId = canvasId;
+    attachMenuGroupPath = [];
+  }
+
+  function openAttachGroup(groupId: string) {
+    attachMenuGroupPath = [...attachMenuGroupPath, groupId];
+  }
+
+  function navigateAttachBack() {
+    if (attachMenuGroupPath.length > 0) {
+      attachMenuGroupPath = attachMenuGroupPath.slice(0, -1);
+      return;
+    }
+    attachMenuCanvasId = null;
+    attachMenuGroupPath = [];
+  }
+
   function attachCanvasContext(option: WorkshopCanvasContextOption) {
     if (attachments.find((attachment) => attachment.kind === 'canvas' && attachment.canvasId === option.id)) {
-      showAttachMenu = false;
+      closeAttachMenu();
       return;
     }
     attachments = [...attachments, {
@@ -272,12 +312,17 @@ interface ProjectItem {
       canvasId: option.id,
       kind: 'canvas',
     }];
-    showAttachMenu = false;
+    closeAttachMenu();
   }
 
   function attachResource(resource: CanvasAttachableResource) {
-    if (attachments.find((attachment) => attachment.kind === 'resource' && attachment.resource?.id === resource.id)) {
-      showAttachMenu = false;
+    if (attachments.find((attachment) =>
+      attachment.kind === 'resource' &&
+      attachment.resource &&
+      attachment.resource.id === resource.id &&
+      attachment.resource.canvas === resource.canvas
+    )) {
+      closeAttachMenu();
       return;
     }
     attachments = [...attachments, {
@@ -287,7 +332,7 @@ interface ProjectItem {
       kind: 'resource',
       resource,
     }];
-    showAttachMenu = false;
+    closeAttachMenu();
   }
 
   function removeAttachment(id: string) {
@@ -352,7 +397,16 @@ interface ProjectItem {
   async function loadSessions() {
     sessionsLoading = true;
     try {
-      sessions = (await listWorkshopSessions()).slice(0, 20);
+      const fetched = await listWorkshopSessions();
+      const activeLocalSession = currentSessionId
+        ? sessions.find((session) => session.id === currentSessionId) ?? null
+        : null;
+      const merged = activeLocalSession && !fetched.some((session) => session.id === activeLocalSession.id)
+        ? [activeLocalSession, ...fetched]
+        : fetched;
+      sessions = merged
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+        .slice(0, 20);
     } catch (e) {
       console.error('Failed to load sessions:', e);
     } finally {
@@ -361,8 +415,13 @@ interface ProjectItem {
   }
 
   async function listWorkshopSessions() {
-    const floorManagerSessions = await chatApi.listSessions(undefined, 'floor-manager');
-    return floorManagerSessions.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+    const [floorManagerSessions, legacyWorkshopSessions] = await Promise.all([
+      chatApi.listSessions(undefined, 'floor-manager', undefined, true),
+      chatApi.listSessions(undefined, 'workshop', undefined, true),
+    ]);
+    return [...floorManagerSessions, ...legacyWorkshopSessions]
+      .filter((session, index, all) => all.findIndex((candidate) => candidate.id === session.id) === index)
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
   }
 
   async function loadSkills() {
@@ -1136,6 +1195,16 @@ interface ProjectItem {
         <ChevronRight size={12} class="nav-arrow" />
       </button>
 
+      <button
+        class="nav-item"
+        class:active={activeSection === 'video-ingest'}
+        onclick={() => navigateTo('video-ingest')}
+      >
+        <Wrench size={15} />
+        <span class="nav-label">Video Ingest</span>
+        <ChevronRight size={12} class="nav-arrow" />
+      </button>
+
       <!-- SUB-AGENTS -->
       <div class="nav-section-label">Agents</div>
       <button
@@ -1256,20 +1325,42 @@ interface ProjectItem {
 
           {#if showAttachMenu}
             <div class="attach-menu">
-              <div class="attach-header">Attach context from canvas</div>
-              {#each ATTACH_CANVAS_OPTIONS as option}
-                <button class="attach-option" onclick={() => attachCanvasContext(option)}>
-                  <span class="attach-label">{option.label}</span>
-                </button>
-              {/each}
-              {#if attachableResources.length > 0}
-                <div class="attach-header attach-subheader">Attach a visible file or tile</div>
-                {#each attachableResources as resource}
-                  <button class="attach-option" onclick={() => attachResource(resource)}>
-                    <span class="attach-label">{resource.label}</span>
-                    <span class="attach-meta">{resource.resource_type}</span>
+              {#if !attachMenuCanvasId}
+                <div class="attach-header">Attach context from canvas</div>
+                {#each ATTACH_CANVAS_OPTIONS as option}
+                  <button class="attach-option" onclick={() => openAttachCanvas(option.id)}>
+                    <span class="attach-label">{option.label}</span>
+                    <span class="attach-meta">browse</span>
                   </button>
                 {/each}
+              {:else}
+                <div class="attach-header">{getAttachmentCanvasLabel(attachMenuCanvasId)}</div>
+                <button class="attach-option" onclick={navigateAttachBack}>
+                  <span class="attach-label">{attachMenuGroupPath.length > 0 ? 'Back to folders' : 'Back to canvases'}</span>
+                </button>
+                {#if attachMenuGroupPath.length === 0}
+                  {#each ATTACH_CANVAS_OPTIONS.filter((option) => option.id === attachMenuCanvasId) as option}
+                    <button class="attach-option" onclick={() => attachCanvasContext(option)}>
+                      <span class="attach-label">Attach full {getAttachmentCanvasLabel(option.id)} context</span>
+                      <span class="attach-meta">canvas</span>
+                    </button>
+                  {/each}
+                {/if}
+                {#if currentAttachGroups.length > 0}
+                  {#each currentAttachGroups as group}
+                    <button class="attach-option" onclick={() => openAttachGroup(group.id)}>
+                      <span class="attach-label">{group.label}</span>
+                      <span class="attach-meta">{group.count}</span>
+                    </button>
+                  {/each}
+                {:else}
+                  {#each currentAttachResources as resource}
+                    <button class="attach-option" onclick={() => attachResource(resource)}>
+                      <span class="attach-label">{resource.label}</span>
+                      <span class="attach-meta">{resource.resource_type}</span>
+                    </button>
+                  {/each}
+                {/if}
               {/if}
             </div>
           {/if}
@@ -1590,6 +1681,16 @@ interface ProjectItem {
             {/each}
           </div>
         {/if}
+      </div>
+
+    <!-- VIDEO INGEST VIEW -->
+    {:else if activeSection === 'video-ingest'}
+      <div class="section-view">
+        <div class="section-header">
+          <Wrench size={20} />
+          <h2>Video Ingest</h2>
+        </div>
+        <VideoIngestWorkflow />
       </div>
 
     <!-- SUB-AGENTS VIEW -->

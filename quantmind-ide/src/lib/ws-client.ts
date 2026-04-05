@@ -472,7 +472,11 @@ export class WebSocketClient {
  * @returns Connected WebSocket client
  */
 export async function createWebSocketClient(baseUrl: string): Promise<WebSocketClient> {
-  const wsUrl = `${baseUrl.replace('http://', 'ws://').replace('https://', 'wss://')}/ws/main`;
+  const normalizedBase = baseUrl
+    .replace('http://', 'ws://')
+    .replace('https://', 'wss://')
+    .replace(/\/+$/, '');
+  const wsUrl = `${normalizedBase}/ws`;
   const client = new WebSocketClient(wsUrl);
   await client.connect();
   return client;
@@ -531,5 +535,5 @@ export async function createChartClient(
   return client;
 }
 
-export const wsClient = new WebSocketClient(`${WS_BASE}/ws/main`);
+export const wsClient = new WebSocketClient(`${WS_BASE}/ws`);
 export default WebSocketClient;

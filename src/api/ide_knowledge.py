@@ -229,11 +229,18 @@ def _collect_knowledge_books() -> List[Dict[str, Any]]:
         if not path.is_file() or path.name.endswith(".metadata.json"):
             continue
         metadata = _read_metadata(path)
+        topics = metadata.get("topics")
+        if isinstance(topics, str):
+            topics = [topics]
+        elif not isinstance(topics, list):
+            topics = []
+        if not topics and metadata.get("subcategory"):
+            topics = [metadata["subcategory"]]
         books.append({
-            "id": f"books/{path.name}",
+            "id": f"books/{str(path.relative_to(books_dir)).replace('\\', '/')}",
             "title": metadata.get("title") or Path(path.name).stem,
             "author": metadata.get("author", ""),
-            "topics": [metadata["subcategory"]] if metadata.get("subcategory") else [],
+            "topics": topics,
             "year": metadata.get("year"),
         })
 

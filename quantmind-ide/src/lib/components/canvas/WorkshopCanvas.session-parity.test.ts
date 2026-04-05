@@ -6,14 +6,19 @@ const src = readFileSync(resolve(__dirname, 'WorkshopCanvas.svelte'), 'utf-8');
 
 describe('WorkshopCanvas.svelte — session parity', () => {
   it('loads floor-manager sessions and legacy workshop sessions into the recent sidebar', () => {
-    expect(src).toContain("chatApi.listSessions(undefined, 'floor-manager')");
-    expect(src).toContain("chatApi.listSessions(undefined, 'workshop')");
+    expect(src).toContain("chatApi.listSessions(undefined, 'floor-manager', undefined, true)");
+    expect(src).toContain("chatApi.listSessions(undefined, 'workshop', undefined, true)");
   });
 
   it('creates a persisted session immediately on new chat so recent history updates before first send', () => {
     expect(src).toContain('function startNewChat');
     expect(src).toContain('await chatApi.createSession');
     expect(src).toContain("agentType: 'floor-manager'");
+  });
+
+  it('keeps the active local draft session mounted while recent history excludes older empty sessions', () => {
+    expect(src).toContain('const activeLocalSession = currentSessionId');
+    expect(src).toContain('!fetched.some((session) => session.id === activeLocalSession.id)');
   });
 
   it('sends workshop messages through the persisted floor-manager chat endpoint', () => {

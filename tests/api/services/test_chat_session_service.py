@@ -86,3 +86,58 @@ async def test_update_session_title(service):
     updated = await service.update_session_title(session.id, "Renamed session")
     assert updated is not None
     assert updated.title == "Renamed session"
+
+
+@pytest.mark.asyncio
+async def test_first_user_message_auto_titles_default_session(service):
+    session = await service.create_session(
+        agent_type="department",
+        agent_id="research",
+        user_id="user-1",
+    )
+
+    await service.add_message(
+        session_id=session.id,
+        role="user",
+        content="Investigate EURUSD breakout behavior during London open and summarize the edge.",
+    )
+
+    refreshed = await service.get_session(session.id)
+    assert refreshed is not None
+    assert refreshed.title.startswith("Investigate EURUSD breakout behavior")
+
+
+@pytest.mark.asyncio
+async def test_list_sessions_can_filter_agent_id_and_exclude_empty(service):
+    empty_research = await service.create_session(
+        agent_type="department",
+        agent_id="research",
+        user_id="user-1",
+        title="Empty research",
+    )
+    populated_research = await service.create_session(
+        agent_type="department",
+        agent_id="research",
+        user_id="user-1",
+        title="Populated research",
+    )
+    trading = await service.create_session(
+        agent_type="department",
+        agent_id="trading",
+        user_id="user-1",
+        title="Trading session",
+    )
+
+    await service.add_message(populated_research.id, "user", "Hello research")
+    await service.add_message(trading.id, "user", "Hello trading")
+
+    sessions = await service.list_sessions(
+        user_id="user-1",
+        agent_type="department",
+        agent_id="research",
+        exclude_empty=True,
+    )
+
+    assert [session.id for session in sessions] == [populated_research.id]
+    assert getattr(sessions[0], "message_count", 0) == 1
+    assert all(session.id != empty_research.id for session in sessions)

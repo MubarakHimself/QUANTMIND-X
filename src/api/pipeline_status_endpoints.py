@@ -13,10 +13,10 @@ Endpoints:
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import logging
-import uuid
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -102,107 +102,145 @@ class PipelineStagesResponse(BaseModel):
 
 
 # =============================================================================
-# In-Memory Pipeline State Store
+# Canonical WF1 Read Model
 # =============================================================================
 
-# In production, this would query Prefect API (workflows.db on Contabo)
-# For local development and testing, use in-memory store
-_pipeline_runs: Dict[str, Dict[str, Any]] = {}
+PIPELINE_STAGE_ORDER: List[PipelineStage] = [
+    PipelineStage.VIDEO_INGEST,
+    PipelineStage.RESEARCH,
+    PipelineStage.TRD,
+    PipelineStage.DEVELOPMENT,
+    PipelineStage.COMPILE,
+    PipelineStage.BACKTEST,
+    PipelineStage.VALIDATION,
+    PipelineStage.EA_LIFECYCLE,
+    PipelineStage.APPROVAL,
+]
+
+_WORKFLOW_STAGE_TO_PIPELINE_STAGE: Dict[str, PipelineStage] = {
+    "video ingest": PipelineStage.VIDEO_INGEST,
+    "research": PipelineStage.RESEARCH,
+    "development": PipelineStage.DEVELOPMENT,
+    "backtesting": PipelineStage.BACKTEST,
+    "paper trading": PipelineStage.EA_LIFECYCLE,
+    "paper trading monitor": PipelineStage.EA_LIFECYCLE,
+    "sit gate": PipelineStage.VALIDATION,
+    "human approval gate": PipelineStage.APPROVAL,
+    "completed": PipelineStage.APPROVAL,
+}
 
 
-def _initialize_sample_data():
-    """Initialize sample pipeline data for development/testing."""
-    if _pipeline_runs:
-        return  # Already initialized
+def _parse_iso(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
-    # Sample strategy for UI development
-    sample_runs = [
-        {
-            "strategy_id": "strat-001",
-            "strategy_name": "YouTube: RSI Divergence Strategy",
-            "current_stage": PipelineStage.BACKTEST,
-            "stage_status": StageStatus.RUNNING,
-            "stages": [
-                {"stage": PipelineStage.VIDEO_INGEST, "status": StageStatus.PASSED, "started_at": "2026-03-15T10:00:00Z", "completed_at": "2026-03-15T10:30:00Z"},
-                {"stage": PipelineStage.RESEARCH, "status": StageStatus.PASSED, "started_at": "2026-03-15T10:30:00Z", "completed_at": "2026-03-15T11:00:00Z"},
-                {"stage": PipelineStage.TRD, "status": StageStatus.PASSED, "started_at": "2026-03-15T11:00:00Z", "completed_at": "2026-03-15T11:30:00Z"},
-                {"stage": PipelineStage.DEVELOPMENT, "status": StageStatus.PASSED, "started_at": "2026-03-15T11:30:00Z", "completed_at": "2026-03-15T12:00:00Z"},
-                {"stage": PipelineStage.COMPILE, "status": StageStatus.PASSED, "started_at": "2026-03-15T12:00:00Z", "completed_at": "2026-03-15T12:15:00Z"},
-                {"stage": PipelineStage.BACKTEST, "status": StageStatus.RUNNING, "started_at": "2026-03-15T12:15:00Z", "completed_at": None},
-                {"stage": PipelineStage.VALIDATION, "status": StageStatus.WAITING, "started_at": None, "completed_at": None},
-                {"stage": PipelineStage.EA_LIFECYCLE, "status": StageStatus.WAITING, "started_at": None, "completed_at": None},
-                {"stage": PipelineStage.APPROVAL, "status": StageStatus.WAITING, "started_at": None, "completed_at": None},
-            ],
-            "approval_status": ApprovalStatus.NONE,
-            "started_at": "2026-03-15T10:00:00Z",
-            "updated_at": "2026-03-15T12:15:00Z",
+
+def _stage_status_for_workflow_state(
+    workflow_state: str,
+    stage_index: int,
+    current_index: int,
+) -> StageStatus:
+    state = (workflow_state or "").upper()
+    if stage_index < current_index:
+        return StageStatus.PASSED
+    if stage_index > current_index:
+        return StageStatus.WAITING
+    if state == "RUNNING":
+        return StageStatus.RUNNING
+    if state in {"DONE"}:
+        return StageStatus.PASSED
+    if state in {"CANCELLED", "EXPIRED_REVIEW"}:
+        return StageStatus.FAILED
+    return StageStatus.WAITING
+
+
+def _approval_status_for_workflow_state(workflow_state: str) -> ApprovalStatus:
+    state = (workflow_state or "").upper()
+    if state == "PENDING_REVIEW":
+        return ApprovalStatus.PENDING_REVIEW
+    if state == "DONE":
+        return ApprovalStatus.APPROVED
+    if state in {"CANCELLED", "EXPIRED_REVIEW"}:
+        return ApprovalStatus.REJECTED
+    return ApprovalStatus.NONE
+
+
+def _pipeline_stage_for_workflow(current_stage: Optional[str]) -> PipelineStage:
+    key = (current_stage or "").strip().lower()
+    return _WORKFLOW_STAGE_TO_PIPELINE_STAGE.get(key, PipelineStage.VIDEO_INGEST)
+
+
+def _strategy_name(strategy_id: str) -> str:
+    from src.api.wf1_artifacts import find_strategy_root
+
+    strategy_root = find_strategy_root(strategy_id)
+    if strategy_root:
+        meta_path = strategy_root / ".meta.json"
+        if meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                name = (meta.get("name") or "").strip()
+                if name:
+                    return name
+            except Exception:
+                pass
+    return strategy_id
+
+
+def _workflow_to_pipeline_run(workflow: Dict[str, Any]) -> Dict[str, Any]:
+    strategy_id = workflow.get("strategy_id") or workflow.get("id")
+    workflow_state = workflow.get("state") or "PENDING"
+    current_pipeline_stage = _pipeline_stage_for_workflow(workflow.get("current_stage"))
+    current_index = PIPELINE_STAGE_ORDER.index(current_pipeline_stage)
+    started_at = workflow.get("started_at") or workflow.get("updated_at") or datetime.now(timezone.utc).isoformat()
+    updated_at = workflow.get("updated_at") or started_at
+
+    stages: List[Dict[str, Any]] = []
+    for idx, stage in enumerate(PIPELINE_STAGE_ORDER):
+        status = _stage_status_for_workflow_state(workflow_state, idx, current_index)
+        stage_started_at = started_at if idx <= current_index else None
+        stage_completed_at = updated_at if status == StageStatus.PASSED else None
+        stages.append(
+            {
+                "stage": stage,
+                "status": status,
+                "started_at": stage_started_at,
+                "completed_at": stage_completed_at,
+                "error": workflow.get("blocking_error") if idx == current_index else None,
+            }
+        )
+
+    return {
+        "strategy_id": strategy_id,
+        "strategy_name": _strategy_name(strategy_id),
+        "current_stage": current_pipeline_stage,
+        "stage_status": _stage_status_for_workflow_state(workflow_state, current_index, current_index),
+        "stages": stages,
+        "approval_status": _approval_status_for_workflow_state(workflow_state),
+        "started_at": started_at,
+        "updated_at": updated_at,
+        "metadata": {
+            "workflow_id": workflow.get("id"),
+            "workflow_state": workflow_state,
+            "current_stage_label": workflow.get("current_stage"),
+            "department": workflow.get("department"),
+            "latest_artifact": workflow.get("latest_artifact"),
+            "blocking_error": workflow.get("blocking_error"),
         },
-        {
-            "strategy_id": "strat-002",
-            "strategy_name": "YouTube: Moving Average Crossover",
-            "current_stage": PipelineStage.APPROVAL,
-            "stage_status": StageStatus.WAITING,
-            "stages": [
-                {"stage": PipelineStage.VIDEO_INGEST, "status": StageStatus.PASSED, "started_at": "2026-03-14T09:00:00Z", "completed_at": "2026-03-14T09:30:00Z"},
-                {"stage": PipelineStage.RESEARCH, "status": StageStatus.PASSED, "started_at": "2026-03-14T09:30:00Z", "completed_at": "2026-03-14T10:00:00Z"},
-                {"stage": PipelineStage.TRD, "status": StageStatus.PASSED, "started_at": "2026-03-14T10:00:00Z", "completed_at": "2026-03-14T10:30:00Z"},
-                {"stage": PipelineStage.DEVELOPMENT, "status": StageStatus.PASSED, "started_at": "2026-03-14T10:30:00Z", "completed_at": "2026-03-14T11:00:00Z"},
-                {"stage": PipelineStage.COMPILE, "status": StageStatus.PASSED, "started_at": "2026-03-14T11:00:00Z", "completed_at": "2026-03-14T11:15:00Z"},
-                {"stage": PipelineStage.BACKTEST, "status": StageStatus.PASSED, "started_at": "2026-03-14T11:15:00Z", "completed_at": "2026-03-14T12:00:00Z"},
-                {"stage": PipelineStage.VALIDATION, "status": StageStatus.PASSED, "started_at": "2026-03-14T12:00:00Z", "completed_at": "2026-03-14T12:30:00Z"},
-                {"stage": PipelineStage.EA_LIFECYCLE, "status": StageStatus.PASSED, "started_at": "2026-03-14T12:30:00Z", "completed_at": "2026-03-14T13:00:00Z"},
-                {"stage": PipelineStage.APPROVAL, "status": StageStatus.WAITING, "started_at": None, "completed_at": None},
-            ],
-            "approval_status": ApprovalStatus.PENDING_REVIEW,
-            "started_at": "2026-03-14T09:00:00Z",
-            "updated_at": "2026-03-14T13:00:00Z",
-        },
-        {
-            "strategy_id": "strat-003",
-            "strategy_name": "Custom: Mean Reversion Bot",
-            "current_stage": PipelineStage.DEVELOPMENT,
-            "stage_status": StageStatus.RUNNING,
-            "stages": [
-                {"stage": PipelineStage.VIDEO_INGEST, "status": StageStatus.PASSED, "started_at": "2026-03-16T08:00:00Z", "completed_at": "2026-03-16T08:15:00Z"},
-                {"stage": PipelineStage.RESEARCH, "status": StageStatus.PASSED, "started_at": "2026-03-16T08:15:00Z", "completed_at": "2026-03-16T09:00:00Z"},
-                {"stage": PipelineStage.TRD, "status": StageStatus.PASSED, "started_at": "2026-03-16T09:00:00Z", "completed_at": "2026-03-16T09:30:00Z"},
-                {"stage": PipelineStage.DEVELOPMENT, "status": StageStatus.RUNNING, "started_at": "2026-03-16T09:30:00Z", "completed_at": None},
-                {"stage": PipelineStage.COMPILE, "status": StageStatus.WAITING, "started_at": None, "completed_at": None},
-                {"stage": PipelineStage.BACKTEST, "status": StageStatus.WAITING, "started_at": None, "completed_at": None},
-                {"stage": PipelineStage.VALIDATION, "status": StageStatus.WAITING, "started_at": None, "completed_at": None},
-                {"stage": PipelineStage.EA_LIFECYCLE, "status": StageStatus.WAITING, "started_at": None, "completed_at": None},
-                {"stage": PipelineStage.APPROVAL, "status": StageStatus.WAITING, "started_at": None, "completed_at": None},
-            ],
-            "approval_status": ApprovalStatus.NONE,
-            "started_at": "2026-03-16T08:00:00Z",
-            "updated_at": "2026-03-16T09:30:00Z",
-        },
-    ]
-
-    for run in sample_runs:
-        _pipeline_runs[run["strategy_id"]] = run
+    }
 
 
-def _get_pipeline_run(strategy_id: str) -> Optional[Dict[str, Any]]:
-    """Get pipeline run by strategy ID."""
-    return _pipeline_runs.get(strategy_id)
+async def _load_alpha_forge_runs() -> List[Dict[str, Any]]:
+    from src.api.prefect_workflow_endpoints import _merged_workflows
 
-
-def _get_all_runs() -> List[Dict[str, Any]]:
-    """Get all pipeline runs."""
-    return list(_pipeline_runs.values())
-
-
-def _get_active_runs() -> List[Dict[str, Any]]:
-    """Get only active (running) pipeline runs."""
-    return [
-        run for run in _pipeline_runs.values()
-        if run.get("stage_status") == StageStatus.RUNNING.value
-    ]
-
-
-# Initialize sample data on module load
-_initialize_sample_data()
+    workflows = list((await _merged_workflows()).values())
+    workflows = [workflow for workflow in workflows if workflow.get("name") == "WF1 Creation"]
+    workflows.sort(key=lambda workflow: workflow.get("updated_at") or workflow.get("started_at") or "", reverse=True)
+    return [_workflow_to_pipeline_run(workflow) for workflow in workflows]
 
 
 # =============================================================================
@@ -217,8 +255,7 @@ async def get_pipeline_status(
     """
     Get all pipeline runs or active runs only.
 
-    In production, this would query Prefect API for workflow state.
-    For development, returns in-memory sample data.
+    Reads canonical WF1 workflow state from the backend workflow read model.
 
     Args:
         active_only: If True, return only runs with RUNNING status
@@ -229,7 +266,9 @@ async def get_pipeline_status(
     """
     logger.info(f"Getting pipeline status (active_only={active_only}, limit={limit})")
 
-    runs = _get_active_runs() if active_only else _get_all_runs()
+    runs = await _load_alpha_forge_runs()
+    if active_only:
+        runs = [run for run in runs if run.get("stage_status") == StageStatus.RUNNING]
 
     # Sort by updated_at descending (most recent first)
     runs = sorted(runs, key=lambda r: r.get("updated_at", ""), reverse=True)
@@ -260,11 +299,11 @@ async def get_pipeline_status(
             metadata=run.get("metadata")
         ))
 
-    active_count = len(_get_active_runs())
+    active_count = len([run for run in runs if run.get("stage_status") == StageStatus.RUNNING])
 
     return PipelineStatusResponse(
         runs=pipeline_runs,
-        total=len(_pipeline_runs),
+        total=len(runs),
         active_count=active_count
     )
 
@@ -282,7 +321,8 @@ async def get_strategy_pipeline_status(strategy_id: str) -> SinglePipelineRespon
     """
     logger.info(f"Getting pipeline status for strategy: {strategy_id}")
 
-    run = _get_pipeline_run(strategy_id)
+    runs = await _load_alpha_forge_runs()
+    run = next((run for run in runs if run.get("strategy_id") == strategy_id), None)
 
     if not run:
         raise HTTPException(
@@ -351,7 +391,7 @@ async def get_pending_approvals() -> Dict[str, Any]:
         List of strategies requiring approval
     """
     pending = [
-        run for run in _pipeline_runs.values()
+        run for run in await _load_alpha_forge_runs()
         if run.get("approval_status") == ApprovalStatus.PENDING_REVIEW.value
     ]
 
@@ -374,52 +414,11 @@ async def create_pipeline_run(
     strategy_id: str,
     strategy_name: str,
 ) -> Dict[str, Any]:
-    """
-    Create a new pipeline run (for testing/development).
-
-    In production, this would be triggered by Prefect when a new workflow starts.
-
-    Args:
-        strategy_id: Unique strategy identifier
-        strategy_name: Display name for the strategy
-
-    Returns:
-        Created pipeline run details
-    """
-    if strategy_id in _pipeline_runs:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Pipeline run already exists for strategy: {strategy_id}"
-        )
-
-    # Create new run
-    now = datetime.utcnow().isoformat() + "Z"
-    new_run = {
-        "strategy_id": strategy_id,
-        "strategy_name": strategy_name,
-        "current_stage": PipelineStage.VIDEO_INGEST,
-        "stage_status": StageStatus.RUNNING,
-        "stages": [
-            {
-                "stage": stage,
-                "status": StageStatus.WAITING if stage != PipelineStage.VIDEO_INGEST else StageStatus.RUNNING,
-                "started_at": now if stage == PipelineStage.VIDEO_INGEST else None,
-                "completed_at": None
-            }
-            for stage in PipelineStage
-        ],
-        "approval_status": ApprovalStatus.NONE,
-        "started_at": now,
-        "updated_at": now,
-    }
-
-    _pipeline_runs[strategy_id] = new_run
-
-    return {
-        "status": "created",
-        "strategy_id": strategy_id,
-        "strategy_name": strategy_name
-    }
+    """Pipeline runs are created by the workflow coordinator, not ad hoc here."""
+    raise HTTPException(
+        status_code=501,
+        detail="Create pipeline runs via the canonical workflow coordinator",
+    )
 
 
 # =============================================================================

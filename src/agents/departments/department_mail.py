@@ -113,7 +113,10 @@ class DepartmentMailService:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self.db = sqlite3.connect(str(self.db_path))
+        self.db = sqlite3.connect(
+            str(self.db_path),
+            check_same_thread=False,
+        )
         self._init_schema()
 
     def _init_schema(self):
@@ -301,12 +304,13 @@ class DepartmentMailService:
 
         return messages
 
-    def mark_read(self, message_id: str) -> bool:
+    def mark_read(self, message_id: str, dept: Optional[str] = None) -> bool:
         """
         Mark a message as read.
 
         Args:
             message_id: ID of message to mark read
+            dept: Compatibility argument ignored by the SQLite backend
 
         Returns:
             True if message was found and updated
@@ -1309,6 +1313,28 @@ class RedisDepartmentMailService:
 _redis_mail_service: Optional[RedisDepartmentMailService] = None
 
 
+def _truthy_env(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _sqlite_mail_service(db_path: str) -> DepartmentMailService:
+    global _mail_service
+    if _mail_service is None or str(_mail_service.db_path) != str(Path(db_path)):
+        if _mail_service is not None:
+            _mail_service.close()
+        _mail_service = DepartmentMailService(db_path=db_path)
+    return _mail_service
+
+
+def _redis_requested(use_redis: Optional[bool]) -> bool:
+    if use_redis is not None:
+        return use_redis
+    backend = os.getenv("DEPARTMENT_MAIL_BACKEND", "").strip().lower()
+    if backend:
+        return backend == "redis"
+    return _truthy_env("DEPARTMENT_MAIL_USE_REDIS")
+
+
 def get_redis_mail_service(
     host: str = DEFAULT_REDIS_HOST,
     port: int = DEFAULT_REDIS_PORT,
@@ -1354,41 +1380,44 @@ def reset_redis_mail_service() -> None:
 
 def get_mail_service(
     db_path: str = ".quantmind/department_mail.db",
-    use_redis: bool = True,
+    use_redis: Optional[bool] = None,
     **redis_kwargs,
 ) -> Any:
     """
     Get the mail service instance (factory function).
 
     Args:
-        db_path: Path to SQLite database (ignored if use_redis=True)
-        use_redis: If True, returns Redis Streams implementation
+        db_path: Path to SQLite database used for the durable fallback/default backend
+        use_redis: Override for Redis selection. If omitted, DEPARTMENT_MAIL_BACKEND /
+            DEPARTMENT_MAIL_USE_REDIS controls the backend and defaults to SQLite.
         **redis_kwargs: Additional arguments for Redis connection
 
     Returns:
         DepartmentMailService (SQLite) or RedisDepartmentMailService (Redis Streams)
     """
-    if use_redis:
-        warnings.warn(
-            "SQLite-based DepartmentMailService is deprecated. "
-            "Use RedisDepartmentMailService for reliable message delivery.",
-            DeprecationWarning,
-            stacklevel=2
+    force_redis = bool(redis_kwargs.pop("force_redis", False)) or _truthy_env("DEPARTMENT_MAIL_REDIS_REQUIRED")
+
+    if _redis_requested(use_redis):
+        redis_service = get_redis_mail_service(**redis_kwargs)
+        if redis_service.health_check():
+            return redis_service
+        if force_redis:
+            raise RedisConnectionFailedError(
+                f"Redis department mail is required but unavailable at {redis_service.host}:{redis_service.port}"
+            )
+        logger.warning(
+            "Redis department mail unavailable at %s:%s; falling back to SQLite mail store %s",
+            redis_service.host,
+            redis_service.port,
+            db_path,
         )
-        return get_redis_mail_service(**redis_kwargs)
-    else:
-        warnings.warn(
-            "SQLite-based DepartmentMailService is deprecated. "
-            "Please migrate to Redis Streams-based implementation.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        return DepartmentMailService(db_path=db_path)
+
+    return _sqlite_mail_service(db_path)
 
 
 def create_mail_service(
     db_path: str = ".quantmind/department_mail.db",
-    use_redis: bool = True,
+    use_redis: Optional[bool] = None,
     **redis_kwargs,
 ) -> Any:
     """

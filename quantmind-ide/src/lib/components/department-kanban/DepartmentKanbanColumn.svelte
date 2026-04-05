@@ -71,7 +71,21 @@
 
   <div class="column-content">
     {#each tasks as task (task.task_id)}
-      <div class="task-wrapper" draggable="true">
+      <div
+        class="task-wrapper"
+        class:read-only={task.read_only}
+        role="listitem"
+        draggable={!task.read_only}
+        ondragstart={(event) => {
+          if (task.read_only) {
+            event.preventDefault();
+            return;
+          }
+          event.dataTransfer?.setData('text/plain', task.task_id);
+          event.dataTransfer?.setData('application/x-quantmind-task-id', task.task_id);
+          event.dataTransfer!.effectAllowed = 'move';
+        }}
+      >
         <DepartmentKanbanCard
           {task}
           onSelect={onTaskSelect}
@@ -146,8 +160,16 @@
     cursor: grab;
   }
 
+  .task-wrapper.read-only {
+    cursor: default;
+  }
+
   .task-wrapper:active {
     cursor: grabbing;
+  }
+
+  .task-wrapper.read-only:active {
+    cursor: default;
   }
 
   .empty-state {

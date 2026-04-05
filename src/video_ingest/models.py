@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 import json
+import hashlib
 from enum import Enum
 
 
@@ -339,6 +340,45 @@ class VideoIngestConfig:
             "log_level": self.log_level,
             "log_file": str(self.log_file) if self.log_file else None,
         }
+
+    def runtime_fingerprint(self) -> str:
+        """
+        Return a stable fingerprint for runtime-relevant configuration.
+
+        Secrets are hashed rather than stored directly so the ingest runtime can
+        detect provider-setting changes without exposing credentials in memory
+        snapshots or logs.
+        """
+        def _secret_fingerprint(value: Optional[str]) -> Optional[str]:
+            if not value:
+                return None
+            return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+
+        payload = {
+            "openrouter_api_key": _secret_fingerprint(self.openrouter_api_key),
+            "openrouter_model": self.openrouter_model,
+            "openrouter_base_url": self.openrouter_base_url,
+            "qwen_api_key": _secret_fingerprint(self.qwen_api_key),
+            "qwen_headless": self.qwen_headless,
+            "qwen_model": self.qwen_model,
+            "gemini_api_key": _secret_fingerprint(self.gemini_api_key),
+            "gemini_yolo_mode": self.gemini_yolo_mode,
+            "qwen_requests_per_day": self.qwen_requests_per_day,
+            "cache_dir": str(self.cache_dir),
+            "cache_max_size_gb": self.cache_max_size_gb,
+            "cache_max_age_days": self.cache_max_age_days,
+            "max_concurrent_jobs": self.max_concurrent_jobs,
+            "job_db_path": str(self.job_db_path),
+            "output_dir": str(self.output_dir),
+            "default_frame_interval": self.default_frame_interval,
+            "default_audio_bitrate": self.default_audio_bitrate,
+            "default_audio_channels": self.default_audio_channels,
+            "max_retry_attempts": self.max_retry_attempts,
+            "base_retry_delay": self.base_retry_delay,
+            "log_level": self.log_level,
+            "log_file": str(self.log_file) if self.log_file else None,
+        }
+        return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
     
     @classmethod
     def from_env(cls) -> "VideoIngestConfig":

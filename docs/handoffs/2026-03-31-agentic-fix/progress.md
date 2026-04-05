@@ -1,6 +1,1506 @@
 # Progress
 
-Updated: 2026-04-04
+Updated: 2026-04-05
+
+## 2026-04-05 Incremental Slice (WF1 strategy-detail stage contract + Contabo handoff prep)
+
+- Extended the canonical WF1 strategy-detail payload so Shared Assets roots expose actual workflow-stage visibility instead of only source-ingest leftovers:
+  - [ide_handlers_strategy.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_strategy.py)
+    - strategy detail now returns explicit stage groups for:
+      - `research_files`
+      - `development_files`
+      - `variant_files`
+      - `compilation_files`
+      - `report_files`
+      - `backtest_files`
+    - boolean readiness flags now also include:
+      - `has_variants`
+      - `has_compilation`
+      - `has_reports`
+    - this keeps Shared Assets aligned with the actual WF1 / AlgoForge artifact contract:
+      - `source`
+      - `research`
+      - `development`
+      - `variants`
+      - `compilation`
+      - `backtests`
+      - `reports`
+- Projected the same stage model into the operator-facing Shared Assets detail view:
+  - [AssetDetail.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shared-assets/AssetDetail.svelte)
+    - still shows ingest/source counts
+    - now also renders a second WF1 stage summary grid for:
+      - `Research`
+      - `Development`
+      - `Variants`
+      - `Compilation`
+      - `Reports`
+    - this makes WF1 roots more suitable for the upcoming real smoke pass because the operator can see which stage has actually produced artifacts
+- Regression coverage added first, then passed:
+  - backend:
+    - [test_ide_handlers_strategy.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_ide_handlers_strategy.py)
+      - new test asserts stage artifact arrays and readiness booleans for a canonical WF1 bundle
+  - frontend:
+    - [AssetDetail.strategy-artifacts.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shared-assets/AssetDetail.strategy-artifacts.test.ts)
+      - asserts the detail panel now references the five explicit WF1 stage groups and their payload keys
+- Verification completed:
+  - backend:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_ide_handlers_strategy.py`
+      - result: `5 passed`
+    - `python3 -m py_compile src/api/ide_handlers_strategy.py tests/api/test_ide_handlers_strategy.py`
+      - result: clean compile
+  - frontend:
+    - `npm --prefix quantmind-ide run test:run -- src/lib/components/shared-assets/AssetDetail.strategy-artifacts.test.ts`
+      - result: `2 passed`
+    - `npm --prefix quantmind-ide run build -- --mode development`
+      - result: build passed
+- Live backend verification completed after restarting the local API process:
+  - `GET /health`
+    - result: `200 {"status":"healthy","service":"QuantMind IDE API"}`
+  - `GET /api/strategies/strategies/scalping/single-videos/me_at_the_zoo_smoke`
+    - now returns the new stage keys live:
+      - `has_variants`
+      - `has_compilation`
+      - `has_reports`
+      - empty arrays for the corresponding stage file lists when that strategy root has not advanced yet
+- Live Chrome verification completed for the operator-facing detail surface:
+  - `Shared Assets -> Strategies -> Scalping -> Single Videos -> me_at_the_zoo_smoke`
+    - detail panel now shows the new WF1 stage summary blocks live:
+      - `Research`
+      - `Development`
+      - `Variants`
+      - `Compilation`
+      - `Reports`
+    - current quarantined smoke root correctly renders them as zero-count/pending stage summaries rather than omitting them entirely
+- Deployment handoff prep for the next phase:
+  - the Contabo SSH access note is documented in [Contabo_Deployment_Guide.md](/home/mubarkahimself/Desktop/QUANTMINDX/docs/Contabo_Deployment_Guide.md)
+    - current machine key path is recorded there as:
+      - `~/.ssh/id_ed25519`
+    - server target is recorded there as:
+      - `root@155.133.27.86`
+  - do **not** SSH yet from this slice; the next intended order remains:
+    - finish remaining autonomous runtime slices
+    - clean repo/worktree state
+    - commit
+    - push
+    - then SSH and reset/pull the Contabo deployment
+  - user also flagged that the current repo should likely avoid shipping the large bootstrap PDFs and scraped-article corpus as long-term Git payload:
+    - those are better treated as cold-storage / server-managed assets during the upcoming Contabo setup phase
+    - this has **not** been executed yet; it is only recorded as the next deployment packaging consideration
+  - quick tracked-payload audit confirms this is a real push/deployment concern:
+    - tracked PDFs currently include:
+      - `mql5.pdf` (~32 MB)
+      - `mql5book.pdf` (~14 MB)
+      - plus three smaller strategy/reference PDFs
+    - tracked article corpus currently includes:
+      - `data/scraped_articles` (~104 MB)
+    - this means the next repo cleanup / push step should explicitly decide whether to:
+      - keep them in Git temporarily
+      - move them to server-managed storage before the next production deployment push
+
+## 2026-04-05 Incremental Slice (Git packaging cleanup: source-code-only repo)
+
+- Applied the repo-packaging decision to keep source code in Git and move heavy runtime/content payloads out of the repository path:
+  - [.gitignore](/home/mubarkahimself/Desktop/QUANTMINDX/.gitignore)
+    - now ignores:
+      - `data/scraped_articles/`
+      - `data/shared_assets/`
+      - `data/knowledge/`
+      - `server/data/shared_assets/`
+      - `server/data/knowledge/`
+      - `quantmind-ide/data/shared_assets/`
+      - `quantmind-ide/data/knowledge/`
+      - `*.pdf`
+    - removed the old exception that intentionally kept `data/scraped_articles/` tracked
+- Untracked the already-committed heavy payloads from the Git index without deleting the local files:
+  - root/reference PDFs are now staged as Git removals only
+  - the tracked `data/scraped_articles/...` corpus is now staged as Git removals only
+  - local preservation was verified after the untrack step:
+    - `mql5.pdf` still exists locally
+    - representative scraped article files still exist locally
+  - ignore behavior was verified with:
+    - `git check-ignore -v mql5.pdf`
+    - `git check-ignore -v data/scraped_articles/expert_advisors/expert_advisor_sample.md`
+- Important operator note for the next commit/push phase:
+  - the current staged `D ...` entries for PDFs and `data/scraped_articles/...` are intentional
+  - they represent de-tracking for deployment packaging, not local data deletion
+  - those assets should be migrated/served from Contabo cold storage or other deployment-managed storage in the next infrastructure phase
+
+## 2026-04-05 Incremental Slice (Strategy breadcrumb/path clarity + live session rename/delete verification)
+
+- Tightened the Shared Assets strategy-navigation contract so the live UI reflects the actual folder path instead of repeating `Strategies` at every level:
+  - [AssetList.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shared-assets/AssetList.svelte)
+    - added `onPathChange` callback support
+    - emits nested path segments for:
+      - docs groups/article categories
+      - strategy family/source-bucket drill-down
+    - list header title now becomes context-specific while drilling in, e.g.:
+      - `Scalping`
+      - `Single Videos`
+      - instead of remaining `Strategies`
+  - [SharedAssetsCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/SharedAssetsCanvas.svelte)
+    - now tracks `nestedPathSegments`
+    - renders the emitted path segments into the live breadcrumb before the detail leaf
+  - regression coverage:
+    - [SharedAssetsCanvas.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/SharedAssetsCanvas.test.ts)
+    - [AssetList.strategy-folders.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shared-assets/AssetList.strategy-folders.test.ts)
+- Live Chrome verification completed for the strategy-tree clarity pass:
+  - `Shared Assets -> Strategies`
+    - still starts at:
+      - `Scalping`
+  - `Shared Assets -> Strategies -> Scalping`
+    - breadcrumb now shows:
+      - `Shared Assets / Strategies / Scalping`
+    - list title now shows:
+      - `Scalping`
+  - `Shared Assets -> Strategies -> Scalping -> Single Videos`
+    - breadcrumb now shows:
+      - `Shared Assets / Strategies / Scalping / Single Videos`
+    - list title now shows:
+      - `Single Videos`
+    - canonical root still resolves to:
+      - `me_at_the_zoo_smoke`
+- Re-verified the live session-management operator path, not just the passive history contract:
+  - `Portfolio -> New session`
+    - created a disposable live session
+  - sent:
+    - `Temporary rename delete verification.`
+  - `Portfolio -> Session history`
+    - row appeared immediately as:
+      - `Temporary rename delete verification`
+    - renamed live to:
+      - `Temp rename ok`
+    - deleted the same disposable row live
+    - row disappeared from history immediately and the panel returned to the empty-state prompt for that session
+- Additional live sanity check:
+  - `GET /api/portfolio/brokers`
+    - total rows: `33`
+    - active rows: `33`
+  - this confirms the Portfolio `ACTIVE ACCOUNTS 33` tile is currently backed by live API data, not a frontend mock fallback
+- Verification completed:
+  - frontend:
+    - `npm --prefix quantmind-ide run test:run -- src/lib/components/canvas/SharedAssetsCanvas.test.ts src/lib/components/shared-assets/AssetList.strategy-folders.test.ts`
+      - result: `9 passed`
+    - `npm --prefix quantmind-ide run build -- --mode development`
+      - result: build passed
+
+## 2026-04-05 Incremental Slice (Shared Assets canvas cleanup + Risk tab cleanup)
+
+- Removed an outdated non-applicable task surface from Shared Assets:
+  - root cause:
+    - [SharedAssetsCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/SharedAssetsCanvas.svelte)
+      - still imported/rendered:
+        - `DepartmentKanban`
+        - `DeptKanbanTile`
+      - still exposed a `dept-kanban` sub-page and a grid-level `DEPT TASKS` tile
+      - this contradicted the intended contract for Shared Assets as a reusable library surface rather than a department execution board
+  - fix:
+    - [SharedAssetsCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/SharedAssetsCanvas.svelte)
+      - removed the `dept-kanban` sub-page branch entirely
+      - removed the `DEPT TASKS` tile from the grid
+      - kept the canvas focused on:
+        - asset categories
+        - folder/list browsing
+        - asset detail
+    - regression coverage:
+      - [SharedAssetsCanvas.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/SharedAssetsCanvas.test.ts)
+        - now asserts Shared Assets remains asset-only and no longer imports/renders `DepartmentKanban` or `DeptKanbanTile`
+- Removed the stale Risk-side backtesting surface:
+  - root cause:
+    - [RiskCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/RiskCanvas.svelte)
+      - still carried a local `Backtest` tab and `BacktestResultsPanel`
+      - this duplicated workflow/trading responsibilities and contradicted the earlier UI correction that backtesting should not live in Risk
+  - fix:
+    - [RiskCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/RiskCanvas.svelte)
+      - removed the `backtest` tab from the `RiskTab` union and tab config
+      - removed the `BacktestResultsPanel` import/render path
+      - canonical Risk tabs are now:
+        - `Physics`
+        - `Compliance`
+        - `Calendar`
+        - `Dept Tasks`
+        - `DPR`
+    - regression coverage:
+      - [RiskCanvas.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/RiskCanvas.test.ts)
+        - now asserts Risk no longer exposes a `Backtest` tab and still preserves the department kanban path
+- Live Chrome verification completed:
+  - `Shared Assets`
+    - grid no longer shows the stale `DEPT TASKS` tile
+  - `Risk`
+    - tabs now show only:
+      - `Physics`
+      - `Compliance`
+      - `Calendar`
+      - `Dept Tasks`
+      - `DPR`
+    - `Backtest` is gone from the live canvas
+  - `Shared Assets -> Docs -> Articles`
+    - live article-sync operator surface verified:
+      - `Sync Now`
+      - scraper selector (`Simple Scraper` / `Firecrawl`)
+      - `Set API Key`
+      - live category breakdown (`Expert Advisors`, `Integration`, `Trading`, `Trading Systems`)
+- Verification completed:
+  - frontend:
+    - `npm --prefix quantmind-ide run test:run -- src/lib/components/canvas/SharedAssetsCanvas.test.ts src/lib/components/canvas/RiskCanvas.test.ts`
+      - result: `9 passed`
+    - `npm --prefix quantmind-ide run build -- --mode development`
+      - result: build passed
+
+## 2026-04-05 Incremental Slice (Department `New session` regression + Workshop recent-history cleanup)
+
+- Closed the live right-rail `New session` regression in the department agent panel:
+  - root cause:
+    - [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte)
+      - `createNewSession()` created a backend session, mounted a local empty draft, then immediately called `loadSessionHistory()`
+      - because history now requests `exclude_empty=true`, that immediate reload filtered the brand-new empty draft back out of the panel state
+      - result: the operator clicked `+`, but the panel dropped back to the empty-state prompt instead of staying in the new chat
+  - fix:
+    - [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte)
+      - removed the immediate history reload at the end of `createNewSession()`
+      - the locally active draft now remains mounted until the first real user message promotes it into persisted recent history
+    - regression coverage:
+      - [AgentPanel.session-management.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.session-management.test.ts)
+        - now verifies that a newly created empty draft remains in local session state and becomes the active session without a follow-up history reload
+- Live Chrome verification completed for the repaired department path:
+  - `Research -> New session`
+    - after reload, clicking `New session` now opens the input row instead of returning to the empty-state panel
+  - `Development -> New session`
+    - after reload, clicking `New session` now opens a real draft session
+    - attached:
+      - `Shared Assets -> Docs -> Books -> MQL5 Reference`
+    - sent:
+      - `State the exact attachment label you received, then in one short sentence say what it is useful for in the development department.`
+    - live result:
+      - attachment chip rendered:
+        - `MQL5 Reference`
+      - one compact streaming row rendered during response
+      - final assistant reply grounded on the exact attachment label and its Development usage
+- Extended the same cleaned-history contract into the Workshop recent-session surface:
+  - root cause:
+    - `Workshop` history still loaded mixed empty `Chat ...` draft rows from older `floor-manager` / `workshop` sessions
+    - that made `RECENT` look noisy even though the real active send path was working
+  - fixes landed:
+    - [WorkshopCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/WorkshopCanvas.svelte)
+      - recent-session loading now requests:
+        - `chatApi.listSessions(undefined, 'floor-manager', undefined, true)`
+        - `chatApi.listSessions(undefined, 'workshop', undefined, true)`
+      - deduplicates and sorts the combined history
+      - preserves the currently active local draft session even if it is still empty and therefore excluded from backend history
+    - regression coverage:
+      - [WorkshopCanvas.session-parity.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/WorkshopCanvas.session-parity.test.ts)
+      - [WorkshopCanvas.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/WorkshopCanvas.test.ts)
+- Live Chrome verification completed for the Workshop cleanup:
+  - `Workshop -> New Chat`
+    - creating a new draft still works immediately
+  - `Workshop -> send`
+    - prompt:
+      - `Say one word: workshop.`
+    - final reply:
+      - `workshop`
+    - recent row retitled to:
+      - `Say one word: workshop`
+  - after reload, `Workshop -> RECENT` now shows the real useful sessions and no longer surfaces stale empty rows such as:
+    - `Chat 2026-04-05 11:56`
+- Verification completed:
+  - frontend:
+    - `npm --prefix quantmind-ide run test:run -- src/lib/components/shell/AgentPanel.session-management.test.ts`
+      - result: passed
+    - `npm --prefix quantmind-ide run test:run -- src/lib/components/canvas/WorkshopCanvas.session-parity.test.ts`
+      - result: passed
+    - `npm --prefix quantmind-ide run build -- --mode development`
+      - result: build passed
+- Important current note:
+  - [WorkshopCanvas.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/WorkshopCanvas.test.ts)
+    - still contains many stale legacy assertions unrelated to the recent-history fix
+    - it is not yet a trustworthy CI gate for the modern Workshop runtime and needs a separate contract refresh later
+
+## 2026-04-05 Incremental Slice (Attachment envelope live re-verification on restarted backend)
+
+- Closed the backend-side attachment-envelope regression all the way through a fresh live browser pass after restarting the API process:
+  - [chat_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/chat_endpoints.py)
+    - `_compact_attachment_context(...)` now preserves:
+      - top-level attachment `label`
+      - `attachment_type`
+      - nested `context.resource`
+      - minimal runtime manifest data when present
+  - [base.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/heads/base.py)
+    - department prompt summarization now preserves the same attachment envelope instead of degrading everything to a broad canvas hint
+  - regression coverage:
+    - [test_chat_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_chat_endpoints.py)
+    - [test_base.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/agents/departments/heads/test_base.py)
+- Live Chrome verification completed on the restarted backend:
+  - `Development -> New session -> Attach canvas context -> Shared Assets context -> Docs -> Books -> MQL5 Reference`
+    - attachment chip renders as `MQL5 Reference`
+  - sending:
+    - `State the exact attachment label you received, and nothing else.`
+  - final assistant reply now returns:
+    - `MQL5 Reference`
+  - this confirms the active runtime is now grounded on the specific attached resource label instead of collapsing to the generic `shared-assets` canvas descriptor
+- Verification completed:
+  - backend:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_chat_endpoints.py tests/agents/departments/heads/test_base.py`
+      - result: `19 passed`
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_chat_per_agent.py`
+      - result: `13 passed`
+    - `python3 -m py_compile src/api/chat_endpoints.py src/agents/departments/heads/base.py tests/api/test_chat_endpoints.py tests/agents/departments/heads/test_base.py`
+      - result: clean compile
+  - live browser verification:
+    - exact attached-resource label preserved end to end on the Development chat path after backend restart
+
+## 2026-04-05 Incremental Slice (Development -> Research live mail writeback re-verification)
+
+- Re-verified the real department mail path from an active agent response, not just from direct compose UI:
+  - `Development -> CHAT`
+    - sent:
+      - `Send a short mail to the research department saying: development runtime mail verification.`
+    - live assistant response returned:
+      - `Mail sent`
+      - concrete sender/receiver summary
+      - concrete `message_id`
+- Confirmed the receiving UI surface updates correctly in the target department:
+  - `Research -> MAIL`
+    - inbox now shows a new `DEVELOPMENT -> RESEARCH` item
+    - subject renders as:
+      - `development runtime mail verification`
+    - detail pane renders:
+      - sender/source metadata
+      - live timestamp
+      - full body:
+        - `Development department runtime mail verification — connectivity confirmed.`
+- This closes the next live projection concern:
+  - agent tool call -> backend mail write -> target department inbox/detail projection
+  - verified without mock data and without manual seed insertion
+
+## 2026-04-05 Incremental Slice (Session history contract cleanup: empty drafts, real counts, useful titles)
+
+- Fixed the right-rail session history so it no longer floods the operator with empty draft rows and fake `ACTIVE` badges:
+  - [chat_session_service.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/services/chat_session_service.py)
+    - `list_sessions(...)` now supports:
+      - `agent_id`
+      - `exclude_empty`
+    - session list results now carry real `message_count`
+    - non-empty sessions with placeholder `Chat ...` titles now get a derived preview title from the first user message when listed
+    - first real user message now auto-titles brand-new default sessions so new history rows stop being timestamp-only placeholders
+  - [chat_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/chat_endpoints.py)
+    - `/api/chat/sessions` now exposes:
+      - `agent_id`
+      - `exclude_empty`
+      - `message_count` in `SessionResponse`
+  - [chatApi.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/api/chatApi.ts)
+    - frontend session list requests now pass `agent_id` and `exclude_empty`
+  - [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte)
+    - session history now loads the filtered backend contract instead of client-side sifting through mixed rows
+    - badge text now reflects:
+      - `Current`
+      - `N msgs`
+      - `Draft`
+    - misleading `ACTIVE` status is removed from historical rows
+- Runtime verification completed:
+  - backend contract:
+    - `GET /api/chat/sessions?agent_type=department&agent_id=research&exclude_empty=true`
+      - now returns only non-empty Research sessions
+      - now returns real `message_count`
+      - now returns useful derived titles such as:
+        - `Summarize London breakout hypotheses for EURUSD in one line`
+        - `Analyze market`
+        - `Using the attached MQL5 Reference, tell me in one sentence what it is us...`
+  - auto-title probe:
+    - created a new live Research session via `/api/chat/sessions`
+    - sent a real department message via `/api/chat/departments/research/message`
+    - verified `GET /api/chat/sessions/{id}` returned:
+      - title: `Summarize London breakout hypotheses for EURUSD in one line`
+      - `message_count: 2`
+  - live Chrome verification:
+    - `Research -> Session history`
+      - empty duplicate draft rows are gone
+      - badges now show `2 msgs` / `4 msgs` instead of `ACTIVE`
+      - history titles are now prompt-derived and materially usable instead of mostly timestamp placeholders
+- Verification completed:
+  - frontend:
+    - `npm --prefix quantmind-ide run test:run -- src/lib/components/shell/AgentPanel.session-management.test.ts`
+      - result: `3 passed`
+    - `npm --prefix quantmind-ide run build -- --mode development`
+      - result: build passed
+  - backend:
+    - `python3 -m py_compile src/api/services/chat_session_service.py src/api/chat_endpoints.py`
+      - result: clean compile
+    - live API/runtime verification used instead of the older noisy chat-service test harness
+
+## 2026-04-05 Incremental Slice (Shared Assets strategy hierarchy + attach-menu rehydration)
+
+- Completed the live verification of the new Shared Assets strategy hierarchy:
+  - `Shared Assets -> Strategies`
+    - now renders family folders first (live-verified with `Scalping`)
+  - `Shared Assets -> Strategies -> Scalping`
+    - now renders source-bucket folders second (live-verified with `Single Videos`)
+  - `Shared Assets -> Strategies -> Scalping -> Single Videos`
+    - now resolves to the real canonical WF1 root (`me_at_the_zoo_smoke`) instead of a flat mixed list
+- Confirmed the same hierarchy is available in the attach browser, not just in the Shared Assets canvas:
+  - `Workshop -> Attach canvas context -> Shared Assets context -> Strategies -> Scalping -> Single Videos`
+    - live-verified end to end
+- Found and fixed a real cross-canvas attach regression after that verification:
+  - root cause:
+    - [SharedAssetsCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/SharedAssetsCanvas.svelte)
+      - writes `attachable_resources` from the currently loaded Shared Assets categories only
+      - because category payloads are lazy-loaded, a user who last opened `Strategies` left the cached `shared-assets` runtime state looking like a complete library even though `Docs` had never been hydrated
+    - [canvasContextService.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/canvasContextService.ts)
+      - `getMenuAttachableResources('shared-assets')` returned any non-empty cached runtime resources immediately
+      - that meant department/workshop attach menus showed only the last loaded Shared Assets category, e.g. just `Strategies`, hiding `Docs`, `Books`, and `Articles`
+  - fixes landed:
+    - [canvasContextService.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/canvasContextService.ts)
+      - added shared-assets menu hydration detection so a partial cached runtime snapshot is no longer treated as complete
+      - added shared-assets menu bucket classification (`books`, `articles`, `docs`, `strategies`, `other`)
+      - added curated fallback ordering so menu hydration preserves the operator-facing folder contract instead of being dominated by whichever bucket happens to appear first
+      - shared-assets fallback hydration now merges with existing runtime resources rather than replacing them blindly
+    - [canvasContextService.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/canvasContextService.test.ts)
+      - new regression coverage proves that a cached runtime state containing only `strategies` is rehydrated to include Shared Assets docs/books/articles before the attach menu is returned
+- Live Chrome verification completed for the repaired department attach path:
+  - `Development -> New session -> Attach canvas context -> Shared Assets context`
+    - now shows both:
+      - `Docs`
+      - `Strategies`
+    - instead of incorrectly showing only `Strategies`
+  - `Development -> Shared Assets -> Docs`
+    - now drills into:
+      - `Books`
+      - `Articles`
+    - live, from the same right-rail attach flow used by the department agent
+- Verification completed:
+  - frontend tests:
+    - `npm --prefix quantmind-ide run test:run -- src/lib/services/canvasContextService.test.ts`
+      - result: `4 passed`
+    - `npm --prefix quantmind-ide run test:run -- src/lib/services/attachmentBrowser.test.ts src/lib/components/shell/AgentPanel.context-attachment.test.ts src/lib/components/canvas/WorkshopCanvas.attachment-browser.test.ts`
+      - result: `8 passed`
+  - production build:
+    - `npm --prefix quantmind-ide run build -- --mode development`
+      - result: build passed
+  - live browser verification:
+    - Shared Assets strategy folder hierarchy verified through the actual canvas
+    - Workshop attach hierarchy verified for Shared Assets strategies
+    - Development attach hierarchy re-verified for Shared Assets docs/books/articles after the rehydration fix
+
+## 2026-04-05 Incremental Slice (Live Trading dashboard-only + Shared Assets lazy docs contract)
+
+- Corrected the canvas/agent boundary for Live Trading:
+  - [page.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/routes/+page.svelte)
+    - removed `live-trading` from the top-level `AGENT_PANEL_CANVASES`
+    - tightened the render gate so `AgentPanel` is only mounted when `showAgentPanel` is true
+  - this restores the intended contract:
+    - `Live Trading` is the user dashboard
+    - the actual trading department agent remains in the `Trading` canvas
+  - regression coverage:
+    - [page.agent-panel-gating.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/routes/page.agent-panel-gating.test.ts)
+      - verifies `live-trading` is excluded from the agent-panel canvas set
+      - verifies the root page only mounts `AgentPanel` when `showAgentPanel` is true
+- Closed a real Shared Assets bootstrap/performance bug that kept `Docs` looking hung:
+  - root cause:
+    - [ide_handlers_assets.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_assets.py)
+      - `/api/assets?category=docs` only returned filesystem `docs/` files and omitted books/articles
+      - canonical list results also skipped the root-level scrape cleanup/title resolution already present in the legacy shape
+    - [sharedAssetsApi.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/api/sharedAssetsApi.ts)
+      - `getAssetCounts()` still recomputed counts by loading every asset in every category
+    - [SharedAssetsCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/SharedAssetsCanvas.svelte)
+      - grid bootstrap called `fetchAssets()` and effectively preloaded the whole library on mount
+  - fixes landed:
+    - [ide_handlers_assets.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_assets.py)
+      - `category=docs` now returns the full docs bucket:
+        - filesystem docs/library/risk files
+        - knowledge books
+        - knowledge articles
+        - categorized scraped articles
+      - canonical list responses now also:
+        - hide root-level synthetic scrape junk
+        - resolve display titles from metadata/frontmatter/headings instead of raw filenames
+    - [sharedAssetsApi.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/api/sharedAssetsApi.ts)
+      - `getAssetCounts()` now uses the real backend contract:
+        - `/api/assets/counts`
+    - [sharedAssets.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/sharedAssets.ts)
+      - added lightweight `fetchAssetCounts()`
+      - `fetchAssets()` no longer preloads the full asset corpus just to get tile counts
+    - [SharedAssetsCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/SharedAssetsCanvas.svelte)
+      - initial canvas bootstrap now fetches counts only
+      - category payloads stay lazy-loaded on click
+    - [AssetList.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shared-assets/AssetList.svelte)
+      - retry now reloads the active category instead of falling back to the full Shared Assets bootstrap path
+  - regression coverage:
+    - [test_shared_assets_knowledge_bridge.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_shared_assets_knowledge_bridge.py)
+      - verifies `/api/assets?category=docs` contains:
+        - books
+        - knowledge articles
+        - docs files
+        - categorized scraped articles
+      - verifies root-level synthetic scrape artifacts stay hidden
+      - verifies resolved titles are preserved
+    - [sharedAssetsApi.contract.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/api/sharedAssetsApi.contract.test.ts)
+      - verifies frontend count loading uses `/assets/counts`
+    - [SharedAssetsCanvas.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/SharedAssetsCanvas.test.ts)
+      - verifies mount bootstrap now uses `fetchAssetCounts()` rather than `fetchAssets()`
+- Live Chrome verification completed:
+  - `Live Trading`
+    - the right-rail agent panel no longer renders
+    - Live Trading is back to being dashboard-only
+  - `Shared Assets -> Docs`
+    - now resolves to `1808 items`
+    - first folder view shows:
+      - `Books`
+      - `Articles`
+  - `Shared Assets -> Docs -> Articles`
+    - now loads through the canonical docs path instead of hanging
+    - `Article Sync` panel renders live with:
+      - scraper selector
+      - batch size
+      - start index
+      - Firecrawl API action
+      - per-category chips/counts
+    - category folders render cleanly with no root-level random-number/UUID scrape rows
+- Verification completed:
+  - backend:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_shared_assets_knowledge_bridge.py`
+      - result: `12 passed`
+    - `python3 -m py_compile src/api/ide_handlers_assets.py tests/api/test_shared_assets_knowledge_bridge.py`
+      - result: clean compile
+  - frontend:
+    - `npm --prefix quantmind-ide run test:run -- src/lib/api/sharedAssetsApi.contract.test.ts src/lib/components/canvas/SharedAssetsCanvas.test.ts src/lib/components/shared-assets/AssetList.firecrawl.test.ts`
+      - result: `23 passed`
+    - `npm --prefix quantmind-ide run test:run -- src/routes/page.agent-panel-gating.test.ts`
+      - result: `2 passed`
+
+## 2026-04-05 Incremental Slice (Development-owned reference books + single-row stream events)
+
+- Corrected the ownership model for the MQL5/MT5 reference guides:
+  - [ResearchCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/ResearchCanvas.svelte)
+    - removed the local `Books` tab entirely
+    - Research now defaults to `Logs`
+    - Research no longer loads `/knowledge/books`
+    - Research no longer exposes book upload or book runtime attachments
+  - this aligns the UI with the actual intended contract:
+    - books live canonically in `Shared Assets`
+    - Development consumes them during AlgoForge/code-writing work
+- Refreshed the Research canvas contract tests to lock the new ownership model:
+  - [ResearchCanvas.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/ResearchCanvas.test.ts)
+  - [ResearchCanvas.resource-sources.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/ResearchCanvas.resource-sources.test.ts)
+  - these now verify:
+    - no `Books` tab in Research
+    - no `/knowledge/books`
+    - no Research-side book upload flow
+    - no Research-side book attachable-resource projection
+- Fixed the duplicated thinking/tool streaming rows in the right-rail agent panel:
+  - root cause:
+    - [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte)
+      - every `status` / `tool` SSE event appended a fresh synthetic tool message with a new random id
+      - that produced stacked rows such as:
+        - `started`
+        - `streaming`
+        - `completed`
+  - fix landed:
+    - [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte)
+      - added a canonical `streamEventMessageId` per pending reply
+      - added `upsertStreamingToolMessage(...)`
+      - status/tool events now update one evolving collapsible row instead of appending multiple rows
+  - regression coverage:
+    - [AgentPanel.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.test.ts)
+    - [AgentPanel.streaming-events.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.streaming-events.test.ts)
+- Live Chrome verification completed for the corrected Development/Shared Assets book path:
+  - `Shared Assets -> Docs -> Books -> MQL5 Reference`
+    - now opens the detail view correctly
+  - `Development -> New session -> Attach canvas context -> Development context -> Reference Books -> MQL5 Reference`
+    - attaches successfully
+  - sending a Development message with the attached reference guide now shows:
+    - one compact evolving stream row during generation
+    - a final assistant response after completion
+  - Research was rechecked after the ownership fix:
+    - tab strip now shows only:
+      - `Logs`
+      - `Personal`
+      - `News`
+      - `Dept Tasks`
+- Verification completed:
+  - frontend tests:
+    - `npm --prefix quantmind-ide run test:run -- src/lib/components/canvas/ResearchCanvas.test.ts src/lib/components/canvas/ResearchCanvas.resource-sources.test.ts`
+      - result: `8 passed`
+    - `npm --prefix quantmind-ide run test:run -- src/lib/components/shell/AgentPanel.test.ts src/lib/components/shell/AgentPanel.streaming-events.test.ts`
+      - result: `45 passed`
+  - live browser verification:
+    - `Shared Assets -> Docs -> Books -> MQL5 Reference`
+      - detail view opens
+    - `Development -> attached reference-book chat`
+      - single evolving stream row verified live
+
+## 2026-04-05 Incremental Slice (larger Settings workspace for prompts + MCP sanity)
+
+- Increased the usable Settings workspace so agent prompts and MCP review are not cramped:
+  - [SettingsView.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/SettingsView.svelte)
+    - widened the settings dialog from a fixed `900px` shell to `min(1280px, 96vw)`
+    - increased dialog height to `min(92vh, 1040px)`
+    - widened the settings tab rail to `220px`
+    - increased inner panel padding
+  - [AgentsPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/settings/AgentsPanel.svelte)
+    - narrowed the left agent browser rail slightly so more horizontal room goes to the editor
+    - widened the prompt column in the top split
+    - increased prompt textarea minimum height to `560px`
+- Live Chrome verification completed for the resized Settings flow:
+  - `Settings -> Agents`
+    - full system prompt is now visible in a much larger editing workspace
+    - provider/model controls remain visible in the adjacent meta column
+  - `Settings -> MCP Servers`
+    - tab still opens correctly after the layout expansion
+    - live list shows the current configured servers without clipping or broken layout
+- Verification completed:
+  - frontend tests:
+    - `npm --prefix quantmind-ide run test:run -- src/lib/components/canvas/ResearchCanvas.test.ts src/lib/components/canvas/ResearchCanvas.resource-sources.test.ts src/lib/components/shell/AgentPanel.test.ts src/lib/components/shell/AgentPanel.streaming-events.test.ts`
+      - result: `53 passed`
+  - production build:
+    - `npm --prefix quantmind-ide run build -- --mode development`
+      - result: build passed
+
+## 2026-04-05 Incremental Slice (Live Trading chat activation + Research article-surface cleanup)
+
+- Closed a real page-level gating bug that left the Live Trading agent panel visible but effectively disabled:
+  - root cause:
+    - [page.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/routes/+page.svelte)
+      - `live-trading` was missing from `AGENT_PANEL_CANVASES`
+      - the right rail rendered in a contradictory hidden/collapsed state, so visible controls inherited `pointer-events: none`
+  - fix landed:
+    - [page.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/routes/+page.svelte)
+      - added `live-trading` to the canonical agent-panel-enabled canvas set
+    - [page.agent-panel-gating.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/routes/page.agent-panel-gating.test.ts)
+      - regression coverage for the Live Trading route gate
+- Live Chrome verification completed for the Trading/Live Trading chat path:
+  - `Live Trading -> Agent Panel -> New session`
+    - now clicks successfully after reload
+  - `POST /api/chat/sessions`
+    - returned `200`
+  - `POST /api/chat/departments/trading/message`
+    - returned `200`
+  - the panel rendered compact streaming event rows and the final assistant response
+  - `Session history` also updated live with the newly created session
+- Removed the duplicate Research-side article browser so categorized articles stay canonical in Shared Assets:
+  - [ResearchCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/ResearchCanvas.svelte)
+    - removed the local `Articles` tab
+    - default tab is now `Books`
+    - removed `/knowledge/articles` loading
+    - removed article grouping/detail/attachable-runtime state from Research
+    - kept the Research-owned surfaces:
+      - `Books`
+      - `Logs`
+      - `Personal`
+      - `News`
+      - `Dept Tasks`
+  - [ResearchCanvas.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/ResearchCanvas.test.ts)
+    - refreshed to the current canonical Research surface contract
+  - [ResearchCanvas.resource-sources.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/ResearchCanvas.resource-sources.test.ts)
+    - new regression coverage proving Research no longer loads duplicate local articles while still supporting book upload + shared-assets book merge
+- Live Research attachment/runtime verification also passed after the cleanup:
+  - `Research -> New session -> Attach canvas context -> Shared Assets context -> Docs -> Books -> MQL5 Reference`
+    - the attachment chip renders in the right rail
+  - a real attached Research message send now renders compact streaming event rows in the panel during generation
+  - the same attached message also completed with a final assistant response, so the end-to-end path is now verified for:
+    - attachment
+    - send
+    - streaming event rows
+    - final response render
+- Live Chrome verification completed for the Research cleanup:
+  - `Research`
+    - tab strip now shows only:
+      - `Books`
+      - `Logs`
+      - `Personal`
+      - `News`
+      - `Dept Tasks`
+    - `Articles` no longer appears there
+  - article browsing remains available through Shared Assets, which stays the canonical categorized corpus entry point
+- Verification completed:
+  - frontend tests:
+    - `npm --prefix quantmind-ide run test:run -- src/routes/page.agent-panel-gating.test.ts`
+      - result: pass
+    - `npm --prefix quantmind-ide run test:run -- src/lib/components/canvas/ResearchCanvas.test.ts src/lib/components/canvas/ResearchCanvas.resource-sources.test.ts`
+      - result: `9 passed`
+  - production build:
+    - `npm --prefix quantmind-ide run build -- --mode development`
+      - result: build passed
+
+## 2026-04-05 Incremental Slice (Shared Assets article cleanup + nested attachment folders)
+
+- Closed the Shared Assets article-noise cleanup against the live backend:
+  - [ide_handlers_assets.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_assets.py)
+    - root-level scraped markdown artifacts are now hidden from Shared Assets entirely
+    - only categorized scrape corpus entries remain operator-visible
+  - this removes the random UUID/root-level article rows the user flagged while preserving the categorized scrape library
+- Added regression coverage for the root-level scrape suppression:
+  - [test_shared_assets_knowledge_bridge.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_shared_assets_knowledge_bridge.py)
+    - verifies root-level UUID scrape files are excluded even when they have a legitimate markdown title
+    - verifies categorized scrape files like `trading_systems/volatility-breakout.md` remain visible
+- Extended the attachment browser from a single-folder picker into a nested path-based browser:
+  - [attachmentBrowser.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/attachmentBrowser.ts)
+    - canonical hierarchy now supports deeper navigation, not just `canvas -> folder`
+    - live production path now supports:
+      - `Shared Assets -> Docs -> Articles -> category -> resource`
+      - `Shared Assets -> Docs -> Books -> resource`
+      - `Shared Assets -> Docs -> Docs -> resource`
+  - [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte)
+    - right-rail attach picker now uses nested `attachMenuGroupPath` state instead of one flat folder id
+  - [WorkshopCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/WorkshopCanvas.svelte)
+    - Workshop attach picker now uses the same nested browser contract
+- Regression coverage added for the nested folder model:
+  - [attachmentBrowser.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/attachmentBrowser.test.ts)
+    - verifies `Shared Assets -> Docs -> Articles -> Trading Systems`
+  - [AgentPanel.context-attachment.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.context-attachment.test.ts)
+  - [WorkshopCanvas.attachment-browser.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/WorkshopCanvas.attachment-browser.test.ts)
+    - both now guard the nested attachment-path state instead of the old flat group id
+- Live verification completed in Chrome:
+  - `Workshop -> Attach canvas context -> Shared Assets context -> Docs -> Articles -> Trading Systems`
+    - confirmed category folders now appear before any article list is rendered
+    - confirmed the final leaf view contains only categorized article resources, not root-level UUID junk
+- Verification completed:
+  - backend:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_shared_assets_knowledge_bridge.py`
+      - result: pass
+    - `python3 -m py_compile src/api/ide_handlers_assets.py tests/api/test_shared_assets_knowledge_bridge.py`
+      - result: clean compile
+  - frontend:
+    - `npm --prefix quantmind-ide run test:run -- src/lib/services/attachmentBrowser.test.ts`
+      - result: `3 passed`
+    - `npm --prefix quantmind-ide run test:run -- src/lib/components/shell/AgentPanel.context-attachment.test.ts src/lib/components/canvas/WorkshopCanvas.attachment-browser.test.ts`
+      - result: `4 passed`
+    - `npm --prefix quantmind-ide run build -- --mode development`
+      - result: build passed
+
+## 2026-04-05 Incremental Slice (hierarchical attachment browser + Shared Assets preload fallback)
+
+- Reworked the active attachment picker UX from a flat mixed list into a hierarchical browser:
+  - `canvas -> folder/group -> resource`
+  - this landed in both active chat surfaces:
+    - [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte)
+    - [WorkshopCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/WorkshopCanvas.svelte)
+- Added a shared grouping utility so the folder logic is canonical instead of duplicated:
+  - [attachmentBrowser.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/attachmentBrowser.ts)
+  - current grouping covers the active production surfaces:
+    - `Shared Assets -> Docs / Strategies`
+    - `Development -> Active EAs / Variants / Backtests / Workflows / Department Tasks / Reference Books`
+    - `Research -> Articles / Books / Logs / Notes`
+    - plus sane fallbacks for Portfolio / Risk / Trading / FlowForge
+- Closed a real reload regression found during live Chrome verification:
+  - root cause:
+    - cross-canvas `attachable_resources` live in frontend runtime state
+    - after a hard reload, `Workshop -> Attach canvas context` had the new canvas/folder flow but no child folders for `Shared Assets` unless the user had already visited that canvas
+  - fix landed in:
+    - [canvasContextService.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/canvasContextService.ts)
+      - added `getMenuAttachableResources(...)`
+      - canonical menu resource lookup now:
+        - uses runtime-state resources when present
+        - falls back to `GET /api/assets/shared` for `shared-assets` when runtime state is cold
+        - seeds the local runtime cache so both Workshop and AgentPanel see the same hydrated Shared Assets menu surface
+- User-visible behavior after the fix:
+  - `Workshop -> Attach canvas context`
+    - now first shows only canvases with `BROWSE`
+  - `Workshop -> Shared Assets context`
+    - now shows:
+      - `Back to canvases`
+      - `Attach full Shared Assets context`
+      - `Docs`
+      - `Strategies`
+  - `Workshop -> Shared Assets -> Docs`
+    - now opens a resource list with real shared-asset docs/books instead of a flat mixed cross-canvas dump
+- Regression coverage added:
+  - [attachmentBrowser.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/attachmentBrowser.test.ts)
+    - verifies canonical folder grouping for `shared-assets`, `research`, and `development`
+  - [canvasContextService.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/canvasContextService.test.ts)
+    - verifies shared-assets menu hydration from backend when runtime state is empty
+  - [AgentPanel.context-attachment.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.context-attachment.test.ts)
+    - now guards the shared attachment-browser integration in the right rail
+  - [WorkshopCanvas.attachment-browser.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/WorkshopCanvas.attachment-browser.test.ts)
+    - now guards the same integration for Workshop
+- Verification completed:
+  - frontend tests:
+    - `npm --prefix quantmind-ide run test:run -- src/lib/services/canvasContextService.test.ts src/lib/services/attachmentBrowser.test.ts src/lib/components/shell/AgentPanel.context-attachment.test.ts src/lib/components/canvas/WorkshopCanvas.attachment-browser.test.ts`
+      - result: `9 passed`
+  - production build:
+    - `npm --prefix quantmind-ide run build -- --mode development`
+      - result: build passed
+  - live Chrome verification:
+    - after a hard reload:
+      - `Workshop -> Attach canvas context -> Shared Assets context -> Docs`
+      - confirmed the hierarchical browser works without needing a prior Shared Assets visit
+    - observed live labels:
+      - `Docs`
+      - `Strategies`
+      - real resources such as `MQL5 Book` / `MQL5 Reference` under the docs list
+
+## 2026-04-05 Incremental Slice (cross-canvas attach verification + reference-book test closure)
+
+- Closed the previously pending live verification around manifest-first attachments and the reference-book bridge.
+- Live workflow/operator verification was completed end to end in Chrome:
+  - `FlowForge`
+    - live `pause` on workflow `wf_wf1_creation_20260331111940_039045` moved the workflow card from `RUNNING` to `PENDING REVIEW`
+    - backend read model confirmed:
+      - `state=PENDING_REVIEW`
+      - `can_resume=true`
+    - `Development -> Dept Tasks` reflected the same workflow task as `BLOCKED`
+  - live `resume` returned the workflow to:
+    - `state=RUNNING`
+    - `can_pause=true`
+    - `can_resume=false`
+    - `Development -> Dept Tasks` returned to `IN_PROGRESS`
+- Broader task-surface verification was completed against the live backend:
+  - `GET /api/tasks/trading`
+  - `GET /api/tasks/risk`
+  - `GET /api/tasks/portfolio`
+  - all returned canonical workflow-derived rows instead of empty/mock department boards
+- Session isolation was rechecked live:
+  - `Development -> Session history` and `Research -> Session history` now show different session slices instead of an obvious shared/global history leak
+- Fixed a real cross-canvas attachment leak in the frontend manifest search service:
+  - root cause:
+    - [canvasContextService.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/canvasContextService.ts)
+      - `searchAttachableResources(...)` trusted backend search results without re-filtering by the explicitly requested canvas ids
+    - this allowed a stray Development resource to appear in Research
+  - user-visible failure that was reproduced live:
+    - `Research -> New session -> Attach canvas context`
+    - showed `Active EAs ACTIVE-TAB`, which belongs to Development
+  - fix landed:
+    - [canvasContextService.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/canvasContextService.ts)
+      - now filters mapped search results with `canvasIds.includes(resource.canvas)` before exposing them to the attach picker
+    - [canvasContextService.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/canvasContextService.test.ts)
+      - new regression coverage verifies a leaked `development` resource is dropped while `research` and `shared-assets` results remain
+  - live browser verification after the fix:
+    - `Research -> New session -> Attach canvas context`
+    - now only offers:
+      - `Research context`
+      - `Shared Assets context`
+    - drilling into `Research context` no longer surfaces the leaked `Active EAs` item
+- Closed the pending reference-book verification that had been left mid-flight at the prior wrap-up:
+  - backend verification:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_shared_assets_knowledge_bridge.py tests/api/test_knowledge_bootstrap.py`
+      - result: `9 passed`
+    - `python3 -m py_compile src/api/knowledge_bootstrap.py src/api/ide_handlers_knowledge.py tests/api/test_knowledge_bootstrap.py tests/api/test_shared_assets_knowledge_bridge.py`
+      - result: clean compile
+  - live browser verification:
+    - `Development -> New session -> Attach canvas context`
+      - confirmed canonical reference guides are attachable in the live picker:
+        - `mql5.pdf`
+        - `mql5book.pdf`
+
+## 2026-04-05 Incremental Slice (empty-query attach-menu hardening)
+
+- Tightened the active attach-picker contract so empty menus stay canvas-curated instead of flooding with backend/global file listings.
+- Root cause:
+  - [AgentPanel.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shell/AgentPanel.svelte)
+    - `openAttachMenu()` calls `searchAttachableResources('', ...)` with an empty query
+  - [canvasContextService.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/canvasContextService.ts)
+    - previously treated empty query as a valid backend/global workspace search
+    - that made the Development picker dump a long flat list of unrelated article/file results on top of the curated canvas resources
+- Fix landed:
+  - [canvasContextService.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/canvasContextService.ts)
+    - `searchAttachableResources(...)` now returns `[]` immediately for blank queries
+    - backend/global search is preserved for natural-language retrieval during real chat sends, but no longer pollutes empty attach menus
+  - [canvasContextService.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/services/canvasContextService.test.ts)
+    - new regression verifies empty-query calls do not hit `fetch`
+    - scoped backend-search regression remains covered for non-empty queries
+- Verification completed:
+  - frontend:
+    - `npm --prefix quantmind-ide run test:run -- src/lib/services/canvasContextService.test.ts`
+      - result: `2 passed`
+    - `npm --prefix quantmind-ide run build -- --mode development`
+      - result: build passed
+  - live browser verification:
+    - `Development -> New session -> Attach canvas context`
+    - picker is now reduced to the expected curated items:
+      - `Development context`
+      - `Shared Assets context`
+      - `Active EAs`
+      - `MQL5 Book`
+      - `MQL5 Reference`
+
+## 2026-04-05 Incremental Slice (Shared Assets counts route restored)
+
+- Fixed a real shared-assets bootstrap regression discovered during live verification.
+- Root cause:
+  - the browser was requesting `GET /api/assets/counts`
+  - no explicit counts route existed under [ide_assets.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_assets.py)
+  - the request fell through to `DELETE /api/assets/{asset_id:path}` route matching and returned `405`
+  - result: the Shared Assets type grid stayed on `Loading...` longer than necessary and depended on slower fallback/state convergence
+- Fix landed:
+  - [ide_handlers_assets.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_assets.py)
+    - added `get_asset_counts()`
+    - groups canonical counts into frontend asset buckets:
+      - `docs`
+      - `strategy-templates`
+      - `indicators`
+      - `skills`
+      - `flow-components`
+      - `mcp-configs`
+      - `strategies`
+    - docs count now correctly includes merged books/articles/docs-style knowledge assets
+  - [ide_assets.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_assets.py)
+    - added explicit `GET /api/assets/counts`
+  - [test_shared_assets_knowledge_bridge.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_shared_assets_knowledge_bridge.py)
+    - added regression coverage proving the counts route groups:
+      - uploaded books
+      - knowledge articles
+      - canonical WF1 strategy roots
+- Verification completed:
+  - backend:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_shared_assets_knowledge_bridge.py`
+      - result: `9 passed`
+    - `python3 -m py_compile src/api/ide_assets.py src/api/ide_handlers_assets.py tests/api/test_shared_assets_knowledge_bridge.py`
+      - result: clean compile
+    - live API:
+      - `GET /api/assets/counts`
+      - result: `200`
+      - current payload:
+        - `docs: 1871`
+        - `strategies: 1`
+  - live browser verification:
+    - `Shared Assets` grid now settles to real counts instead of remaining on the loading labels
+    - `Shared Assets -> Docs` also visibly includes:
+      - `mql5.pdf`
+      - `mql5book.pdf`
+
+## 2026-04-05 Incremental Slice (operator-visible strategy filter for Shared Assets and attachments)
+
+- Fixed a production-facing WF1 noise leak in the canonical Shared Assets / attachment surfaces.
+- Root cause:
+  - the workflow read model already filtered placeholder WF1 manifests like `probe`, `video_ingest`, `playlist_batch`, and other throwaway roots unless they had real operator-visible signal
+  - but Shared Assets strategy listings and the Development attach picker were still enumerating every strategy root directly from the filesystem
+  - this left deployment-noise strategy roots visible in the live attach menu even after the workflow surfaces were cleaned up
+- Canonicalized the operator-visible filter in the WF1 artifact layer:
+  - [wf1_artifacts.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/wf1_artifacts.py)
+    - added `strategy_root_has_operator_visible_signal(...)`
+    - a strategy root is now operator-visible when it has at least one of:
+      - `blocking_error`
+      - real downstream artifacts under `research`, `development`, `backtests`, `reports`, `compilation`, or `variants`
+      - a non-empty `source_url` in `source/request.json`
+      - a non-placeholder workflow status/current stage
+- Applied that canonical filter to both active backend listings:
+  - [ide_handlers_assets.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_assets.py)
+    - `_iter_strategy_assets()` now yields only operator-visible WF1 roots
+  - [ide_handlers_strategy.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_strategy.py)
+    - `list_strategies()` now skips placeholder WF1 roots that have no operator-visible signal
+- Added regression coverage:
+  - [test_ide_handlers_strategy.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_ide_handlers_strategy.py)
+    - verifies `list_strategies()` hides placeholder roots like `probe` while keeping a real root with `source_url`
+  - [test_shared_assets_knowledge_bridge.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_shared_assets_knowledge_bridge.py)
+    - verifies `/api/assets?category=strategies` hides placeholder WF1 roots with no operator-visible signal
+- Verification completed:
+  - backend:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_ide_handlers_strategy.py tests/api/test_shared_assets_knowledge_bridge.py tests/api/test_knowledge_bootstrap.py`
+      - result: `13 passed`
+    - `python3 -m py_compile src/api/wf1_artifacts.py src/api/ide_handlers_assets.py src/api/ide_handlers_strategy.py tests/api/test_ide_handlers_strategy.py tests/api/test_shared_assets_knowledge_bridge.py`
+      - result: clean compile
+  - live backend/browser:
+    - `GET /api/assets?category=strategies` now returns only:
+      - `strategies/scalping/single-videos/me_at_the_zoo_smoke`
+    - `GET /api/strategies` now returns only:
+      - `strategies/scalping/single-videos/me_at_the_zoo_smoke`
+    - live `Development -> New session -> Attach canvas context` now shows:
+      - `MQL5 Book`
+      - `MQL5 Reference`
+      - `Shared Assets context: me_at_the_zoo_smoke`
+    - the previous throwaway WF1 roots are gone from the live picker:
+      - `probe`
+      - `test`
+      - `video_ingest`
+      - `playlist_batch`
+      - `my_strategy_vwap`
+
+## 2026-04-05 Incremental Slice (reference-book bootstrap + Research cleanup verified)
+
+- Closed the previously partial shared-knowledge/reference-book slice and verified it end to end.
+- Canonical repo PDF guides are now bootstrapped into the active knowledge surface:
+  - [knowledge_bootstrap.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/knowledge_bootstrap.py)
+    - mirrors root-level developer-guide PDFs into `knowledge/books`
+    - current canonical bootstrap set:
+      - `mql5.pdf`
+      - `mql5book.pdf`
+    - persists metadata with:
+      - `category=Books`
+      - `bootstrap_source=repo-reference-book`
+      - `source_path`
+      - title/author/topics/description
+  - [ide_handlers_assets.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_assets.py)
+  - [ide_handlers_knowledge.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_knowledge.py)
+    - both now bootstrap those canonical reference books on startup so the active shared knowledge surface is populated without manual upload
+  - [ide_knowledge.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_knowledge.py)
+    - knowledge books now preserve relative ids under `books/...`
+    - now surfaces full `topics` metadata instead of collapsing everything to a single derived subcategory
+- Development now exposes those books as real attachable coding references:
+  - [DevelopmentCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/DevelopmentCanvas.svelte)
+    - fetches `/knowledge/books`
+    - filters MQL5 / MT5 / MetaTrader guides
+    - emits them as `reference-book` attachable resources in Development canvas runtime state
+  - [DevelopmentCanvas.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/DevelopmentCanvas.test.ts)
+    - now asserts the canonical reference-book attachment surface exists
+- Research cleanup requested by the user is now validated instead of only partially landed:
+  - [ResearchCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/ResearchCanvas.svelte)
+    - deprecated `YouTube` tab removed from the active Research canvas contract
+    - AlphaForge pipeline activity is folded into the Research logs surface through derived `alphaForgeLogs`
+    - runtime-state counts/samples now use the combined canonical log surface
+    - stale `youtube/videos/isVideo` branches are gone, so the component is no longer left in a half-migrated state
+    - the Research pipeline strip now counts current post-research stages in the right-hand lane instead of showing a dead `TRD 0` path against the current workflow model
+  - [ResearchCanvas.article-groups.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/ResearchCanvas.article-groups.test.ts)
+    - remained green after the cleanup, covering grouped article rendering and live books integration
+- Verification completed:
+  - backend:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_shared_assets_knowledge_bridge.py tests/api/test_knowledge_bootstrap.py`
+      - result: `8 passed`
+    - `python3 -m py_compile src/api/knowledge_bootstrap.py src/api/ide_handlers_assets.py src/api/ide_handlers_knowledge.py src/api/ide_knowledge.py tests/api/test_shared_assets_knowledge_bridge.py tests/api/test_knowledge_bootstrap.py`
+      - result: clean compile
+  - frontend:
+    - `npm --prefix quantmind-ide run test:run -- src/lib/components/canvas/DevelopmentCanvas.test.ts src/lib/components/canvas/ResearchCanvas.article-groups.test.ts`
+      - result: `11 passed`
+    - `npm --prefix quantmind-ide run build -- --mode development`
+      - result: build passed
+
+## 2026-04-04 Session wrap-up (reference-book bootstrap + Research canvas partial cleanup)
+
+- Captured and stabilized the in-flight shared-knowledge/reference-book slice before context rollover.
+- Added canonical repo-book bootstrap plumbing:
+  - [knowledge_bootstrap.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/knowledge_bootstrap.py)
+    - new bootstrap helper mirrors root-level developer-guide PDFs into canonical `knowledge/books`
+    - current bootstrapped references:
+      - `mql5.pdf`
+      - `mql5book.pdf`
+    - writes sidecar metadata with:
+      - `category=Books`
+      - `bootstrap_source=repo-reference-book`
+      - source path, topics, description, author/title metadata
+  - [ide_handlers_assets.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_assets.py)
+  - [ide_handlers_knowledge.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_knowledge.py)
+    - now call the bootstrap helper so the canonical knowledge/books surface is populated from the repo guides on startup
+  - [ide_knowledge.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_knowledge.py)
+    - book collection now preserves relative ids under `books/...`
+    - supports `topics` metadata directly instead of collapsing everything to a single subcategory
+- Added test coverage for the bootstrap contract:
+  - [test_knowledge_bootstrap.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_knowledge_bootstrap.py)
+    - verifies the canonical repo guides are mirrored into `knowledge/books` with the expected metadata
+  - [test_shared_assets_knowledge_bridge.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_shared_assets_knowledge_bridge.py)
+    - now disables bootstrap during that isolated bridge test so the shared-assets expectations remain deterministic
+- Started wiring those canonical books into Development as attachable coding references:
+  - [DevelopmentCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/DevelopmentCanvas.svelte)
+    - now fetches `/knowledge/books`
+    - filters MQL5 / MetaTrader / MT5 guides
+    - exposes them as `reference-book` attachable resources for the Development canvas runtime state
+  - [DevelopmentCanvas.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/DevelopmentCanvas.test.ts)
+    - now expects canonical reference-book resources to be exposed
+- Started the Research canvas cleanup requested by the user:
+  - [ResearchCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/ResearchCanvas.svelte)
+    - removed the deprecated `YouTube` tab from the active Research tab contract
+    - started folding AlphaForge pipeline activity into Research logs via derived `alphaForgeLogs`
+    - switched runtime-state log counts/samples to the combined canonical log surface
+    - removed stale `youtube/videos/isVideo` runtime references so the component is not left in an obviously broken compile state
+    - adjusted the AlphaForge status strip so post-research stages are counted under the right-hand stage instead of showing a dead `TRD 0` path against the current pipeline model
+
+- Important wrap-up note:
+  - this slice was intentionally stopped before full verification because the session was nearing its limit
+  - the Research canvas migration is only partially finished:
+    - the lower-half UI cleanup landed enough to remove stale `youtube/videos` runtime references
+    - but the remaining live verification/build/tests for this books/research slice still need to be run next session before claiming completion
+  - docs are updated here specifically so the next session starts from the exact in-flight state instead of rediscovering it
+
+## 2026-04-04 Incremental Slice (Workshop strategy handoff + Shared Assets quarantine detail parity)
+
+- Finished the active Workshop-to-Shared-Assets WF1 operator path:
+  - [VideoIngestWorkflow.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/VideoIngestWorkflow.svelte)
+    - added a real `Open Strategy` action for recent ingest jobs that have a canonical `strategy_asset_id`
+    - the action now:
+      - loads canonical `strategies` from Shared Assets
+      - selects the matching strategy root
+      - switches the main canvas to `Shared Assets`
+      - opens the strategy detail surface directly instead of leaving the operator stranded on the ingest card
+  - [SharedAssetsCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/SharedAssetsCanvas.svelte)
+    - now rehydrates into:
+      - `detail` view when a selected asset already exists
+      - `list` view when a type/category is preselected
+    - back-navigation now clears the correct selected state instead of snapping back into the forced detail route
+  - [sharedAssets.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/sharedAssets.ts)
+    - added `clearSelectedAsset()` so Shared Assets can preserve category context while leaving detail view cleanly
+- Hardened the WF1 error contract further for legacy or partially-hydrated queue rows:
+  - [ide_handlers_video_ingest.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_video_ingest.py)
+    - when a recent job has no artifact context yet, the API now still emits:
+      - `blocking_error`
+      - `blocking_error_detail`
+    - fallback blocking-error summarization is now safe for non-string error objects too
+    - this fixed older Gemini failure rows so they no longer dump raw capacity-trace text in the Workshop list
+    - provider-runtime dependency/import failures now collapse to:
+      - `Provider runtime is missing a required dependency. Repair the provider environment before retrying.`
+    - this removes raw Python import traces from the visible Workshop list for older OpenRouter rows
+- Fixed Shared Assets strategy detail parity with the persisted WF1 metadata:
+  - [ide_handlers_strategy.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_strategy.py)
+    - strategy detail payloads now include:
+      - `workflow_id`
+      - `strategy_id`
+      - `strategy_family`
+      - `source_bucket`
+      - `blocking_error`
+      - `blocking_error_detail`
+    - this makes quarantined strategy roots show the same operator-facing failure reason in Shared Assets that the Workshop job card already had
+- Added focused regression coverage:
+  - [test_ide_handlers_video_ingest.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_ide_handlers_video_ingest.py)
+    - verifies legacy queue rows without artifact context still return summarized `blocking_error` plus raw `blocking_error_detail`
+  - [test_ide_handlers_strategy.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_ide_handlers_strategy.py)
+    - verifies canonical strategy detail returns quarantine metadata from `.meta.json`
+  - [VideoIngestWorkflow.strategy-link.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/VideoIngestWorkflow.strategy-link.test.ts)
+    - verifies the Workshop video-ingest surface imports the canvas/shared-assets stores and exposes the `Open Strategy` action
+  - [SharedAssetsCanvas.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/SharedAssetsCanvas.test.ts)
+    - verifies Shared Assets rehydrates into list/detail mode from preselected strategy state
+- Verification completed:
+  - backend:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_ide_handlers_strategy.py tests/api/test_ide_handlers_video_ingest.py tests/api/test_shared_assets_knowledge_bridge.py`
+      - result: `20 passed`
+    - `python3 -m py_compile src/api/ide_handlers_strategy.py src/api/ide_handlers_video_ingest.py tests/api/test_ide_handlers_strategy.py tests/api/test_ide_handlers_video_ingest.py`
+      - result: clean compile
+  - frontend:
+    - `npm --prefix quantmind-ide run test:run -- src/lib/components/VideoIngestWorkflow.strategy-link.test.ts src/lib/components/canvas/SharedAssetsCanvas.test.ts src/lib/components/canvas/WorkshopCanvas.video-ingest.test.ts`
+      - result: `22 passed`
+    - `npm --prefix quantmind-ide run build -- --mode development`
+      - result: build passed
+  - live Chrome verification:
+    - `Workshop -> Video Ingest` shows persisted recent WF1 jobs from backend state
+    - the primary recent job now renders `Open Strategy`
+    - clicking `Open Strategy` now lands on:
+      - `Shared Assets -> Strategies -> me_at_the_zoo_smoke`
+    - Shared Assets detail now visibly shows:
+      - `STATUS quarantined`
+      - `Provider quota exhausted during analysis. Switch provider/model or wait for quota reset.`
+    - older Gemini-capacity failures are now summarized in the Workshop list instead of dumping raw capacity stderr into the visible card body
+    - older OpenRouter dependency failures are now summarized in the Workshop list instead of exposing raw Python import errors
+
+## 2026-04-04 Incremental Slice (WF1 durable recent-jobs surface + visible quarantine context)
+
+- Exposed a real IDE-side recent-jobs route for video ingest instead of relying on ephemeral local UI state:
+  - [ide_handlers_video_ingest.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_video_ingest.py)
+    - added `list_jobs(...)` on the canonical IDE handler
+    - added `_serialize_job_with_context(...)` so both single-job and list-job responses are enriched with WF1 artifact context:
+      - `workflow_id`
+      - `workflow_status`
+      - `waiting_reason`
+      - `blocking_error`
+      - `strategy_id`
+      - `strategy_asset_id`
+      - `strategy_status`
+      - `strategy_family`
+      - `source_bucket`
+      - `has_video_ingest`
+    - `get_job_status(...)` now uses that same serialization path, so a completed ingest job can project the next workflow stage instead of only its raw queue state
+  - [ide_video_ingest.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_video_ingest.py)
+    - added `GET /api/video-ingest/jobs`
+    - this now returns persisted recent jobs for the IDE/workshop video-ingest surface
+- Replaced the workshop video-ingest panel's local-only card state with durable backend data:
+  - [videoIngestApi.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/api/videoIngestApi.ts)
+    - added `listVideoJobs(...)`
+    - expanded the job contract with workflow/strategy/error fields
+  - [VideoIngestWorkflow.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/VideoIngestWorkflow.svelte)
+    - now loads persisted recent jobs on mount
+    - auto-refreshes from the backend instead of only mutating local cards
+    - submit now reloads the canonical job list rather than inventing optimistic local-only job rows
+    - cards now surface:
+      - workflow stage
+      - workflow status
+      - strategy/quarantine state
+      - bucket/family context
+      - summarized operator-readable failure messages
+    - quota/capacity failures are now compacted into a useful summary instead of dumping full provider trace text into the card body
+- Made strategy failure state visible in Shared Assets:
+  - [AssetDetail.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shared-assets/AssetDetail.svelte)
+    - canonical WF1 strategy detail now renders a blocking-error banner when a strategy is quarantined or otherwise blocked
+- Hardened the operator-facing error contract for WF1 ingest failures:
+  - [ide_handlers_video_ingest.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_video_ingest.py)
+    - blocking errors are now summarized before being persisted into manifests / `.meta.json`
+    - raw provider stderr/trace remains available separately as `blocking_error_detail`
+    - current real quota failures now surface as:
+      - `Provider quota exhausted during analysis. Switch provider/model or wait for quota reset.`
+  - [VideoIngestWorkflow.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/VideoIngestWorkflow.svelte)
+    - cards now use the concise blocking error as the visible message
+    - raw detail is preserved in the tooltip/title instead of flooding the card body
+- Added focused regression coverage:
+  - [test_ide_handlers_video_ingest.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_ide_handlers_video_ingest.py)
+    - verifies recent-job listing includes canonical WF1 artifact context
+    - verifies the durable list surface now returns summarized blocking errors plus retained raw detail
+    - keeps the existing manifest/meta hydration path covered for completed ingest jobs
+- Verification completed:
+  - backend:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_ide_handlers_video_ingest.py`
+      - result: `9 passed`
+    - `python3 -m py_compile src/api/ide_handlers_video_ingest.py src/api/ide_video_ingest.py tests/api/test_ide_handlers_video_ingest.py`
+      - result: clean compile
+  - frontend:
+    - `npm --prefix quantmind-ide run build -- --mode development`
+      - result: build passed
+  - live backend/browser:
+    - after backend restart, `GET /api/video-ingest/jobs?limit=5 -> 200`
+    - browser-side fetch verification returned live WF1 rows including:
+      - `job_65224a9860fd`
+      - `workflow_status: failed`
+      - `strategy_status: quarantined`
+      - `current_stage: video_ingest`
+      - `strategy_asset_id: strategies/scalping/single-videos/me_at_the_zoo_smoke`
+      - `blocking_error: Provider quota exhausted during analysis. Switch provider/model or wait for quota reset.`
+      - `blocking_error_detail_present: true`
+    - this confirms the IDE can now recover real recent ingest state after refresh/restart instead of losing the workflow surface entirely
+
+## 2026-04-04 Incremental Slice (FlowForge/department kanban cold-start task projection hardening)
+
+- Fixed a production-grade projection bug in the department task API:
+  - [task_sse_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/task_sse_endpoints.py)
+    - `_load_canonical_workflows()` no longer reuses the lossy FlowForge card serializer as the source of task decomposition
+    - it now prefers full coordinator workflow payloads, hydrating persisted runs through `get_workflow_status(...)` so task routing/status survives backend restarts
+    - it still overlays any additional in-memory live workflows afterward
+- Fixed malformed workflow task ids in the department-task projection:
+  - [task_sse_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/task_sse_endpoints.py)
+    - workflow/task projection now uses `workflow_id` when present instead of falling back to a bogus `workflow` placeholder prefix
+- Fixed department board filtering for raw coordinator workflows:
+  - [task_sse_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/task_sse_endpoints.py)
+    - `_workflow_matches_department(...)` now matches on:
+      - top-level `department`
+      - routed subtask `to_dept`
+      - current stage fallback
+    - this allows department-specific boards like `Research -> Dept Tasks` to surface running hydrated workflows even when the raw coordinator payload has no top-level `department`
+- Added focused regression coverage:
+  - [test_task_sse_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_task_sse_endpoints.py)
+    - verifies canonical workflow loading prefers the full coordinator payload
+    - verifies department task extraction works for raw coordinator workflows without a top-level `department`
+- Verification completed:
+  - backend:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_task_sse_endpoints.py tests/api/test_prefect_workflow_endpoints.py`
+      - result: `15 passed`
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_task_sse_endpoints.py`
+      - result: `8 passed`
+    - `python3 -m py_compile src/api/task_sse_endpoints.py tests/api/test_task_sse_endpoints.py`
+      - result: clean compile
+  - live backend/API:
+    - `GET /api/tasks/flowforge`
+      - after cold restart now includes active workflow rows like:
+        - `wf_wf1_creation_20260331111849_7eee90 ... IN_PROGRESS`
+        - `wf_wf1_creation_20260331111940_039045 ... IN_PROGRESS`
+    - `GET /api/tasks/research`
+      - now includes the running hydrated research workflow row as `IN_PROGRESS` instead of dropping it entirely
+  - Chrome:
+    - FlowForge reload now repopulates to `PENDING 5 / RUNNING 2`
+    - `FlowForge -> Dept Tasks` now shows active workflow work in `IN PROGRESS` after cold restart instead of collapsing everything into `TODO`
+    - `Development -> Dept Tasks` now re-verifies live after bootstrap with:
+      - `IN PROGRESS 4`
+      - `DONE 5`
+      - visible cards such as `Development · workflow`, `Saturday Refinement · workflow`, `Backtesting · workflow`
+    - `Trading -> Dept Tasks` now re-verifies live after bootstrap with:
+      - `IN PROGRESS 2`
+      - `DONE 3`
+      - visible cards such as `Paper Trading Monitor · workflow` and `Session Performer Id · workflow`
+    - operator writeback was re-verified live:
+      - pausing `wf_wf1_creation_20260331111849_7eee90` moved:
+        - FlowForge card from `RUNNING` to `PENDING REVIEW`
+        - research department task from `IN_PROGRESS` to `BLOCKED`
+      - resuming that workflow returned:
+        - workflow state to `RUNNING`
+        - research department task state to `IN_PROGRESS`
+
+## 2026-04-04 Incremental Slice (FlowForge header compaction + persisted workflow operator hydration)
+
+- Removed the redundant FlowForge header controls that were wasting vertical space in the primary workflows view:
+  - [FlowForgeCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/FlowForgeCanvas.svelte)
+    - removed the header-right `DeptKanbanTile`
+    - removed the standalone `Refresh` button from the FlowForge header
+    - kept the existing `Workflows` / `Dept Tasks` tab strip as the single navigation surface for those views
+    - result: the top header is now just identity/title, which gives the lower workflow board more space
+- Replaced the stale FlowForge canvas test contract with the current layout contract:
+  - [FlowForgeCanvas.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/FlowForgeCanvas.test.ts)
+    - now validates:
+      - `activeTab`-based subpage routing
+      - compact header contract
+      - tab-strip navigation
+      - absence of the old header tile / refresh button
+- Fixed a production-relevant workflow-control gap discovered during live Chrome verification:
+  - before this fix, FlowForge could render persisted workflow cards from the read model after restart, but `pause/resume/retry` only worked for workflows still resident in the in-memory coordinator
+  - after backend restart, operator calls were hitting live routes but returning `Workflow ... not found` for durable runs
+- Added workflow hydration from durable persistence into the canonical coordinator:
+  - [workflow_coordinator.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/workflow_coordinator.py)
+    - added `_hydrate_workflow_from_persistence(...)`
+    - reconstructs coordinator workflow state from:
+      - Prefect workflow DB rows
+      - persisted stage results
+      - canonical WF1 strategy manifests / `.meta.json`
+    - `get_workflow_status`, `cancel_workflow`, `pause_workflow`, `resume_workflow`, and `retry_workflow` now all rehydrate durable workflows on demand when the in-memory copy is absent
+- Added focused regression coverage for the restart-safe operator path:
+  - [test_workflow_coordinator_persistence.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/agents/departments/test_workflow_coordinator_persistence.py)
+    - verifies a persisted workflow can be hydrated and paused even when it was not already loaded in `_workflows`
+- Verification completed:
+  - frontend:
+    - `npm --prefix quantmind-ide run test:run -- src/lib/components/canvas/FlowForgeCanvas.test.ts`
+      - result: `9 passed`
+    - `npm --prefix quantmind-ide run build -- --mode development`
+      - result: build passed
+  - backend:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/agents/departments/test_workflow_coordinator_persistence.py tests/api/test_prefect_workflow_endpoints.py`
+      - result: `9 passed`
+    - `python3 -m py_compile src/agents/departments/workflow_coordinator.py tests/agents/departments/test_workflow_coordinator_persistence.py tests/api/test_prefect_workflow_endpoints.py`
+      - result: clean compile
+  - live verification:
+    - Chrome shows the compact FlowForge header with only:
+      - `FlowForge`
+      - subtitle
+      - `Workflows`
+      - `Dept Tasks`
+    - live API check after restart:
+      - `POST /api/prefect/workflows/wf_wf1_creation_20260331111940_039045/pause -> 200`
+      - previous behavior was `404 Workflow ... not found`
+
+## 2026-04-04 Incremental Slice (FlowForge manual pause/retry controls + department-kanban workflow decomposition)
+
+- Added real operator workflow-control semantics to the canonical coordinator instead of the prior fake/cosmetic resume behavior:
+  - [workflow_coordinator.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/workflow_coordinator.py)
+    - added `pause_workflow(...)`
+    - added `resume_workflow(...)` for manual-pause state only
+    - added `retry_workflow(...)` to re-dispatch the current stage instead of incorrectly advancing to the next stage
+    - extracted stage dispatch into a reusable helper so advance/retry share the same mail/kanban/progress/persistence path
+    - workflow manifests now persist:
+      - `manual_pause`
+      - `pause_reason`
+      - `retry_count`
+- Extended the FlowForge read model so cards expose real control affordances and operator state:
+  - [prefect_workflow_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/prefect_workflow_endpoints.py)
+    - added `POST /api/prefect/workflows/{workflow_id}/pause`
+    - added `POST /api/prefect/workflows/{workflow_id}/retry`
+    - `resume` now uses coordinator manual-resume semantics instead of advancing cancelled runs blindly
+    - workflow cards now project:
+      - `is_manual_pause`
+      - `can_pause`
+      - `can_resume`
+      - `can_retry`
+    - manual-paused workflows now render as a resumable waiting state with explicit pause reason
+- Wired FlowForge UI controls to those live endpoints:
+  - [flowforge.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/flowforge.ts)
+    - added `pauseWorkflow(...)`
+    - added `retryWorkflow(...)`
+    - `cancel/resume/pause/retry` now refresh from the backend read model rather than faking local bucket transitions
+  - [PrefectKanbanCard.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/flowforge/PrefectKanbanCard.svelte)
+    - added compact per-card pause/resume/retry controls
+    - surfaced waiting reason, current stage, latest artifact, and blocking error directly on the card
+  - [FlowForgeCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/FlowForgeCanvas.svelte)
+    - wired the new card callbacks into the live store methods
+- Finished the department-kanban workflow-decomposition/live-stream backend slice:
+  - [task_sse_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/task_sse_endpoints.py)
+    - canonical workflow tasks now decompose into department-specific kanban cards
+    - workflow tasks and mail tasks now merge into a single projected task surface
+    - SSE polling fallback now emits refreshed canonical snapshots when task signatures change, even without Redis pub/sub
+    - workflow-derived kanban items are now read-only through the task status mutation endpoint
+- Added and refreshed focused regression coverage:
+  - [test_prefect_workflow_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_prefect_workflow_endpoints.py)
+    - direct async endpoint coverage for:
+      - workflow listing/task graph projection
+      - manual pause/resume/retry endpoint semantics
+      - durable WF1 manifest projection
+  - [test_task_sse_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_task_sse_endpoints.py)
+    - workflow decomposition into department cards
+    - workflow+mail merge behavior
+    - workflow-derived task read-only enforcement
+- Verification completed:
+  - `python3 -m py_compile tests/api/test_task_sse_endpoints.py tests/api/test_prefect_workflow_endpoints.py src/api/task_sse_endpoints.py src/api/prefect_workflow_endpoints.py src/agents/departments/workflow_coordinator.py`
+    - result: clean compile
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_prefect_workflow_endpoints.py tests/api/test_task_sse_endpoints.py`
+    - result: `14 passed`
+- Resulting harness status:
+  - FlowForge cards now have real operator controls for pause/resume/retry
+  - department kanban now projects decomposed workflow work instead of a single coarse placeholder task
+  - live task updates no longer depend entirely on Redis pub/sub to move cards
+
+## 2026-04-04 Incremental Slice (Portfolio API contract regressions + host-safe base normalization)
+
+- Fixed a backend route precedence bug that caused false 404s on broker-account APIs:
+  - [broker_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/broker_endpoints.py)
+    - moved `GET /api/brokers/{broker_id}` below static account-switch routes so `/api/brokers/accounts` and `/api/brokers/accounts/active` resolve correctly.
+- Added regression coverage for that route precedence behavior:
+  - [test_broker_endpoints_accounts_route.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_broker_endpoints_accounts_route.py)
+    - verifies `/api/brokers/accounts` returns `200` (not captured as a broker id).
+    - verifies `/api/brokers/{id}` still returns broker-not-found semantics on unknown ids.
+- Aligned Portfolio frontend data paths with the active backend API contract (eliminates prior 404s):
+  - [portfolio.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/portfolio.ts)
+    - accounts now load from `GET /api/portfolio/brokers` with explicit mapping into UI account shape.
+    - routing matrix now loads from `GET /api/portfolio/routing-matrix`.
+    - routing toggles now call `PUT /api/portfolio/brokers/{account_id}/routing-rules`.
+    - added strategy/rule normalization so matrix rows/cells project deterministically from backend payloads.
+  - [RoutingMatrix.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/portfolio/RoutingMatrix.svelte)
+    - updated to render strategy rows from normalized `strategies` store and toggle per strategy/account cell.
+  - [PortfolioCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/PortfolioCanvas.svelte)
+    - fixed accounts-tab fetch path from deprecated `/api/portfolio/accounts` to `/api/portfolio/brokers`.
+    - added response-shape mapping so account cards render directly from canonical broker registry payload.
+- Hardened frontend API base derivation for deployment host safety:
+  - [constants.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/constants.ts)
+    - loopback env values (`localhost` / `127.0.0.1`) now normalize to current browser host/protocol.
+- Live verification:
+  - direct API checks:
+    - `GET /api/brokers/accounts -> 200 []`
+    - `GET /api/portfolio/routing-matrix -> 200`
+  - Chrome network verification on `http://127.0.0.1:3001/`:
+    - Portfolio canvas now requests:
+      - `GET /api/portfolio/brokers -> 200`
+      - `GET /api/portfolio/routing-matrix -> 200`
+    - previous `404` calls for `/api/brokers/accounts` and `/api/routing-matrix` are no longer present.
+- Verification completed:
+  - backend:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_broker_endpoints_accounts_route.py`
+      - result: `2 passed`
+  - frontend:
+    - `cd quantmind-ide && npx vite build --mode development`
+      - result: build passed
+
+## 2026-04-04 Incremental Slice (WF1 Shared Assets strategy registry + deployment-safe startup defaults)
+
+- Canonical WF1 strategy artifacts now surface in Shared Assets instead of remaining stranded in the old `data/strategies` tree:
+  - [wf1_artifacts.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/wf1_artifacts.py)
+    - added legacy-to-canonical migration from `data/strategies/*` into `data/shared_assets/strategies/{family}/{source_bucket}/{strategy_id}`
+    - legacy folders now map into canonical sections:
+      - `ea -> development`
+      - `backtest -> backtests`
+      - `trd/nprd -> research`
+      - remaining artifacts -> `source/legacy`
+    - `iter_strategy_roots()` now migrates legacy roots before scanning canonical WF1 roots
+  - [ide_handlers_strategy.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_strategy.py)
+    - cut over to the canonical WF1 tree as the primary strategy source instead of treating the legacy tree as a first-class runtime surface
+- Fixed the Shared Assets strategies API/UI contract end-to-end:
+  - [ide_handlers_assets.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_assets.py)
+    - `/api/assets?category=strategies` now returns only strategy roots, not internal workflow/request manifest files
+  - [sharedAssetsApi.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/api/sharedAssetsApi.ts)
+    - `listAllAssets()` now derives counts from the real per-type API calls
+    - `strategies` now bypasses the generic shared-file fallback so the list view renders roots only
+  - Added strategy-specific contract/bridge coverage:
+    - [test_wf1_artifacts.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_wf1_artifacts.py)
+    - [test_shared_assets_knowledge_bridge.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_shared_assets_knowledge_bridge.py)
+    - [sharedAssetsApi.contract.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/api/sharedAssetsApi.contract.test.ts)
+- Live Chrome verification completed on `http://127.0.0.1:3001/`:
+  - `Shared Assets` grid now resolves `Strategies 5 items`
+  - `Strategies` list now shows only canonical roots:
+    - `video_ingest`
+    - `test`
+    - `probe`
+    - `my_strategy_vwap`
+    - `playlist_batch`
+  - selecting `playlist_batch` opens the JSON strategy-tree detail view successfully
+- Hardened startup/runtime defaults for deployment:
+  - [department_mail.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/agents/departments/department_mail.py)
+    - `get_mail_service()` is now configuration-driven instead of Redis-by-default
+    - default backend is SQLite unless `DEPARTMENT_MAIL_BACKEND=redis` or `DEPARTMENT_MAIL_USE_REDIS=true`
+    - Redis-required mode is still available via `force_redis=True` or `DEPARTMENT_MAIL_REDIS_REQUIRED=true`
+    - when Redis is requested but unavailable, the runtime now falls back cleanly to SQLite instead of spamming startup errors
+    - restored SQLite compatibility for callers that still pass `dept=` to `mark_read(...)`
+  - [github_ea_scheduler.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/integrations/github_ea_scheduler.py)
+    - placeholder repo URLs like `your-org/your-ea-repo` no longer count as valid configuration
+  - [news_blackout.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/market/news_blackout.py)
+    - added explicit configuration gating so the service is skipped cleanly when Finnhub or `FINNHUB_API_KEY` is absent
+  - [server.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/server.py)
+    - startup now logs clean skips for unconfigured optional integrations instead of booting them into failure states
+- Live backend restart verification after these changes:
+  - Redis mail failure loop on startup is gone
+  - Finnhub startup error is replaced with:
+    - `NewsBlackoutService skipped: Finnhub dependency or FINNHUB_API_KEY not configured`
+  - placeholder GitHub scheduler startup is replaced with:
+    - `GitHub EA scheduler skipped: GITHUB_EA_REPO_URL is not configured`
+- Verification completed:
+  - backend:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/agents/departments/test_department_mail_fallback.py tests/agents/departments/test_department_mail_runtime.py tests/integration/test_github_ea_scheduler_config.py tests/market/test_news_blackout_config.py tests/api/test_shared_assets_knowledge_bridge.py tests/api/test_wf1_artifacts.py tests/api/test_ide_handlers_strategy.py tests/api/test_backtest_results.py`
+      - result: `33 passed`
+    - `python3 -m py_compile src/agents/departments/department_mail.py src/integrations/github_ea_scheduler.py src/market/news_blackout.py src/api/server.py src/api/ide_handlers_assets.py src/api/wf1_artifacts.py src/api/ide_handlers_strategy.py`
+      - result: clean compile
+- Remaining follow-up from this slice:
+  - continue WF1 state projection and the broader cross-canvas Chrome verification
+  - continue the video-ingest modernization before any paid OpenRouter run
 
 ## 2026-04-04 Incremental Slice (WF1 consolidation onto canonical coordinator; legacy video-to-EA path removed)
 
@@ -2088,3 +3588,284 @@ Tests added/updated:
     - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_ide_handlers_strategy.py tests/api/test_ide_handlers_video_ingest.py tests/api/test_wf1_artifacts.py tests/api/test_workflow_endpoints_wf1_compat.py` -> passed (`11 passed`)
     - `python3 -m py_compile src/api/ide_handlers_strategy.py` -> passed
     - `cd quantmind-ide && npx vite build --mode development` -> passed
+
+- 2026-04-04 FlowForge durable WF1 projection (`2026-04-04T17:35:00+03:00`):
+  - FlowForge workflow cards now rebuild durable WF1 state from canonical Shared Assets manifests instead of collapsing to empty workflow-db placeholders after backend restart:
+    - [prefect_workflow_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/prefect_workflow_endpoints.py)
+    - [wf1_artifacts.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/wf1_artifacts.py)
+  - added a restart-safe manifest iterator in the WF1 artifact module:
+    - `iter_workflow_manifests()`
+    - yields `strategy_root + workflow/manifest.json` pairs from the canonical shared-assets tree
+  - Prefect/FlowForge read-model changes:
+    - load persisted WF1 manifests into `/api/prefect/workflows`
+    - compute stage progress from the canonical workflow stage routing tables
+    - preserve:
+      - `workflow_id`
+      - `strategy_id`
+      - `current_stage`
+      - `department`
+      - `waiting_reason`
+      - `blocking_error`
+      - `latest_artifact`
+    - skip dead stage-less, artifact-less placeholder workflow-db rows so FlowForge does not show fake `0/0 Awaiting Work` cards
+  - tests updated:
+    - [test_prefect_workflow_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_prefect_workflow_endpoints.py)
+    - converted the endpoint fixture to `TestClient` so this surface no longer depends on async pytest plugins in reduced test mode
+    - added explicit coverage for:
+      - durable WF1 manifest cards appearing in `/api/prefect/workflows`
+      - placeholder workflow-db rows being skipped when they have no stage data and no artifact linkage
+  - verification:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_prefect_workflow_endpoints.py tests/api/test_wf1_artifacts.py tests/api/test_shared_assets_knowledge_bridge.py tests/api/test_workflow_endpoints_wf1_compat.py` -> passed (`17 passed`)
+    - `python3 -m py_compile src/api/prefect_workflow_endpoints.py src/api/wf1_artifacts.py tests/api/test_prefect_workflow_endpoints.py` -> passed
+    - live API verification:
+      - `/api/prefect/workflows` now reports restart-safe WF1 manifest cards
+      - pending placeholder cards dropped from `8` to `5`
+    - live Chrome verification on `http://127.0.0.1:3001/`:
+      - `FlowForge` now renders:
+        - `PENDING 5` canonical WF1 cards
+        - `RUNNING 2`
+        - no empty pending placeholder cards
+
+- 2026-04-04 Department pipeline no-mock cutover (`2026-04-04T17:55:00+03:00`):
+  - removed the in-memory seeded AlphaForge pipeline sample store from:
+    - [pipeline_status_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/pipeline_status_endpoints.py)
+  - `/api/pipeline/status` now derives its runs from the canonical WF1 workflow read model instead of `_initialize_sample_data()`:
+    - loads restart-safe workflow state from the same Prefect/manifest-backed projection used by FlowForge
+    - filters to `WF1 Creation`
+    - maps workflow state into the department pipeline stage contract used by the frontend:
+      - `VIDEO_INGEST`
+      - `RESEARCH`
+      - `TRD`
+      - `DEVELOPMENT`
+      - `COMPILE`
+      - `BACKTEST`
+      - `VALIDATION`
+      - `EA_LIFECYCLE`
+      - `APPROVAL`
+    - preserves workflow linkage in `metadata.workflow_id`
+  - `/api/pipeline/pending-approvals` now derives from canonical pipeline runs instead of seeded approval rows
+  - `/api/pipeline/run` is now honestly disabled (`501`) because pipeline runs should be created by the canonical workflow coordinator, not ad hoc test state
+  - tests rewritten to validate the new loader contract without relying on deleted demo data:
+    - [test_pipeline_status_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_pipeline_status_endpoints.py)
+  - verification:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_pipeline_status_endpoints.py tests/api/test_prefect_workflow_endpoints.py tests/api/test_wf1_artifacts.py tests/api/test_shared_assets_knowledge_bridge.py tests/api/test_workflow_endpoints_wf1_compat.py` -> passed (`31 passed`)
+    - `python3 -m py_compile src/api/pipeline_status_endpoints.py src/api/prefect_workflow_endpoints.py src/api/wf1_artifacts.py tests/api/test_pipeline_status_endpoints.py` -> passed
+    - live API verification:
+      - `/api/pipeline/status` now returns canonical WF1 strategies like:
+        - `my_strategy_vwap`
+        - `playlist_batch`
+        - `probe`
+        - `test`
+        - `video_ingest`
+      - `/api/pipeline/pending-approvals` now returns honest zero state instead of seeded approval data
+    - live Chrome verification on `http://127.0.0.1:3001/`:
+      - `Development -> Pipeline` shows canonical WF1 strategy rows instead of the old seeded demo entries like RSI/MA crossover
+
+- 2026-04-04 Department Kanban canonical workflow cutover (`2026-04-04T18:50:00+03:00`):
+  - replaced the department task-board read path so `/api/tasks/{department}` and `/api/sse/tasks/{department}` no longer depend only on background mail-consumer todos:
+    - [task_sse_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/task_sse_endpoints.py)
+  - new department-task read model now:
+    - loads canonical durable workflow state from the same FlowForge/Pipeline WF1 read stack
+    - maps workflow state into the 4-column department board contract:
+      - `PENDING -> TODO`
+      - `RUNNING -> IN_PROGRESS`
+      - `PENDING_REVIEW / EXPIRED_REVIEW / CANCELLED -> BLOCKED`
+      - `DONE -> DONE`
+    - merges workflow-derived tasks with real mail-derived tasks when both exist for the same workflow/department
+    - preserves provenance on the task payload:
+      - `workflow_id`
+      - `strategy_id`
+      - `current_stage`
+      - `next_step`
+      - `blocking_error`
+      - `waiting_reason`
+      - `latest_artifact`
+      - `source_kind`
+      - `read_only`
+  - workflow-derived cards are now explicitly read-only in the active UI contract:
+    - backend rejects `PATCH /api/tasks/{task_id}/status` for workflow-derived cards with `409`
+    - frontend drag-and-drop now only applies to interactive task items and carries a real drag payload when enabled
+  - updated department Kanban UI contract and detail pane:
+    - [DepartmentKanban.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/department-kanban/DepartmentKanban.svelte)
+    - [DepartmentKanbanColumn.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/department-kanban/DepartmentKanbanColumn.svelte)
+    - [types.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/department-kanban/types.ts)
+  - detail pane now shows workflow provenance instead of only mail provenance:
+    - stage
+    - strategy id
+    - source kind
+    - next step
+    - editability
+    - workflow-state block when present
+  - tests added/updated:
+    - [test_task_sse_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_task_sse_endpoints.py)
+      - canonical workflow tasks appear on department boards
+      - mail/workflow merge behavior
+      - workflow-derived tasks reject interactive status mutation
+  - verification:
+    - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_task_sse_endpoints.py tests/api/test_prefect_workflow_endpoints.py tests/api/test_pipeline_status_endpoints.py tests/api/test_wf1_artifacts.py` -> passed (`28 passed`)
+    - `python3 -m py_compile src/api/task_sse_endpoints.py tests/api/test_task_sse_endpoints.py` -> passed
+    - `cd quantmind-ide && npx vitest run src/lib/components/shared/DeptKanbanTile.test.ts src/lib/components/department-kanban/DepartmentKanban.detail-pane.test.ts src/lib/components/department-kanban/DepartmentKanbanCard.test.ts` -> passed (`38 passed`)
+    - `cd quantmind-ide && npx vite build --mode development` -> passed
+    - live API verification:
+      - `/api/tasks/research` now returns WF1 manifest-backed strategy tasks such as `my_strategy_vwap`, `playlist_batch`, `probe`, `test`, `video_ingest`
+      - `/api/tasks/development` now returns real completed workflow tasks instead of empty-board state
+      - `/api/tasks/flowforge` now returns the aggregate multi-department workflow task view
+    - live Chrome verification on `http://127.0.0.1:3001/`:
+      - `Research -> Dept Tasks` now shows live counts and canonical workflow cards with a populated provenance panel
+      - `Development -> Dept Tasks` now shows durable completed workflow cards instead of `0/0` empty columns
+      - `FlowForge -> Dept Tasks` now shows the aggregate workflow task board with research/development/trading ownership visible on the cards
+## 2026-04-04 Video ingest runtime hot-refresh + Shared Assets WF1 projection
+
+- Video ingest runtime is now hot-refreshable from the Providers panel without an API restart.
+  - Added `VideoIngestConfig.runtime_fingerprint()` in `src/video_ingest/models.py`.
+  - Reworked `src/api/ide_handlers_video_ingest.py` so provider-setting changes rebuild the ingest processor and reuse the durable queue when possible.
+  - Wired `POST /api/providers/refresh` to refresh the ingest runtime after router cache refresh in `src/api/provider_config_endpoints.py`.
+- Added regression coverage for the hot-refresh path:
+  - `tests/api/test_ide_handlers_video_ingest.py`
+  - `tests/api/test_provider_config_p1.py`
+- Verified live backend behavior:
+  - `GET /api/video-ingest/auth-status` returns real provider status from the running node.
+  - `POST /api/providers/refresh` succeeds and no longer requires a server restart for ingest provider changes.
+
+- Shared Assets strategy projection now surfaces canonical WF1 metadata instead of only raw folder roots.
+  - `src/api/ide_handlers_assets.py` strategy content payloads now include `detail` from the canonical strategy handler.
+  - `quantmind-ide/src/lib/api/sharedAssetsApi.ts` enriches `strategies` assets with real strategy state and source-artifact summary.
+  - `quantmind-ide/src/lib/components/shared-assets/AssetList.svelte` now renders strategy descriptions.
+  - `quantmind-ide/src/lib/components/shared-assets/AssetDetail.svelte` now shows WF1 status plus source/captions/audio/chunk summary before the JSON tree.
+  - `quantmind-ide/src/lib/components/canvas/SharedAssetsCanvas.svelte` now fetches the selected category when opening an asset bucket, fixing the stale-empty Strategies view.
+- Added backend regression coverage:
+  - `tests/api/test_shared_assets_knowledge_bridge.py`
+- Chrome verification passed:
+  - `FlowForge` shows `Provider ready` from the live auth endpoint.
+  - `Shared Assets -> Strategies` shows 5 real roots.
+  - `Shared Assets -> Strategies -> playlist_batch` shows status plus source-artifact sections and the strategy-tree JSON payload.
+
+## 2026-04-04 WebSocket handshake + Shared Assets count sync polish (`2026-04-04T18:30:00+03:00`)
+
+- Fixed browser websocket handshake regression caused by frontend using an unregistered path:
+  - [ws-client.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/ws-client.ts)
+    - replaced `/ws/main` with canonical `/ws` in:
+      - `createWebSocketClient(...)`
+      - default exported `wsClient`
+    - added base URL normalization before constructing websocket endpoint.
+- Hardened Shared Assets count refresh so grid totals stay synchronized after category fetches and partial category failures:
+  - [sharedAssetsApi.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/api/sharedAssetsApi.ts)
+    - `getAssetCounts()` now uses per-category `Promise.allSettled(...)` instead of one failing call collapsing all counts.
+  - [sharedAssets.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/stores/sharedAssets.ts)
+    - `fetchAssetsByType(type)` now:
+      - updates `assetCounts[type]` immediately from fetched category results
+      - attempts full count refresh and safely falls back when a category count call fails.
+    - default loading state now starts as `true` so first-render grid tiles display loading labels instead of transient `0 items`.
+  - [AssetTypeGrid.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/shared-assets/AssetTypeGrid.svelte)
+    - tile count text now renders `Loading...` while the Shared Assets store is loading and count is still `0`.
+- Verification:
+  - `npm --prefix quantmind-ide run test -- sharedAssetsApi.contract.test.ts` -> passed.
+  - `cd quantmind-ide && npx vitest run src/lib/api/sharedAssetsApi.contract.test.ts` -> passed.
+  - `npm --prefix quantmind-ide run build` -> passed.
+  - `cd quantmind-ide && npx vite build --mode development` -> passed.
+  - live Chrome MCP on `http://127.0.0.1:3001/`:
+    - console now shows `[WS] Connected to /ws` (no `/ws/main` 403 spam).
+    - `Shared Assets` grid now shows `Loading...` placeholders on first render, then converges to live values (`Docs 1869`, `Strategies 5`) and remains in sync after opening/closing `Strategies`.
+
+## 2026-04-04 WF1 canonical strategy identity + ingest state sync (`2026-04-04T20:55:00+03:00`)
+
+- Fixed a real deployment-grade WF1 identity bug in Shared Assets / strategy detail.
+  - Before this change, strategy detail still resolved by bare folder name.
+  - That would collide as soon as the same strategy title existed in both:
+    - `strategies/scalping/single-videos/<strategy_id>`
+    - `strategies/scalping/playlists/<strategy_id>`
+  - The canonical identity is now the full WF1 asset path, not the short slug.
+- Backend changes:
+  - [ide_handlers_strategy.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_strategy.py)
+    - strategy detail now exposes:
+      - `asset_id`
+      - `relative_root`
+    - resolution now accepts canonical asset ids / relative roots / workflow ids / legacy slug fallback.
+  - [ide_handlers_assets.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_assets.py)
+    - strategy-tree content now asks the strategy handler for detail using the canonical asset id instead of `path.name`.
+  - [ide_strategies.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_strategies.py)
+    - strategy detail route now uses `{strategy_id:path}` so canonical WF1 paths are legal inputs.
+- Frontend changes:
+  - [sharedAssetsApi.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/api/sharedAssetsApi.ts)
+    - strategy detail enrichment now merges by canonical `asset_id`, not by display name.
+    - this removes future collisions between playlist and single-video strategy roots.
+- Added regression coverage:
+  - [test_ide_handlers_strategy.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_ide_handlers_strategy.py)
+    - canonical `asset_id` / `relative_root` are exposed
+    - duplicate strategy names across playlist vs single-video roots resolve correctly
+  - [test_shared_assets_knowledge_bridge.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_shared_assets_knowledge_bridge.py)
+    - strategy-tree content now carries canonical detail identity
+    - duplicate-name roots return the correct detail per canonical asset path
+- Live verification:
+  - `GET /api/strategies` now returns `asset_id` and `relative_root`.
+  - `GET /api/assets/strategies/scalping/playlists/playlist_batch/content` now returns a `detail.asset_id` of `strategies/scalping/playlists/playlist_batch`.
+  - Chrome-side module verification confirms:
+    - `listAssetsByType('strategies')` returns canonical detail linkage per asset
+    - `getAssetDetail('strategies/scalping/playlists/playlist_batch', 'strategies')` resolves the correct playlist root, not a bare-name fallback.
+
+- Fixed WF1 ingest artifact state projection so real video-ingest jobs advance Shared Assets / workflow metadata instead of leaving dead `pending` shells.
+  - [ide_handlers_video_ingest.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/ide_handlers_video_ingest.py)
+    - job submission now writes:
+      - workflow manifest `status=running`
+      - `current_stage=video_ingest`
+      - `job_statuses`
+      - strategy `.meta.json` `status=processing`
+    - queue job processor wrapper now synchronizes WF1 workflow/strategy metadata on:
+      - completion
+      - failure
+    - `get_job_status(...)` now also rehydrates WF1 manifest/meta state from durable job status for restart-safe recovery.
+    - when all manifest jobs complete, WF1 manifest now advances to:
+      - `current_stage=research`
+      - `status=running`
+      - `video_ingest_completed_at=<timestamp>`
+    - failure now marks strategy meta as `quarantined` and persists `blocking_error`.
+- Added regression coverage:
+  - [test_ide_handlers_video_ingest.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_ide_handlers_video_ingest.py)
+    - submission writes running video-ingest manifest state
+    - completion hydrates workflow manifest and strategy meta into post-ingest state
+- Verification:
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_ide_handlers_video_ingest.py tests/api/test_ide_handlers_strategy.py tests/api/test_shared_assets_knowledge_bridge.py` -> passed (`17 passed`)
+  - `python3 -m py_compile src/api/ide_handlers_video_ingest.py src/api/ide_handlers_strategy.py src/api/ide_handlers_assets.py src/api/ide_strategies.py tests/api/test_ide_handlers_video_ingest.py tests/api/test_ide_handlers_strategy.py tests/api/test_shared_assets_knowledge_bridge.py` -> passed
+  - `npm --prefix quantmind-ide run test:run -- src/lib/api/sharedAssetsApi.contract.test.ts` -> passed
+
+- Additional live Chrome/API verification after the backend restart:
+  - `Risk -> Dept Tasks` now repopulates to live `IN PROGRESS 2 / DONE 5` after bootstrap.
+  - `GET /api/tasks/risk` and `GET /api/tasks/portfolio` both return hydrated workflow-derived task rows from the canonical task surface.
+
+## 2026-04-04 Development canvas de-duplication + WF1 placeholder filter correction (`2026-04-04T21:35:00+03:00`)
+
+- Removed the duplicated `Pipeline` tab from the active Development canvas.
+  - The pipeline board belongs in `FlowForge`, not inside a department canvas.
+  - [DevelopmentCanvas.svelte](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/DevelopmentCanvas.svelte)
+    - removed the `Pipeline` tab from the Development tab strip
+    - removed the embedded `PipelineBoard` render branch
+    - removed Development-side AlphaForge polling and stale pipeline-only CSS/resources
+    - kept `Dept Tasks` as the canonical department execution surface
+  - [DevelopmentCanvas.test.ts](/home/mubarkahimself/Desktop/QUANTMINDX/quantmind-ide/src/lib/components/canvas/DevelopmentCanvas.test.ts)
+    - replaced stale story-era assertions with current contract coverage:
+      - no duplicate Development pipeline tab
+      - Department Kanban only in the dedicated `Dept Tasks` tab
+      - no stale pipeline render branch
+
+- Fixed a real no-mock backend leak affecting WF1 placeholder visibility.
+  - [prefect_workflow_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/src/api/prefect_workflow_endpoints.py)
+    - `_manifest_has_operator_visible_signal(...)` now normalizes stage labels like `Video Ingest` -> `video_ingest`
+    - this prevents empty placeholder WF1 manifests from leaking into live workflow/pipeline surfaces just because the stage label was humanized
+  - [test_prefect_workflow_endpoints.py](/home/mubarkahimself/Desktop/QUANTMINDX/tests/api/test_prefect_workflow_endpoints.py)
+    - added regression coverage for humanized `Video Ingest` placeholder manifests
+
+- Verification:
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/api/test_prefect_workflow_endpoints.py` -> passed (`10 passed`)
+  - `python3 -m py_compile src/api/prefect_workflow_endpoints.py tests/api/test_prefect_workflow_endpoints.py` -> passed
+  - `npm --prefix quantmind-ide run test:run -- src/lib/components/canvas/DevelopmentCanvas.test.ts` -> passed (`4 passed`)
+  - `npm --prefix quantmind-ide run build -- --mode development` -> passed
+  - live Chrome on `http://127.0.0.1:3001/`:
+    - `Development` now shows only:
+      - `Active EAs`
+      - `Variants`
+      - `Backtest`
+      - `Workflows`
+      - `Dept Tasks`
+    - the duplicate `Pipeline` tab is gone from the Development canvas
+  - live API:
+    - `GET /api/prefect/workflows` no longer returns placeholder WF1 roots like `probe`, `test`, `video_ingest`, `playlist_batch`, `my_strategy_vwap`

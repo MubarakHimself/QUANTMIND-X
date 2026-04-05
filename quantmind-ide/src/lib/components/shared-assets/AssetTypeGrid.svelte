@@ -5,7 +5,7 @@
    * Displays 6 category tiles for shared assets:
    * Docs, Strategy Templates, Indicators, Skills, Flow Components, MCP Configs
    */
-  import { FileText, Layout, Code, Sparkles, Workflow, Settings } from 'lucide-svelte';
+  import { FileText, Layout, Code, Sparkles, Workflow, Settings, FolderTree } from 'lucide-svelte';
   import GlassTile from '$lib/components/live-trading/GlassTile.svelte';
   import { sharedAssetsStore, assetCounts } from '$lib/stores/sharedAssets';
   import type { AssetType } from '$lib/api/sharedAssetsApi';
@@ -23,7 +23,8 @@
     { type: 'indicators', label: 'Indicators', icon: Code },
     { type: 'skills', label: 'Skills', icon: Sparkles },
     { type: 'flow-components', label: 'Flow Components', icon: Workflow },
-    { type: 'mcp-configs', label: 'MCP Configs', icon: Settings }
+    { type: 'mcp-configs', label: 'MCP Configs', icon: Settings },
+    { type: 'strategies', label: 'Strategies', icon: FolderTree }
   ];
 
   function handleTypeClick(type: AssetType) {
@@ -37,6 +38,14 @@
   function getCount(type: AssetType): number {
     return $assetCounts[type] || 0;
   }
+
+  function getCountLabel(type: AssetType): string {
+    const count = getCount(type);
+    if ($sharedAssetsStore.isLoading && count === 0) {
+      return 'Loading...';
+    }
+    return `${count} items`;
+  }
 </script>
 
 <div class="asset-type-grid">
@@ -47,7 +56,7 @@
           <item.icon size={32} />
         </div>
         <div class="tile-label">{item.label}</div>
-        <div class="tile-count">{getCount(item.type)} items</div>
+        <div class="tile-count">{getCountLabel(item.type)}</div>
       </button>
     </GlassTile>
   {/each}

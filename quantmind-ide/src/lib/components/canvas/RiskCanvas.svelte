@@ -3,7 +3,7 @@
    * Risk Canvas
    *
    * Risk Department Head workspace.
-   * Tab-navigated tile grid (Physics, Compliance, Calendar, Backtest, Dept Tasks)
+   * Tab-navigated tile grid (Physics, Compliance, Calendar, Dept Tasks, DPR)
    *
    * Frosted Terminal aesthetic — red (#ff3b3b) dept accent, cyan (#00d4ff) highlights.
    * Svelte 5 runes only.
@@ -13,7 +13,6 @@
     Layers,
     Shield,
     Calendar,
-    BarChart3,
     Kanban,
     RefreshCw,
     Clock,
@@ -25,7 +24,6 @@
   import ComplianceTile from '$lib/components/risk/ComplianceTile.svelte';
   import PropFirmConfigPanel from '$lib/components/risk/PropFirmConfigPanel.svelte';
   import CalendarGateTile from '$lib/components/risk/CalendarGateTile.svelte';
-  import BacktestResultsPanel from '$lib/components/risk/BacktestResultsPanel.svelte';
   import DprLeaderboard from '$lib/components/risk/DprLeaderboard.svelte';
   import DepartmentKanban from '$lib/components/department-kanban/DepartmentKanban.svelte';
   import AgentTilePanel from '$lib/components/AgentTilePanel.svelte';
@@ -36,7 +34,7 @@
   // Types
   // =============================================================================
 
-  type RiskTab = 'physics' | 'compliance' | 'calendar' | 'backtest' | 'dept-tasks' | 'dpr';
+  type RiskTab = 'physics' | 'compliance' | 'calendar' | 'dept-tasks' | 'dpr';
 
   // =============================================================================
   // State
@@ -62,7 +60,6 @@
     { id: 'physics',    label: 'Physics',    icon: Layers    },
     { id: 'compliance', label: 'Compliance', icon: Shield    },
     { id: 'calendar',  label: 'Calendar',   icon: Calendar  },
-    { id: 'backtest',  label: 'Backtest',   icon: BarChart3 },
     { id: 'dept-tasks', label: 'Dept Tasks', icon: Kanban   },
     { id: 'dpr',       label: 'DPR',        icon: Trophy    },
   ];
@@ -198,9 +195,6 @@
       <div class="calendar-grid">
         <CalendarGateTile />
       </div>
-
-    {:else if activeTab === 'backtest'}
-      <BacktestResultsPanel />
 
     {:else if activeTab === 'dept-tasks'}
       <div class="kanban-wrapper">

@@ -1,11 +1,4 @@
-/**
- * ResearchCanvas — Story 12-6 Tests
- *
- * Uses file-content assertion pattern.
- * AC 12-6-1: DeptKanbanTile present
- * AC 12-6-3/4: Sub-page routing with currentSubPage
- */
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -14,63 +7,43 @@ const srcNoComments = src
   .replace(/<!--[\s\S]*?-->/g, '')
   .replace(/\/\*[\s\S]*?\*\//g, '');
 
-describe('ResearchCanvas.svelte — Story 12-6', () => {
-  it('does NOT use showDepartmentKanban boolean flag', () => {
-    expect(srcNoComments).not.toContain('showDepartmentKanban');
+describe('ResearchCanvas.svelte — canonical research surface', () => {
+  it('starts on logs now that books live in Shared Assets and Development', () => {
+    expect(src).toContain("let activeTab = $state<ResearchTab>('logs')");
   });
 
-  it('does NOT have openDepartmentKanban / closeDepartmentKanban functions', () => {
-    expect(srcNoComments).not.toContain('openDepartmentKanban');
-    expect(srcNoComments).not.toContain('closeDepartmentKanban');
+  it('keeps only logs, personal, news, and dept tasks tabs', () => {
+    expect(src).toContain("id: 'logs'");
+    expect(src).toContain("id: 'personal'");
+    expect(src).toContain("id: 'news'");
+    expect(src).toContain("id: 'dept-tasks'");
+    expect(src).not.toContain("id: 'books'");
+    expect(src).not.toContain("label: 'Books'");
+    expect(src).not.toContain("id: 'articles'");
+    expect(src).not.toContain("label: 'Articles'");
   });
 
-  it('uses ResearchSubPage union type', () => {
-    expect(src).toContain('ResearchSubPage');
+  it('loads logs on mount and does not eagerly load duplicate article/book surfaces', () => {
+    expect(src).toContain("await loadTab('logs');");
+    expect(src).not.toContain("await loadTab('articles');");
+    expect(src).not.toContain("await loadTab('books');");
+    expect(src).not.toContain("apiFetch<ArticleItem[]>('/knowledge/articles')");
+    expect(src).not.toContain("apiFetch<BookItem[]>('/knowledge/books')");
   });
 
-  it('uses $state<ResearchSubPage> for sub-page state', () => {
-    expect(src).toContain("$state<ResearchSubPage>('grid')");
+  it('renders the inline research department kanban on the dept tasks tab', () => {
+    expect(src).toContain("{:else if activeTab === 'dept-tasks'}");
+    expect(src).toContain('<DepartmentKanban department="research" />');
   });
 
-  it('currentSubPage state starts at grid', () => {
-    expect(src).toContain("currentSubPage = $state<ResearchSubPage>('grid')");
-  });
-
-  it('routes to dept-kanban sub-page', () => {
-    expect(src).toContain("currentSubPage === 'dept-kanban'");
-  });
-
-  it('DepartmentKanban onClose returns to grid', () => {
-    expect(src).toContain("currentSubPage = 'grid'");
-  });
-
-  it('has DeptKanbanTile with dept="research"', () => {
-    expect(src).toContain('DeptKanbanTile');
-    expect(src).toContain('dept="research"');
-  });
-
-  it('DeptKanbanTile onNavigate sets currentSubPage to dept-kanban', () => {
-    expect(src).toContain("currentSubPage = 'dept-kanban'");
-  });
-
-  it('does NOT have stale skeleton tile grid', () => {
-    expect(srcNoComments).not.toContain('skeleton-tile-grid');
-  });
-
-  it('does NOT have dept-tasks-btn header button', () => {
-    expect(srcNoComments).not.toContain('dept-tasks-btn');
-  });
-
-  it('has data-dept="research" on root element (AC: architecture mandate)', () => {
+  it('retains the data-dept marker on the root element', () => {
     expect(src).toContain('data-dept="research"');
   });
 
-  it('has back button for non-grid sub-pages', () => {
-    expect(src).toContain('back-btn');
-    expect(src).toContain('ArrowLeft');
-  });
-
-  it('DeptKanbanTile imported from shared/', () => {
-    expect(src).toContain('DeptKanbanTile');
+  it('does not keep article grouping helpers after moving articles to Shared Assets', () => {
+    expect(srcNoComments).not.toContain('getArticleCategory');
+    expect(srcNoComments).not.toContain('formatArticleCategory');
+    expect(srcNoComments).not.toContain('articleGroups');
+    expect(srcNoComments).not.toContain('article-groups');
   });
 });

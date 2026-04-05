@@ -1227,10 +1227,10 @@
   .settings-panel {
     background: var(--color-bg-surface);
     border-radius: 12px;
-    width: 900px;
-    max-width: 95vw;
-    height: 85vh;
-    max-height: 90vh;
+    width: min(1280px, 96vw);
+    max-width: 96vw;
+    height: min(92vh, 1040px);
+    max-height: 92vh;
     display: flex;
     flex-direction: column;
     box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
@@ -1310,7 +1310,7 @@
   }
 
   .settings-tabs {
-    width: 200px;
+    width: 220px;
     padding: 16px 8px;
     display: flex;
     flex-direction: column;
@@ -1363,7 +1363,7 @@
 
   .settings-panels {
     flex: 1;
-    padding: 24px;
+    padding: 28px;
     overflow-y: auto;
   }
 

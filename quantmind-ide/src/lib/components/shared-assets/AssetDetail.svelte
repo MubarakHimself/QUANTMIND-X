@@ -4,7 +4,7 @@
    *
    * Displays full asset metadata and code content with Monaco editor
    */
-  import { FileText, Layout, Code, Sparkles, Workflow, Settings, Edit3, Save, ArrowLeft } from 'lucide-svelte';
+  import { FileText, Layout, Code, Sparkles, Workflow, Settings, FolderTree, Edit3, Save, ArrowLeft } from 'lucide-svelte';
   import GlassTile from '$lib/components/live-trading/GlassTile.svelte';
   import MonacoEditor from '$lib/components/MonacoEditor.svelte';
   import { sharedAssetsStore, selectedAsset } from '$lib/stores/sharedAssets';
@@ -32,7 +32,8 @@
     'indicators': Code,
     'skills': Sparkles,
     'flow-components': Workflow,
-    'mcp-configs': Settings
+    'mcp-configs': Settings,
+    'strategies': FolderTree
   };
 
   // Type label mapping
@@ -42,15 +43,58 @@
     'indicators': 'Indicator',
     'skills': 'Skill',
     'flow-components': 'Flow Component',
-    'mcp-configs': 'MCP Config'
+    'mcp-configs': 'MCP Config',
+    'strategies': 'Strategy'
   };
 
-  // Check if asset has code content (indicators, flow components)
-  let hasCodeContent = $derived(
+  // Only a subset of asset types should be editable as code/text.
+  let isEditableContent = $derived(
     asset?.type === 'indicators' ||
     asset?.type === 'flow-components' ||
     asset?.type === 'mcp-configs'
   );
+
+  let hasRenderableContent = $derived(Boolean(asset?.content));
+  let strategyPayload = $derived.by(() => {
+    if (asset?.type !== 'strategies' || !asset.content) return null;
+    try {
+      const parsed = JSON.parse(asset.content);
+      return parsed?.type === 'strategy_tree' ? parsed : null;
+    } catch {
+      return null;
+    }
+  });
+  let strategyDetail = $derived((strategyPayload?.detail ?? asset?.details) as Record<string, any> | null);
+  const stageSummaries = $derived.by(() => {
+    if (!strategyDetail) return [];
+    return [
+      {
+        label: 'Research',
+        count: strategyDetail.research_files?.length || 0,
+        detail: strategyDetail.has_trd ? 'TRD/SDD artifacts ready' : 'Pending handoff'
+      },
+      {
+        label: 'Development',
+        count: strategyDetail.development_files?.length || 0,
+        detail: strategyDetail.has_ea ? 'EA source present' : 'Pending code generation'
+      },
+      {
+        label: 'Variants',
+        count: strategyDetail.variant_files?.length || 0,
+        detail: strategyDetail.has_variants ? 'Variant roots available' : 'No variants yet'
+      },
+      {
+        label: 'Compilation',
+        count: strategyDetail.compilation_files?.length || 0,
+        detail: strategyDetail.has_compilation ? 'Build artifacts present' : 'No compiled builds yet'
+      },
+      {
+        label: 'Reports',
+        count: (strategyDetail.report_files?.length || 0) + (strategyDetail.backtest_files?.length || 0),
+        detail: strategyDetail.has_reports || strategyDetail.has_backtest ? 'Reports/backtests recorded' : 'No reports yet'
+      }
+    ];
+  });
 
   // Format date
   function formatDate(dateStr: string): string {
@@ -113,8 +157,7 @@
       hasChanges = false;
       isEditMode = false;
     } catch (e) {
-      // Backend not available - update mock state locally for development
-      console.log('Backend not available, updating local state for development');
+      console.error('Failed to save asset content:', e);
       hasChanges = false;
       isEditMode = false;
     }
@@ -178,6 +221,28 @@
               <span class="metadata-label">Last Updated</span>
               <span class="metadata-value">{formatDate(asset.metadata.last_updated)}</span>
             </div>
+            {#if strategyDetail}
+              <div class="metadata-item">
+                <span class="metadata-label">Status</span>
+                <span class="metadata-value">{strategyDetail.status || 'pending'}</span>
+              </div>
+              <div class="metadata-item">
+                <span class="metadata-label">Video Ingest</span>
+                <span class="metadata-value">{strategyDetail.has_video_ingest ? 'Present' : 'Pending'}</span>
+              </div>
+              <div class="metadata-item">
+                <span class="metadata-label">Source Captions</span>
+                <span class="metadata-value">{strategyDetail.has_source_captions ? 'Available' : 'None'}</span>
+              </div>
+              <div class="metadata-item">
+                <span class="metadata-label">Source Audio</span>
+                <span class="metadata-value">{strategyDetail.has_source_audio ? 'Available' : 'None'}</span>
+              </div>
+              <div class="metadata-item">
+                <span class="metadata-label">Chunk Manifest</span>
+                <span class="metadata-value">{strategyDetail.has_chunk_manifest ? 'Available' : 'None'}</span>
+              </div>
+            {/if}
           </div>
 
           {#if asset.metadata.description}
@@ -187,22 +252,68 @@
           {#if asset.metadata.author}
             <p class="asset-author">Author: {asset.metadata.author}</p>
           {/if}
+
+          {#if strategyDetail?.blocking_error}
+            <div class="strategy-error-banner" title={strategyDetail.blocking_error_detail || strategyDetail.blocking_error}>
+              {strategyDetail.blocking_error}
+            </div>
+          {/if}
         </div>
       </div>
     </GlassTile>
 
-    <!-- Code content section -->
-    {#if hasCodeContent && asset.content}
+    {#if strategyDetail}
+      <GlassTile>
+        <div class="strategy-artifact-grid">
+          <div class="artifact-group">
+            <h3>Source</h3>
+            <p>{strategyPayload?.root || asset.name}</p>
+          </div>
+          <div class="artifact-group">
+            <h3>Timelines</h3>
+            <p>{strategyDetail.source_artifacts?.timeline_files?.length || 0} root files</p>
+            <p>{strategyDetail.source_artifacts?.chunk_timeline_files?.length || 0} chunk files</p>
+          </div>
+          <div class="artifact-group">
+            <h3>Captions</h3>
+            <p>{strategyDetail.source_artifacts?.caption_files?.length || 0} files</p>
+          </div>
+          <div class="artifact-group">
+            <h3>Audio</h3>
+            <p>{strategyDetail.source_artifacts?.audio_files?.length || 0} files</p>
+          </div>
+          <div class="artifact-group">
+            <h3>Chunk Plans</h3>
+            <p>{strategyDetail.source_artifacts?.chunk_manifest_files?.length || 0} manifests</p>
+          </div>
+        </div>
+      </GlassTile>
+
+      <GlassTile>
+        <div class="strategy-artifact-grid strategy-stage-grid">
+          {#each stageSummaries as stage}
+            <div class="artifact-group">
+              <h3>{stage.label}</h3>
+              <p>{stage.count} files</p>
+              <p>{stage.detail}</p>
+            </div>
+          {/each}
+        </div>
+      </GlassTile>
+    {/if}
+
+    <!-- Content section -->
+    {#if hasRenderableContent}
       <div class="code-section">
         <div class="code-header">
-          <h3 class="code-title">Code</h3>
+          <h3 class="code-title">{isEditableContent ? 'Code' : 'Content'}</h3>
 
-          {#if !isEditMode}
+          {#if isEditableContent && !isEditMode}
             <button class="action-button" onclick={toggleEditMode}>
               <Edit3 size={14} />
               Edit
             </button>
-          {:else}
+          {:else if isEditableContent}
             <div class="edit-actions">
               <button
                 class="action-button cancel"
@@ -226,9 +337,9 @@
         <div class="code-editor-container">
           <MonacoEditor
             content={isEditMode ? editedContent : asset.content}
-            language={asset.language || 'plaintext'}
+            language={asset.language || (asset.type === 'strategies' ? 'json' : 'plaintext')}
             filename={asset.name}
-            readOnly={!isEditMode}
+            readOnly={!isEditMode || !isEditableContent}
             showLineNumbers={true}
           />
         </div>
@@ -372,6 +483,42 @@
     font-size: 12px;
     color: rgba(255, 255, 255, 0.5);
     margin: 0;
+  }
+
+  .strategy-error-banner {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.28);
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #fca5a5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 180px;
+    overflow: auto;
+  }
+
+  .strategy-artifact-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 16px;
+  }
+
+  .artifact-group h3 {
+    margin: 0 0 6px 0;
+    font-size: 12px;
+    color: rgba(0, 212, 255, 0.9);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .artifact-group p {
+    margin: 0;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.72);
+    line-height: 1.5;
   }
 
   /* Code section */

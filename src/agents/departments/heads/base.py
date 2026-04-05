@@ -302,13 +302,26 @@ class DepartmentHead:
                     continue
                 entry = {
                     "canvas": str(item.get("canvas", ""))[:64],
+                    "label": str(item.get("label", ""))[:160],
                     "strategy": str(item.get("strategy", ""))[:64],
+                    "attachment_type": str(item.get("attachment_type", ""))[:32],
                 }
                 memory_identifiers = item.get("memory_identifiers")
                 if isinstance(memory_identifiers, list):
                     entry["memory_identifiers"] = [
                         str(mid)[:256] for mid in memory_identifiers[:32] if mid
                     ]
+                resource = item.get("resource")
+                if isinstance(resource, dict):
+                    resource_ref = {
+                        "id": str(resource.get("id", ""))[:256],
+                        "path": str(resource.get("path", ""))[:384],
+                        "label": str(resource.get("label", ""))[:160],
+                        "type": str(resource.get("type") or resource.get("resource_type") or "")[:48],
+                    }
+                    resource_ref = {k: v for k, v in resource_ref.items() if v}
+                    if resource_ref:
+                        entry["resource"] = resource_ref
                 resources = item.get("resources")
                 if isinstance(resources, list):
                     resource_refs = []

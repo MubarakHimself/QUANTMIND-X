@@ -115,18 +115,21 @@ class TestProviderCacheInvalidation:
 
         Risk: R-003 (Score: 5)
         """
-        with patch('src.api.provider_config_endpoints.refresh_router') as mock_refresh:
-            with patch('src.api.provider_config_endpoints.get_router') as mock_get_router:
-                mock_router = MagicMock()
-                mock_router.last_refresh_timestamp = 1700000000.0
-                mock_get_router.return_value = mock_router
+        with patch('src.agents.providers.refresh_router') as mock_refresh:
+            with patch('src.api.ide_handlers_video_ingest.refresh_runtime') as mock_refresh_ingest:
+                with patch('src.agents.providers.get_router') as mock_get_router:
+                    mock_router = MagicMock()
+                    mock_router.last_refresh_timestamp = 1700000000.0
+                    mock_get_router.return_value = mock_router
 
-                response = client.post("/api/providers/refresh")
+                    response = client.post("/api/providers/refresh")
 
-                assert response.status_code == 200
-                data = response.json()
-                assert data["success"] is True
-                assert "last_refresh" in data
+                    assert response.status_code == 200
+                    data = response.json()
+                    assert data["success"] is True
+                    assert "last_refresh" in data
+                    mock_refresh.assert_called_once()
+                    mock_refresh_ingest.assert_called_once_with(force=True)
 
     def test_refresh_returns_last_refresh_timestamp(self, client):
         """
@@ -138,8 +141,8 @@ class TestProviderCacheInvalidation:
 
         Risk: R-003 (Score: 4)
         """
-        with patch('src.api.provider_config_endpoints.refresh_router'):
-            with patch('src.api.provider_config_endpoints.get_router') as mock_get_router:
+        with patch('src.agents.providers.refresh_router'):
+            with patch('src.agents.providers.get_router') as mock_get_router:
                 mock_router = MagicMock()
                 mock_router.last_refresh_timestamp = 1700000000.0
                 mock_get_router.return_value = mock_router
@@ -161,8 +164,8 @@ class TestProviderCacheInvalidation:
 
         Risk: R-003 (Score: 3)
         """
-        with patch('src.api.provider_config_endpoints.refresh_router'):
-            with patch('src.api.provider_config_endpoints.get_router') as mock_get_router:
+        with patch('src.agents.providers.refresh_router'):
+            with patch('src.agents.providers.get_router') as mock_get_router:
                 mock_router = MagicMock()
                 mock_router.last_refresh_timestamp = None
                 mock_get_router.return_value = mock_router

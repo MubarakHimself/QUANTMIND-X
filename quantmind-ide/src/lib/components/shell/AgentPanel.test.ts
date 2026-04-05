@@ -81,6 +81,26 @@ function formatToolLine(tool: string, args: Record<string, unknown>): string {
   return firstKey ? `${tool}(${firstKey}: "${firstVal}")` : `${tool}()`;
 }
 
+type TestAgentMessage = {
+  id: string;
+  type: 'agent' | 'user' | 'tool';
+  content: string;
+  tool?: string;
+  args?: Record<string, unknown>;
+  timestamp: string;
+};
+
+function upsertStreamingToolMessage(
+  messages: TestAgentMessage[],
+  message: TestAgentMessage,
+): TestAgentMessage[] {
+  const existingIndex = messages.findIndex((entry) => entry.id === message.id);
+  if (existingIndex === -1) {
+    return [...messages, message];
+  }
+  return messages.map((entry, index) => (index === existingIndex ? message : entry));
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('AgentPanel — CANVAS_DEPT_HEAD map (AC #2)', () => {
@@ -333,6 +353,65 @@ describe('AgentPanel — OPINION expand-on-click (AC #13)', () => {
     // Second click — collapse
     expandedToolLine = expandedToolLine === id ? null : id;
     expect(expandedToolLine).toBeNull();
+  });
+});
+
+describe('AgentPanel — streaming event consolidation', () => {
+  it('upserts status updates into one collapsible row instead of appending duplicates', () => {
+    const started: TestAgentMessage = {
+      id: 'reply-1:event',
+      type: 'tool',
+      content: 'thinking · started',
+      tool: 'status',
+      args: { phase: 'thinking', status: 'started' },
+      timestamp: new Date().toISOString(),
+    };
+    const streaming: TestAgentMessage = {
+      ...started,
+      content: 'thinking · streaming',
+      args: { phase: 'thinking', status: 'streaming' },
+    };
+    const completed: TestAgentMessage = {
+      ...started,
+      content: 'thinking · completed',
+      args: { phase: 'thinking', status: 'completed' },
+    };
+
+    let messages: TestAgentMessage[] = [];
+    messages = upsertStreamingToolMessage(messages, started);
+    messages = upsertStreamingToolMessage(messages, streaming);
+    messages = upsertStreamingToolMessage(messages, completed);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0].content).toBe('thinking · completed');
+    expect(messages[0].args?.status).toBe('completed');
+  });
+
+  it('reuses the same stream-event row across thinking and tool phases for one reply', () => {
+    const statusMessage: TestAgentMessage = {
+      id: 'reply-2:event',
+      type: 'tool',
+      content: 'thinking · streaming',
+      tool: 'status',
+      args: { phase: 'thinking', status: 'streaming' },
+      timestamp: new Date().toISOString(),
+    };
+    const toolMessage: TestAgentMessage = {
+      id: 'reply-2:event',
+      type: 'tool',
+      content: 'context7 · running',
+      tool: 'context7',
+      args: { status: 'running', query: 'mql5 order send' },
+      timestamp: new Date().toISOString(),
+    };
+
+    let messages: TestAgentMessage[] = [];
+    messages = upsertStreamingToolMessage(messages, statusMessage);
+    messages = upsertStreamingToolMessage(messages, toolMessage);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0].tool).toBe('context7');
+    expect(messages[0].content).toBe('context7 · running');
   });
 });
 

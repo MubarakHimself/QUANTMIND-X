@@ -11,9 +11,8 @@ video_in/
 # ============================================================
 # RUNTIME DATA (exclude from GitHub)
 # ============================================================
-# NOTE: data/scraped_articles/ is intentionally tracked and will be
-# uploaded to Contabo server directly — do NOT add it here.
-# Only exclude newly generated / transient data dirs:
+# Runtime / content payloads should not ship in Git.
+# They are deployment-managed and belong in cold storage / server volumes.
 data/chromadb*/
 data/chromadb_test/
 data/backtests/
@@ -22,6 +21,13 @@ data/outputs/
 data/videos/
 data/downloads/
 data/cache/
+data/scraped_articles/
+data/shared_assets/
+data/knowledge/
+server/data/shared_assets/
+server/data/knowledge/
+quantmind-ide/data/shared_assets/
+quantmind-ide/data/knowledge/
 
 # SQLite databases (runtime state — not source code)
 *.db
@@ -170,7 +176,6 @@ data/
 !data/assets/skills/
 !data/assets/templates/
 !data/assets/indicators/
-!data/scraped_articles/
 
 # Database files
 *.db
@@ -202,8 +207,8 @@ scripts/articles/
 # ============================================================
 # BINARY & LARGE FILES
 # ============================================================
-# PDFs - Uncomment to ignore PDFs
-# *.pdf
+# PDFs / large reference docs stay out of Git and should live in storage nodes
+*.pdf
 
 # Images
 *.png

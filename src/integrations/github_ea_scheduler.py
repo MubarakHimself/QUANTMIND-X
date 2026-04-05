@@ -255,6 +255,19 @@ class GitHubEAScheduler:
 _scheduler: Optional[GitHubEAScheduler] = None
 
 
+def is_scheduler_configured() -> bool:
+    """Return True only when the GitHub EA scheduler has a real repo configured."""
+    repo_url = os.getenv('GITHUB_EA_REPO_URL', '').strip()
+    if not repo_url:
+        return False
+    placeholders = (
+        'your-org/your-ea-repo',
+        'example.com',
+        'github.com/your-org/',
+    )
+    return not any(token in repo_url for token in placeholders)
+
+
 def get_scheduler() -> Optional[GitHubEAScheduler]:
     """
     Get the global scheduler instance.
@@ -274,13 +287,13 @@ def initialize_scheduler() -> GitHubEAScheduler:
     """
     global _scheduler
     
-    repo_url = os.getenv('GITHUB_EA_REPO_URL', '')
+    repo_url = os.getenv('GITHUB_EA_REPO_URL', '').strip()
     library_path = os.getenv('EA_LIBRARY_PATH', '/data/ea-library')
     branch = os.getenv('GITHUB_EA_BRANCH', 'main')
     sync_interval_hours = int(os.getenv('GITHUB_EA_SYNC_INTERVAL_HOURS', '24'))
     
-    if not repo_url:
-        raise ValueError("GITHUB_EA_REPO_URL environment variable not set")
+    if not is_scheduler_configured():
+        raise ValueError("GITHUB_EA_REPO_URL is not configured with a real repository URL")
     
     _scheduler = GitHubEAScheduler(
         repo_url=repo_url,
@@ -300,6 +313,9 @@ def start_scheduler() -> bool:
         True if scheduler started successfully
     """
     try:
+        if not is_scheduler_configured():
+            logger.info("GitHub EA scheduler skipped: GITHUB_EA_REPO_URL is not configured")
+            return False
         scheduler = initialize_scheduler()
         return scheduler.start()
     except Exception as e:

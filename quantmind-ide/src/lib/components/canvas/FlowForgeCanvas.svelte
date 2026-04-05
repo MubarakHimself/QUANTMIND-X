@@ -27,10 +27,9 @@
   import PrefectKanbanCard from '$lib/components/flowforge/PrefectKanbanCard.svelte';
   import FlowForgeNodeGraph from '$lib/components/flowforge/FlowForgeNodeGraph.svelte';
   import WorkflowKillSwitchModal from '$lib/components/flowforge/WorkflowKillSwitchModal.svelte';
-  import { RefreshCw, GitBranch, Search, ArrowLeft, Layers, Code2, LayoutGrid, Play, X, CheckCircle, AlertCircle, Loader2, Clock } from 'lucide-svelte';
+  import { GitBranch, ArrowLeft, Layers, LayoutGrid, Play, X, CheckCircle, AlertCircle, Loader2, Clock } from 'lucide-svelte';
   import DepartmentKanban from '$lib/components/department-kanban/DepartmentKanban.svelte';
-  import DeptKanbanTile from '$lib/components/shared/DeptKanbanTile.svelte';
-  import { submitVideoJob, getJobStatus, getAuthStatus } from '$lib/api/videoIngestApi';
+  import { submitVideoJob, getJobStatus, getAuthStatus, getPreferredVideoProvider, type VideoIngestProviderSummary } from '$lib/api/videoIngestApi';
   import { activeCanvasStore } from '$lib/stores/canvasStore';
   import { API_CONFIG } from '$lib/config/api';
 
@@ -39,7 +38,6 @@
   // =============================================================================
   let showNodeGraph = $derived($flowForgeStore.showNodeGraph);
   let selectedWorkflowForNodeGraph = $derived($flowForgeStore.selectedWorkflowForNodeGraph);
-  let loading = $derived($flowForgeStore.loading);
   let workflowBoard = $state<WorkflowsByState>({
     PENDING: [],
     RUNNING: [],
@@ -87,6 +85,7 @@
   let launchError = $state<string | null>(null);
   let jobs = $state<VideoJob[]>([]);
   let authStatus = $state<'checking' | 'ready' | 'unconfigured' | 'unreachable'>('checking');
+  let videoProvider: VideoIngestProviderSummary | null = $state(null);
 
   // Poll interval handle
   let jobPollInterval: ReturnType<typeof setInterval> | null = null;
@@ -171,7 +170,7 @@
     }, 30000);
 
     // Check video ingest auth on mount
-    checkVideoIngestAuth();
+    Promise.all([checkVideoIngestAuth(), loadVideoProviderSummary()]);
 
     // Poll active (non-terminal) jobs every 5 seconds
     jobPollInterval = setInterval(() => {
@@ -202,6 +201,14 @@
       authStatus = (status.openrouter || status.gemini || status.qwen) ? 'ready' : 'unconfigured';
     } catch {
       authStatus = 'unreachable';
+    }
+  }
+
+  async function loadVideoProviderSummary() {
+    try {
+      videoProvider = await getPreferredVideoProvider();
+    } catch {
+      videoProvider = null;
     }
   }
 
@@ -366,10 +373,6 @@
   // =============================================================================
   // Prefect handlers (PRESERVED)
   // =============================================================================
-  async function handleRefresh() {
-    await Promise.allSettled([flowForgeStore.fetchWorkflows(), loadWorkflowBoard()]);
-  }
-
   function handleWorkflowClick(workflow: PrefectWorkflow) {
     flowForgeStore.openNodeGraph(workflow);
   }
@@ -377,6 +380,27 @@
   function handleKillSwitch(workflow: PrefectWorkflow) {
     workflowToCancel = workflow;
     showKillSwitchModal = true;
+  }
+
+  async function handlePauseWorkflow(workflow: PrefectWorkflow) {
+    const success = await flowForgeStore.pauseWorkflow(workflow.id);
+    if (success) {
+      await loadWorkflowBoard();
+    }
+  }
+
+  async function handleResumeWorkflow(workflow: PrefectWorkflow) {
+    const success = await flowForgeStore.resumeWorkflow(workflow.id);
+    if (success) {
+      await loadWorkflowBoard();
+    }
+  }
+
+  async function handleRetryWorkflow(workflow: PrefectWorkflow) {
+    const success = await flowForgeStore.retryWorkflow(workflow.id);
+    if (success) {
+      await loadWorkflowBoard();
+    }
   }
 
   async function confirmCancellation() {
@@ -495,18 +519,6 @@
           <span class="subtitle">Global Workflow Orchestration &amp; Floor Manager</span>
         </div>
       </div>
-      <div class="header-right">
-        <!-- AC 12-6-8: DeptKanbanTile in header-right — separate from Prefect Kanban -->
-        <DeptKanbanTile dept="flowforge" onNavigate={() => activeTab = 'dept-kanban'} />
-        {#if activeTab === 'prefect'}
-          <button class="refresh-btn" onclick={handleRefresh} disabled={loading}>
-            <span class="icon-wrapper" class:spinning={loading}>
-              <RefreshCw size={16} />
-            </span>
-            <span>Refresh</span>
-          </button>
-        {/if}
-      </div>
     </div>
 
     <!-- Tab Nav Strip -->
@@ -575,6 +587,20 @@
               </span>
             {/if}
           </div>
+
+          {#if videoProvider?.selected_model}
+            <div class="provider-summary-row">
+              <span class="provider-summary-model">
+                {videoProvider.selected_model.name || videoProvider.primary_model}
+              </span>
+              {#if videoProvider.selected_model.pricing}
+                <span class="provider-summary-pill">{videoProvider.selected_model.pricing}</span>
+              {/if}
+              {#if videoProvider.selected_model.capabilities}
+                <span class="provider-summary-pill">{videoProvider.selected_model.capabilities}</span>
+              {/if}
+            </div>
+          {/if}
 
           <div class="launcher-input-row">
             <input
@@ -825,6 +851,9 @@
                         <PrefectKanbanCard
                           workflow={workflow}
                           onClick={handleWorkflowClick}
+                          onPause={handlePauseWorkflow}
+                          onResume={handleResumeWorkflow}
+                          onRetry={handleRetryWorkflow}
                           onKillSwitch={column.id === 'RUNNING' ? handleKillSwitch : undefined}
                         />
                       {/each}
@@ -934,41 +963,6 @@
   .header-title .subtitle {
     font-size: 12px;
     color: #64748b;
-  }
-
-  .header-right {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-  }
-
-  .refresh-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
-    background: rgba(6, 182, 212, 0.15);
-    border: 1px solid rgba(6, 182, 212, 0.3);
-    border-radius: 6px;
-    color: #06b6d4;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .refresh-btn:hover:not(:disabled) {
-    background: rgba(6, 182, 212, 0.25);
-    border-color: rgba(6, 182, 212, 0.5);
-  }
-
-  .refresh-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .icon-wrapper.spinning {
-    animation: spin 1s linear infinite;
   }
 
   @keyframes spin {
@@ -1104,6 +1098,31 @@
     background: rgba(240, 165, 0, 0.12);
     color: #f0a500;
     border: 1px solid rgba(240, 165, 0, 0.2);
+  }
+
+  .provider-summary-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-top: -2px;
+  }
+
+  .provider-summary-model {
+    font-family: var(--font-ambient, 'JetBrains Mono', monospace);
+    font-size: 11px;
+    font-weight: 600;
+    color: #e2e8f0;
+  }
+
+  .provider-summary-pill {
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-family: var(--font-ambient, 'JetBrains Mono', monospace);
+    color: #94a3b8;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
   }
 
   .launcher-input-row {

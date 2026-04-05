@@ -875,7 +875,7 @@
 <style>
   .agents-workspace {
     display: grid;
-    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+    grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
     gap: 18px;
     align-items: start;
   }
@@ -1052,7 +1052,7 @@
 
   .editor-top-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.9fr);
+    grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.8fr);
     gap: 18px;
     align-items: start;
   }
@@ -1244,7 +1244,7 @@
 
   .prompt-textarea {
     width: 100%;
-    min-height: 420px;
+    min-height: 560px;
     padding: 16px;
     background: var(--bg-tertiary);
     border: 1px solid var(--border-subtle);

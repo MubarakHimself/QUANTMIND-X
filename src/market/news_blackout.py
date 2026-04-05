@@ -28,6 +28,11 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
+def is_news_blackout_configured() -> bool:
+    """Return True only when the Finnhub dependency and API key are both available."""
+    return finnhub is not None and bool(os.environ.get("FINNHUB_API_KEY", "").strip())
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Session → Currency exposure mapping
 # A session is killed only if an event's currency overlaps with its exposure.
