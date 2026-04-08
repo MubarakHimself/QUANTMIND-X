@@ -330,7 +330,7 @@ BotPerformanceSnapshot (periodic)
 - **Score read:** Sync (read from Redis cache)
 
 ### DPR Redis Gap Fix
-The router-layer `DprScoringEngine.score_all_bots()` does NOT write scores to Redis. This bridge MUST include Redis publish:
+The router-layer `DprScoringEngine` fix is already in uncommitted code (`_write_score_to_redis()` with 24h TTL). This bridge MUST extend Redis publishing to cover the risk-layer DPR engine as well (which currently only writes `session_concern:{magic_number}` counters, not DPR composite scores).
 ```python
 # In DPRBridge.outbound:
 await redis.setex(f"dpr:score:{bot_id}", 86400, json.dumps({

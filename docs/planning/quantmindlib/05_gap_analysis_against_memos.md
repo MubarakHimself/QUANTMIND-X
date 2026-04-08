@@ -227,12 +227,26 @@ Each item is mapped from memo recommendation to codebase reality. Alignment stat
 
 ## Part 12: DPR Redis Gap (Not in Memos — Codebase Finding)
 
-### G-18: DPR Scores Not Written to Redis
+### G-18: DPR Redis Gap (Updated)
 
 | Aspect | Codebase Reality | Impact | Status |
 |--------|-----------------|--------|--------|
-| DPR scores computed but not published to Redis | `DprScoringEngine` (router) and `DPRScoringEngine` (risk) both lack Redis publish calls | Downstream systems expecting `dpr:score:{bot_id}` keys will fail | **MISSING** (bug) |
-| Redis key pattern `dpr:score:{bot_id}` used but never populated | Confirmed in code scan | DPR Redis gap must be fixed as part of library bridge layer | **MISSING** (bug) |
+| Router DPR engine writes `dpr:score:{bot_id}` to Redis | `DprScoringEngine` (router) now has `_write_score_to_redis()` with 24h TTL | FIXED in uncommitted code | **ALIGNED** |
+| Risk layer DPR engine writes `session_concern:{magic_number}` to Redis | `DPRScoringEngine` (risk) writes session concern counters — different key pattern | DPR scores still not published from risk layer engine | **PARTIALLY ALIGNED** |
+
+**Note:** The router layer DPR Redis publish is already implemented in the uncommitted `dpr_scoring_engine.py`. The risk layer DPR engine does NOT write DPR composite scores to Redis — it only manages session concern counters. DPR bridge must still unify both engines.
+
+---
+
+## Part 13: Data Storage Architecture (DuckDB WARM Tier)
+
+### G-19: DuckDB WARM Tier Market Data (Not in Memos — Codebase Finding)
+
+| Aspect | Codebase Reality | Impact | Status |
+|--------|-----------------|--------|--------|
+| 3-tier market data storage | HOT: Redis tick cache (1h); WARM: DuckDB (30d); COLD: Parquet | Documents an existing 3-tier tiering strategy not captured in memos | **MISSING** (documentation) |
+| DuckDB WARM tier | `src/database/duckdb/market_data.py` — `market_data` table with OHLCV + tick_volume + spread + is_synthetic | WARM tier bridges HOT and COLD; DuckDB vs SQLAlchemy distinction | **MISSING** (documentation) |
+| No DuckDB tiering doc | Architecture memos don't document the 3-tier HOT/WARM/COLD strategy | Future agents may not understand the tiering rationale | **MISSING** (documentation) |
 
 ---
 
@@ -251,14 +265,15 @@ Each item is mapped from memo recommendation to codebase reality. Alignment stat
 | Library structure | 1 | 0 | 1 | 5 | 1 | 0 |
 | Order flow | 1 | 1 | 0 | 1 | 0 | 1 |
 | Shared event stream | 1 | 1 | 0 | 0 | 0 | 0 |
-| DPR Redis | 0 | 0 | 0 | 1 | 0 | 0 |
-| **TOTAL** | **22** | **16** | **3** | **23** | **4** | **3** |
+| DPR Redis | 1 | 1 | 0 | 0 | 0 | 0 |
+| Data storage (DuckDB) | 0 | 0 | 0 | 1 | 0 | 0 |
+| **TOTAL** | **24** | **17** | **3** | **24** | **4** | **3** |
 
 ### Priority Actions (by gap count)
 
 | Priority | Gap Count | Focus |
 |----------|-----------|-------|
-| P1 (Critical) | 23 missing | Shared object model, capability system, feature families, archetype system, DPR Redis fix, cTrader adapters |
+| P1 (Critical) | 24 missing | Shared object model, capability system, feature families, archetype system, DPR Redis (router fixed, risk layer partial), cTrader adapters, DuckDB WARM tier doc |
 | P2 (High) | 16 partial | BotSpec multi-profile unification, bridge completeness, workflow contract alignment |
 | P3 (Medium) | 4 refactor | cTrader migration surface, library package restructuring |
 | P4 (Low) | 3 out-of-scope | Pattern analysis deferred, footprint charts not required |
@@ -286,4 +301,5 @@ Each item is mapped from memo recommendation to codebase reality. Alignment stat
 | G-15 | §15 | `src/library/` (stub) | Full restructuring needed |
 | G-16 | trading_platform_decision_memo §5 | No quality tagging | New creation |
 | G-17 | trading_platform_decision_memo §7 | DataManager, Sentinel, SVSS | Already aligned |
-| G-18 | Codebase finding | DPR engines, no Redis write | Bug fix needed |
+| G-18 | Codebase finding | DPR engines (router + risk) | Router DPR Redis write fixed in uncommitted code; risk layer DPR still needs extension |
+| G-19 | Codebase finding | `src/database/duckdb/market_data.py` | 3-tier HOT/WARM/COLD tiering documented; DuckDB WARM tier needs architecture doc |

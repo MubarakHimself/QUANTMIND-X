@@ -124,7 +124,7 @@ Additionally, the platform migration from MT5 to cTrader creates a clean inflect
 | Platform = cTrader, broker = IC Markets Raw | Memo: trading_platform_decision_memo.docx + architecture_memo §16 |
 | 3 role split: shared object model, bot grammar, bridge layer | Memo: quantmindx_library_v1_architecture_memo.docx §1 |
 | Sync/async distinction required | Memo: quantmindx_library_v1_architecture_memo.docx §6 |
-| DPR Redis gap confirmed | Memory: WF1_SYSTEM_SCAN.md + code: `src/router/dpr_scoring_engine.py` |
+| DPR Redis gap: router fixed in uncommitted; risk layer partial | Memory: WF1_SYSTEM_SCAN.md + code: `src/router/dpr_scoring_engine.py`, `src/risk/dpr/scoring_engine.py` |
 | Phase 1 = SCALPER + ORB only | Memory: MARKET_INTELLIGENCE_AND_BOT_REGISTRY_SESSION.md |
 | 6-mode backtest evaluation | Code: `flows/alpha_forge_flow.py`, `src/backtesting/mode_runner.py` |
 | BaseBot stub exists at `src/library/base_bot.py` | Code: actual file inspection |

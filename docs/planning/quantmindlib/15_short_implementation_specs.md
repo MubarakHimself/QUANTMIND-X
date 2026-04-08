@@ -214,11 +214,11 @@ Bidirectional:
 - DPR dual engine resolution (handle both, don't resolve)
 
 ### Why It Exists
-DPR drives bot lifecycle (promotion at >= 50, quarantine on concern). The library must translate DPR scores into BotRuntimeProfile. Critical: DPR Redis gap (G-18) means scores are computed but not written to Redis. This bridge MUST fix that.
+DPR drives bot lifecycle (promotion at >= 50, quarantine on concern). The library must translate DPR scores into BotRuntimeProfile. The router DPR engine Redis fix is in uncommitted code. The risk-layer DPR engine still needs Redis publish extension (only writes session concern counters).
 
 ### Affected Files/Modules Likely Involved
-- `src/router/dpr_scoring_engine.py` — DprScoringEngine (router layer)
-- `src/risk/dpr/scoring_engine.py` — DPRScoringEngine (risk layer)
+- `src/router/dpr_scoring_engine.py` — DprScoringEngine (router layer, fix already in uncommitted)
+- `src/risk/dpr/scoring_engine.py` — DPRScoringEngine (risk layer, needs extension)
 - `src/events/dpr.py` — DPRScoreEvent, DPRConcernEvent
 - Redis (dpr:score:{bot_id} keys)
 
@@ -236,6 +236,7 @@ DPR drives bot lifecycle (promotion at >= 50, quarantine on concern). The librar
 - DPR score publisher must write to Redis: `dpr:score:{bot_id}` with 24h TTL
 - JSON payload: `{"composite_score": float, "components": dict, "tier": str, "timestamp": str}`
 - Handle both DPR engines gracefully (router + risk layers)
+- Router engine fix verified in uncommitted code; extend to risk layer
 - Redis write failures: retry 3 times, log and continue
 
 ### Test Expectations
@@ -248,13 +249,14 @@ DPR drives bot lifecycle (promotion at >= 50, quarantine on concern). The librar
 - Redis unavailable → scores not written → downstream Redis consumers fail
 
 ### Review/Handoff Notes
-- Gap G-18 is the critical bug this fixes
+- Gap G-18 router fix is in uncommitted `src/router/dpr_scoring_engine.py`
+- Risk layer DPR engine (`src/risk/dpr/scoring_engine.py`) still needs extension
 - Recovery note R-2 documents both DPR engines
 - Recovery note R-16 documents tier thresholds
 
 ### Indexed References
 - Memo §6 (bridge design), §12 (preserve DPR internals)
-- Gap: G-18 (DPR Redis gap), C2 (DPR dual engines)
+- Gap: G-18 (DPR Redis gap — router fixed, risk layer partial), C2 (DPR dual engines)
 - Recovery: R-2 (DPR dual-engine), R-16 (DPR tier thresholds)
 
 ---

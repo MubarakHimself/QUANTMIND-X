@@ -48,6 +48,7 @@ Each ticket includes:
 | DOC-003 | Create kill switch architecture doc | P3 | M | 3 |
 | DOC-004 | Create session management doc | P3 | S | 3 |
 | DOC-005 | Create DB schema overview | P4 | M | 1 |
+| DOC-006 | Document DuckDB WARM tier market data (G-19) | P2 | M | 1 |
 
 ---
 
@@ -212,6 +213,7 @@ Each ticket includes:
 | ID | Title | Priority | Complexity | Phase |
 |----|-------|----------|------------|-------|
 | DPR-001 | DPR Redis publisher (fixes G-18 gap) | P1 | M | 10 |
+| DPR-007 | BotRegistry SQLite table migration (uncommitted migration script) | P2 | S | 1 |
 | DPR-002 | DPR concern event → @session_concern tag flow | P1 | M | 10 |
 | DPR-003 | DPR tier → BotTier mapping | P1 | S | 10 |
 | DPR-004 | BotCircuitBreaker integration via SafetyHooks | P2 | M | 10 |

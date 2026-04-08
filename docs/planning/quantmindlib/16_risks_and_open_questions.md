@@ -27,13 +27,13 @@ Both are involved in the risk pipeline. The library must reference one or both, 
 
 ### BLOCKER-2: DPR Dual Engines (Router + Risk Layers)
 
-**Issue:** Two DPR engines exist with different capabilities. Neither writes scores to Redis (G-18). Downstream systems expecting Redis DPR scores will fail. The library bridge must handle both paths.
+**Issue:** Two DPR engines exist with different capabilities. Router DPR engine writes `dpr:score:{bot_id}` to Redis (fix is in uncommitted code). Risk DPR engine writes `session_concern:{magic_number}` counters but NOT DPR composite scores to Redis. Downstream systems expecting Redis DPR scores from the risk layer will fail.
 
-**Impact:** DPR bridge may get inconsistent scores depending on which engine responds. Redis gap means real-time DPR monitoring doesn't work.
+**Impact:** DPR bridge may get inconsistent scores depending on which engine responds. Risk layer Redis gap means real-time DPR monitoring from risk layer doesn't work.
 
-**Resolution needed:** Consolidate DPR engines OR establish canonical path for library bridge to use. DPR bridge must ensure Redis writes happen.
+**Resolution needed:** Extend risk-layer DPR engine Redis publish OR establish router engine as the canonical DPR score publisher. DPR bridge must unify both paths.
 
-**Status:** Unresolved
+**Status:** Partially resolved — router engine fix in uncommitted code; risk layer extension still needed.
 **Reference:** Gap G-18, Recovery note R-2
 
 ---
@@ -411,7 +411,7 @@ Both are involved in the risk pipeline. The library must reference one or both, 
 | Risk ID | Category | Description | Severity | Status |
 |---------|----------|-------------|----------|--------|
 | BLOCKER-1 | Naming conflict | Two Governor classes | HIGH | Unresolved |
-| BLOCKER-2 | DPR architecture | Dual engines, no Redis write | HIGH | Unresolved |
+| BLOCKER-2 | DPR architecture | Dual engines, risk layer no Redis write | HIGH | Partially resolved |
 | BLOCKER-3 | Platform capability | cTrader API not verified | HIGH | Unresolved |
 | BLOCKER-4 | Conversion reliability | BotSpec → strategy code | MEDIUM | Unresolved |
 | ASSUMPTION-1 | Schema mapping | TRD → BotSpec loss-free | MEDIUM | Needs verification |
@@ -436,7 +436,7 @@ Both are involved in the risk pipeline. The library must reference one or both, 
 ## 9. Pre-Implementation Checklist
 
 Before Phase 1 begins, verify:
-- [ ] DPR Redis gap confirmed with code inspection (not just memory)
+- [ ] DPR Redis gap confirmed with code inspection (router fix verified in uncommitted; risk layer gap confirmed)
 - [ ] Two Governor classes mapped with correct import paths
 - [ ] cTrader Open API Python SDK reviewed for capability completeness
 - [ ] TRD schema fields mapped to BotSpec fields
