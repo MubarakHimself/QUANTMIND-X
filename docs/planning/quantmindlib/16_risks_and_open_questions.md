@@ -46,8 +46,29 @@ Both are involved in the risk pipeline. The library must reference one or both, 
 
 **Resolution needed:** Verify cTrader Open API Python SDK capabilities before Phase 4 implementation. Review official docs: https://help.ctrader.com/open-api/
 
-**Status:** Unresolved — web research pending. Spawn agent to verify capabilities.
-**Reference:** `09_ctrader_boundary_plan.md` (Section 1), Memo Appendix A
+**Status:** Resolved — verified via web research. Key findings:
+
+| Capability | Status | Notes |
+|---|---|---|
+| Tick streams (real-time) | ✅ YES | Bid/ask push via `ProtoOASpotEvent`. NO tick volume — quote-driven only. |
+| Bar/candlestick streams | ✅ YES | Historical capped at 1-week window per request. 50 req/s live, 5 req/s historical. |
+| Depth/DOM streams | ✅ YES | Delta events only (`ProtoOADepthEvent`). No full snapshot. No per-level volume. |
+| Order execution | ✅ YES | Full suite: new order, amend, cancel, close, SL/TP modification. |
+| Account state | ✅ YES | Balance, equity, margin, unrealized P&L, margin calls, deal history. |
+| Historical data (backtesting) | ❌ NO | 1-week window cap. Broker-dependent retention. NOT suitable for backtesting. |
+| Buy/sell volume (order flow) | ❌ NO | No executed trade ticks in public API. Only quote updates + book delta events. |
+| Economic calendar | ❌ NO | Not part of cTrader Open API. Requires separate provider. |
+| Python SDK | ✅ YES | Official `OpenApiPy` (Twisted-based, MIT, PyPI available). |
+
+**Impact on REVIEW-5 (Order Flow HIGH quality):** cTrader Open API does NOT provide buy/sell volume data. HIGH quality order flow is NOT achievable from cTrader data. Per REVIEW-5, features must be DISABLED — not degraded. This means `VolumeImbalanceFeature`, `TickActivityFeature`, `SpreadBehaviorFeature` cannot use cTrader native data for HIGH quality. Library must use external order flow data source or disable.
+
+**Impact on Q-1 (Backtest historical data):** cTrader Open API CANNOT serve as backtesting data source. 1-week historical window is insufficient. Library backtest engine must accept OHLCV as input from an external source (Dukascopy, self-recorded, or third-party provider). Library owns the contract; data source is pluggable.
+
+**Impact on REVIEW-3 (Economic calendar):** Confirmed. cTrader Network Access does NOT provide economic calendar data. Finnhub direct polling continues for V1. No cTrader-based economic calendar exists.
+
+**Recommendation:** Proceed with Phase 4 adapter implementation for live trading operations (fully supported). Backtest data pipeline requires separate design — do not assume cTrader provides this. Order flow features are blocked from cTrader data source.
+
+**Reference:** `09_ctrader_boundary_plan.md` (Section 1), Memo Appendix A, OpenApiPy SDK
 
 ---
 
@@ -101,7 +122,7 @@ Both are involved in the risk pipeline. The library must reference one or both, 
 
 **Verification needed:** Confirm cTrader provides buy/sell volume data for VolumeImbalanceFeature. If not, quality tagging degrades.
 
-**Decision:** HIGH quality required (cTrader DOM). If cTrader order flow data does not meet HIGH quality, features degrade gracefully — this is acceptable. Full buy/sell delta support is preferred but not required for V1.
+**Decision:** HIGH quality required (cTrader DOM). cTrader Open API does NOT provide executed trade ticks or buy/sell volume. Per REVIEW-5, features DISABLE when HIGH quality unavailable. Order flow features (VolumeImbalance, TickActivity, SpreadBehavior) must use external data source or be disabled.
 **Reference:** `09_ctrader_boundary_plan.md` (Section 8: Order Flow Data Availability), REVIEW-5
 
 ---
@@ -364,8 +385,8 @@ Both are involved in the risk pipeline. The library must reference one or both, 
 
 **Context:** Current backtest engine (`mt5_engine.py`) simulates MQL5 with Python. cTrader backtest engine needs historical OHLCV data.
 
-**Decision:** Research required. Library must own its backtest data pipeline. cTrader backtest engine should accept OHLCV data as input — making it broker-agnostic. Use existing Dukascopy data or build own pipeline. Library defines the contract; data source is pluggable.
-**Reference:** SPEC-011, `src/data/dukascopy_fetcher.py`
+**Decision:** ✓ Resolved. cTrader Open API does NOT provide suitable historical data for backtesting. Historical data is capped at 1-week windows per request. Broker-dependent retention. Library MUST own its backtest data contract. Data source is pluggable: Dukascopy (existing `src/data/dukascopy_fetcher.py`), self-recorded from live cTrader streams, or third-party provider. Library defines the OHLCV input contract; implementation is independent of cTrader adapter.
+**Reference:** SPEC-011, `src/data/dukascopy_fetcher.py`, BLOCKER-3 research
 
 ---
 
@@ -419,7 +440,7 @@ Both are involved in the risk pipeline. The library must reference one or both, 
 |---------|----------|-------------|----------|--------|
 | BLOCKER-1 | Naming conflict | Two Governor classes | HIGH | Resolved (Option C) |
 | BLOCKER-2 | DPR architecture | Dual engines, risk layer no Redis write | HIGH | Resolved (Option B) |
-| BLOCKER-3 | Platform capability | cTrader API not verified | HIGH | Pending research |
+| BLOCKER-3 | Platform capability | cTrader API verified — order flow + backtest data NOT available | HIGH | Resolved |
 | BLOCKER-4 | Conversion reliability | BotSpec → strategy code | MEDIUM | Resolved (test + fallback) |
 | ASSUMPTION-1 | Schema mapping | TRD → BotSpec loss-free | MEDIUM | Resolved (Option B, lenient) |
 | ASSUMPTION-2 | Schema compatibility | cTrader vs MT5 backtest | HIGH | Resolved (current plan, test early) |

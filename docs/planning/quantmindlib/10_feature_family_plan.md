@@ -140,6 +140,9 @@ class VolumeResult:
 **Path:** `src/library/features/orderflow/`
 **Live/Historical:** Live only (requires tick stream)
 
+### IMPORTANT (BLOCKER-3 resolution): cTrader does NOT provide order flow data
+cTrader Open API does NOT expose executed trade ticks or buy/sell volume. Only quote updates (bid/ask) and order book delta events. Per REVIEW-5 (HIGH quality only), these features MUST be disabled from cTrader native data. Library should design the interface now but require external order flow data source. Options for future phases: external order flow data provider, or cTrader broker-specific data package.
+
 ### Base Class
 ```python
 class OrderFlowFeature(FeatureModule):

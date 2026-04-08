@@ -63,6 +63,7 @@ class IMarketDataAdapter(ABC):
     def depth_stream(self, symbol: str) -> AsyncIterator[DepthEvent]: ...
     def get_historical(self, symbol: str, timeframe: str, start: datetime, end: datetime) -> List[Bar]: ...
     def get_account_state(self) -> AccountState: ...
+    # NOTE: For backtesting, historical data is sourced independently (see §8 Historical Data)
 
 class IExecutionAdapter(ABC):
     def send_order(self, directive: ExecutionDirective) -> ExecutionResult: ...
@@ -74,12 +75,13 @@ class IExecutionAdapter(ABC):
 ### cTrader-Specific Implementations
 
 **CTraderMarketAdapter:**
-- Wraps cTrader Open API Python SDK
-- Converts cTrader tick format → library `TickEvent`
+- Wraps official `OpenApiPy` SDK (Twisted-based, MIT, PyPI)
+- Converts cTrader tick format → library `TickEvent` (bid/ask/quote — no tick volume)
 - Converts cTrader bar format → library `BarEvent`
-- Converts cTrader depth format → library `DepthEvent`
+- Converts cTrader depth format → library `DepthEvent` (delta events only, no full snapshot)
 - Handles cTrader-specific reconnect logic
 - Implements heartbeat/keepalive for WebSocket connections
+- **Historical data:** NOT sourced from cTrader — see §8 for backtest data source
 
 **CTraderExecutionAdapter:**
 - Converts library `ExecutionDirective` → cTrader order
@@ -218,34 +220,46 @@ Library ExecutionResult → DPRBridge (for scoring) + JournalBridge (for audit)
 
 Per trading_platform_decision_memo §5: Order flow quality-aware design.
 
+**IMPORTANT (BLOCKER-3 resolution):** cTrader Open API does NOT provide executed trade ticks or buy/sell volume. It provides quote updates (bid/ask) and order book delta events only. Per REVIEW-5 (HIGH quality only), order flow features must be DISABLED from cTrader native data.
+
 ### cTrader → Order Flow Data Available
 
 | Data Source | Available | Quality | Notes |
 |-------------|-----------|---------|-------|
-| **Tick stream** | Yes | HIGH | Real-time bid/ask/last ticks |
-| **OHLCV bars** | Yes | HIGH | All standard timeframes |
-| **Market Depth (DOM)** | Yes | HIGH | Level 2 order book via cTrader Open API |
-| **Spread behavior** | Yes | HIGH | Derived from tick stream |
-| **Volume** | Yes | MEDIUM | cTrader volume is relative (not absolute) |
-| **Delta (buy/sell volume)** | PARTIAL | LOW | cTrader doesn't expose raw buy/sell volume directly |
-| **Imbalance at levels** | PARTIAL | MEDIUM | Can be derived from DOM |
+| **Tick stream (quote)** | ✅ Yes | HIGH | Bid/ask/quote — NO tick volume |
+| **OHLCV bars** | ✅ Yes | HIGH | Standard timeframes. Historical capped at 1-week per request. |
+| **Market Depth (DOM)** | ✅ Partial | MEDIUM | Delta events only. No full snapshot. No per-level volume. |
+| **Spread behavior** | ✅ Yes | HIGH | Derived from bid/ask tick stream |
+| **Volume (relative)** | ✅ Yes | MEDIUM | cTrader volume is broker-calculated relative volume, not absolute |
+| **Delta (buy/sell volume)** | ❌ No | — | NOT available in public API |
+| **Imbalance at levels** | ❌ No | — | No per-level volume data in public API |
 
 ### Quality Tagging Strategy
+
+Per REVIEW-5: HIGH quality required. cTrader does not provide HIGH quality order flow data. Order flow features (VolumeImbalance, TickActivity, SpreadBehavior, SessionVolume) are DISABLED from cTrader native data — not degraded to proxies.
 
 All order flow features must include `FeatureConfidence`:
 ```python
 @dataclass
 class FeatureConfidence:
-    source: str       # "ctrader_native" / "ctrader_proxied" / "approximated"
+    source: str       # "ctrader_native" / "external_provider" / "disabled"
     quality: float    # 0.0-1.0
     latency_ms: float
-    feed_quality_tag: str  # HIGH / MEDIUM / LOW
+    feed_quality_tag: str  # HIGH / MEDIUM / LOW / DISABLED
 ```
 
-Order flow features should degrade gracefully:
-- HIGH: cTrader DOM tick-level data
-- MEDIUM: OHLCV-derived approximations
-- LOW: Session-relative proxies (e.g., current volume vs session average)
+Future phases: external order flow data provider or broker-specific data package.
+
+### Historical Data for Backtesting
+
+| Source | Available | Notes |
+|--------|-----------|-------|
+| cTrader Open API | ❌ No | 1-week window cap per request. Broker-dependent retention. Not suitable for backtesting. |
+| Dukascopy (existing) | ✅ Yes | `src/data/dukascopy_fetcher.py` — use for backtest data V1 |
+| Self-recorded | ✅ Yes | Record live cTrader tick streams into local storage for replay |
+| Third-party provider | ✅ Yes | Rithmic, CQG, or IC Markets-specific data package |
+
+Library owns backtest data contract. `IMarketDataAdapter.get_historical()` signature is preserved but cTrader adapter delegates to external data source for backtesting.
 
 ---
 
