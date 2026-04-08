@@ -176,13 +176,12 @@ When only OHLCV approximation: `FeatureConfidence.source = "approximated"`, qual
 - **Partial:** SVSS tick processing provides tick data; order flow features build on top
 - **cTrader DOM** provides best quality tick activity data
 
-### Degradation Strategy
+### Degradation Strategy (REVIEW-5: HIGH quality only)
 ```
-Available: cTrader DOM tick-level → HIGH quality order flow
-Fallback: OHLCV tick approximation → MEDIUM quality
-Fallback: Session-relative proxy → LOW quality
-Fallback: Disabled → no order flow signal
+Available: cTrader DOM tick-level → HIGH quality order flow → feature enabled
+Fallback: No cTrader DOM → feature DISABLED (no degraded proxy)
 ```
+Per REVIEW-5: Order flow features require cTrader DOM quality. If HIGH quality is not available, features are disabled — not degraded to proxies. No session-relative proxy fallback for order flow features. General features (non-order-flow) use MEDIUM as default threshold per Q-5.
 
 ---
 

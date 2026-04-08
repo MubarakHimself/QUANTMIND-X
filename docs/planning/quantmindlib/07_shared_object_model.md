@@ -125,6 +125,16 @@
 - `hmm_agreement: Optional[float]` — Ising vs HMM agreement ratio
 - `sqs: Optional[float]` — spread quality score
 
+**Multi-timeframe regime fields (Q-2 decision — support via bridge, not library wrapping):**
+- `timeframe_regimes: Optional[Dict[str, str]]` — e.g., `{"M1": "trend", "M5": "trend", "M15": "compression_breakout_candidate"}`
+- `timeframe_alignment_score: Optional[float]` — 0.0-1.0 agreement across timeframes
+- `regime_confidence: Optional[float]` — 0.0-1.0 confidence in dominant regime
+- `volatility_regime: Optional[str]` — e.g., "elevated", "normal", "compressed"
+- `liquidity_regime: Optional[str]` — e.g., "healthy", "thin", "stressed"
+- `produced_by: Optional[str]` — source system e.g., "MultiTimeframeSentinel"
+
+**Design note (Q-2):** MultiTimeframeSentinel stays external. Library MarketContext carries the outputs via SentinelBridge. Do NOT wrap MultiTimeframeSentinel as a library feature module. Derived helpers (multi-timeframe agreement score, HTF trend alignment flag) are acceptable as library-level derived features.
+
 **Producers:** SentinelBridge (from RegimeReport)
 **Consumers:** FeatureEvaluator (sync read), RiskBridge, BotStateManager
 **Sync/Async:** Hybrid (async updates from sentinel, sync reads at decision time)
@@ -205,19 +215,58 @@ class FeatureConfidence:
 
 ---
 
-### 9. PatternSignal (Placeholder)
+### 9. PatternSignal (Detailed Placeholder — Q-3 Decision)
 
-**Purpose:** Chart pattern detection output (deferred — out of V1 scope)
-**Boundary:** OUT-OF-SCOPE (reserved for future)
+**Purpose:** Chart pattern detection output (out of V1 scope — internal engine deferred, external contract defined now)
+**Boundary:** OUT-OF-SCOPE (internal) / BRIDGE (contract)
 
-**Structure TBD:**
+**Design note (Q-3):** Detailed placeholder schema now, internal pattern engine later. Define the external interface now so other library components can depend on it. Defer: pattern engine internals, full ontology of pattern types, ML model specifics.
+
+**Required fields:**
+- `signal_id: str` — unique pattern signal identifier
+- `symbol: str`
+- `timeframe: str`
+- `pattern_type: str` — e.g., "range_breakout_candidate", "session_range_boundary"
+- `direction: str` — "bullish", "bearish", "neutral"
+- `confidence: float` — 0.0-1.0
+- `source: str` — producer system, e.g., "pattern_service", "sentinel"
+- `as_of: datetime`
+
+**Strongly recommended:**
+- `role: str` — "setup", "confirmation", "warning", "blocker"
+- `strength: float` — 0.0-1.0 pattern strength metric
+- `window_start: datetime`
+- `window_end: datetime`
+- `metadata: Dict[str, Any]` — producer version, notes
+- `features: Dict[str, float]` — supporting metrics (compression_score, boundary_integrity, volume_support)
+
+**Optional:**
+- `invalidates_at: Optional[datetime]`
+- `linked_context_id: Optional[str]`
+- `session_scope: Optional[str]`
+
+**Not to detail yet:** geometric detection internals, full candlestick taxonomy, image/chart-processing, neural-network outputs.
+
 ```python
 @dataclass
 class PatternSignal:
-    pattern_type: str        # e.g., "double_bottom", "head_and_shoulders"
+    signal_id: str
+    symbol: str
+    timeframe: str
+    pattern_type: str
+    direction: str
     confidence: float
-    timestamp: datetime
-    # Full spec deferred to Phase 2+
+    source: str
+    as_of: datetime
+    role: str = "setup"
+    strength: float = 0.0
+    window_start: Optional[datetime] = None
+    window_end: Optional[datetime] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    features: Dict[str, float] = field(default_factory=dict)
+    invalidates_at: Optional[datetime] = None
+    linked_context_id: Optional[str] = None
+    producer_version: str = "v1"
 ```
 
 **Evidence:** Memo §9 — "deferred/placeholder as future service candidate"
