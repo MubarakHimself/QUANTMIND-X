@@ -422,6 +422,8 @@ Items out of V1 scope but planned for future phases:
 - **Advanced derived archetypes:** LondonORB + volume confirmation, OverlapBreakout + orderflow filter
 - **cTrader Network Access integration:** Economic calendar via cTrader instead of direct Finnhub
 - **Chart rendering:** Optional footprint/VWAP rendering for debugging
+- **External order flow adapter:** IExternalOrderFlowAdapter implementation for true executed trade-flow data (Category B features: VolumeImbalance, TickActivity). cTrader Open API does not provide buy/sell volume. External provider required.
+- **Category B feature activation:** Once external order flow data source is connected, VolumeImbalanceFeature and TickActivityFeature become V1-active with HIGH quality.
 
 ### Phase 3+ (Future V3+)
 - **ML feature integration:** HMM/BOCPD/MS-GARCH output consumption as features

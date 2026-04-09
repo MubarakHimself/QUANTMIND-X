@@ -283,6 +283,8 @@ Create `src/library/adapters/ctrader/`:
 ### Why It Exists
 cTrader is the target platform (IC Markets cTrader Raw). The library needs a market data adapter that provides ticks, bars, depth, and historical data from cTrader. Currently, MT5 adapters exist but must be replaced.
 
+**Key architectural decision (Data Source of Truth):** cTrader is the direct source for live execution, market-state, quotes/ticks, and account/position data. cTrader is NOT the authoritative source for historical data or true executed trade flow — these always route through external sources. Backtest data comes from external providers (Dukascopy, self-recorded, or third-party). See `09_ctrader_boundary_plan.md` §8B.
+
 ### Affected Files/Modules Likely Involved
 - `src/data/brokers/mt5_socket_adapter.py` — reference for adapter pattern
 - `src/data/data_manager.py` — DataManager (consumer)
@@ -327,18 +329,22 @@ cTrader is the target platform (IC Markets cTrader Raw). The library needs a mar
 
 ---
 
-## SPEC-006: FeatureRegistry and 13 Feature Modules
+## SPEC-006: FeatureRegistry and Feature Modules
 
 ### Title
 Build V1 feature families with capability declarations
 
 ### Scope
-Create `src/library/features/` with all 13 feature modules:
-- indicators: RSI, ATR, MACD, VWAP
-- volume: RVOL, Volume Profile, MFI, Imbalance
-- orderflow: Tick Activity, Spread Behavior, Session Volume
-- session: Session Detector, Session Blackout
-- transforms: Normalize, Rolling, Resample
+Create `src/library/features/` with all feature modules (6 families, 14 modules total):
+
+**indicators (4):** RSI, ATR, MACD, VWAP
+**volume (4):** RVOL, Volume Profile, MFI, VolumeImbalance
+**orderflow_category_a (3, V1-supported via cTrader):** Spread Behavior, DOM Pressure, Depth Thinning
+**orderflow_category_b (3, V1-deferred, external source required):** Volume Imbalance, Tick Activity, Session Volume
+**session (2):** Session Detector, Session Blackout
+**transforms (3):** Normalize, Rolling, Resample
+
+**Key architectural decision:** Order flow split into Category A (depth/liquidity from cTrader, V1 active) and Category B (executed trade-flow, external source required, V1 deferred). See `10_feature_family_plan.md` FF-3.
 
 Create `src/library/core/registries/feature_registry.py`.
 
@@ -369,9 +375,10 @@ The library needs reusable, parameterized feature modules. Currently, features e
 
 ### Implementation Notes
 - Wrap SVSS indicators: do not rewrite (preserve behavior)
-- VolumeImbalanceFeature is entirely new (no existing code)
+- VolumeImbalanceFeature is entirely new (no existing code) — requires IExternalOrderFlowAdapter
 - Order flow features must include FeatureConfidence tagging
-- Degrade gracefully: cTrader native → proxy → approximation → disabled
+- **Category A** (SpreadBehavior, DOMPressure, DepthThinning): V1-active with cTrader data. Quality = HIGH via cTrader native.
+- **Category B** (VolumeImbalance, TickActivity, SessionVolume): V1-deferred. Require external order flow source. Gracefully disable when source unavailable — no proxy fallback.
 
 ### Test Expectations
 - FeatureRegistry.get("indicators/rsi") returns RSIFeature
@@ -705,6 +712,8 @@ Critical: schema compatibility. The evaluation pipeline (FullBacktestPipeline) m
 
 ### Why It Exists
 MT5 backtest engine (mt5_engine.py) is embedded in the evaluation pipeline. cTrader replacement must produce identical result schemas. Currently, mt5_engine.py simulates MQL5 environment — cTrader engine must replicate this.
+
+**Critical: Backtest data is NOT from cTrader.** cTrader Open API has a 1-week historical data cap and broker-dependent retention — it cannot serve as a backtesting source. The backtest engine must accept OHLCV as input from external sources (Dukascopy, self-recorded from live cTrader streams, or third-party providers). Library owns the contract; data source is pluggable. See `09_ctrader_boundary_plan.md` §8B (Data Source of Truth Matrix).
 
 ### Affected Files/Modules Likely Involved
 - `src/backtesting/mt5_engine.py` — MT5BacktestResult schema (MUST MATCH)

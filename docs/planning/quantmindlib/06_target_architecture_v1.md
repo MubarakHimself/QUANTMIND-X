@@ -110,13 +110,17 @@ src/library/                          # QuantMindLib root
 ├── adapters/                         # Platform adapters (cTrader V1)
 │   ├── __init__.py
 │   ├── base.py                       # PlatformAdapter (ABC), AdapterConfig
-│   └── ctrader/
+│   ├── ctrader/
+│   │   ├── __init__.py
+│   │   ├── client.py                 # CTraderClient — cTrader Open API Python SDK wrapper
+│   │   ├── market_adapter.py         # CTraderMarketAdapter (IMarketDataAdapter impl)
+│   │   ├── execution_adapter.py     # CTraderExecutionAdapter (IExecutionAdapter impl)
+│   │   ├── types.py                  # cTrader-specific type conversions
+│   │   └── converter.py              # OHLCV, tick, depth converters
+│   └── external/
 │       ├── __init__.py
-│       ├── client.py                 # CTraderClient — cTrader Open API Python SDK wrapper
-│       ├── market_adapter.py        # CTraderMarketAdapter (IMarketDataAdapter impl)
-│       ├── execution_adapter.py     # CTraderExecutionAdapter (IExecutionAdapter impl)
-│       ├── types.py                  # cTrader-specific type conversions
-│       └── converter.py              # OHLCV, tick, depth converters
+│       ├── order_flow_adapter.py     # IExternalOrderFlowAdapter (optional, V1 deferred)
+│       └── data_source_registry.py   # Registry of external data sources
 │
 └── bridges/                          # Two-way bridges to existing systems
     ├── __init__.py
@@ -325,9 +329,10 @@ class FeatureRegistry:
 V1 feature families:
 1. **indicators** — RSI, ATR, MACD, VWAP
 2. **volume** — RVOL, Volume Profile, MFI, Imbalance
-3. **orderflow** — Tick Activity, Spread Behavior, Session Volume
-4. **session** — Session Detector, Session Blackout
-5. **transforms** — Normalize, Rolling Window, Resample
+3. **orderflow_cat_a** — Spread Behavior, DOM Pressure, Depth Thinning (depth/liquidity from cTrader, V1 supported)
+4. **orderflow_cat_b** — Volume Imbalance, Tick Activity, Session Volume (executed trade-flow, external source required, V1 deferred)
+5. **session** — Session Detector, Session Blackout
+6. **transforms** — Normalize, Rolling Window, Resample
 
 ---
 
@@ -370,13 +375,14 @@ class ArchetypeSpec:
 
 ---
 
-## 7. cTrader Adapter Boundary
+## 7. cTrader Adapter Boundary + Data Source of Truth
 
 ### What is Platform-Agnostic (Library Core)
 - BotSpec, TradeIntent, RiskEnvelope, MarketContext schemas
 - FeatureRegistry, ArchetypeRegistry
 - Composer, Validator, IntentEmitter
 - All bridge adapters (define interfaces, not platform logic)
+- IExternalOrderFlowAdapter interface (platform-neutral)
 
 ### What is cTrader-Specific (Adapter Layer)
 - CTraderClient and SDK wrapper
@@ -384,6 +390,20 @@ class ArchetypeSpec:
 - cTrader account state, position, order type mappings
 - cTrader execution directives (order types, stops, limits)
 - cTrader-specific error handling and reconnection logic
+
+### Data Source of Truth Matrix
+
+| Domain | Source of Truth | cTrader Role | External Role |
+|--------|----------------|-------------|---------------|
+| **Live execution** | cTrader | Direct | N/A |
+| **Live depth/liquidity state** | cTrader | Direct | N/A |
+| **Live quotes/ticks** | cTrader | Direct | N/A |
+| **Account / position state** | cTrader | Direct | N/A |
+| **Historical research/backtesting** | External canonical | Integration point only | Authoritative |
+| **True executed trade flow** | External only | Not available | Authoritative |
+| **Economic calendar / news** | External machine-readable | Not in Open API | Authoritative |
+
+Key principle: cTrader is the **live execution and market-state adapter**. It is NOT the authoritative source for historical data or true trade flow. These domains always route through external sources.
 
 ### What Must Be Hidden Behind Adapters
 - Direct MT5 socket calls → must route through IMarketDataAdapter
@@ -500,6 +520,7 @@ Per memo §3 and confirmed by gap analysis:
 - Replacing DPR internals
 - Replacing backtest report generation internals
 - Multi-broker adapter framework (cTrader only in V1)
+- **External order flow data adapter** (Category B executed trade-flow features, V1 deferred)
 
 ---
 

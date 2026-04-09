@@ -1,6 +1,6 @@
 # 10 — Feature Family Plan
 
-**Version:** 1.0
+**Version:** 1.1
 **Date:** 2026-04-08
 **Purpose:** Define V1 feature families, their inputs/outputs, and dependencies
 
@@ -10,13 +10,14 @@
 
 ### V1 Scope: 5 Feature Families
 
-| Family | Purpose | Live | Historical | Bot-Facing | Sentinel-Facing | Shared |
-|--------|---------|------|------------|-----------|----------------|--------|
-| **indicators** | Technical indicators (RSI, ATR, MACD, VWAP) | Yes | Yes | Yes | No | Yes |
-| **volume** | Volume-based features (RVOL, Volume Profile, MFI, Imbalance) | Yes | Yes | Yes | Partial | Yes |
-| **orderflow** | Order flow proxies (Tick Activity, Spread Behavior, Session Volume) | Yes | Yes | Yes | No | Yes |
-| **session** | Session-aware features (Session Detector, Blackout) | Yes | Yes | Yes | Yes | Yes |
-| **transforms** | Data transformations (Normalize, Rolling, Resample) | Yes | Yes | Yes | No | Yes |
+| Family | Purpose | Live | Historical | Bot-Facing | Sentinel-Facing | Shared | V1 Data Source |
+|--------|---------|------|------------|-----------|----------------|--------|----------------|
+| **indicators** | Technical indicators (RSI, ATR, MACD, VWAP) | Yes | Yes | Yes | No | Yes | cTrader (native) |
+| **volume** | Volume-based features (RVOL, Volume Profile, MFI, Imbalance) | Yes | Yes | Yes | Partial | Yes | cTrader (native) |
+| **orderflow_cat_a** | Depth/liquidity-state features (Spread, DOM, top-of-book) | Yes | Yes | Yes | No | Yes | cTrader (native, V1 supported) |
+| **orderflow_cat_b** | Executed trade-flow features (delta, tape-speed, footprint) | Yes | Yes | Yes | No | Yes | External only |
+| **session** | Session-aware features (Session Detector, Blackout) | Yes | Yes | Yes | Yes | Yes | cTrader (native) |
+| **transforms** | Data transformations (Normalize, Rolling, Resample) | Yes | Yes | Yes | No | Yes | cTrader (native) |
 
 ### Footprint Logic vs Charts
 - **Footprint logic:** ALLOWED. Volume distribution, imbalance, delta-style behavior, pressure at levels — these are `VolumeImbalanceFeature` and are in scope.
@@ -90,7 +91,7 @@ class VolumeFeature(FeatureModule):
 | RVOL | `RVOLFeature` | Relative Volume vs session average | volume, session_avg_volume | RVOL ratio |
 | Volume Profile | `VolumeProfileFeature` | POC, value area, profile distribution | tick volume, price levels | POC price, VA high/low, profile |
 | MFI | `MFIFeature` | Money Flow Index | high, low, close, volume | MFI value (0-100) |
-| Imbalance | `VolumeImbalanceFeature` | Delta, buy/sell pressure at levels | tick volume, tick direction | imbalance_ratio, pressure_score |
+| Imbalance | `VolumeImbalanceFeature` | Delta, buy/sell pressure at levels | tick volume, tick direction | imbalance_ratio, pressure_score | ⚠️ External required (Category B)
 
 ### Footprint Logic Detail
 The `VolumeImbalanceFeature` provides footprint-derived logic:
@@ -134,57 +135,106 @@ class VolumeResult:
 
 ---
 
-## FF-3: Order Flow
+## FF-3: Order Flow (Two Categories)
 
 **Family ID:** `orderflow`
 **Path:** `src/library/features/orderflow/`
 **Live/Historical:** Live only (requires tick stream)
 
-### IMPORTANT (BLOCKER-3 resolution): cTrader does NOT provide order flow data
-cTrader Open API does NOT expose executed trade ticks or buy/sell volume. Only quote updates (bid/ask) and order book delta events. Per REVIEW-5 (HIGH quality only), these features MUST be disabled from cTrader native data. Library should design the interface now but require external order flow data source. Options for future phases: external order flow data provider, or cTrader broker-specific data package.
+### Architecture Decision: Two-Category Order Flow Split
 
-### Base Class
+Per architecture decision (2026-04-08): Order flow is split into two distinct categories with different data sources and V1 support status. This supersedes the single monolith approach.
+
+### Category A: Depth/Liquidity-State Features (V1 Supported — cTrader)
+
+cTrader Open API provides real-time DOM and quote data that supports depth/liquidity-state features. These are V1 in scope.
+
+**Base Class:**
 ```python
-class OrderFlowFeature(FeatureModule):
-    # ABC with compute(context: FeatureContext) -> OrderFlowSignal
+class DepthLiquidityFeature(FeatureModule):
+    # ABC with compute(context: FeatureContext) -> DepthLiquiditySignal
 ```
 
-### V1 Modules
+**V1 Modules (Category A — V1 Supported via cTrader):**
 
-| Module | Class | Description | Inputs | Outputs |
-|--------|-------|-------------|--------|---------|
-| Tick Activity | `TickActivityFeature` | Tick rate, momentum, micro-trends | tick stream | SignalDirection, strength (0-1.0) |
-| Spread Behavior | `SpreadBehaviorFeature` | Spread dynamics, volatility of spread | bid/ask ticks | spread_score, spread_volatility |
-| Session Volume | `SessionVolumeFeature` | Session-relative volume | volume, session_context | session_volume_ratio |
+| Module | Class | Description | Inputs | Outputs | V1 Support |
+|--------|-------|-------------|--------|---------|------------|
+| Spread Behavior | `SpreadBehaviorFeature` | Spread dynamics, volatility of spread | bid/ask ticks | spread_score, spread_volatility | ✅ V1 Supported |
+| DOM Pressure | `DOMPressureFeature` | Top-of-book pressure, depth imbalance | depth delta events | pressure_ratio, imbalance_score | ✅ V1 Supported |
+| Depth Thinning | `DepthThinningFeature` | Depth thinning/thickening detection | depth stream | thinning_score, liquidity_state | ✅ V1 Supported |
 
-### Order Flow Quality Tagging
-Per trading_platform_decision_memo §5: order flow features must carry feed quality:
+**Category A Dependency Declaration:**
 ```python
-OrderFlowFeature.capability_spec = CapabilitySpec(
-    module_id="orderflow/tick_activity",
-    provides=["orderflow/tick_activity"],
+SpreadBehaviorFeature.capability_spec = CapabilitySpec(
+    module_id="orderflow/spread",
+    provides=["orderflow/spread", "liquidity/spread"],
     requires=["data/tick_stream"],
     optional=[],
-    outputs=[OrderFlowSignal],  # OrderFlowSignal includes FeatureConfidence
+    outputs=[OrderFlowSignal],
     compatibility=["scalping", "orb"],
     sync_mode=True
 )
 ```
 
-When cTrader DOM data is available: `FeatureConfidence.source = "ctrader_native"`, quality = HIGH.
-When only OHLCV approximation: `FeatureConfidence.source = "approximated"`, quality = MEDIUM.
+**Quality Tagging (Category A):**
+- cTrader DOM quote data → `FeatureConfidence.source = "ctrader_native"`, quality = HIGH
+- These features are V1-supported per `09_ctrader_boundary_plan.md` §8
+
+### Category B: Executed Trade-Flow Features (External Source Required)
+
+cTrader Open API does NOT expose executed trade ticks, buy/sell volume delta, or true trade flow. These features require an external data source. Per architecture decision, Category B features are V1-deferred but the interface is designed now.
+
+**Interface Design (V1 placeholder, not implementation):**
+```python
+class IExternalOrderFlowAdapter(ABC):
+    """Optional adapter for external true-executed-trade order flow data."""
+    @async
+    def order_flow_stream(self, symbols: List[str]) -> AsyncIterator[OrderFlowTick]: ...
+    def get_historical_flow(self, symbol: str, start: datetime, end: datetime) -> List[OrderFlowTick]: ...
+    @property
+    def source_name(self) -> str: ...
+
+class ExecutedTradeFlowFeature(FeatureModule):
+    # ABC with compute(context: FeatureContext) -> ExecutedTradeFlowSignal
+    # Requires IExternalOrderFlowAdapter — not available without external source
+```
+
+**V1 Modules (Category B — V1 Deferred, Interface Designed):**
+
+| Module | Class | Description | Inputs | Outputs | V1 Support |
+|--------|-------|-------------|--------|---------|------------|
+| Volume Imbalance | `VolumeImbalanceFeature` | Delta, buy/sell pressure at levels | tick volume, tick direction | imbalance_ratio, pressure_score | ❌ Deferred (external required) |
+| Tick Activity | `TickActivityFeature` | Tick rate, momentum, micro-trends | tick stream | SignalDirection, strength | ❌ Deferred (external required) |
+| Session Volume | `SessionVolumeFeature` | Session-relative volume | volume, session_context | session_volume_ratio | ⚠️ Partial (cTrader volume available) |
+
+**Category B Degradation Strategy:**
+```
+External true-order-flow available → HIGH quality → Feature ENABLED
+External true-order-flow unavailable → Feature DISABLED (no degraded proxy)
+```
+Per REVIEW-5: HIGH quality required. If not available, features are disabled — not degraded.
+
+**Note:** `SessionVolumeFeature` is partially available because cTrader provides OHLCV volume data (not tick-level buy/sell delta). Use `FeatureConfidence.source = "approximated"` with quality = MEDIUM when only OHLCV volume is available.
 
 ### Relationship to Existing Code
-- **No existing order flow** in codebase — all new development
-- **Partial:** SVSS tick processing provides tick data; order flow features build on top
-- **cTrader DOM** provides best quality tick activity data
+- **No existing true trade flow** in codebase — Category B requires external source
+- **SVSS tick processing** provides tick data → Category A features build on this
+- **cTrader DOM** provides best quality depth/liquidity-state data (Category A)
 
-### Degradation Strategy (REVIEW-5: HIGH quality only)
-```
-Available: cTrader DOM tick-level → HIGH quality order flow → feature enabled
-Fallback: No cTrader DOM → feature DISABLED (no degraded proxy)
-```
-Per REVIEW-5: Order flow features require cTrader DOM quality. If HIGH quality is not available, features are disabled — not degraded to proxies. No session-relative proxy fallback for order flow features. General features (non-order-flow) use MEDIUM as default threshold per Q-5.
+### External Order Flow Adapter Design Principle
+- cTrader execution remains **independent** of whether external order-flow is connected
+- Library feature modules consume `OrderFlowTick` regardless of source
+- Adapter is optional — library functions without it (Category A features still active)
+- cTrader adapter and external order-flow adapter operate independently
+- Future extension: venue-native FX order book feeds, futures-based order-flow feeds
+
+### V1 Supported Feature Subset (Order Flow)
+Only these order flow features are V1-active with cTrader data:
+- `SpreadBehaviorFeature` (bid/ask dynamics)
+- `DOMPressureFeature` (depth imbalance)
+- `DepthThinningFeature` (liquidity state)
+
+All other order flow features require external data source (V1-deferred).
 
 ---
 
@@ -292,9 +342,12 @@ feature_registry.register("volume/rvol", RVOLFeature(), CapabilitySpec(...))
 feature_registry.register("volume/profile", VolumeProfileFeature(), CapabilitySpec(...))
 feature_registry.register("volume/mfi", MFIFeature(), CapabilitySpec(...))
 feature_registry.register("volume/imbalance", VolumeImbalanceFeature(), CapabilitySpec(...))
-feature_registry.register("orderflow/tick", TickActivityFeature(), CapabilitySpec(...))
 feature_registry.register("orderflow/spread", SpreadBehaviorFeature(), CapabilitySpec(...))
-feature_registry.register("orderflow/session_vol", SessionVolumeFeature(), CapabilitySpec(...))
+feature_registry.register("orderflow/dom_pressure", DOMPressureFeature(), CapabilitySpec(...))
+feature_registry.register("orderflow/depth_thinning", DepthThinningFeature(), CapabilitySpec(...))
+feature_registry.register("orderflow/volume_imbalance", VolumeImbalanceFeature(), CapabilitySpec(...))  # External required
+feature_registry.register("orderflow/tick", TickActivityFeature(), CapabilitySpec(...))  # External required
+feature_registry.register("orderflow/session_vol", SessionVolumeFeature(), CapabilitySpec(...))  # Partial - OHLCV available
 feature_registry.register("session/detector", SessionDetectorFeature(), CapabilitySpec(...))
 feature_registry.register("session/blackout", SessionBlackoutFeature(), CapabilitySpec(...))
 feature_registry.register("transforms/normalize", NormalizeTransform(), CapabilitySpec(...))
@@ -329,19 +382,33 @@ for feature_id in BotSpec.features:
 
 ## Feature Family Dependency Map
 
+### Category A: Depth/Liquidity-State (V1 Supported via cTrader)
 ```
-data/tick_stream ────► TickActivityFeature ────► OrderFlowSignal
-                 ├──► SpreadBehaviorFeature ────► OrderFlowSignal
-                 ├──► RVOLFeature ────► VolumeResult
-                 ├──► MFIFeature ────► VolumeResult
-                 └──► SessionVolumeFeature ────► OrderFlowSignal
+data/tick_stream ────► SpreadBehaviorFeature ────► OrderFlowSignal (HIGH quality via cTrader)
+                 └──► DOMPressureFeature ────► OrderFlowSignal (HIGH quality via cTrader)
+
+data/depth_stream ───► DepthThinningFeature ────► OrderFlowSignal (HIGH quality via cTrader)
+                 └──► DOMPressureFeature ────► OrderFlowSignal
+```
+
+### Category B: Executed Trade-Flow (External Source Required, V1 Deferred)
+```
+external_order_flow ──► VolumeImbalanceFeature ────► VolumeResult (HIGH quality via external)
+external_order_flow ──► TickActivityFeature ────► OrderFlowSignal (HIGH quality via external)
+
+OHLCV_volume ─────────► SessionVolumeFeature ────► OrderFlowSignal (MEDIUM quality via cTrader)
+```
+
+### Other Feature Families
+```
+data/tick_stream ────► RVOLFeature ────► VolumeResult
+                 └──► MFIFeature ────► VolumeResult
 
 data/volume ──────────► RVOLFeature ────► VolumeResult
                    ├──► VolumeProfileFeature ────► VolumeResult
-                   ├──► VolumeImbalanceFeature ───► VolumeResult
                    └──► MFIFeature ────► VolumeResult
 
-data/depth_stream ────► VolumeImbalanceFeature (optional)
+data/depth_stream ────► VolumeImbalanceFeature (optional, external required)
 
 data/close_prices ───► RSIFeature ────► IndicatorResult
                    ├──► ATRFeature ────► IndicatorResult

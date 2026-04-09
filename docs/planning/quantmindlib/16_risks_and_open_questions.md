@@ -466,7 +466,7 @@ Both are involved in the risk pipeline. The library must reference one or both, 
 Before Phase 1 begins, verify:
 - [x] DPR Redis gap: router fix in uncommitted; bridge handles both (REVIEW-1 ✓)
 - [x] Governor naming: document import paths (REVIEW-2 ✓)
-- [ ] cTrader Open API Python SDK reviewed for capability completeness (BLOCKER-3 — web research needed)
+- [x] cTrader Open API Python SDK reviewed for capability completeness (BLOCKER-3 ✓ — web research complete. Order flow Cat B and backtest data NOT from cTrader; external source required. See §8 Data Source of Truth Matrix.)
 - [ ] TRD schema fields mapped to BotSpec fields (verify lenient mapping)
 - [ ] MT5 backtest result schema documented for cTrader compatibility
 - [ ] Stale docs marked with redirect notes (DOC-RISK-1, 2, 3)
@@ -474,4 +474,5 @@ Before Phase 1 begins, verify:
 - [x] Economic calendar: Finnhub direct for V1, cTrader Network Access Phase 2+ (REVIEW-3 ✓)
 - [x] DPR dual engine handling: bridge handles both, router canonical (REVIEW-1 ✓)
 - [ ] SVSS indicators checked for MT5 dependencies (verify wrapping)
-- [ ] cTrader historical data source: library owns contract, data is pluggable (Q-1)
+- [x] cTrader historical data source: library owns contract, data is pluggable (Q-1 ✓)
+- [x] Order flow architecture: two-category split with data source of truth matrix (applied across all docs)

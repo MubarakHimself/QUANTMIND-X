@@ -150,6 +150,7 @@ Each ticket includes:
 | CTRADER-010 | Order flow quality tagging for cTrader data sources | P1 | M | 5 |
 | CTRADER-011 | cTrader adapter error handling and reconnection | P1 | M | 4 |
 | CTRADER-012 | cTrader adapter config (IC Markets Raw specific) | P1 | S | 4 |
+| CTRADER-013 | IExternalOrderFlowAdapter interface (Category B V1 deferred) | P4 | M | 11 |
 
 ---
 
@@ -232,6 +233,7 @@ Each ticket includes:
 | DEFER-004 | cTrader Network Access integration (economic calendar) | P4 | M | 11 |
 | DEFER-005 | Advanced derived archetypes | P3 | M | 11 |
 | DEFER-006 | Chart rendering (footprint/VWAP for debugging) | P4 | L | 11 |
+| DEFER-007 | IExternalOrderFlowAdapter for true executed trade-flow (Category B) | P3 | L | 11 |
 
 ---
 
