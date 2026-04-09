@@ -44,9 +44,9 @@
 
 **Required fields:**
 - `bot_id: str`
-- `activation_state: ActivationState` — ACTIVE / SUSPENDED / QUARANTINED / RETIRED
+- `activation_state: ActivationState` — ACTIVE / PAUSED / STOPPED
 - `deployment_target: str` — paper / demo / live
-- `health: BotHealth` — health status (HEALTHY / DEGRADED / CRITICAL)
+- `health: BotHealth` — HEALTHY / DEGRADED / FAILING
 - `session_eligibility: Dict[str, bool]` — session_id → eligible
 - `dpr_ranking: int` — rank in DPR (1 = top)
 - `dpr_score: float` — DPR composite score 0-100
@@ -202,9 +202,9 @@ class FeatureConfidence:
 - `bot_id: str`
 - `timestamp: datetime`
 - `symbol: str`
-- `direction: SignalDirection` — BUY / SELL / NEUTRAL
+- `direction: SignalDirection` — BULLISH / BEARISH / NEUTRAL
 - `strength: float` — 0.0-1.0
-- `source: OrderFlowSource` — TICK_ACTIVITY / SPREAD_BEHAVIOR / VOLUME_PRESSURE / SESSION_VOLUME
+- `source: OrderFlowSource` — CTRADER_NATIVE / PROXY_INFERRED / EXTERNAL / APPROXIMATED / DISABLED
 - `confidence: FeatureConfidence`
 - `supporting_evidence: Dict[str, Any]` — raw metrics that produced this signal
 
@@ -516,7 +516,7 @@ class PatternSignal:
 - `bot_id: str`
 - `bot_spec: BotSpec`
 - `registered_at: datetime`
-- `status: RegistryStatus` — ACTIVE / SUSPENDED / RETIRED
+- `status: RegistryStatus` — ACTIVE / SUSPENDED / ARCHIVED
 - `parent_id: Optional[str]` — for variants
 
 **Producers:** RegistryBridge (on BotSpec creation)
@@ -614,15 +614,15 @@ class PatternSignal:
 | `RegimeType` | TREND_STABLE, RANGE_STABLE, HIGH_CHAOS, BREAKOUT_PRIME, NEWS_EVENT, UNCERTAIN | MarketContext |
 | `NewsState` | ACTIVE, KILL_ZONE, CLEAR | MarketContext |
 | `TradeDirection` | LONG, SHORT | TradeIntent, ExecutionDirective |
-| `SignalDirection` | BUY, SELL, NEUTRAL | OrderFlowSignal |
-| `OrderFlowSource` | TICK_ACTIVITY, SPREAD_BEHAVIOR, VOLUME_PRESSURE, SESSION_VOLUME | OrderFlowSignal |
+| `SignalDirection` | BULLISH, BEARISH, NEUTRAL | OrderFlowSignal |
+| `OrderFlowSource` | CTRADER_NATIVE, PROXY_INFERRED, EXTERNAL, APPROXIMATED, DISABLED | OrderFlowSignal |
 | `RiskMode` | STANDARD, CLAMPED, HALTED | RiskEnvelope |
-| `ActivationState` | ACTIVE, SUSPENDED, QUARANTINED, RETIRED | BotRuntimeProfile |
-| `BotHealth` | HEALTHY, DEGRADED, CRITICAL | BotRuntimeProfile |
+| `ActivationState` | ACTIVE, PAUSED, STOPPED | BotRuntimeProfile |
+| `BotHealth` | HEALTHY, DEGRADED, FAILING | BotRuntimeProfile |
 | `EvaluationMode` | VANILLA, SPICED, VANILLA_FULL, SPICED_FULL, MODE_B, MODE_C | EvaluationResult |
-| `RegistryStatus` | ACTIVE, SUSPENDED, RETIRED | RegistryRecord |
-| `FeatureConfidenceLevel` | HIGH, MEDIUM, LOW | FeatureConfidence |
-| `BotTier` | TIER_1, TIER_2 | BotRuntimeProfile, SSLCircuitBreaker |
+| `RegistryStatus` | ACTIVE, SUSPENDED, ARCHIVED | RegistryRecord |
+| `FeatureConfidenceLevel` | HIGH, MEDIUM, LOW, DISABLED | FeatureConfidence |
+| `BotTier` | TIER_1, TIER_2, TIER_3 | BotRuntimeProfile, SSLCircuitBreaker |
 
 ---
 
