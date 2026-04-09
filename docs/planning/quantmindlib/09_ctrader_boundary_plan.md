@@ -216,50 +216,83 @@ Library ExecutionResult → DPRBridge (for scoring) + JournalBridge (for audit)
 
 ---
 
-## 8. Order Flow Data Availability
+## 8. Order Flow Data — Two Categories
 
-Per trading_platform_decision_memo §5: Order flow quality-aware design.
+Per trading_platform_decision_memo §5: order flow quality-aware design. **Updated per architecture decision: order flow split into two distinct categories.**
 
-**IMPORTANT (BLOCKER-3 resolution):** cTrader Open API does NOT provide executed trade ticks or buy/sell volume. It provides quote updates (bid/ask) and order book delta events only. Per REVIEW-5 (HIGH quality only), order flow features must be DISABLED from cTrader native data.
+### Category A: Depth / Liquidity-State Features (V1 Supported via cTrader)
 
-### cTrader → Order Flow Data Available
+cTrader Open API provides real-time DOM and quote data that supports depth/liquidity-state features.
 
-| Data Source | Available | Quality | Notes |
+| Data Source | Available | Quality | V1 Feature Examples |
 |-------------|-----------|---------|-------|
-| **Tick stream (quote)** | ✅ Yes | HIGH | Bid/ask/quote — NO tick volume |
-| **OHLCV bars** | ✅ Yes | HIGH | Standard timeframes. Historical capped at 1-week per request. |
-| **Market Depth (DOM)** | ✅ Partial | MEDIUM | Delta events only. No full snapshot. No per-level volume. |
-| **Spread behavior** | ✅ Yes | HIGH | Derived from bid/ask tick stream |
-| **Volume (relative)** | ✅ Yes | MEDIUM | cTrader volume is broker-calculated relative volume, not absolute |
-| **Delta (buy/sell volume)** | ❌ No | — | NOT available in public API |
-| **Imbalance at levels** | ❌ No | — | No per-level volume data in public API |
+| **Market Depth (DOM)** | ✅ Yes | HIGH | DOM imbalance, depth thinning/thickening, depth-weighted levels |
+| **Top-of-book pressure** | ✅ Yes | HIGH | Bid/ask pressure ratio, quote velocity |
+| **Spread behavior** | ✅ Yes | HIGH | Spread widening/narrowing, relative spread |
+| **Liquidity state** | ✅ Yes | MEDIUM | Depth at levels, liquidity regime estimation |
+| **OHLCV bars (cTrader)** | ✅ Yes | HIGH | Standard timeframes for regime detection |
+| **Tick stream (quote)** | ✅ Yes | HIGH | Bid/ask quote updates, NO tick volume |
+| **Relative volume** | ✅ Yes | MEDIUM | cTrader broker-calculated relative volume |
 
-### Quality Tagging Strategy
+### Category B: Executed Trade-Flow Features (External Source Required)
 
-Per REVIEW-5: HIGH quality required. cTrader does not provide HIGH quality order flow data. Order flow features (VolumeImbalance, TickActivity, SpreadBehavior, SessionVolume) are DISABLED from cTrader native data — not degraded to proxies.
+cTrader Open API does NOT provide executed trade ticks, buy/sell volume, or true trade flow. These require an external data source.
 
-All order flow features must include `FeatureConfidence`:
+| Data Source | Available | Feature Examples |
+|-------------|-----------|---------|
+| **Buy/sell volume delta** | ❌ No | True delta, cumulative delta, delta divergence |
+| **Tape speed** | ❌ No | Aggressive-flow velocity, tape momentum |
+| **Aggressive-flow metrics** | ❌ No | Order-flow aggression ratio, absorption detection |
+| **Footprint execution** | ❌ No | Volume at price, absorbed levels, footprint imbalance |
+| **Per-level volume** | ❌ No | Volume traded at each price level |
+
+### External Order Flow Adapter (Future Extension)
+
+Library must support optional external true-order-flow sources via `IExternalOrderFlowAdapter`:
+
 ```python
-@dataclass
-class FeatureConfidence:
-    source: str       # "ctrader_native" / "external_provider" / "disabled"
-    quality: float    # 0.0-1.0
-    latency_ms: float
-    feed_quality_tag: str  # HIGH / MEDIUM / LOW / DISABLED
+class IExternalOrderFlowAdapter(ABC):
+    """Optional adapter for external true-executed-trade order flow data."""
+    @async
+    def order_flow_stream(self, symbols: List[str]) -> AsyncIterator[OrderFlowTick]: ...
+    def get_historical_flow(self, symbol: str, start: datetime, end: datetime) -> List[OrderFlowTick]: ...
+    @property
+    def source_name(self) -> str: ...
 ```
 
-Future phases: external order flow data provider or broker-specific data package.
+Design principles:
+- cTrader execution remains **independent** of whether external order-flow is connected
+- Library feature modules consume `OrderFlowTick` regardless of source
+- Adapter is optional — library functions without it (depth/liquidity features still active)
+- cTrader adapter and external order-flow adapter operate independently
+- Future extension: venue-native FX order book feeds, futures-based order-flow feeds
 
 ### Historical Data for Backtesting
 
 | Source | Available | Notes |
 |--------|-----------|-------|
-| cTrader Open API | ❌ No | 1-week window cap per request. Broker-dependent retention. Not suitable for backtesting. |
-| Dukascopy (existing) | ✅ Yes | `src/data/dukascopy_fetcher.py` — use for backtest data V1 |
+| cTrader Open API | ❌ No | 1-week window cap per request. Broker-dependent retention. Not authoritative. |
+| Dukascopy (existing) | ✅ Yes | `src/data/dukascopy_fetcher.py` — authoritative research source for V1 |
 | Self-recorded | ✅ Yes | Record live cTrader tick streams into local storage for replay |
 | Third-party provider | ✅ Yes | Rithmic, CQG, or IC Markets-specific data package |
 
-Library owns backtest data contract. `IMarketDataAdapter.get_historical()` signature is preserved but cTrader adapter delegates to external data source for backtesting.
+Library owns backtest data contract. `IMarketDataAdapter.get_historical()` signature is preserved; cTrader adapter delegates to external data source for backtesting.
+
+---
+
+## 8B. Data Source of Truth Matrix
+
+| Domain | Source of Truth | cTrader Role | External Role |
+|--------|----------------|-------------|---------------|
+| **Live execution** | cTrader | ✅ Direct | N/A |
+| **Live depth/liquidity state** | cTrader | ✅ Direct | N/A |
+| **Live quotes/ticks** | cTrader | ✅ Direct | N/A |
+| **Account / position state** | cTrader | ✅ Direct | N/A |
+| **Historical research/backtesting** | External canonical | Integration point only | ✅ Authoritative |
+| **True executed trade flow** | External only | ❌ Not available | ✅ Authoritative |
+| **Economic calendar / news** | External machine-readable | ❌ Not in Open API | ✅ Authoritative (Finnhub V1) |
+
+Key principle: cTrader is the **live execution and market-state adapter**. It is NOT the authoritative source for historical data or true trade flow. These domains always route through external sources.
 
 ---
 
