@@ -163,13 +163,13 @@ Each ticket includes:
 | FEATURE-003 | Wrap SVSS RVOLIndicator as RVOLFeature | P1 | S | 5 |
 | FEATURE-004 | Wrap SVSS VolumeProfileIndicator as VolumeProfileFeature | P1 | S | 5 |
 | FEATURE-005 | Wrap SVSS MFIIndicator as MFIFeature | P1 | S | 5 |
-| FEATURE-006 | Implement VolumeImbalanceFeature (delta, pressure, POC) | P1 | M | 5 |
+| FEATURE-006 | Implement VolumeImbalanceFeature (delta, pressure, POC) | P4 | M | 11 |
 | FEATURE-007 | Implement RSIFeature | P1 | S | 5 |
 | FEATURE-008 | Implement ATRFeature | P1 | S | 5 |
 | FEATURE-009 | Implement MACDFeature | P1 | S | 5 |
-| FEATURE-010 | Implement TickActivityFeature (order flow) | P1 | M | 5 |
-| FEATURE-011 | Implement SpreadBehaviorFeature (order flow) | P1 | M | 5 |
-| FEATURE-012 | Implement SessionVolumeFeature (order flow) | P1 | M | 5 |
+| FEATURE-010 | Implement TickActivityFeature (order flow, external required) | P4 | M | 11 |
+| FEATURE-011 | Implement SpreadStateFeature (native supported, cTrader) | P1 | M | 5 |
+| FEATURE-012 | Implement SessionVolumeFeature (partial, OHLCV available) | P1 | M | 5 |
 | FEATURE-013 | Wrap SessionDetector as SessionDetectorFeature | P1 | S | 5 |
 | FEATURE-014 | Wrap NewsBlackoutService as SessionBlackoutFeature | P1 | S | 5 |
 | FEATURE-015 | Implement NormalizeTransform | P2 | S | 5 |
@@ -177,7 +177,16 @@ Each ticket includes:
 | FEATURE-017 | Implement ResampleTransform | P2 | S | 5 |
 | FEATURE-018 | Implement FeatureEvaluator (computes feature stack) | P1 | M | 7 |
 | FEATURE-019 | Implement quality-aware feature confidence tagging | P1 | M | 5 |
-| FEATURE-020 | Feature capability declarations for all 13 modules | P1 | M | 5 |
+| FEATURE-020 | Feature capability declarations for all modules | P1 | M | 5 |
+| FEATURE-021 | Implement MicrostructureFeature ABC base class | P1 | S | 5 |
+| FEATURE-022 | Implement SpreadStateFeature (native, cTrader) | P1 | M | 5 |
+| FEATURE-023 | Implement TopOfBookPressureFeature (native, cTrader) | P1 | M | 5 |
+| FEATURE-024 | Implement MultiLevelDepthFeature (native, cTrader) | P1 | M | 5 |
+| FEATURE-025 | Implement AggressionProxyFeature (proxy/inferred, quality labeled) | P1 | M | 5 |
+| FEATURE-026 | Implement AbsorptionProxyFeature (proxy/inferred, quality labeled) | P1 | M | 5 |
+| FEATURE-027 | Implement BreakoutPressureProxyFeature (proxy/inferred, quality labeled) | P1 | M | 5 |
+| FEATURE-028 | Implement LiquidityStressProxyFeature (proxy/inferred, quality labeled) | P1 | M | 5 |
+| FEATURE-029 | Implement MicrostructureContext aggregation | P1 | M | 5 |
 
 ---
 

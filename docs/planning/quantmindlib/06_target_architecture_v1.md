@@ -1,7 +1,9 @@
 # 06 — Recommended Target Architecture: QuantMindLib V1
 
-**Architecture date:** 2026-04-08
-**Based on:** Memo §1-§17, codebase scan, gap analysis
+**Architecture date:** 2026-04-09
+**Based on:** Memo §1-§17, codebase scan, gap analysis, `quantmindx_v1_proxy_microstructure_addendum.md`
+
+**Update 2026-04-09:** Added Capability Matrix, explicit Sync/Async/Hybrid boundaries, market intelligence scan cross-check, updated feature families to 6 with microstructure layer. Updated C2 and C4 contradictions per actual code scan.
 
 ---
 
@@ -68,12 +70,22 @@ src/library/                          # QuantMindLib root
 │   │   ├── rvol.py                  # RVOLFeature (wraps SVSS RVOLIndicator)
 │   │   ├── profile.py                # VolumeProfileFeature (wraps SVSS VolumeProfileIndicator)
 │   │   ├── mfi.py                   # MFIFeature (wraps SVSS MFIIndicator)
-│   │   └── imbalance.py             # VolumeImbalanceFeature (delta, pressure at levels)
-│   ├── orderflow/                    # Order flow proxy features
+│   │   └── imbalance.py             # VolumeImbalanceFeature (delta, pressure at levels) [V1 deferred]
+│   ├── microstructure/               # Proxy market microstructure features (NEW in V1)
+│   │   ├── base.py                   # MicrostructureFeature (ABC)
+│   │   ├── spread_state.py          # SpreadStateFeature (native supported)
+│   │   ├── top_of_book.py           # TopOfBookPressureFeature (native supported)
+│   │   ├── multi_level_depth.py     # MultiLevelDepthFeature (native supported)
+│   │   ├── aggression_proxy.py      # AggressionProxyFeature (proxy/inferred)
+│   │   ├── absorption_proxy.py      # AbsorptionProxyFeature (proxy/inferred)
+│   │   ├── breakout_pressure.py    # BreakoutPressureProxyFeature (proxy/inferred)
+│   │   ├── liquidity_stress.py      # LiquidityStressProxyFeature (proxy/inferred)
+│   │   └── context.py              # MicrostructureContext aggregation
+│   ├── orderflow/                    # Order flow (executed trade-flow, V1 deferred)
 │   │   ├── base.py                   # OrderFlowFeature (ABC)
-│   │   ├── tick_activity.py         # TickActivityFeature (proxy from tick stream)
-│   │   ├── spread_behavior.py       # SpreadBehaviorFeature (spread dynamics)
-│   │   └── session_volume.py        # SessionVolumeFeature (session-relative volume)
+│   │   ├── tick_activity.py         # TickActivityFeature (V1 deferred, external required)
+│   │   ├── spread_behavior.py       # SpreadBehaviorFeature [superseded by microstructure/spread]
+│   │   └── session_volume.py        # SessionVolumeFeature (partial, OHLCV available)
 │   ├── session/                      # Session-aware features
 │   │   ├── base.py                   # SessionFeature (ABC)
 │   │   ├── session_detector.py      # SessionDetectorFeature
@@ -326,13 +338,14 @@ class FeatureRegistry:
     def find_compatible(self, requires: List[str], excludes: List[str]) -> List[str]
 ```
 
-V1 feature families:
-1. **indicators** — RSI, ATR, MACD, VWAP
-2. **volume** — RVOL, Volume Profile, MFI, Imbalance
-3. **orderflow_cat_a** — Spread Behavior, DOM Pressure, Depth Thinning (depth/liquidity from cTrader, V1 supported)
-4. **orderflow_cat_b** — Volume Imbalance, Tick Activity, Session Volume (executed trade-flow, external source required, V1 deferred)
-5. **session** — Session Detector, Session Blackout
-6. **transforms** — Normalize, Rolling Window, Resample
+V1 feature families (6 families, see `10_feature_family_plan.md` for full detail):
+1. **indicators** — RSI, ATR, MACD, VWAP (Native Supported, cTrader)
+2. **volume** — RVOL, Volume Profile, MFI, Imbalance (Native Supported, cTrader)
+3. **microstructure** — Spread dynamics, depth pressure, aggression proxy, absorption proxy, breakout pressure proxy, liquidity stress proxy (Native Supported + Proxy/Inferred, cTrader)
+4. **orderflow_cat_a** — Spread Behavior, DOM Pressure, Depth Thinning (Native Supported, cTrader)
+5. **orderflow_cat_b** — Volume Imbalance, Tick Activity, Session Volume (Future External-Data, V1 deferred)
+6. **session** — Session Detector, Session Blackout (Native Supported, cTrader)
+7. **transforms** — Normalize, Rolling Window, Resample (Native Supported)
 
 ---
 
@@ -511,7 +524,7 @@ class IExecutionAdapter(ABC):
 
 ## 10. Out-of-Scope for V1
 
-Per memo §3 and confirmed by gap analysis:
+Per memo §3, confirmed by gap analysis, and addendum:
 - Chart-pattern analysis service (reserved as future service candidate)
 - Footprint chart rendering
 - Replacing existing ML internals (sentinel physics sensors, HMM, BOCPD, MS-GARCH)
@@ -521,6 +534,8 @@ Per memo §3 and confirmed by gap analysis:
 - Replacing backtest report generation internals
 - Multi-broker adapter framework (cTrader only in V1)
 - **External order flow data adapter** (Category B executed trade-flow features, V1 deferred)
+- **EnsembleVoter live wiring** (Phase 2 — voter exists but not wired to live tick path)
+- **Neural pattern service** (Phase 3+)
 
 ---
 
@@ -532,21 +547,180 @@ The codebase has `src/router/governor.py` (risk authorization) and `src/risk/gov
 **Resolution needed:** Rename one of the classes or establish a canonical import path.
 
 ### C2: DPR Dual Engines
-Two DPR engines exist (router + risk layers). Both compute scores but neither writes to Redis. The library bridge must handle both paths and ensure Redis writes happen.
+Two DPR engines exist (router + risk layers). Code scan confirms: router engine (`src/router/dpr_scoring_engine.py`) writes DPR composite scores to Redis (`dpr:score:{bot_id}`) via `_write_score_to_redis()` — fix is in uncommitted code. Risk engine (`src/risk/dpr/scoring_engine.py`) writes session concern counters only, NOT DPR composite scores.
 
-**Resolution needed:** Consolidate DPR engines or establish canonical path. DPR bridge must write to Redis.
+**Resolution confirmed (BLOCKER-2, Option B):** DPRBridge handles both engines. Router engine is canonical for DPR composite scores. Risk engine session concern counters consumed as-is. No engine consolidation needed. Redis write path confirmed in router engine uncommitted fix.
 
 ### C3: MT5 Embedded Throughout
 Backtesting engine (`mt5_engine.py`) simulates MQL5 environment. cTrader adapter must replace this without breaking the evaluation pipeline.
 
 **Resolution needed:** Create CTrader backtest engine that produces same result schemas as `MT5BacktestResult`, so evaluation pipeline doesn't need to change.
 
-### C4: No Shared Event Bus
-The "async market adapter → normalized event bus" pattern from memo §6 is not implemented. Current architecture has direct coupling between components (Sentinel → Governor, etc.).
+### C4: EnsembleVoter Not Wired into Live Tick Path
+`EnsembleVoter` (`src/risk/physics/ensemble/voter.py`) implements weighted HMM+MS-GARCH+BOCPD voting with `AdaptiveWeightManager`. However, code scan confirms it is NOT wired into the live Sentinel tick path. Live path uses `HMMRegimeSensor` directly.
 
-**Resolution needed:** Either implement normalized event bus (higher effort) or document the current point-to-point async pattern as the library's async model.
+**Implication:** The library SentinelBridge should work with current `HMMRegimeSensor` output. EnsembleVoter wiring is a future Phase 2 enhancement — not required for V1. Document this as Phase 2 deferred wiring task.
 
 ### C5: Phase 1 Strategy Type Cleanup
 `StrategyType` enum has SCALPER + ORB (active) + 6 legacy types. Library V1 should only handle SCALPER + ORB.
 
 **Resolution needed:** Library validation should reject non-SCALSER/ORB archetypes until Phase 2.
+
+---
+
+## 12. Capability Matrix
+
+Per `quantmindx_v1_proxy_microstructure_addendum.md`: Every feature or service in the proxy microstructure layer must declare capability.
+
+### CapabilitySpec Examples
+
+```python
+CapabilitySpec(
+    name="depth_snapshot_stream",
+    provider="ctrader_adapter",
+    quality="native_supported",
+    mode="async",
+)
+
+DependencySpec(
+    consumer="MultiLevelDepthFeature",
+    requires=["depth_snapshot_stream"],
+    optional=[],
+)
+
+CompatibilityRule(
+    subject="AggressionProxyFeature",
+    allowed_when=["quote_tick_stream", "depth_update_stream", "spread_state_available"],
+    forbidden_when=["historical_only_mode_without_depth_proxy"],
+)
+```
+
+### Capability Declaration Table (Proxy Market Microstructure Layer)
+
+| Module | Capability ID | Requires | Provides | Quality | Mode | Bot/Sentinel/Shared |
+|--------|-------------|----------|---------|---------|------|---------------------|
+| SpreadStateFeature | `microstructure/spread` | `data/tick_stream` | `microstructure/spread` | native_supported | sync | Both |
+| TopOfBookPressureFeature | `microstructure/top_book` | `data/depth_stream` | `microstructure/top_book` | native_supported | sync | Both |
+| MultiLevelDepthFeature | `microstructure/depth_levels` | `data/depth_stream` | `microstructure/depth_levels` | native_supported | sync | Both |
+| AggressionProxyFeature | `microstructure/aggression` | `data/tick_stream`, `data/depth_stream`, `data/spread_state` | `microstructure/aggression` | proxy_inferred | sync | Both |
+| AbsorptionProxyFeature | `microstructure/absorption` | `data/depth_stream`, `data/spread_state` | `microstructure/absorption` | proxy_inferred | sync | Both |
+| BreakoutPressureProxyFeature | `microstructure/breakout_pressure` | `data/depth_stream`, `data/spread_state`, `data/bars` | `microstructure/breakout_pressure` | proxy_inferred | sync | Both |
+| LiquidityStressProxyFeature | `microstructure/liquidity_stress` | `data/depth_stream` | `microstructure/liquidity_stress` | proxy_inferred | sync | Both |
+| MicrostructureContext (aggregation) | `context/microstructure` | all microstructure outputs | `context/microstructure` | mixed | sync | Both |
+
+### Core Library Capabilities
+
+| Capability ID | Provider | Quality | Mode | Notes |
+|---------------|----------|---------|------|-------|
+| `data/tick_stream` | CTraderMarketAdapter | native_supported | async | Bid/ask quotes, no tick volume |
+| `data/depth_stream` | CTraderMarketAdapter | native_supported | async | DOM delta events |
+| `data/bar_stream` | CTraderMarketAdapter | native_supported | async | OHLCV bars |
+| `data/historical` | External adapter | external | sync | Dukascopy / self-recorded |
+| `data/external_order_flow` | IExternalOrderFlowAdapter | external | async/sync | V1-deferred |
+| `regime/report` | SentinelBridge | native_supported | async | RegimeReport → MarketContext |
+| `risk/envelope` | RiskBridge | native_supported | sync | Governor → RiskEnvelope |
+| `registry/bot` | RegistryBridge | native_supported | async | BotRegistry ↔ BotSpec |
+| `evaluation/results` | EvaluationBridge | native_supported | sync | EvaluationResult collection |
+
+---
+
+## 13. Market Intelligence Cross-Check (Updated 2026-04-09)
+
+Per addendum §2 instruction: The proxy microstructure layer must NOT duplicate existing market-intelligence logic. Code scan confirmed current reality:
+
+### Confirmed Existing ML Components
+
+| Component | Location | Role | V1 Library Action |
+|-----------|----------|------|-----------------|
+| HMM (Gaussian, 10-feature) | `src/risk/physics/hmm/` | Regime classification from OHLCV+Ising | Bridge only; library does NOT wrap HMM |
+| MS-GARCH | `src/risk/physics/msgarch/` | Conditional volatility, vol regime (LOW/MED/HIGH) | Bridge only; library does NOT wrap |
+| BOCPD | `src/risk/physics/bocpd/` | Regime changepoint detection (NOT steady-state) | Bridge only; library does NOT wrap |
+| EnsembleVoter | `src/risk/physics/ensemble/voter.py` | Weighted HMM+MS-GARCH+BOCPD voting | Exists but NOT wired into live Sentinel tick path |
+| Ising features (magnetization, susceptibility, energy) | `src/risk/physics/hmm/features.py` | Ising-inspired from tick data | Do NOT duplicate in microstructure layer |
+| MultiTimeframeSentinel | `src/router/multi_timeframe_sentinel.py` | Per-timeframe regime, voting aggregation | Bridge only |
+| NewsSensor | `src/router/sensors/news.py` | Kill zone from Finnhub | Wrapped via SessionBlackoutFeature |
+| CalendarGovernor | `src/router/calendar_governor.py` | Economic calendar integration | Gap: no direct calendar feed to NewsSensor |
+| DPR Redis gap | `src/router/dpr_scoring_engine.py` | Scores computed but Redis write path gap | Router fix in uncommitted code |
+
+### Key Findings from Code Scan
+
+1. **HMM regime** (8 states) is computed from 10 features (OHLCV + Ising). The regime → StrategyType suitability table (`STRATEGY_REGIME_SUITABILITY`) maps regime → bot type. This already exists — library should NOT replicate it.
+
+2. **EnsembleVoter exists but not wired:** The voter in `src/risk/physics/ensemble/voter.py` implements weighted HMM+MS-GARCH+BOCPD voting but is NOT currently connected to the live Sentinel tick path. The live tick path uses `HMMRegimeSensor` directly. This is a future wiring task (Phase 2+).
+
+3. **BOCPD is a changepoint detector, not a steady-state classifier:** It fires when `is_changepoint=True` (transition detected). Library should consume `is_transition` flag from MarketContext, not re-implement BOCPD.
+
+4. **Ising-inspired features (magnetization, susceptibility, energy)** are computed in `HMMFeatureExtractor`. These are conceptually similar to aggression proxies but are derived from price sign sequences, not depth/spread. Library microstructure features are orthogonal — they use DOM/depth data, not price sign sequences.
+
+5. **No MicrostructureContext exists** in the current system. The proxy microstructure layer is net-new development.
+
+### Architectural Principle
+
+The library's proxy microstructure layer:
+- Exposes reusable depth/spread/quotes-derived features as modules
+- Bridges to existing Sentinel regime output via `MarketContext`
+- Does NOT wrap HMM, BOCPD, MS-GARCH, Ising models
+- Does NOT absorb the sentinel's regime classification logic
+- Lets the sentinel aggregate MicrostructureContext if useful for its own decisions
+
+This keeps the library thin and preserves the sentinel's existing ML investments.
+
+---
+
+## 14. Sync / Async / Hybrid Boundaries (Explicit)
+
+Per `quantmindx_v1_proxy_microstructure_addendum.md` §4 and `quantmindx_library_v1_architecture_memo.docx`: Every boundary must be explicitly declared.
+
+### Async by Default
+
+| Path | Mode | Reason |
+|------|------|--------|
+| cTrader tick stream | Async | WebSocket push events |
+| cTrader depth stream | Async | WebSocket push events |
+| cTrader bar stream | Async | WebSocket push or polling |
+| External order flow stream | Async | WebSocket or polling |
+| DPR score events | Async | Event-driven writes |
+| Registry notifications | Async | Event-driven writes |
+| Journal / audit streams | Async | Non-blocking writes |
+| News / economic calendar events | Async | Polling or WebSocket |
+
+### Sync by Default
+
+| Path | Mode | Reason |
+|------|------|--------|
+| Historical data requests | Sync | One-shot request/response |
+| Order submission | Sync | Must confirm before proceeding |
+| Position snapshot | Sync | One-shot snapshot |
+| Feature validation | Sync | Config-time checks |
+| Compatibility checks | Sync | Static analysis |
+| Spec loading | Sync | Config-time only |
+| BotStateManager (read) | Sync | Reads from cached state |
+
+### Hybrid Pattern (Canonical Runtime)
+
+```
+async tick stream → normalized event bus → cached state store
+                                              ├─► FeatureEvaluator (sync read)
+                                              ├─► IntentEmitter (sync read)
+                                              ├─► BotStateManager (sync read)
+                                              ├─► RiskBridge (sync call → Governor → RiskEnvelope)
+                                              ├─► RegistryBridge (async write)
+                                              ├─► DPRBridge (async write)
+                                              └─► JournalBridge (async write)
+```
+
+### Library → Platform Sync Boundary
+
+```
+Bot requests current context (sync read of cached MicrostructureContext + MarketContext)
+    │
+    ▼
+Risk/sentinel validation occurs (sync call via bridges)
+    │
+    ▼
+TradeIntent emitted (sync emit)
+    │
+    ├─► RiskBridge (sync) → Governor (sync) → RiskEnvelope
+    │
+    └─► ExecutionBridge (sync) → cTraderExecutionAdapter (sync) → ExecutionResult
+```

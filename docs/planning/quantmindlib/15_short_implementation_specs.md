@@ -1,8 +1,10 @@
 # 15 — Short Implementation Specs
 
-**Version:** 1.0
-**Date:** 2026-04-08
+**Version:** 1.1
+**Date:** 2026-04-09
 **Purpose:** Handoff specs for downstream implementation agents
+
+**Update 2026-04-09:** Added SPEC-012 (Proxy Market Microstructure Layer) per `quantmindx_v1_proxy_microstructure_addendum.md`. Added FEATURE-021–029 tickets for microstructure features.
 
 ---
 
@@ -754,3 +756,129 @@ MT5 backtest engine (mt5_engine.py) is embedded in the evaluation pipeline. cTra
 - Gap: G-10, G-11 (cTrader migration)
 - Recovery: R-7 (6-mode evaluation), R-8 (full pipeline)
 - Official docs: cTrader Open API + backtesting docs
+
+---
+
+## SPEC-012: Proxy Market Microstructure Layer
+
+### Title
+Build V1 proxy market microstructure feature family — depth/spread/quotes-derived signals labeled honestly as proxy/inferred
+
+### Scope
+Per `quantmindx_v1_proxy_microstructure_addendum.md`: The objective is to improve market understanding, context sensitivity, execution timing, bot selectivity, confirmation quality, and adaptation to session and liquidity conditions — WITHOUT claiming access to true executed trade flow.
+
+Create `src/library/features/microstructure/` with 9 modules (2 families, 7 features):
+
+**Native Supported (Class 1 — cTrader data directly):**
+- `SpreadStateFeature` — spread width, change rate, expansion/compression
+- `TopOfBookPressureFeature` — top-of-book pressure, bid/ask ratio
+- `MultiLevelDepthFeature` — depth imbalance at multiple levels
+
+**Proxy / Inferred (Class 2 — domain logic, honestly labeled):**
+- `AggressionProxyFeature` — directional pressure estimate (labeled as proxy, notes mandatory)
+- `AbsorptionProxyFeature` — absorption detection (labeled as proxy)
+- `BreakoutPressureProxyFeature` — breakout strength estimate (labeled as proxy)
+- `LiquidityStressProxyFeature` — short-horizon liquidity stress (labeled as proxy)
+
+**Aggregation:**
+- `MicrostructureContext` — aggregated higher-level context for bots and sentinel
+
+**Contracts to define:**
+- `MicrostructureSignal` — output contract for proxy/inferred features
+- `LiquidityState` — liquidity condition snapshot
+- `SpreadPressureSignal` — spread behavior snapshot
+- `MicrostructureContext` — aggregated context object
+
+### Non-Scope
+- True executed trade flow (requires external source, V1-deferred)
+- Footprint chart rendering
+- Replacing HMM, BOCPD, MS-GARCH, Ising features
+- Replacing sentinel regime classification
+
+### Why It Exists
+cTrader provides DOM, depth, and quote data that supports short-horizon market-structure signals. These help bots make better decisions about entry timing, liquidity acceptance, and breakout confirmation — without requiring true order flow data. This is the proxy microstructure layer described in the addendum.
+
+### Key Design Constraints (Mandatory)
+
+1. **Semantic honesty:** Proxy/inferred features MUST carry `quality="proxy_inferred"` and `notes` explaining the inference method. They must NOT be labeled as true order flow.
+2. **No duplication of ML systems:** Do NOT wrap HMM, BOCPD, MS-GARCH, Ising features. Library features use DOM/depth data; existing ML systems use price/volume data. They are orthogonal.
+3. **Sentinel bridge preserved:** MicrostructureContext extends MarketContext (from SentinelBridge) — it does not replace sentinel regime classification.
+4. **Capability declarations:** Every module must declare `CapabilitySpec` with quality class.
+5. **cTrader adapter is the data source:** All native-supported features consume from `data/tick_stream` and `data/depth_stream` via CTraderMarketAdapter.
+
+### AggressionProxyFeature Logic Example (from addendum §2B)
+```python
+def compute(self, quote_state, depth_state, spread_state):
+    quote_push = quote_state.bid_ask_drift_score     # from ticks
+    depth_pull = depth_state.depth_withdrawal_score   # from depth changes
+    spread_penalty = spread_state.instability_score   # from spread
+
+    score = (quote_push + depth_pull) - spread_penalty
+
+    return MicrostructureSignal(
+        direction="bullish" if score > 0 else "bearish" if score < 0 else "neutral",
+        score=score,
+        confidence=min(abs(score), 1.0),
+        source="AggressionProxyFeature",
+        quality="proxy_inferred",
+        notes=(
+            "Inferred from quote/depth behavior; not true executed flow. "
+            "Direction inferred from consecutive bid-pushes against thinning asks. "
+            "spread_penalty reduces confidence when spread is unstable."
+        )
+    )
+```
+
+### Affected Files/Modules Likely Involved
+- `src/library/features/microstructure/base.py` — MicrostructureFeature ABC
+- `src/library/features/microstructure/spread_state.py`
+- `src/library/features/microstructure/top_of_book.py`
+- `src/library/features/microstructure/multi_level_depth.py`
+- `src/library/features/microstructure/aggression_proxy.py`
+- `src/library/features/microstructure/absorption_proxy.py`
+- `src/library/features/microstructure/breakout_pressure.py`
+- `src/library/features/microstructure/liquidity_stress.py`
+- `src/library/features/microstructure/context.py` — MicrostructureContext
+- `src/library/core/domain/microstructure_signals.py` — contracts
+
+### Contracts/Interfaces to Respect
+- `MicrostructureSignal`, `LiquidityState`, `SpreadPressureSignal`, `MicrostructureContext` schemas
+- `CapabilitySpec` with `quality_class` field
+- FeatureModule ABC interface
+
+### Dependencies
+- CTRADER-004 (CTraderMarketAdapter) — tick_stream and depth_stream required
+- Phase 1 complete (FeatureModule ABC needed)
+
+### Implementation Notes
+- Start with SpreadStateFeature (simplest, directly from bid/ask)
+- Then TopOfBookPressureFeature (directly from depth)
+- Then proxy features (more domain logic, require careful notes field)
+- MicrostructureContext aggregation comes last
+- Write tests that verify `quality` field is always set correctly
+
+### Test Expectations
+- All features produce correctly tagged `MicrostructureSignal` output
+- Proxy/inferred features always include `notes` field
+- Native supported features always have `quality="native_supported"`
+- MicrostructureContext aggregates all 7 features
+- FeatureRegistry.get("microstructure/aggression") returns AggressionProxyFeature
+- No feature claims true order flow semantics
+
+### Risks
+- Proxy/inferred features may be mistaken for true order flow signals in downstream code
+- Domain logic for proxy features requires careful calibration with market data
+- Aggression proxy may produce false signals in low-liquidity conditions
+
+### Review/Handoff Notes
+- Per addendum: Implementation agents must NOT rename proxy features into true-order-flow labels
+- AggressionProxyFeature and AbsorptionProxyFeature are net-new domain logic — test extensively
+- Do not start with complex features; validate simpler native features first
+
+### Indexed References
+- Addendum: `quantmindx_v1_proxy_microstructure_addendum.md` (§1-§6)
+- Feature family plan: `10_feature_family_plan.md` (FF-Microstructure)
+- Shared object model: `07_shared_object_model.md` (MicrostructureSignal, LiquidityState, SpreadPressureSignal, MicrostructureContext)
+- cTrader boundary: `09_ctrader_boundary_plan.md` §8 (Data Source of Truth)
+- Target architecture: `06_target_architecture_v1.md` §12 (Capability Matrix), §13 (Market Intelligence Cross-Check)
+- EnsembleVoter not wired: `src/risk/physics/ensemble/voter.py` (Phase 2 wiring)

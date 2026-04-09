@@ -225,6 +225,33 @@ Each item is mapped from memo recommendation to codebase reality. Alignment stat
 
 ---
 
+## Part 11B: Proxy Market Microstructure (Addendum `quantmindx_v1_proxy_microstructure_addendum.md`)
+
+### G-20: Proxy Microstructure Layer
+
+| Aspect | Addendum Recommendation | Codebase Reality | Status | Action |
+|--------|----------------------|------------------|--------|--------|
+| Proxy microstructure layer (depth, spread, aggression, liquidity) | V1 feature family with honest labeling | No MicrostructureContext, no microstructure feature modules | **MISSING** | Create microstructure feature family (FEATURE-021–029) |
+| 4-class feature classification | Native Supported / Proxy/Inferred / Future External / Deferred | No formal classification system | **MISSING** | Add classification to all CapabilitySpec |
+| Feature quality labeling | `quality` field on all feature results | No quality tagging system | **MISSING** | Implement quality-aware tagging |
+| Proxy/inferred features must include `notes` field | Mandatory notes explaining inference method | No notes requirement in current features | **MISSING** | Contract requirement |
+| Do NOT duplicate ML systems | Don't wrap HMM, BOCPD, MS-GARCH, Ising features | Confirmed: these are orthogonal (price-based vs depth-based) | **ALIGNED** | Bridge only, don't wrap |
+| Aggression proxy, absorption proxy, breakout pressure proxy | V1 features with honest proxy labels | Not implemented | **MISSING** | Implement FEATURE-025–028 |
+
+### G-21: EnsembleVoter Not Wired
+
+| Aspect | Expected | Codebase Reality | Status | Action |
+|--------|----------|------------------|--------|--------|
+| EnsembleVoter (HMM+MS-GARCH+BOCPD) | Drop-in replacement for HMMRegimeSensor | Exists but NOT wired into live tick path; live path uses HMMRegimeSensor directly | **MISSING** | Phase 2 wiring task, not V1 requirement |
+
+### G-22: Economic Calendar Not Feeding NewsSensor
+
+| Aspect | Expected | Codebase Reality | Status | Action |
+|--------|----------|------------------|--------|--------|
+| Economic calendar feeds NewsSensor programmatically | CalendarGovernor reads Finnhub | NewsSensor receives calendar data from crawler; no direct integration in tick loop | **MISSING** | Phase 2 cTrader Network Access integration |
+
+---
+
 ## Part 12: DPR Redis Gap (Not in Memos — Codebase Finding)
 
 ### G-18: DPR Redis Gap (Updated)
@@ -267,16 +294,18 @@ Each item is mapped from memo recommendation to codebase reality. Alignment stat
 | Shared event stream | 1 | 1 | 0 | 0 | 0 | 0 |
 | DPR Redis | 1 | 1 | 0 | 0 | 0 | 0 |
 | Data storage (DuckDB) | 0 | 0 | 0 | 1 | 0 | 0 |
-| **TOTAL** | **24** | **17** | **3** | **24** | **4** | **3** |
+| Proxy microstructure | 1 | 0 | 0 | 5 | 0 | 1 |
+| ML integration wiring | 0 | 1 | 0 | 1 | 0 | 0 |
+| **TOTAL** | **25** | **18** | **3** | **30** | **4** | **4** |
 
 ### Priority Actions (by gap count)
 
 | Priority | Gap Count | Focus |
 |----------|-----------|-------|
-| P1 (Critical) | 24 missing | Shared object model, capability system, feature families, archetype system, DPR Redis (router fixed, risk layer partial), cTrader adapters, DuckDB WARM tier doc |
-| P2 (High) | 16 partial | BotSpec multi-profile unification, bridge completeness, workflow contract alignment |
+| P1 (Critical) | 30 missing | Shared object model, capability system, feature families, archetype system, DPR Redis (router fixed, risk layer partial), cTrader adapters, DuckDB WARM tier doc, proxy microstructure layer (5 MISSING items), quality tagging |
+| P2 (High) | 18 partial | BotSpec multi-profile unification, bridge completeness, workflow contract alignment, EnsembleVoter wiring (Phase 2) |
 | P3 (Medium) | 4 refactor | cTrader migration surface, library package restructuring |
-| P4 (Low) | 3 out-of-scope | Pattern analysis deferred, footprint charts not required |
+| P4 (Low) | 4 out-of-scope | Pattern analysis deferred, footprint charts not required, true executed trade flow (V1-deferred) |
 
 ---
 

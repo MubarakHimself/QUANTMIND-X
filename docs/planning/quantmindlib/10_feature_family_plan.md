@@ -1,23 +1,26 @@
 # 10 — Feature Family Plan
 
-**Version:** 1.1
-**Date:** 2026-04-08
-**Purpose:** Define V1 feature families, their inputs/outputs, and dependencies
+**Version:** 1.2
+**Date:** 2026-04-09
+**Purpose:** Define V1 feature families, their inputs/outputs, dependencies, and classification
+
+**Update 2026-04-09:** Added formal Feature Classification Rule (4-class system), Proxy Market Microstructure Layer section, and proxy/inferred feature modules per `quantmindx_v1_proxy_microstructure_addendum.md`.
 
 ---
 
 ## Feature Family Overview
 
-### V1 Scope: 5 Feature Families
+### V1 Scope: 6 Feature Families
 
-| Family | Purpose | Live | Historical | Bot-Facing | Sentinel-Facing | Shared | V1 Data Source |
-|--------|---------|------|------------|-----------|----------------|--------|----------------|
-| **indicators** | Technical indicators (RSI, ATR, MACD, VWAP) | Yes | Yes | Yes | No | Yes | cTrader (native) |
-| **volume** | Volume-based features (RVOL, Volume Profile, MFI, Imbalance) | Yes | Yes | Yes | Partial | Yes | cTrader (native) |
-| **orderflow_cat_a** | Depth/liquidity-state features (Spread, DOM, top-of-book) | Yes | Yes | Yes | No | Yes | cTrader (native, V1 supported) |
-| **orderflow_cat_b** | Executed trade-flow features (delta, tape-speed, footprint) | Yes | Yes | Yes | No | Yes | External only |
-| **session** | Session-aware features (Session Detector, Blackout) | Yes | Yes | Yes | Yes | Yes | cTrader (native) |
-| **transforms** | Data transformations (Normalize, Rolling, Resample) | Yes | Yes | Yes | No | Yes | cTrader (native) |
+| Family | Purpose | Live | Historical | Bot-Facing | Sentinel-Facing | Shared | V1 Data Source | Quality Class |
+|--------|---------|------|------------|-----------|----------------|--------|----------------|----------------|
+| **indicators** | Technical indicators (RSI, ATR, MACD, VWAP) | Yes | Yes | Yes | No | Yes | cTrader (native) | Native Supported |
+| **volume** | Volume-based features (RVOL, Volume Profile, MFI, Imbalance) | Yes | Yes | Yes | Partial | Yes | cTrader (native) | Native Supported |
+| **microstructure** | Proxy market microstructure (spread, depth, aggression, pressure) | Yes | Partial | Yes | Yes | Yes | cTrader (native + proxy) | Native + Proxy |
+| **orderflow_cat_a** | Depth/liquidity-state features (Spread, DOM, top-of-book) | Yes | Yes | Yes | No | Yes | cTrader (native, V1 supported) | Native Supported |
+| **orderflow_cat_b** | Executed trade-flow features (delta, tape-speed, footprint) | Yes | Yes | Yes | No | Yes | External only | Future External-Data |
+| **session** | Session-aware features (Session Detector, Blackout) | Yes | Yes | Yes | Yes | Yes | cTrader (native) | Native Supported |
+| **transforms** | Data transformations (Normalize, Rolling, Resample) | Yes | Yes | Yes | No | Yes | cTrader (native) | Native Supported |
 
 ### Footprint Logic vs Charts
 - **Footprint logic:** ALLOWED. Volume distribution, imbalance, delta-style behavior, pressure at levels — these are `VolumeImbalanceFeature` and are in scope.
@@ -27,6 +30,245 @@
 - **Status:** OUT-OF-SCOPE for V1
 - **Future path:** Pattern service → `PatternSignal` objects → bots and/or sentinel consume outputs
 - **Placeholder:** `PatternSignal` schema defined in shared object model for future integration
+
+---
+
+## Feature Classification Rule (Formal, Required)
+
+Per `quantmindx_v1_proxy_microstructure_addendum.md`, every V1 feature must be classified into one of four classes. This classification is mandatory — it prevents semantic drift during implementation.
+
+### The Four Classes
+
+| Class | Definition | Quality Claim | V1 Status |
+|-------|------------|-------------|-----------|
+| **1. Native Supported** | Directly available from cTrader/IC Markets data without inference | Can claim HIGH quality | V1-active |
+| **2. Proxy / Inferred** | Not a direct measurement; inferred from supported data using domain logic | Must label as `quality="proxy_inferred"` — not true executed flow | V1-active |
+| **3. Future External-Data** | Requires true executed-trade order flow data; cTrader does not provide this | Requires external data source | V1-deferred, interface designed |
+| **4. Deferred** | Intentional postpone — too heavy, too uncertain, or wrong layer for V1 | N/A | Out-of-scope for V1 |
+
+### Classification Example Table
+
+| Feature | Class | Why |
+|---------|-------|-----|
+| Spread width | Native Supported | Directly from bid/ask quotes |
+| Depth imbalance | Native Supported | Derived from depth data |
+| Liquidity thinning | Native Supported | Derived from depth changes |
+| Aggression proxy | Proxy / Inferred | Inferred from quote/depth behavior; not directly observed |
+| Absorption proxy | Proxy / Inferred | Inferred, not directly observed |
+| DOM Pressure | Native Supported | Derived from depth data |
+| Depth Thinning | Native Supported | Derived from depth changes |
+| Volume Imbalance (delta) | Future External-Data | Requires executed trade side/volume — cTrader does not provide |
+| Buy/sell volume delta | Future External-Data | Requires true executed trade data |
+| Footprint execution metrics | Future External-Data | Requires true trade prints |
+| Heavy chart-pattern engine | Deferred | Too heavy for V1 core |
+| Neural pattern service | Deferred | V2+ scope |
+
+### Quality Labeling Contract
+Every feature result must carry a quality label:
+
+```python
+@dataclass
+class FeatureResult:
+    feature_id: str
+    value: Any
+    quality: Literal["native_supported", "proxy_inferred", "external", "deferred"]
+    source: str                      # Which source produced this
+    notes: Optional[str]              # e.g., "Inferred from quote/depth behavior; not true executed flow"
+```
+
+Features classified as **Proxy / Inferred** MUST include `notes` explaining what is being inferred and the method used. Do not claim proxy features as true executed-flow signals.
+
+### Classification Placement
+- Every `CapabilitySpec` declaration must include a `quality_class` field
+- Every feature module class docstring must state its classification
+- FeatureRegistry queries can filter by quality class
+
+---
+
+## Proxy Market Microstructure Layer
+
+**Family ID:** `microstructure`
+**Path:** `src/library/features/microstructure/`
+**Purpose:** Derive short-horizon market-structure signals from depth, spread, quotes, and bar data without claiming access to executed trade flow.
+
+Per addendum: The objective is to improve market understanding, context sensitivity, execution timing, bot selectivity, confirmation quality, and adaptation to session and liquidity conditions — without requiring true order flow data.
+
+### Design Principles (from addendum)
+1. **Do not call these "true order flow"** — they are proxies and inferences
+2. **cTrader is the data source** — depth, spread, quotes, bars, session context, volume regime
+3. **The layer is honest** — explicitly labeled as proxy/inferred in all contracts
+4. **The layer integrates with bots, sentinel, evaluation, journaling, DPR, and future ML consumers**
+
+### V1 Modules
+
+#### Native Supported (Class 1)
+
+| Module | Class | Description | Inputs | Outputs |
+|--------|-------|-------------|--------|---------|
+| `SpreadStateFeature` | Native Supported | Spread width, change rate, expansion/compression | bid/ask ticks | spread_width, spread_change_rate, spread_volatility |
+| `TopOfBookPressureFeature` | Native Supported | Top-of-book pressure, bid/ask ratio | depth top 1-3 levels | pressure_ratio, imbalance_score, book_velocity |
+| `MultiLevelDepthFeature` | Native Supported | Depth imbalance at multiple levels | depth 5-10 levels | imbalance_per_level, total_depth, depth_weighted_pressure |
+
+#### Proxy / Inferred (Class 2)
+
+| Module | Class | Description | Inputs | Outputs |
+|--------|-------|-------------|--------|---------|
+| `AggressionProxyFeature` | Proxy / Inferred | Short-horizon directional pressure estimate | quote drift, depth withdrawal, spread stability | aggression_score, direction, confidence (labeled as proxy) |
+| `AbsorptionProxyFeature` | Proxy / Inferred | Estimate of whether large orders are being absorbed | depth changes, spread behavior | absorption_score, likely_reversal |
+| `BreakoutPressureProxyFeature` | Proxy / Inferred | Estimate breakout strength from depth and spread | depth, spread, bar momentum | breakout_pressure, fakeout_probability |
+| `LiquidityStressProxyFeature` | Proxy / Inferred | Short-horizon liquidity stress | depth thinning, spread widening | stress_score, liquidity_regime |
+
+### Raw Input Objects
+
+```python
+@dataclass
+class QuoteTick:
+    symbol: str
+    bid: float
+    ask: float
+    timestamp: datetime
+
+@dataclass
+class DepthSnapshot:
+    symbol: str
+    bids: List[PriceLevel]   # price, size, level_index
+    asks: List[PriceLevel]
+    timestamp: datetime
+
+@dataclass
+class SpreadState:
+    spread_pips: float
+    spread_change_pips: float  # delta from previous
+    volatility: float           # rolling spread volatility
+
+@dataclass
+class DepthUpdate:
+    symbol: str
+    is_bid: bool               # side that changed
+    level_index: int
+    new_size: float
+    timestamp: datetime
+```
+
+### Output Contracts
+
+```python
+@dataclass
+class MicrostructureSignal:
+    feature_id: str
+    direction: Literal["bullish", "bearish", "neutral"]
+    score: float               # -1.0 to 1.0
+    confidence: float          # 0.0 to 1.0
+    quality: Literal["native_supported", "proxy_inferred"]
+    source: str                # Which module produced this
+    notes: Optional[str]       # Mandatory for proxy_inferred
+    timestamp: datetime
+
+@dataclass
+class LiquidityState:
+    thinning_score: float      # 0.0 = normal, 1.0 = thin
+    concentration: float       # 0.0-1.0, how concentrated at key levels
+    regime: Literal["normal", "stress", "abundant"]
+    quality: Literal["native_supported", "proxy_inferred"]
+    notes: Optional[str]
+    timestamp: datetime
+
+@dataclass
+class SpreadPressureSignal:
+    spread_pips: float
+    spread_change_pips: float
+    expansion_factor: float    # ratio to session average
+    regime: Literal["compressed", "normal", "expanded", "volatile"]
+    quality: Literal["native_supported"]
+    timestamp: datetime
+
+@dataclass
+class MicrostructureContext:
+    """Aggregated higher-level context object consumed by both bots and sentinel."""
+    symbol: str
+    timestamp: datetime
+    spread_regime: str
+    liquidity_regime: str
+    depth_pressure: str
+    aggression_proxy: str
+    breakout_pressure: str
+    quality_flags: List[str]
+    source_components: List[str]
+```
+
+### Placement in System
+
+```
+Raw market/depth ingestion → cTrader adapter boundary
+       ↓
+Reusable feature computation → QuantMindLib microstructure family
+       ↓
+Heavier shared aggregation → sentinel or shared service
+       ↓
+Bot consumption → FeatureVector, MarketContext, or bridge outputs
+```
+
+### Sync/Async Boundaries
+
+- **Async by default:** quote stream, depth updates, bar updates
+- **Sync by default:** feature validation, compatibility checks, config loads, cached context reads
+- **Hybrid:** bot requests current MicrostructureContext → sync read → risk/sentinel validation → TradeIntent decision
+
+### Integration with Existing ML Systems
+
+Per addendum instruction: Do NOT duplicate existing market-intelligence logic. The library should:
+- Expose reusable microstructure features
+- Expose contracts and bridge objects
+- Let sentinel aggregate or enrich where appropriate
+- NOT blindly absorb the market-intelligence system
+
+Current overlap to preserve (from code scan):
+- **Ising-inspired features** (magnetization, susceptibility, energy) — already computed in HMMFeatureExtractor; do NOT duplicate
+- **HMM regime classification** — sentinel owns this; library MicrostructureContext bridges to it
+- **BOCPD changepoint detection** — sentinel owns this; library respects `is_transition` flag
+- **MS-GARCH volatility regime** — sentinel owns this; library uses `sigma_forecast` from MarketContext
+- **NewsSensor state** — sentinel owns this via NewsBlackoutService; library SessionBlackoutFeature wraps it
+
+### Relationship to SentinelBridge
+
+The SentinelBridge already maps `RegimeReport` → `MarketContext`. The MicrostructureContext extends this:
+```
+Sentinel.RegimeReport
+    │
+    ├─► RegimeReport → MarketContext (existing)
+    │
+    └─► MicrostructureContext (new, library-produced)
+              ├─► spread_regime (from SpreadStateFeature)
+              ├─► liquidity_regime (from LiquidityStressProxyFeature)
+              ├─► depth_pressure (from MultiLevelDepthFeature)
+              ├─► aggression_proxy (from AggressionProxyFeature)
+              ├─► breakout_pressure (from BreakoutPressureProxyFeature)
+              └─► quality_flags (from feature quality labels)
+```
+
+### Feature Registry: Microstructure Family
+
+```python
+feature_registry.register("microstructure/spread", SpreadStateFeature(), CapabilitySpec(...))
+feature_registry.register("microstructure/top_book", TopOfBookPressureFeature(), CapabilitySpec(...))
+feature_registry.register("microstructure/depth_levels", MultiLevelDepthFeature(), CapabilitySpec(...))
+feature_registry.register("microstructure/aggression", AggressionProxyFeature(), CapabilitySpec(...))
+feature_registry.register("microstructure/absorption", AbsorptionProxyFeature(), CapabilitySpec(...))
+feature_registry.register("microstructure/breakout_pressure", BreakoutPressureProxyFeature(), CapabilitySpec(...))
+feature_registry.register("microstructure/liquidity_stress", LiquidityStressProxyFeature(), CapabilitySpec(...))
+```
+
+### Indexed References
+
+| Feature | Codebase Reference | Addendum Reference |
+|---------|-------------------|---------------------|
+| Ising features (magnetization, susceptibility, energy) | `src/risk/physics/hmm/features.py` (FeatureConfig) | Addendum §2B |
+| HMM regime | `src/risk/physics/hmm_sensor.py` (HMMRegimeSensor) | Addendum §2A |
+| BOCPD changepoint | `src/risk/physics/bocpd/detector.py` (BOCPDDetector) | Addendum §2C |
+| MS-GARCH volatility | `src/risk/physics/msgarch/models.py` (MSGARCHSensor) | Addendum §2A |
+| News state | `src/router/sensors/news.py` (NewsSensor) | Addendum §2A |
+| Spread from cTrader | `09_ctrader_boundary_plan.md` §8 | Addendum §2A |
+| Depth from cTrader | `09_ctrader_boundary_plan.md` §8 | Addendum §2A |
 
 ---
 
@@ -382,6 +624,19 @@ for feature_id in BotSpec.features:
 
 ## Feature Family Dependency Map
 
+### 7th Family: Proxy Market Microstructure
+```
+data/tick_stream ────► SpreadStateFeature ────► MicrostructureSignal
+data/depth_stream ───► TopOfBookPressureFeature ────► MicrostructureSignal
+data/depth_stream ───► MultiLevelDepthFeature ────► MicrostructureSignal
+data/depth_stream ───► DepthThinningFeature ────► LiquidityState
+data/depth_stream ───► LiquidityStressProxyFeature ────► LiquidityState
+
+quote + depth + spread ─► AggressionProxyFeature ───► MicrostructureSignal (proxy_inferred)
+depth + spread + bar ─► BreakoutPressureProxyFeature ───► MicrostructureSignal (proxy_inferred)
+depth + spread ─► AbsorptionProxyFeature ───► MicrostructureSignal (proxy_inferred)
+```
+
 ### Category A: Depth/Liquidity-State (V1 Supported via cTrader)
 ```
 data/tick_stream ────► SpreadBehaviorFeature ────► OrderFlowSignal (HIGH quality via cTrader)
@@ -428,6 +683,31 @@ indicator_results ──► NormalizeTransform ────► TransformedSeries
 
 ## Indexed References
 
+### Feature Classification References
+
+| Class | Feature | V1 Status | Codebase Reference | Addendum § |
+|-------|---------|-----------|-------------------|-------------|
+| Native Supported | Spread dynamics | V1-active | cTrader DOM quote data | §2A |
+| Native Supported | Depth imbalance | V1-active | cTrader DOM depth | §2A |
+| Native Supported | Top-of-book pressure | V1-active | cTrader quote stream | §2A |
+| Native Supported | Liquidity thinning | V1-active | cTrader DOM depth changes | §2A |
+| Native Supported | Spread width/change rate | V1-active | cTrader quote stream | §2A |
+| Native Supported | Multi-level depth imbalance | V1-active | cTrader DOM depth | §2A |
+| Proxy / Inferred | Aggression proxy | V1-active | cTrader + domain logic | §2B |
+| Proxy / Inferred | Absorption proxy | V1-active | cTrader + domain logic | §2B |
+| Proxy / Inferred | Breakout pressure proxy | V1-active | cTrader + domain logic | §2B |
+| Proxy / Inferred | Liquidity stress proxy | V1-active | cTrader + domain logic | §2B |
+| Future External-Data | Volume imbalance (delta) | V1-deferred | — | §2C |
+| Future External-Data | Buy/sell volume delta | V1-deferred | — | §2C |
+| Future External-Data | Tape speed | V1-deferred | — | §2C |
+| Future External-Data | Aggressive-flow metrics | V1-deferred | — | §2C |
+| Future External-Data | Footprint execution metrics | V1-deferred | — | §2C |
+| Deferred | Heavy chart-pattern engine | V1-out | — | §2D |
+| Deferred | Neural pattern service | V2+ | — | §2D |
+| Deferred | ML feature integration | V2+ | — | §2D |
+
+### Code and Memo References
+
 | Feature | Codebase Reference | Memo Reference | Recovery Note |
 |---------|-------------------|----------------|---------------|
 | VWAP | `src/svss/indicators/vwap.py` (VWAPIndicator) | §8 | R-11 |
@@ -439,3 +719,10 @@ indicator_results ──► NormalizeTransform ────► TransformedSeries
 | Economic Calendar | — (gap) | — | R-12 |
 | FeatureConfig | `src/risk/physics/hmm/features.py` | §8 | — |
 | Asset Library | `src/mcp_tools/asset_library.py` (AssetLibraryManager) | §8 | — |
+| HMM regime | `src/risk/physics/hmm_sensor.py`, `src/risk/physics/ensemble/voter.py` | §2A | R-1 |
+| MS-GARCH volatility | `src/risk/physics/msgarch/models.py` | §2A | R-1 |
+| BOCPD changepoint | `src/risk/physics/bocpd/detector.py` | §2C | R-1 |
+| EnsembleVoter | `src/risk/physics/ensemble/voter.py` | — | R-1 (not wired in tick path) |
+| Ising features | `src/risk/physics/hmm/features.py` | §2B | R-1 |
+| DPR Redis | `src/router/dpr_scoring_engine.py` | — | G-18 (uncommitted fix) |
+| Agent SDK migration | `src/agents/providers/profile_runtime.py` | — | Session 2026-03-30 |

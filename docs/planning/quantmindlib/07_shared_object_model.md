@@ -1,8 +1,10 @@
 # 07 — Shared Object Model and Contract Inventory
 
-**Version:** 1.0
-**Date:** 2026-04-08
+**Version:** 1.1
+**Date:** 2026-04-09
 **Purpose:** Canonical schemas for QuantMindLib V1
+
+**Update 2026-04-09:** Added Proxy Market Microstructure output contracts (MicrostructureSignal, LiquidityState, SpreadPressureSignal, MicrostructureContext) per `quantmindx_v1_proxy_microstructure_addendum.md`. Updated Sync/Async Classification Summary.
 
 ---
 
@@ -246,6 +248,116 @@ class FeatureConfidence:
 - `session_scope: Optional[str]`
 
 **Not to detail yet:** geometric detection internals, full candlestick taxonomy, image/chart-processing, neural-network outputs.
+
+---
+
+### 9B. MicrostructureSignal (Proxy Market Microstructure — V1)
+
+**Purpose:** Short-horizon market-structure signal from depth, spread, and quote data — labeled honestly as proxy/inferred, not true executed flow
+**Boundary:** CORE
+**Per:** `quantmindx_v1_proxy_microstructure_addendum.md` §3
+
+**Required fields:**
+- `feature_id: str`
+- `direction: Literal["bullish", "bearish", "neutral"]`
+- `score: float` — -1.0 to 1.0
+- `confidence: float` — 0.0 to 1.0
+- `quality: Literal["native_supported", "proxy_inferred"]`
+- `source: str` — which module produced this
+- `timestamp: datetime`
+
+**Mandatory for proxy_inferred quality:**
+- `notes: str` — explanation of inference method, what is being inferred, what data supports it. Example: `"Inferred from quote/depth behavior; not true executed flow. Direction inferred from consecutive bid-pushes against thinning asks."`
+
+**Design note:** Proxy/inferred features MUST include `notes`. They must NOT be labeled as true order flow signals. This is a semantic constraint, not just a documentation requirement.
+
+**Producers:** AggressionProxyFeature, AbsorptionProxyFeature, BreakoutPressureProxyFeature
+**Consumers:** MicrostructureContext aggregator, IntentEmitter, SentinelBridge
+**Sync/Async:** Sync (computed with feature stack)
+
+---
+
+### 9C. LiquidityState (Proxy Market Microstructure — V1)
+
+**Purpose:** Snapshot of current liquidity conditions from depth data
+**Boundary:** CORE
+**Per:** `quantmindx_v1_proxy_microstructure_addendum.md` §3
+
+**Required fields:**
+- `thinning_score: float` — 0.0 = normal, 1.0 = thin
+- `concentration: float` — 0.0-1.0, how concentrated at key levels
+- `regime: Literal["normal", "stress", "abundant"]`
+- `quality: Literal["native_supported"]` — derived from depth data
+- `timestamp: datetime`
+
+**Optional fields:**
+- `notes: Optional[str]`
+- `depth_levels_analyzed: int` — how many depth levels used
+
+**Producers:** DepthThinningFeature, LiquidityStressProxyFeature
+**Consumers:** MicrostructureContext aggregator, IntentEmitter (for entry gating)
+**Sync/Async:** Sync
+
+---
+
+### 9D. SpreadPressureSignal (Proxy Market Microstructure — V1)
+
+**Purpose:** Spread behavior snapshot from bid/ask data
+**Boundary:** CORE
+**Per:** `quantmindx_v1_proxy_microstructure_addendum.md` §3
+
+**Required fields:**
+- `spread_pips: float`
+- `spread_change_pips: float` — delta from previous spread
+- `expansion_factor: float` — ratio to session average spread
+- `regime: Literal["compressed", "normal", "expanded", "volatile"]`
+- `quality: Literal["native_supported"]` — from cTrader quote stream
+- `timestamp: datetime`
+
+**Producers:** SpreadStateFeature
+**Consumers:** MicrostructureContext aggregator, IntentEmitter
+**Sync/Async:** Sync
+
+---
+
+### 9E. MicrostructureContext (Proxy Market Microstructure — V1)
+
+**Purpose:** Aggregated higher-level context object consumed by both bots and sentinel. Bridges the library's microstructure features to the existing sentinel regime output.
+**Boundary:** CORE / BRIDGE
+**Per:** `quantmindx_v1_proxy_microstructure_addendum.md` §3 and §6
+
+**Required fields:**
+- `symbol: str`
+- `timestamp: datetime`
+- `spread_regime: str` — "compressed" / "normal" / "expanded" / "volatile"
+- `liquidity_regime: str` — "normal" / "stress" / "abundant"
+- `depth_pressure: str` — "bullish" / "bearish" / "neutral"
+- `aggression_proxy: str` — "bullish" / "bearish" / "neutral"
+- `breakout_pressure: str` — "bullish" / "bearish" / "neutral"
+- `quality_flags: List[str]` — all quality labels from constituent features
+- `source_components: List[str]` — which modules contributed to this context
+
+**Optional fields:**
+- `thinning_score: Optional[float]`
+- `absorption_score: Optional[float]`
+- `concentration: Optional[float]`
+- `is_transition: Optional[bool]` — from BOCPD changepoint signal (consumed from MarketContext)
+
+**Design note:** This object should be bridge-friendly and easy to journal. It is NOT a replacement for MarketContext (which holds regime from sentinel ML systems). MicrostructureContext is the library's own short-horizon market-structure view.
+
+**Relationship to MarketContext:**
+```
+MarketContext (from SentinelBridge): regime, chaos_score, hmm_regime, is_transition (from BOCPD)
+    +
+MicrostructureContext (from library): spread_regime, liquidity_regime, aggression_proxy, depth_pressure
+    ↓
+Combined market context snapshot for IntentEmitter
+```
+
+**Producers:** MicrostructureContext aggregator (library feature)
+**Consumers:** IntentEmitter, SentinelBridge (optional feedback), JournalBridge
+**Sync/Async:** Sync (read from cached state)
+
 
 ```python
 @dataclass
@@ -522,11 +634,15 @@ class PatternSignal:
 | BotRuntimeProfile | CORE | Hybrid | Sync reads, async writes |
 | BotEvaluationProfile | EVALUATION | Sync | Written post-evaluation |
 | BotMutationProfile | CORE | Sync | Loaded with BotSpec |
-| MarketContext | CORE/BRIDGE | Hybrid | Async updates, sync reads |
+| MarketContext | CORE/BRIDGE | Hybrid | Async updates from SentinelBridge, sync reads |
 | SessionContext | CORE | Hybrid | |
 | FeatureVector | CORE | Sync | Computed on-demand |
 | OrderFlowSignal | CORE | Sync | |
 | PatternSignal | OUT-OF-SCOPE | — | Deferred |
+| MicrostructureSignal | CORE | Sync | Proxy microstructure feature output |
+| LiquidityState | CORE | Sync | Depth-derived liquidity state |
+| SpreadPressureSignal | CORE | Sync | Spread-derived signal |
+| MicrostructureContext | CORE/BRIDGE | Sync | Aggregated short-horizon context |
 | SentinelState | BRIDGE | Async | Event-driven |
 | RiskEnvelope | BRIDGE | Sync | Computed at decision time |
 | TradeIntent | CORE | Sync | Emitted at decision time |
