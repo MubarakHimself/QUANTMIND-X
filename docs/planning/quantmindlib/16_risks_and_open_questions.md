@@ -1,0 +1,478 @@
+# 16 — Risks, Assumptions, and Open Questions
+
+**Version:** 1.1
+**Date:** 2026-04-08
+**Human review decisions applied:** 2026-04-08
+
+---
+
+## 1. Genuine Blockers
+
+### BLOCKER-1: Two Governor Classes Naming Conflict
+
+**Issue:** The codebase has two separate `Governor` classes:
+- `src/router/governor.py` — risk authorization (compliance layer)
+- `src/risk/governor.py` — risk execution (Tier 2 rules)
+
+Both are involved in the risk pipeline. The library must reference one or both, but the naming conflict is a source of confusion.
+
+**Impact:** Bridge implementations may reference the wrong Governor. RiskEnvelope field names may differ between the two.
+
+**Resolution needed:** Rename one class or establish canonical import path before finalizing RiskEnvelope schema.
+
+**Status:** Resolved — Option C (document import paths explicitly in library)
+**Decision:** Keep both Governors for now. Document canonical import paths in RiskBridge. `src/router/governor.py` = risk authorization (upstream, compliance layer). `src/risk/governor.py` = risk execution (Tier 2, downstream). Library RiskBridge maps to RiskEnvelope output contract without renaming. Long-term technical debt note: rename in Phase 2 if confusion persists.
+**Reference:** Architecture doc §C1, Recovery note R-10
+
+---
+
+### BLOCKER-2: DPR Dual Engines (Router + Risk Layers)
+
+**Plain-English summary:** Two separate DPR scoring engines exist. The router-layer engine (authoritative) already writes DPR scores to Redis in uncommitted code. The risk-layer engine only writes session concern counters — it does NOT write DPR composite scores to Redis. No system breaks today because the router engine is the one that matters. But anyone reading DPR from the risk layer will find nothing.
+
+**Resolution needed:** DPR bridge must handle both engines with router as canonical source. No code consolidation needed.
+
+**Status:** Resolved — Option B (bridge handles both, router is canonical)
+**Decision:** DPRBridge knows about both engines. Router engine (`src/router/dpr_scoring_engine.py`) is the canonical DPR score source. Risk engine (`src/risk/dpr/scoring_engine.py`) session concern counters are consumed as-is. Risk engine DPR scores flow through bridge like any other input. No Redis publish needed from risk engine for DPR composite scores.
+**Reference:** Gap G-18, Recovery note R-2, SPEC-004
+
+---
+
+### BLOCKER-3: cTrader Open API Capability Verification
+
+**Issue:** The library design assumes cTrader Open API supports: tick streams, bar streams, depth streams, historical data, order execution, and account state. These assumptions are based on documentation, not verified implementation.
+
+**Impact:** If cTrader Open API doesn't support all required operations, adapter design may need significant revision.
+
+**Resolution needed:** Verify cTrader Open API Python SDK capabilities before Phase 4 implementation. Review official docs: https://help.ctrader.com/open-api/
+
+**Status:** Resolved — verified via web research. Key findings:
+
+| Capability | Status | Notes |
+|---|---|---|
+| Tick streams (real-time) | ✅ YES | Bid/ask push via `ProtoOASpotEvent`. NO tick volume — quote-driven only. |
+| Bar/candlestick streams | ✅ YES | Historical capped at 1-week window per request. 50 req/s live, 5 req/s historical. |
+| Depth/DOM streams | ✅ YES | Delta events only (`ProtoOADepthEvent`). No full snapshot. No per-level volume. |
+| Order execution | ✅ YES | Full suite: new order, amend, cancel, close, SL/TP modification. |
+| Account state | ✅ YES | Balance, equity, margin, unrealized P&L, margin calls, deal history. |
+| Historical data (backtesting) | ❌ NO | 1-week window cap. Broker-dependent retention. NOT suitable for backtesting. |
+| Buy/sell volume (order flow) | ❌ NO | No executed trade ticks in public API. Only quote updates + book delta events. |
+| Economic calendar | ❌ NO | Not part of cTrader Open API. Requires separate provider. |
+| Python SDK | ✅ YES | Official `OpenApiPy` (Twisted-based, MIT, PyPI available). |
+
+**Impact on REVIEW-5 (Order Flow HIGH quality):** cTrader Open API does NOT provide buy/sell volume data. HIGH quality order flow is NOT achievable from cTrader data. Per REVIEW-5, features must be DISABLED — not degraded. This means `VolumeImbalanceFeature`, `TickActivityFeature`, `SpreadBehaviorFeature` cannot use cTrader native data for HIGH quality. Library must use external order flow data source or disable.
+
+**Impact on Q-1 (Backtest historical data):** cTrader Open API CANNOT serve as backtesting data source. 1-week historical window is insufficient. Library backtest engine must accept OHLCV as input from an external source (Dukascopy, self-recorded, or third-party provider). Library owns the contract; data source is pluggable.
+
+**Impact on REVIEW-3 (Economic calendar):** Confirmed. cTrader Network Access does NOT provide economic calendar data. Finnhub direct polling continues for V1. No cTrader-based economic calendar exists.
+
+**Recommendation:** Proceed with Phase 4 adapter implementation for live trading operations (fully supported). Backtest data pipeline requires separate design — do not assume cTrader provides this. Order flow features are blocked from cTrader data source.
+
+**Reference:** `09_ctrader_boundary_plan.md` (Section 1), Memo Appendix A, OpenApiPy SDK
+
+---
+
+### BLOCKER-4: BotSpec → Strategy Code Generation Reliability
+
+**Issue:** The evaluation bridge requires BotSpec → strategy code conversion. The generated strategy code must produce valid backtest results. This conversion is complex and may fail for edge cases.
+
+**Impact:** Complex BotSpecs may not convert to working strategy code. Evaluation pipeline may produce unreliable results.
+
+**Resolution needed:** Test BotSpec → strategy code generation extensively before Phase 8. Establish fallback (manual strategy code input).
+
+**Status:** Resolved — current plan confirmed. Test extensively before Phase 8. Manual fallback required.
+**Decision:** Test BotSpec → strategy code generation with ORB + SCALPER candidates. Establish manual input fallback. Do not ship Phase 8 without fallback path.
+**Reference:** SPEC-007 (EvaluationBridge), SPEC-001 (BotSpec)
+
+---
+
+## 2. Assumptions to Verify
+
+### ASSUMPTION-1: TRD → BotSpec Loss-Free Conversion
+
+**Assumption:** TRDDocument can be converted to BotSpec without losing information.
+
+**Evidence:** TRDDocument has 30+ standard parameters, session_tags, entry/exit conditions. BotSpec is designed to absorb all of this. But some TRD fields may map imperfectly.
+
+**Verification needed:** Compare TRD schema fields to BotSpec fields. Identify any unmapped fields.
+
+**Decision:** Option B — lenient conversion. All TRD fields map to BotSpec even if imperfect. Preserve all information. Mismatched fields get a `quality="approximate"` tag.
+**Reference:** CONTRACT-025 (TRD → BotSpec ticket), `src/trd/schema.py`
+
+---
+
+### ASSUMPTION-2: cTrader Backtest Schema Compatibility
+
+**Assumption:** CTrader backtest results can match MT5BacktestResult schema exactly.
+
+**Evidence:** Both are Python dataclasses with same fields. But cTrader may report metrics differently (e.g., Sharpe calculation, equity curve granularity).
+
+**Verification needed:** Test early with sample cTrader data. If schema mismatch exists, document delta and adjust evaluation pipeline.
+
+**Decision:** Current plan confirmed. Test early. Document delta. Adjust evaluation pipeline as needed.
+**Reference:** SPEC-011 (CTrader backtest engine), `src/backtesting/mt5_engine.py`
+
+---
+
+### ASSUMPTION-3: Order Flow Data Quality from cTrader
+
+**Assumption:** cTrader provides sufficient tick/depth data for quality-aware order flow features.
+
+**Evidence:** cTrader Open API documentation shows tick, bar, and depth support. But buy/sell volume delta may not be directly available.
+
+**Verification needed:** Confirm cTrader provides buy/sell volume data for VolumeImbalanceFeature. If not, quality tagging degrades.
+
+**Decision:** HIGH quality required (cTrader DOM). cTrader Open API does NOT provide executed trade ticks or buy/sell volume. Per REVIEW-5, features DISABLE when HIGH quality unavailable. Order flow features (VolumeImbalance, TickActivity, SpreadBehavior) must use external data source or be disabled.
+**Reference:** `09_ctrader_boundary_plan.md` (Section 8: Order Flow Data Availability), REVIEW-5
+
+---
+
+### ASSUMPTION-4: SVSS Indicators Can Be Wrapped
+
+**Assumption:** SVSS indicators (VWAP, RVOL, Volume Profile, MFI) can be wrapped as library feature modules without behavioral changes.
+
+**Evidence:** SVSS indicators are standalone and clean (BaseIndicator ABC, compute(tick) → IndicatorResult). Wrapping should be straightforward.
+
+**Verification needed:** Confirm SVSS indicators have no hard dependencies on MT5-specific data structures. Test wrapped versions match original outputs.
+
+**Decision:** Current plan. Verify by checking SVSS indicators for MT5 imports. Test wrapped outputs match originals.
+**Reference:** SPEC-006 (FeatureRegistry), Recovery note R-11
+
+---
+
+### ASSUMPTION-5: Phase 1 ORB-Only Scope
+
+**Assumption:** V1 implementation focuses on OpeningRangeBreakout archetype only. Other archetypes (breakout_scalper, pullback_scalper, mean_reversion, session_transition) are Phase 2+.
+
+**Evidence:** Phase 1 strategy types are SCALPER + ORB only per memory index. 60/40 bot mix (60% scalping, 40% ORB).
+
+**Verification needed:** Confirm Phase 1 scope is ORB only. Ensure implementation agents don't implement other archetypes prematurely.
+
+**Decision:** Confirmed. Phase 1 = SCALPER + ORB only. 60/40 mix.
+**Reference:** `06_target_architecture_v1.md` (Section 10: Out-of-Scope), Memory: MARKET_INTELLIGENCE_AND_BOT_REGISTRY_SESSION.md
+
+---
+
+## 3. Outdated Documentation Risks
+
+### DOC-RISK-1: docs/architecture.md Points to _bmad-output/
+
+**Issue:** `docs/architecture.md` explicitly states it is stale and points to `_bmad-output/planning-artifacts/architecture.md` as authoritative. Any agent reading `docs/architecture.md` will get outdated info.
+
+**Impact:** Implementation agents may read stale docs and make wrong decisions.
+
+**Recommendation:** Add redirect note at top of `docs/architecture.md`: "This document is stale. See `_bmad-output/planning-artifacts/architecture.md`." Or mark as deprecated and point to the new location.
+
+**Reference:** `03_documentation_status_report.md`
+
+---
+
+### DOC-RISK-2: DATA_ARCHITECTURE_ANALYSIS.md Focuses on MT5
+
+**Issue:** `DATA_ARCHITECTURE_ANALYSIS.md` (2026-02-12) documents MT5 streaming (100ms polling), DataManager hybrid fetch, tick-level backtesting gaps. This is from before the cTrader decision.
+
+**Impact:** Any agent using this doc for data architecture will design for MT5, not cTrader.
+
+**Recommendation:** Mark as deprecated or update for cTrader data model.
+
+**Reference:** `03_documentation_status_report.md`
+
+---
+
+### DOC-RISK-3: IMPLEMENTATION_ORCHESTRATION.md Kanban Items
+
+**Issue:** `IMPLEMENTATION_ORCHESTRATION.md` contains Kanban items (MUB-151+) from early March 2026. These are likely complete or outdated.
+
+**Impact:** Implementation agents may attempt to work on completed items.
+
+**Recommendation:** Update doc with completion status or archive completed items.
+
+**Reference:** `03_documentation_status_report.md`
+
+---
+
+### DOC-RISK-4: No Formal Architecture Decision Records
+
+**Issue:** The codebase has no formal ADR (Architecture Decision Record) format. Decisions are captured in `architecture.md` (§1-§21) and handoff docs. This makes it hard to trace why a decision was made.
+
+**Impact:** Future agents may not understand why certain decisions were made.
+
+**Recommendation:** Continue documenting decisions in `_bmad-output/planning-artifacts/architecture.md`. Consider formal ADR format in Phase 2.
+
+**Reference:** `03_documentation_status_report.md` (ADR section)
+
+---
+
+## 4. Coupling Risks
+
+### COUPLING-1: Sentinel Regime Classification Tightly Coupled
+
+**Issue:** Regime classification is centralized in Sentinel. If Sentinel changes (new sensors, new ensemble voting), all consumers (Governor, KillSwitch, DPR, Backtester) may see different regime data.
+
+**Impact:** Changes to Sentinel may cascade to risk decisions, kill switch behavior, and evaluation results.
+
+**Mitigation:** Library's MarketContext is a snapshot at decision time. Bridge isolates changes. But regime classification changes must be tested against all consumers.
+
+**Reference:** Recovery note R-1
+
+---
+
+### COUPLING-2: Governor Risk Logic Dependencies
+
+**Issue:** Governor has many dependent calculations (physics throttling, correlation check, 5% exposure cap, EnhancedKelly). Changing any of these affects the entire risk pipeline.
+
+**Impact:** Library RiskBridge must understand Governor internals to map correctly.
+
+**Mitigation:** RiskBridge maps to RiskEnvelope (output contract), not Governor internals. But Governor behavior changes must be reflected in RiskBridge.
+
+**Reference:** Recovery note R-10
+
+---
+
+### COUPLING-3: BotLifecycleLog Audit Trail
+
+**Issue:** Tag transitions and lifecycle events are logged to BotLifecycleLog. Library lifecycle decisions (promote/quarantine) must log to the same table. If library lifecycle bridge uses different logging patterns, audit trail is inconsistent.
+
+**Impact:** Audit trail may have gaps or inconsistent entries.
+
+**Mitigation:** Library LifecycleBridge should use same logging patterns as existing LifecycleManager.
+
+**Reference:** Recovery note R-13
+
+---
+
+### COUPLING-4: TRD Schema Drift
+
+**Issue:** TRDDocument is the primary input to the library. If TRD schema changes (new fields, renamed fields), BotSpec conversion breaks.
+
+**Impact:** WF1 may produce invalid BotSpecs without clear error.
+
+**Mitigation:** TRD → BotSpec conversion should validate input and raise clear errors on unexpected fields. Version TRD schema.
+
+**Reference:** CONTRACT-025 (TRD → BotSpec conversion spec)
+
+---
+
+## 5. Platform Migration Risks
+
+### MIGRATION-1: MT5 → cTrader Surface Area
+
+**Issue:** MT5 is embedded throughout: market data adapters, risk integrations, kill switch pipeline, backtest engine, MQL5 code generation. Migration surface is large (5 areas identified).
+
+**Impact:** Migration effort is significant. Risk of breaking live trading during transition.
+
+**Mitigation:** Adapter pattern isolates platform code. Library core doesn't change. Parallel running (MT5 + cTrader) during transition.
+
+**Reference:** `09_ctrader_boundary_plan.md` (Section 9: MT5 Migration Surface), Gap G-10, G-11
+
+---
+
+### MIGRATION-2: MQL5 → cTrader Algo Code
+
+**Issue:** `src/mql5/` generates MQL5 EA code from TRD. cTrader uses Python/C# for algos. The code generation pipeline must be replaced or adapted.
+
+**Impact:** Strategy code generation is a core part of WF1. Migration must not break the workflow.
+
+**Mitigation:** Create `src/library/adapters/ctrader/ea_generator.py` that generates cTrader-compatible code. TRD input remains the same.
+
+**Reference:** Gap G-11 (cTrader migration)
+
+---
+
+### MIGRATION-3: T1 Node Windows Dependency
+
+**Issue:** Trading node (T1 on Kamatera) runs Windows for MT5. cTrader also runs on Windows. The trading node OS doesn't change, but the terminal does.
+
+**Impact:** Adapter deployment on T1 must be Windows-compatible. No Linux trading node for cTrader.
+
+**Mitigation:** Adapter code must be Windows-compatible. Test adapter on Windows before deployment.
+
+**Reference:** `09_ctrader_boundary_plan.md` (Section 9)
+
+---
+
+## 6. Areas Requiring Human Review
+
+### REVIEW-1: DPR Dual Engine Resolution
+
+**Decision needed:** Should the dual DPR engines be consolidated into one, or should the library bridge handle both paths?
+
+**Options:**
+- **A:** Consolidate into single DPR engine (higher effort, cleaner)
+- **B:** Library bridge handles both (existing code untouched, bridge complexity higher)
+
+**Decision:** ✓ Option B. DPRBridge handles both. Router engine (`src/router/dpr_scoring_engine.py`) is canonical source for DPR scores. Risk engine (`src/risk/dpr/scoring_engine.py`) session concern counters consumed as-is. No engine consolidation needed.
+
+**Reference:** Gap C2, Recovery note R-2, SPEC-004
+
+---
+
+### REVIEW-2: Governor Naming Conflict Resolution
+
+**Decision needed:** Should one of the two Governor classes be renamed to avoid confusion?
+
+**Options:**
+- **A:** Rename `src/router/governor.py` → `RouterGovernor` or `RiskAuthorizer`
+- **B:** Rename `src/risk/governor.py` → `RiskGovernor` or `RiskCalculator`
+- **C:** Keep names but document import paths explicitly in library
+
+**Decision:** ✓ Option C. Keep both Governors. Document import paths explicitly in RiskBridge. `src/router/governor.py` = risk authorization upstream (compliance layer). `src/risk/governor.py` = risk execution downstream (Tier 2 rules). Long-term technical debt: consider rename in Phase 2 if confusion persists.
+
+**Reference:** Architecture doc §C1, Recovery note R-10
+
+---
+
+### REVIEW-3: Economic Calendar Integration Path
+
+**Decision needed:** Should economic calendar integration go through cTrader Network Access (future) or continue with direct Finnhub polling (current)?
+
+**Options:**
+- **A:** Continue Finnhub direct polling (current, works)
+- **B:** Migrate to cTrader Network Access (Phase 2+)
+- **C:** Hybrid (Finnhub for backup, cTrader Network Access for primary)
+
+**Decision:** ✓ Migrate to cTrader Network Access in Phase 2. Finnhub direct polling continues for V1. cTrader Network Access is the target for Phase 2 economic calendar integration.
+**Reference:** `09_ctrader_boundary_plan.md` (Section 11: Network Access Feature), Recovery note R-12
+
+---
+
+### REVIEW-4: TRD → BotSpec Conversion Scope
+
+**Decision needed:** Should TRD → BotSpec conversion be a strict transformation (only fields that map cleanly) or a lenient transformation (all TRD fields → BotSpec, even if imperfectly)?
+
+**Options:**
+- **A:** Strict: only map fields that have clean 1:1 mapping. TRD fields without clear mapping are discarded.
+- **B:** Lenient: map all TRD fields, even if mapping is approximate. Preserve all information.
+
+**Decision:** ✓ Option B (lenient). All TRD fields map to BotSpec. Imperfect mappings get `quality="approximate"` tag. No information discarded at conversion time.
+**Reference:** CONTRACT-025 (TRD → BotSpec), ASSUMPTION-1
+
+---
+
+### REVIEW-5: Order Flow Feature Quality Threshold
+
+**Decision needed:** What minimum quality level should order flow features degrade to before being disabled?
+
+**Options:**
+- **A:** LOW quality enabled (use session-relative proxies)
+- **B:** MEDIUM quality minimum (OHLCV approximation only)
+- **C:** HIGH quality only (cTrader DOM required, else disabled)
+
+**Decision:** ✓ Option C (HIGH quality only). Order flow features require cTrader DOM quality data. If cTrader does not provide HIGH quality data, features are disabled rather than degraded. Features gracefully degrade to disabled state — no fallback to proxies.
+**Reference:** `09_ctrader_boundary_plan.md` (Section 8), Memo §5 (quality-aware design)
+
+---
+
+### REVIEW-6: Phase 1 Bot Count
+
+**Decision needed:** How many bots should be targeted for Phase 1 (first library-integrated bots)?
+
+**Options:**
+- **A:** 1 bot (single ORB bot for testing)
+- **B:** 3-5 bots (small set for validation)
+- **C:** All active bots migrated
+
+**Decision:** ✓ Full migration scope. The library must be designed for all active bots from the start. One bot is not enough to stress-test the contract layer, bridge layer, and composition layer. Design for full migration; Phase 1 validates with SCALPER + ORB candidates. The library is the foundation — it must support the full portfolio, not just a test case.
+**Reference:** Phase 6 (archetype system) and Phase 7 (runtime) — implementation scope depends on this
+
+---
+
+## 7. Open Questions (No Decision Needed Yet)
+
+### Q-1: Backtest Historical Data Source
+
+**Question:** Where does cTrader backtest engine get historical data? From broker (cTrader) or from external source (Dukascopy, etc.)?
+
+**Context:** Current backtest engine (`mt5_engine.py`) simulates MQL5 with Python. cTrader backtest engine needs historical OHLCV data.
+
+**Decision:** ✓ Resolved. cTrader Open API does NOT provide suitable historical data for backtesting. Historical data is capped at 1-week windows per request. Broker-dependent retention. Library MUST own its backtest data contract. Data source is pluggable: Dukascopy (existing `src/data/dukascopy_fetcher.py`), self-recorded from live cTrader streams, or third-party provider. Library defines the OHLCV input contract; implementation is independent of cTrader adapter.
+**Reference:** SPEC-011, `src/data/dukascopy_fetcher.py`, BLOCKER-3 research
+
+---
+
+### Q-2: Multi-Timeframe Sentinel in Library
+
+**Question:** Should the library's MarketContext support multi-timeframe regime (current single-timeframe)? Or should MultiTimeframeSentinel be wrapped as a library feature?
+
+**Context:** `MultiTimeframeSentinel` maintains separate Sentinels per timeframe with voting aggregation. The library's MarketContext currently assumes single timeframe.
+
+**Decision:** ✓ MultiTimeframeSentinel stays external (sentinel / market intelligence system). Library MarketContext supports multi-timeframe outputs via a bridge. MarketContext carries normalized regime view (current regime label, multi-timeframe summary, confidence, timeframe alignment score). Library does NOT wrap MultiTimeframeSentinel as a feature module. Derived helpers (multi-timeframe agreement score, HTF trend alignment flag) are fine as library-level derived features.
+**Reference:** Recovery note R-1 (MultiTimeframeSentinel), SPEC-001 (MarketContext)
+
+---
+
+### Q-3: PatternSignal Schema Completeness
+
+**Question:** Is PatternSignal placeholder schema sufficient for future integration, or should it be more detailed now?
+
+**Context:** PatternSignal is out of V1 scope but defined as placeholder in shared object model. Schema is minimal.
+
+**Decision:** ✓ Detailed placeholder schema now (not a vague stub). PatternSignal is a cross-boundary contract. Define: signal_id, symbol, timeframe, pattern_type, direction, confidence, strength, source, role, window_start, window_end, features dict, metadata, as_of. Defer: pattern engine internals, full ontology of pattern types, ML model specifics. This gives stable interfaces with future extensibility.
+**Reference:** `07_shared_object_model.md` (PatternSignal), Memo §9
+
+---
+
+### Q-4: BotSpec Versioning Strategy
+
+**Question:** Should BotSpec have explicit version fields (v1, v2) or implicit versioning (hash-based)?
+
+**Context:** BotSpec is a structured spec that may evolve. Versioning strategy affects backward compatibility.
+
+**Decision:** ✓ Explicit versioning first (major.minor). Optional hash support later for content-addressable lookups. Schema evolution follows: minor = backward-compatible additions only; major = breaking changes.
+**Reference:** SPEC-001 (BotSpec), SPEC-024 (SpecRegistry)
+
+---
+
+### Q-5: Feature Confidence Threshold Default
+
+**Question:** What should be the default `feature_confidence.quality` threshold for enabling a feature in a bot?
+
+**Context:** Quality-aware tagging requires thresholds. Default must work for IC Markets Raw broker.
+
+**Decision:** ✓ MEDIUM as the default threshold for general features. Order flow features override to HIGH (see REVIEW-5). Features with quality below threshold are logged but not disabled by default — individual features may have their own override. This balances safety with flexibility for IC Markets Raw.
+**Reference:** SPEC-006 (FeatureRegistry), `10_feature_family_plan.md`
+
+---
+
+## 8. Risk Summary Matrix
+
+| Risk ID | Category | Description | Severity | Status |
+|---------|----------|-------------|----------|--------|
+| BLOCKER-1 | Naming conflict | Two Governor classes | HIGH | Resolved (Option C) |
+| BLOCKER-2 | DPR architecture | Dual engines, risk layer no Redis write | HIGH | Resolved (Option B) |
+| BLOCKER-3 | Platform capability | cTrader API verified — order flow + backtest data NOT available | HIGH | Resolved |
+| BLOCKER-4 | Conversion reliability | BotSpec → strategy code | MEDIUM | Resolved (test + fallback) |
+| ASSUMPTION-1 | Schema mapping | TRD → BotSpec loss-free | MEDIUM | Resolved (Option B, lenient) |
+| ASSUMPTION-2 | Schema compatibility | cTrader vs MT5 backtest | HIGH | Resolved (current plan, test early) |
+| ASSUMPTION-3 | Data quality | cTrader order flow data | MEDIUM | Resolved (HIGH required, degrades to disabled) |
+| ASSUMPTION-4 | Code wrapping | SVSS indicator wrapping | LOW | Resolved (current plan, verify) |
+| ASSUMPTION-5 | Scope | Phase 1 ORB-only | LOW | Resolved (confirmed) |
+| DOC-RISK-1 | Stale docs | docs/architecture.md | LOW | Needs fix |
+| DOC-RISK-2 | Stale docs | DATA_ARCHITECTURE_ANALYSIS.md | MEDIUM | Needs fix |
+| DOC-RISK-3 | Stale docs | IMPLEMENTATION_ORCHESTRATION.md | LOW | Needs fix |
+| DOC-RISK-4 | Missing docs | No formal ADRs | LOW | Future |
+| COUPLING-1 | Tight coupling | Sentinel regime classification | MEDIUM | Acceptable |
+| COUPLING-2 | Complex logic | Governor risk calculations | MEDIUM | Acceptable |
+| COUPLING-3 | Audit consistency | BotLifecycleLog logging | MEDIUM | Needs attention |
+| COUPLING-4 | Schema drift | TRD schema changes | MEDIUM | Needs mitigation |
+| MIGRATION-1 | Large surface | MT5 → cTrader migration | HIGH | Acceptable (phased) |
+| MIGRATION-2 | Code generation | MQL5 → cTrader algo | HIGH | Acceptable (phased) |
+| MIGRATION-3 | Platform | T1 Windows dependency | MEDIUM | Acceptable |
+
+---
+
+## 9. Pre-Implementation Checklist
+
+Before Phase 1 begins, verify:
+- [x] DPR Redis gap: router fix in uncommitted; bridge handles both (REVIEW-1 ✓)
+- [x] Governor naming: document import paths (REVIEW-2 ✓)
+- [x] cTrader Open API Python SDK reviewed for capability completeness (BLOCKER-3 ✓ — web research complete. Order flow Cat B and backtest data NOT from cTrader; external source required. See §8 Data Source of Truth Matrix.)
+- [ ] TRD schema fields mapped to BotSpec fields (verify lenient mapping)
+- [ ] MT5 backtest result schema documented for cTrader compatibility
+- [ ] Stale docs marked with redirect notes (DOC-RISK-1, 2, 3)
+- [x] Phase 1 scope (ORB-only, 60/40 mix) confirmed (ASSUMPTION-5 ✓)
+- [x] Economic calendar: Finnhub direct for V1, cTrader Network Access Phase 2+ (REVIEW-3 ✓)
+- [x] DPR dual engine handling: bridge handles both, router canonical (REVIEW-1 ✓)
+- [ ] SVSS indicators checked for MT5 dependencies (verify wrapping)
+- [x] cTrader historical data source: library owns contract, data is pluggable (Q-1 ✓)
+- [x] Order flow architecture: two-category split with data source of truth matrix (applied across all docs)
