@@ -31,6 +31,7 @@ from src.library.runtime.feature_evaluator import FeatureEvaluator
 from src.library.runtime.intent_emitter import IntentEmitter
 from src.library.runtime.safety_hooks import SafetyHooks, KillSwitchResult
 from src.library.runtime.state_manager import BotStateManager
+from src.library.features._registry import get_default_registry
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ class RuntimeOrchestrator:
             BotStateManager() if state_manager is None else state_manager
         )
         self._feature_evaluator = (
-            FeatureEvaluator() if feature_evaluator is None else feature_evaluator
+            FeatureEvaluator(registry=get_default_registry()) if feature_evaluator is None else feature_evaluator
         )
         self._safety_hooks = (
             SafetyHooks() if safety_hooks is None else safety_hooks

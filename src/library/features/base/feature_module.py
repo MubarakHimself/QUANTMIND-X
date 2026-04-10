@@ -123,8 +123,19 @@ class FeatureModule(ABC, BaseModel):
         return self.quality_class in valid_classes
 
     def model_post_init(self, __context: Any) -> None:
-        """Populate feature_id from the config property after Pydantic init."""
-        # Subclasses derive feature_id from their config property.
-        # model_post_init runs after all fields (including subclass fields like `period`) are set.
+        """
+        Populate fields from the config property after Pydantic init.
+
+        Copies feature_id, quality_class, source, and notes from config
+        to the instance fields. This ensures subclasses' config declarations
+        are properly propagated to the FeatureModule base class fields.
+        """
+        cfg = self.config
         if not self.feature_id:
-            object.__setattr__(self, "feature_id", self.config.feature_id)
+            object.__setattr__(self, "feature_id", cfg.feature_id)
+        if self.quality_class == "native_supported" and cfg.quality_class != "native_supported":
+            object.__setattr__(self, "quality_class", cfg.quality_class)
+        if self.source == "ctrader_native" and cfg.source != "ctrader_native":
+            object.__setattr__(self, "source", cfg.source)
+        if self.notes is None and cfg.notes is not None:
+            object.__setattr__(self, "notes", cfg.notes)
