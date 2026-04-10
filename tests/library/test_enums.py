@@ -140,16 +140,18 @@ class TestBotTier:
     """Tests for BotTier enum — labels only, no threshold logic."""
 
     def test_has_tiers(self):
-        assert BotTier.TIER_1 == "TIER_1"
-        assert BotTier.TIER_2 == "TIER_2"
-        assert BotTier.TIER_3 == "TIER_3"
+        assert BotTier.ELITE == "ELITE"
+        assert BotTier.PERFORMANCE_TEST == "PERFORMANCE_TEST"
+        assert BotTier.STANDARD == "STANDARD"
+        assert BotTier.EVALUATION_CANDIDATE == "EVALUATION_CANDIDATE"
+        assert BotTier.AT_RISK == "AT_RISK"
+        assert BotTier.CIRCUIT_BROKEN == "CIRCUIT_BROKEN"
 
     def test_tiers_are_labels_only(self):
         """BotTier is a label — no threshold values embedded in the enum."""
         # Each member has a string value, nothing else
         for tier in BotTier:
             assert isinstance(tier.value, str)
-            assert tier.value.startswith("TIER_")
 
 
 class TestStrEnumBehavior:
