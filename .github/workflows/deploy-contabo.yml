@@ -22,19 +22,23 @@ env:
   DEPLOY_USER: ${{ vars.DEPLOY_USER }}
   DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
   DEPLOY_HEALTHCHECK_URL: ${{ vars.DEPLOY_HEALTHCHECK_URL }}
+  CONTABO_SERVICES: "hmm-inference-api hmm-scheduler"
 
 jobs:
   # ── Gate: only proceed if ALL CI workflows passed ──────────────────────
   gate:
     name: Gate — ${{ github.event.workflow_run.name }}
     runs-on: ubuntu-latest
-    # Only run for our known CI workflows
+    # Only run for our known CI workflows (exclude self to prevent self-trigger loop)
     if: >
-      github.event.workflow_run.name == 'SonarCloud SAST' ||
-      github.event.workflow_run.name == 'CodeQL Advanced' ||
-      github.event.workflow_run.name == 'Multi-Platform Build' ||
-      github.event.workflow_run.name == 'OWASP ZAP DAST' ||
-      github.event.workflow_run.name == 'Dependency Audit'
+      github.event.workflow_run.name != 'Deploy to Contabo' &&
+      (
+        github.event.workflow_run.name == 'SonarCloud SAST' ||
+        github.event.workflow_run.name == 'CodeQL Advanced' ||
+        github.event.workflow_run.name == 'Multi-Platform Build' ||
+        github.event.workflow_run.name == 'OWASP ZAP DAST' ||
+        github.event.workflow_run.name == 'Dependency Audit'
+      )
     outputs:
       all_passed: ${{ steps.check-ci.outputs.all_passed }}
       deploy_sha: ${{ steps.check-ci.outputs.deploy_sha }}
@@ -96,8 +100,16 @@ jobs:
             set -e
 
             cd "${DEPLOY_PATH}"
-            COMPOSE="docker compose -f docker-compose.production.yml -f docker-compose.contabo.yml -f docker-compose.contabo.override.yml"
-            CORE_SERVICES="redis quantmind-api prefect-server prefect-worker hmm-inference-api hmm-scheduler"
+            CORE_SERVICES="${CONTABO_SERVICES}"
+            set -- -f docker-compose.contabo.yml
+
+            compose_up() {
+              if command -v docker-compose >/dev/null 2>&1; then
+                docker-compose "$@"
+              else
+                docker compose "$@"
+              fi
+            }
 
             # Save previous commit for rollback
             git rev-parse HEAD > /tmp/quantmindx-prev-commit.txt
@@ -107,17 +119,17 @@ jobs:
             git checkout --force "$DEPLOY_SHA"
 
             # Reconcile the Docker-based production topology in place
-            $COMPOSE pull || true
-            $COMPOSE up -d --build $CORE_SERVICES
+            compose_up "$@" pull || true
+            compose_up "$@" up -d --build $CORE_SERVICES
 
             echo "Deployed: $(git rev-parse --short $DEPLOY_SHA)"
           DEPLOY_SCRIPT
 
       - name: Health check
         run: |
-          echo "Waiting for API to restart..."
+          echo "Waiting for Contabo HMM service to restart..."
           if [ -z "${DEPLOY_HEALTHCHECK_URL}" ]; then
-            DEPLOY_HEALTHCHECK_URL="http://${DEPLOY_HOST}:8000/health"
+            DEPLOY_HEALTHCHECK_URL="http://${DEPLOY_HOST}:8001/api/hmm/health"
           fi
           for i in $(seq 1 30); do
             if curl -sf "${DEPLOY_HEALTHCHECK_URL}" > /dev/null 2>&1; then
@@ -136,12 +148,19 @@ jobs:
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 "${DEPLOY_USER}@${DEPLOY_HOST}" << 'ROLLBACK_SCRIPT'
             set -e
             cd "${DEPLOY_PATH}"
-            COMPOSE="docker compose -f docker-compose.production.yml -f docker-compose.contabo.yml -f docker-compose.contabo.override.yml"
-            CORE_SERVICES="redis quantmind-api prefect-server prefect-worker hmm-inference-api hmm-scheduler"
+            CORE_SERVICES="${CONTABO_SERVICES}"
+            set -- -f docker-compose.contabo.yml
+            compose_up() {
+              if command -v docker-compose >/dev/null 2>&1; then
+                docker-compose "$@"
+              else
+                docker compose "$@"
+              fi
+            }
             PREV_COMMIT=$(cat /tmp/quantmindx-prev-commit.txt)
             echo "Rolling back to: $PREV_COMMIT"
             git fetch origin "$PREV_COMMIT"
             git checkout --force "$PREV_COMMIT"
-            $COMPOSE up -d --build $CORE_SERVICES
+            compose_up "$@" up -d --build $CORE_SERVICES
             echo "Rollback complete"
           ROLLBACK_SCRIPT
