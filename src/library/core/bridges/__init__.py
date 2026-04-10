@@ -14,6 +14,8 @@ from src.library.core.bridges.lifecycle_eval_workflow_bridges import (
 )
 from src.library.core.bridges.dpr_redis_bridge import DPRRedisPublisher, dpr_tier_to_bot_tier
 from src.library.core.bridges.safety_integration import DPRCircuitBreakerMonitor
+from src.library.core.bridges.dpr_concern_bridge import DPRConcernTag, DPRConcernEmitter
+from src.library.core.bridges.dpr_dual_engine import DPRDualEngineRouter
 
 __all__ = [
     # Sentinel + DPR
@@ -39,4 +41,8 @@ __all__ = [
     "dpr_tier_to_bot_tier",
     # Safety Integration
     "DPRCircuitBreakerMonitor",
+    # DPR Concern + Dual Engine
+    "DPRConcernTag",
+    "DPRConcernEmitter",
+    "DPRDualEngineRouter",
 ]
