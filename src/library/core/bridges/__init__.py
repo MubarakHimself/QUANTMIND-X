@@ -12,6 +12,7 @@ from src.library.core.bridges.lifecycle_eval_workflow_bridges import (
     WorkflowArtifact,
     WorkflowState,
 )
+from src.library.core.bridges.dpr_redis_bridge import DPRRedisPublisher, dpr_tier_to_bot_tier
 
 __all__ = [
     # Sentinel + DPR
@@ -32,4 +33,7 @@ __all__ = [
     # Risk + Execution
     "RiskBridge",
     "ExecutionBridge",
+    # DPR Redis
+    "DPRRedisPublisher",
+    "dpr_tier_to_bot_tier",
 ]
