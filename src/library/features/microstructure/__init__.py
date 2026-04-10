@@ -6,6 +6,9 @@ from src.library.features.microstructure.microstructure_base import Microstructu
 from src.library.features.microstructure.volume_imbalance import VolumeImbalanceFeature
 from src.library.features.microstructure.tick_activity import TickActivityFeature
 from src.library.features.microstructure.depth import MultiLevelDepthFeature
+from src.library.features.microstructure.absorption import AbsorptionProxyFeature
+from src.library.features.microstructure.breakout_pressure import BreakoutPressureProxyFeature
+from src.library.features.microstructure.liquidity_stress import LiquidityStressProxyFeature
 
 __all__ = [
     "SpreadStateFeature",
@@ -15,4 +18,7 @@ __all__ = [
     "VolumeImbalanceFeature",
     "TickActivityFeature",
     "MultiLevelDepthFeature",
+    "AbsorptionProxyFeature",
+    "BreakoutPressureProxyFeature",
+    "LiquidityStressProxyFeature",
 ]
