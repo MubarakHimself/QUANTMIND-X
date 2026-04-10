@@ -62,6 +62,10 @@ class ActivationState(StrEnum):
     """Bot activation state lifecycle. Used in BotRuntimeProfile."""
 
     ACTIVE = "ACTIVE"
+    CAUTIOUS = "CAUTIOUS"
+    INACTIVE = "INACTIVE"
+    DEGRADED = "DEGRADED"
+    UNKNOWN = "UNKNOWN"
     PAUSED = "PAUSED"
     STOPPED = "STOPPED"
 
@@ -70,7 +74,10 @@ class BotHealth(StrEnum):
     """Bot health status. Used in BotRuntimeProfile."""
 
     HEALTHY = "HEALTHY"
+    CAUTIOUS = "CAUTIOUS"
     DEGRADED = "DEGRADED"
+    CRITICAL = "CRITICAL"
+    UNKNOWN = "UNKNOWN"
     FAILING = "FAILING"
     OFFLINE = "OFFLINE"
 
@@ -90,6 +97,7 @@ class RegistryStatus(StrEnum):
     """Bot registry record status. Used in RegistryRecord."""
 
     ACTIVE = "ACTIVE"
+    TRIAL = "TRIAL"
     SUSPENDED = "SUSPENDED"
     ARCHIVED = "ARCHIVED"
 
@@ -109,6 +117,9 @@ class BotTier(StrEnum):
     Used in BotRuntimeProfile and SSLCircuitBreaker.
     """
 
-    TIER_1 = "TIER_1"
-    TIER_2 = "TIER_2"
-    TIER_3 = "TIER_3"
+    ELITE = "ELITE"
+    PERFORMANCE_TEST = "PERFORMANCE_TEST"
+    STANDARD = "STANDARD"
+    EVALUATION_CANDIDATE = "EVALUATION_CANDIDATE"
+    AT_RISK = "AT_RISK"
+    CIRCUIT_BROKEN = "CIRCUIT_BROKEN"

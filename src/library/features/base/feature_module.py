@@ -23,7 +23,7 @@ class FeatureConfig(BaseModel):
     """
     model_config = BaseModel.model_config
 
-    feature_id: str
+    feature_id: str = ""
     enabled: bool = True
     quality_class: str = "native_supported"  # "native_supported" | "proxy_inferred" | "external" | "deferred"
     source: str = "ctrader_native"           # Data source identifier
@@ -50,7 +50,7 @@ class FeatureModule(ABC, BaseModel):
     """
     model_config = BaseModel.model_config
 
-    feature_id: str
+    feature_id: str = ""  # Derived from config property in model_post_init
     enabled: bool = True
     quality_class: str = "native_supported"
     source: str = "ctrader_native"
@@ -122,8 +122,9 @@ class FeatureModule(ABC, BaseModel):
         valid_classes = {"native_supported", "proxy_inferred", "external", "deferred"}
         return self.quality_class in valid_classes
 
-    def __init__(self, **data: Any) -> None:
-        # Ensure feature_id is set before BaseModel init
-        if "feature_id" not in data and hasattr(self, "feature_id"):
-            data["feature_id"] = self.feature_id
-        super().__init__(**data)
+    def model_post_init(self, __context: Any) -> None:
+        """Populate feature_id from the config property after Pydantic init."""
+        # Subclasses derive feature_id from their config property.
+        # If it is empty/placeholder, derive it from config.
+        if not self.feature_id:
+            object.__setattr__(self, "feature_id", self.config.feature_id)
