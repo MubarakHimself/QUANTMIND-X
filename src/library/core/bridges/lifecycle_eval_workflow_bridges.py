@@ -3,6 +3,9 @@ QuantMindLib V1 — LifecycleBridge + EvaluationBridge + WorkflowBridge
 
 Phase 3 (Bridge Definitions) of QuantMindLib V1 packet delivery.
 Packet 3C: Lifecycle state machine, evaluation result wiring, and workflow state tracking.
+
+WF1 = AlgoForge (TRD → BotSpec → Evaluation)
+WF2 = ImprovementLoop (variant lineage → MutationEngine)
 """
 from __future__ import annotations
 
@@ -255,7 +258,7 @@ class WorkflowState(BaseModel):
     """Tracks workflow execution state."""
 
     workflow_id: str
-    workflow_name: str  # "WF1_ALPHAFORGE" | "WF2_IMPROVEMENT_LOOP"
+    workflow_name: str  # "WF1_ALGOFORGE" | "WF2_IMPROVEMENT_LOOP"
     status: str  # "PENDING" | "RUNNING" | "COMPLETED" | "FAILED"
     started_at_ms: Optional[int] = None
     completed_at_ms: Optional[int] = None
@@ -275,7 +278,7 @@ class WorkflowState(BaseModel):
 
 class WorkflowBridge(BaseModel):
     """
-    Workflow state tracker for WF1 (AlphaForge) and WF2 (Improvement Loop).
+    Workflow state tracker for WF1 (AlgoForge) and WF2 (Improvement Loop).
     Tracks workflow execution state and handoff readiness between workflows.
     """
 
@@ -345,11 +348,11 @@ class WorkflowBridge(BaseModel):
         ]
 
     def is_wf1_to_wf2_ready(self) -> bool:
-        """True if AlphaForge (WF1) outputs are ready for Improvement Loop (WF2)."""
+        """True if AlgoForge (WF1) outputs are ready for Improvement Loop (WF2)."""
         wf1_outputs = [
             wf
             for wf in self.workflows.values()
-            if wf.workflow_name == "WF1_ALPHAFORGE" and wf.is_handoff_ready()
+            if wf.workflow_name == "WF1_ALGOFORGE" and wf.is_handoff_ready()
         ]
         return len(wf1_outputs) > 0
 

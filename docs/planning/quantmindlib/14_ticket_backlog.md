@@ -128,7 +128,7 @@ Each ticket includes:
 | BRIDGE-004 | Implement DPRBridge (BotEvaluationProfile ↔ DPRScore + Redis write) | P1 | L | 3 |
 | BRIDGE-005 | Implement EvaluationBridge (EvaluationResult ↔ FullBacktestPipeline) | P1 | M | 3 |
 | BRIDGE-006 | Implement JournalBridge (TradeIntent → TradeRecord) | P3 | M | 3 |
-| BRIDGE-007 | Implement WF1Bridge (TRD → BotSpec → AlphaForgeFlow) | P1 | M | 9 |
+| BRIDGE-007 | Implement WF1Bridge (TRD → BotSpec → AlgoForgeFlow) | P1 | M | 9 |
 | BRIDGE-008 | Implement WF2Bridge (variant lineage → MutationEngine → ImprovementLoopFlow) | P1 | M | 9 |
 | BRIDGE-009 | Implement LifecycleBridge (promotion/quarantine decisions) | P2 | M | 3 |
 
@@ -211,7 +211,7 @@ Each ticket includes:
 | ID | Title | Priority | Complexity | Phase |
 |----|-------|----------|------------|-------|
 | WF-001 | TRD → BotSpec converter for WF1 | P1 | M | 9 |
-| WF-002 | AlphaForgeFlow integration with library | P1 | M | 9 |
+| WF-002 | AlgoForgeFlow integration with library | P1 | M | 9 |
 | WF-003 | ImprovementLoopFlow integration with library | P1 | M | 9 |
 | WF-004 | Library → paper trading handoff | P1 | M | 9 |
 | WF-005 | Library → live promotion path (3-day paper lag) | P1 | M | 9 |
