@@ -20,6 +20,7 @@ from .queue_models import (
     DPRQueueAuditRecord,
 )
 from .ssl_consumer import DPRSSLConsumer, DPRSSLEventEmitter
+from .dpr_emitter import DPRSSLEmitter
 from src.events.dpr import SSLEvent, SSLEventType
 
 __all__ = [
@@ -39,4 +40,5 @@ __all__ = [
     "SSLEventType",
     "DPRSSLConsumer",
     "DPRSSLEventEmitter",
+    "DPRSSLEmitter",
 ]

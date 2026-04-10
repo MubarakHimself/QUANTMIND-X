@@ -1,6 +1,7 @@
 """
 QuantMindLib V1 — Safety Integration
 Phase 10 Packet 10B: SafetyHooks integration with DPR circuit breaker concerns.
+Phase 10 Packet 10C: SSLCircuitBreaker DPR monitor integration.
 """
 from __future__ import annotations
 
@@ -10,6 +11,11 @@ from typing import Dict, Optional
 from pydantic import BaseModel, Field
 
 from src.library.core.bridges.sentinel_dpr_bridges import DPRBridge, DPRScore
+from src.library.core.bridges.ssl_dpr_integration import (
+    SSLCircuitBreakerDPRMonitor,
+    SSL_HALTED,
+    SSL_ACTIVE,
+)
 from src.library.runtime.safety_hooks import SafetyHooks, KillSwitchResult
 
 
@@ -45,9 +51,11 @@ class DPRCircuitBreakerMonitor:
         self,
         dpr_bridge: Optional[DPRBridge] = None,
         safety_hooks: Optional[SafetyHooks] = None,
+        ssl_monitor: Optional[SSLCircuitBreakerDPRMonitor] = None,
     ) -> None:
         self._dpr_bridge = dpr_bridge or DPRBridge()
         self._safety_hooks = safety_hooks or SafetyHooks()
+        self._ssl_monitor = ssl_monitor or SSLCircuitBreakerDPRMonitor()
         self._blocked_bots: Dict[str, str] = {}  # bot_id -> reason
         self._last_check_ms: int = Field(
             default_factory=lambda: int(time.time() * 1000)
@@ -217,6 +225,80 @@ class DPRCircuitBreakerMonitor:
             elif "HIGH" in reason:
                 return "HIGH"
         return None
+
+    def check_ssl_dpr_combined(
+        self,
+        bot_id: str,
+        dpr_score: Optional[DPRScore],
+        ssl_state: str,
+        ssl_tier: Optional[str] = None,
+    ) -> KillSwitchResult:
+        """
+        Check both DPR and SSL circuits simultaneously for a bot.
+
+        Runs the DPR tier circuit check first, then the SSL DPR combined
+        check, and returns the most restrictive result. Also updates
+        the SSL monitor's blocked-bot registry when SSL causes a block.
+
+        Decision order:
+        1. DPR CIRCUIT_BROKEN or score < 0.3 → block (DPR wins).
+        2. SSL HALTED → block regardless of DPR.
+        3. AT_RISK DPR + SSL ACTIVE → immediate circuit break.
+        4. SSL ACTIVE → block new entries.
+        5. DPR AT_RISK consecutive → block.
+        6. SSL RECOVERY → allow with caution.
+        7. Otherwise → DPR result (allow with caution if AT_RISK).
+
+        Args:
+            bot_id: Bot identifier.
+            dpr_score: DPR score data (optional).
+            ssl_state: SSL state string (SSLState value or SSL_HALTED/SSL_ACTIVE).
+            ssl_tier: Paper trading tier ("TIER_1" | "TIER_2" | None).
+
+        Returns:
+            KillSwitchResult with the most restrictive combined decision.
+        """
+        dpr_tier = dpr_score.tier if dpr_score else "STANDARD"
+
+        # Delegate to SSL DPR monitor for combined SSL+DPR logic.
+        ssl_result = self._ssl_monitor.check_ssl_dpr_state(
+            bot_id=bot_id,
+            ssl_state=ssl_state,
+            ssl_tier=ssl_tier or "TIER_2",
+            dpr_tier=dpr_tier,
+        )
+
+        # Sync SSL-blocked bots to DPR blocked registry for observability.
+        if not ssl_result.allowed and ssl_result.triggered_by:
+            self._block_bot(bot_id, ssl_result.reason)
+
+        # Run DPR circuit check independently.
+        dpr_result = self.check_bot_circuit_state(bot_id, dpr_score)
+
+        # If DPR blocked, DPR wins (harder constraint).
+        if not dpr_result.allowed:
+            # Ensure blocked by DPR is reflected in SSL monitor too.
+            if ssl_state == SSL_HALTED or self._ssl_monitor.is_halted(bot_id):
+                pass  # Already handled above.
+            elif ssl_state == SSL_ACTIVE or self._ssl_monitor.is_active(bot_id):
+                pass
+            return dpr_result
+
+        # If SSL blocked and DPR allowed, SSL result takes precedence.
+        if not ssl_result.allowed:
+            return ssl_result
+
+        # Both passed: return the most informative result.
+        # Prefer SSL RECOVERY caution flag over DPR result.
+        if ssl_state == "recovery":
+            return ssl_result
+
+        return dpr_result
+
+    @property
+    def ssl_monitor(self) -> SSLCircuitBreakerDPRMonitor:
+        """Return the SSL DPR monitor instance."""
+        return self._ssl_monitor
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 

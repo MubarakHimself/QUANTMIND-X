@@ -1,13 +1,19 @@
 """
 QuantMindLib V1 -- SafetyHooks
 Kill switch and circuit breaker integration for runtime safety.
+Phase 11F: DPRCircuitBreakerMonitor wiring for combined DPR+SSL safety.
 """
 from __future__ import annotations
 
 import time
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from src.library.core.types.enums import BotHealth, ActivationState
+
+if TYPE_CHECKING:
+    from src.library.core.bridges.sentinel_dpr_bridges import DPRScore
+    from src.library.core.bridges.safety_integration import DPRCircuitBreakerMonitor
+    from src.risk.dpr.dpr_emitter import DPRSSLEmitter
 
 
 class KillSwitchResult:
@@ -34,6 +40,9 @@ class SafetyHooks:
     """
     Pre-trade safety checks.
     Evaluates kill switches, circuit breakers, and health gates.
+
+    Phase 11F: Optionally integrates DPRCircuitBreakerMonitor for combined
+    DPR + SSL safety gating. DPR is checked before health gates.
     """
 
     def __init__(
@@ -41,10 +50,14 @@ class SafetyHooks:
         kill_switch_enabled: bool = True,
         max_daily_loss_pct: float = 0.05,
         circuit_breaker_loss_pct: float = 0.10,
+        dpr_monitor: Optional["DPRCircuitBreakerMonitor"] = None,
+        dpr_emitter: Optional["DPRSSLEmitter"] = None,
     ) -> None:
         self.kill_switch_enabled = kill_switch_enabled
         self.max_daily_loss_pct = max_daily_loss_pct
         self.circuit_breaker_loss_pct = circuit_breaker_loss_pct
+        self._dpr_monitor = dpr_monitor
+        self._dpr_emitter = dpr_emitter
 
     def check(
         self,
@@ -55,11 +68,56 @@ class SafetyHooks:
         regime_is_clear: bool,
         spread_state_ok: bool = True,
         news_clear: bool = True,
+        dpr_score: Optional["DPRScore"] = None,
+        ssl_state: Optional[str] = None,
+        ssl_tier: Optional[str] = None,
     ) -> KillSwitchResult:
         """
         Run all safety checks. Returns KillSwitchResult.
         If allowed=False, trade MUST NOT proceed.
+
+        Phase 11F: DPR circuit check runs before health gate if dpr_monitor
+        is configured. DPR→SSL emission runs after blocked DPR decisions.
+
+        Args:
+            bot_id: Bot identifier
+            health: Bot health state
+            activation_state: Activation state
+            daily_loss_pct: Daily loss percentage
+            regime_is_clear: Whether market regime is clear
+            spread_state_ok: Whether spread is acceptable
+            news_clear: Whether news blackout is clear
+            dpr_score: Optional DPRScore for DPR circuit check (Phase 11F)
+            ssl_state: Optional SSL state string for combined DPR+SSL check
+            ssl_tier: Optional SSL tier for combined check
         """
+        # 0. DPR circuit breaker check (Phase 11F)
+        if self._dpr_monitor is not None and dpr_score is not None:
+            if ssl_state is not None:
+                # Combined DPR + SSL check via SSLCircuitBreakerDPRMonitor
+                dpr_result = self._dpr_monitor.check_ssl_dpr_combined(
+                    bot_id=bot_id,
+                    dpr_score=dpr_score,
+                    ssl_state=ssl_state,
+                    ssl_tier=ssl_tier,
+                )
+            else:
+                # DPR-only circuit check
+                dpr_result = self._dpr_monitor.check_bot_circuit_state(
+                    bot_id=bot_id,
+                    dpr_score=dpr_score,
+                )
+
+            # DPR blocked — emit DPR→SSL transition and return blocked result
+            if not dpr_result.allowed:
+                if self._dpr_emitter is not None:
+                    self._dpr_emitter.emit_dpr_to_ssl(
+                        bot_id=bot_id,
+                        dpr_score=dpr_score,
+                        reason=dpr_result.triggered_by,
+                    )
+                return dpr_result
+
         # 1. Kill switch master override
         if self.kill_switch_enabled:
             if not regime_is_clear:
@@ -122,6 +180,18 @@ class SafetyHooks:
                     "approaching circuit breaker"
                 ),
             )
+
+        # 6. DPR recovery check (Phase 11F): if DPR improves, emit SSL recovery
+        if (
+            self._dpr_monitor is not None
+            and self._dpr_emitter is not None
+            and dpr_score is not None
+        ):
+            # Only emit recovery if DPR is recovering and bot was transitioned via DPR
+            tier = dpr_score.tier
+            if tier in ("STANDARD", "PERFORMING", "ELITE"):
+                if self._dpr_emitter.is_bot_transitioned(bot_id):
+                    self._dpr_emitter.emit_recovery_to_ssl(bot_id, dpr_score)
 
         return KillSwitchResult(
             allowed=True,
