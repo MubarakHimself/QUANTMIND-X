@@ -6,20 +6,24 @@ Archetypes are frozen spec contracts consumed by coding agents
 and validated by the Composer.
 """
 
-from src.library.archetypes.constraints import ConstraintSpec
-from src.library.archetypes.archetype_spec import ArchetypeSpec
 from src.library.archetypes.base import BaseArchetype
+from src.library.archetypes.composer import Composer
+from src.library.archetypes.constraints import ConstraintSpec
 from src.library.archetypes.registry import (
-    ArchetypeRegistry,
     ArchetypeNotFoundError,
+    ArchetypeRegistry,
     DuplicateArchetypeError,
 )
+from src.library.archetypes.archetype_spec import ArchetypeSpec
+from src.library.archetypes.mutation.engine import MutationEngine
 
 __all__ = [
-    "ConstraintSpec",
+    "ArchetypeNotFoundError",
+    "ArchetypeRegistry",
     "ArchetypeSpec",
     "BaseArchetype",
-    "ArchetypeRegistry",
-    "ArchetypeNotFoundError",
+    "Composer",
+    "ConstraintSpec",
     "DuplicateArchetypeError",
+    "MutationEngine",
 ]
