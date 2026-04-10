@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from src.backtesting.mt5_engine import MT5BacktestResult
     from src.backtesting.mode_runner import SpicedBacktestResult
     from src.library.core.domain.bot_spec import BotSpec
+    from src.library.evaluation.report_bridge import BacktestReportBridge
     from src.library.evaluation.strategy_code_generator import StrategyCodeGenerator
 
 
@@ -39,6 +40,7 @@ class EvaluationOrchestrator:
         code_generator: Optional[StrategyCodeGenerator] = None,
         evaluation_bridge: Optional[EvaluationBridge] = None,
         pipeline_class: Optional[Any] = None,
+        report_bridge: Optional[BacktestReportBridge] = None,
     ) -> None:
         """
         Initialize with optional injected components.
@@ -50,6 +52,9 @@ class EvaluationOrchestrator:
                 Creates a default one if not provided.
             pipeline_class: Optional FullBacktestPipeline class.
                 Allows injection of a mock for testing.
+            report_bridge: Optional BacktestReportBridge instance.
+                When provided, generates a markdown backtest report after
+                evaluation and attaches it to the returned BotEvaluationProfile.
         """
         if code_generator is None:
             from src.library.evaluation.strategy_code_generator import StrategyCodeGenerator
@@ -61,6 +66,8 @@ class EvaluationOrchestrator:
             self._evaluation_bridge: EvaluationBridge = EvaluationBridge()
         else:
             self._evaluation_bridge = evaluation_bridge
+
+        self._report_bridge: Optional[BacktestReportBridge] = report_bridge
 
         # Store pipeline class for lazy import inside methods (avoids cascade imports)
         self._pipeline_class = pipeline_class
@@ -166,6 +173,18 @@ class EvaluationOrchestrator:
         # Step 7: Derive BotEvaluationProfile
         profile = self._comparison_to_profile(bot_id, comparison)
 
+        # Step 8: Generate backtest report if report_bridge is available
+        if self._report_bridge is not None:
+            primary_result = self._get_primary_evaluation_result(comparison, bot_id)
+            if primary_result is not None:
+                try:
+                    report = self._report_bridge.generate_report(
+                        primary_result, bot_spec
+                    )
+                    profile.report = report
+                except Exception as e:
+                    warnings.append(f"Report generation failed: {e}")
+
         return profile, warnings
 
     def evaluate_with_data(
@@ -244,6 +263,19 @@ class EvaluationOrchestrator:
             _ = self._spiced_result_to_evaluation_result(bot_id, spiced_full)
 
         profile = self._comparison_to_profile(bot_id, comparison)
+
+        # Generate backtest report if report_bridge is available
+        if self._report_bridge is not None:
+            primary_result = self._get_primary_evaluation_result(comparison, bot_id)
+            if primary_result is not None:
+                try:
+                    report = self._report_bridge.generate_report(
+                        primary_result, bot_spec
+                    )
+                    profile.report = report
+                except Exception as e:
+                    warnings.append(f"Report generation failed: {e}")
+
         return profile, warnings
 
     def _backtest_result_to_evaluation_result(
@@ -463,6 +495,29 @@ class EvaluationOrchestrator:
         profile.robustness_score = robustness
 
         return profile
+
+    def _get_primary_evaluation_result(
+        self,
+        comparison: BacktestComparison,
+        bot_id: str,
+    ) -> Optional[EvaluationResult]:
+        """
+        Extract the primary EvaluationResult (VANILLA) from a BacktestComparison.
+
+        Used to drive BacktestReportBridge when a report_bridge is configured.
+
+        Args:
+            comparison: BacktestComparison from FullBacktestPipeline.
+            bot_id: Bot identifier.
+
+        Returns:
+            EvaluationResult for VANILLA mode, or None if not available.
+        """
+        vanilla = comparison.vanilla_result
+        if vanilla is None:
+            return None
+
+        return self._backtest_result_to_evaluation_result(bot_id, "VANILLA", vanilla)
 
 
 __all__ = ["EvaluationOrchestrator"]

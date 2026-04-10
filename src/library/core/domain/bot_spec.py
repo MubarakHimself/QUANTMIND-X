@@ -59,6 +59,7 @@ class BotEvaluationProfile(BaseModel):
     robustness_score: float
     spread_sensitivity: float
     session_scores: Dict[str, SessionScore]
+    report: Optional[str] = None  # Markdown backtest report from BacktestReportBridge
 
 
 class BotMutationProfile(BaseModel):
