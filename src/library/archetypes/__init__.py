@@ -9,6 +9,11 @@ and validated by the Composer.
 from src.library.archetypes.base import BaseArchetype
 from src.library.archetypes.composer import Composer
 from src.library.archetypes.constraints import ConstraintSpec
+from src.library.archetypes.orb import (
+    OpeningRangeBreakout,
+    ORB_ARCHETYPE,
+    get_default_registry,
+)
 from src.library.archetypes.registry import (
     ArchetypeNotFoundError,
     ArchetypeRegistry,
@@ -25,5 +30,8 @@ __all__ = [
     "Composer",
     "ConstraintSpec",
     "DuplicateArchetypeError",
+    "get_default_registry",
     "MutationEngine",
+    "OpeningRangeBreakout",
+    "ORB_ARCHETYPE",
 ]
