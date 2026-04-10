@@ -1,0 +1,47 @@
+[project]
+name = "quantmindlib"
+version = "1.0.0"
+description = "QuantMindX Strategy Composition Library — like NumPy for trading bots"
+readme = "../../README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [
+    { name = "QuantMindX", email = "dev@quantmindx.io" }
+]
+dependencies = [
+    "pydantic>=2.0",
+    "pandas>=2.0",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0",
+    "pytest-cov>=4.0",
+    "pytest-asyncio>=0.23",
+    "hypothesis>=6.0",
+    "mypy>=1.10",
+]
+redis = [
+    "redis>=5.0",
+]
+backtest = [
+    "mt5bridge",  # placeholder — cTrader SDK when available
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["../tests"]
+pythonpath = [".."]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/library"]
