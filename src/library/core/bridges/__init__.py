@@ -13,6 +13,7 @@ from src.library.core.bridges.lifecycle_eval_workflow_bridges import (
     WorkflowState,
 )
 from src.library.core.bridges.dpr_redis_bridge import DPRRedisPublisher, dpr_tier_to_bot_tier
+from src.library.core.bridges.safety_integration import DPRCircuitBreakerMonitor
 
 __all__ = [
     # Sentinel + DPR
@@ -36,4 +37,6 @@ __all__ = [
     # DPR Redis
     "DPRRedisPublisher",
     "dpr_tier_to_bot_tier",
+    # Safety Integration
+    "DPRCircuitBreakerMonitor",
 ]
