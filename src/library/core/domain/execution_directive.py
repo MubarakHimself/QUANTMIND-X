@@ -23,6 +23,8 @@ class ExecutionDirective(BaseModel):
     limit_ticks: Optional[int] = None
     timestamp_ms: int
     authorization: str
+    approved: bool = True
+    rejection_reason: Optional[str] = None
 
     model_config = BaseModel.model_config
 
