@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from src.library.core.errors import BridgeError
-from src.library.core.errors import BridgeError
 from src.library.core.types.enums import RegimeType
 
 from src.library.core.domain.market_context import MarketContext, RegimeReport

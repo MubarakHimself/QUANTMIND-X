@@ -256,6 +256,8 @@ class ExecutionBridge:
                 stop_ticks=risk_envelope.stop_ticks,
                 timestamp_ms=intent.timestamp_ms,
                 authorization="RUNTIME_ORCHESTRATOR",
+                approved=False,
+                rejection_reason="position_size <= 0, trade not authorized",
             )
 
         # Map TradeIntent direction to ExecutionDirective
