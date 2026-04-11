@@ -6,12 +6,14 @@ Provides registration, lookup, dependency validation, and composition queries.
 """
 from __future__ import annotations
 
+import time
 from typing import Any, Dict, List, Optional, Set
 from pydantic import BaseModel, Field, PrivateAttr
 
-from src.library.features.base import FeatureModule, FeatureConfig
 from src.library.core.composition.capability_spec import CapabilitySpec
 from src.library.core.composition.spec_registry import SpecRegistry
+from src.library.core.errors import AuditRecord
+from src.library.features.base import FeatureModule, FeatureConfig
 
 
 class FeatureNotFoundError(Exception):
@@ -98,10 +100,21 @@ class FeatureRegistry(BaseModel):
         """
         for fid in feature_ids:
             if fid not in self._features:
+                record = AuditRecord(
+                    component="FeatureRegistry",
+                    operation="validate_composition",
+                    outcome="rejected",
+                    reason=f"Required feature not registered: {fid}",
+                    details={
+                        "feature_id": fid,
+                        "available_features": sorted(self._features.keys()),
+                    },
+                    timestamp_ms=int(time.time() * 1000),
+                )
                 raise DependencyMissingError(
                     f"Required feature not registered: {fid}. "
                     f"Available features: {sorted(self._features.keys())}"
-                )
+                ) from None
         return []
 
     def resolve_inputs(self, feature_id: str, available_inputs: Set[str]) -> Set[str]:

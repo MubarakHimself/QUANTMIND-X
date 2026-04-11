@@ -123,3 +123,15 @@ class BotTier(StrEnum):
     EVALUATION_CANDIDATE = "EVALUATION_CANDIDATE"
     AT_RISK = "AT_RISK"
     CIRCUIT_BROKEN = "CIRCUIT_BROKEN"
+
+
+class ErrorSeverity(StrEnum):
+    """
+    Severity for library-internal engineering errors only. NOT for trading operations.
+    Out of scope for V1: NOT wired into exception classes or trading contracts.
+    """
+
+    LOW = "LOW"       # Config warnings, optional dependency missing
+    MEDIUM = "MEDIUM"  # Validation failure, non-critical bridge timeout
+    HIGH = "HIGH"     # Critical config invalid, bridge target unreachable
+    CRITICAL = "CRITICAL"  # Validation error preventing bot from running

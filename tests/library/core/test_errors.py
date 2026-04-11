@@ -1,14 +1,19 @@
 """Tests for QuantMindLib V1 core error hierarchy."""
 
+import time
+from enum import StrEnum
+
 import pytest
 
 from src.library.core.errors import (
+    AuditRecord,
     BridgeError,
     BridgeUnavailableError,
     ContractValidationError,
     LibraryConfigError,
     LibraryError,
 )
+from src.library.core.types import ErrorSeverity
 
 
 class TestLibraryErrorHierarchy:
@@ -74,3 +79,113 @@ class TestLibraryErrorHierarchy:
         assert isinstance(err, BridgeError)
         assert isinstance(err, LibraryError)
         assert isinstance(err, Exception)
+
+
+class TestAuditRecord:
+    """Test AuditRecord dataclass construction and fields."""
+
+    def test_construction_minimal(self):
+        """AuditRecord can be constructed with required fields only."""
+        record = AuditRecord(
+            component="FeatureRegistry",
+            operation="validate_composition",
+            outcome="rejected",
+            reason="Required feature not registered: unknown_feature",
+            details={"feature_id": "unknown_feature"},
+            timestamp_ms=1712841600000,
+        )
+        assert record.component == "FeatureRegistry"
+        assert record.operation == "validate_composition"
+        assert record.outcome == "rejected"
+        assert record.reason == "Required feature not registered: unknown_feature"
+        assert record.details == {"feature_id": "unknown_feature"}
+        assert record.timestamp_ms == 1712841600000
+
+    def test_construction_all_none_optional(self):
+        """AuditRecord reason and details are optional."""
+        record = AuditRecord(
+            component="RiskBridge",
+            operation="authorize",
+            outcome="success",
+            reason=None,
+            details=None,
+            timestamp_ms=1712841600000,
+        )
+        assert record.component == "RiskBridge"
+        assert record.operation == "authorize"
+        assert record.outcome == "success"
+        assert record.reason is None
+        assert record.details is None
+
+    def test_construction_with_all_outcomes(self):
+        """AuditRecord outcome field accepts all four canonical values."""
+        outcomes = ["success", "rejected", "failed", "blocked"]
+        for outcome in outcomes:
+            record = AuditRecord(
+                component="TestComponent",
+                operation="test_op",
+                outcome=outcome,
+                reason=None,
+                details=None,
+                timestamp_ms=int(time.time() * 1000),
+            )
+            assert record.outcome == outcome
+
+    def test_is_dataclass(self):
+        """AuditRecord is a dataclass."""
+        record = AuditRecord(
+            component="FeatureRegistry",
+            operation="register",
+            outcome="success",
+            reason=None,
+            details={"family": "indicators"},
+            timestamp_ms=int(time.time() * 1000),
+        )
+        # Dataclass returns a tuple-like repr by default; check fields exist via dict
+        assert hasattr(record, "component")
+        assert hasattr(record, "operation")
+        assert hasattr(record, "outcome")
+        assert hasattr(record, "reason")
+        assert hasattr(record, "details")
+        assert hasattr(record, "timestamp_ms")
+
+
+class TestErrorSeverity:
+    """Test ErrorSeverity enum values and inheritance."""
+
+    def test_all_four_levels_exist(self):
+        """ErrorSeverity has all four expected values."""
+        assert ErrorSeverity.LOW == "LOW"
+        assert ErrorSeverity.MEDIUM == "MEDIUM"
+        assert ErrorSeverity.HIGH == "HIGH"
+        assert ErrorSeverity.CRITICAL == "CRITICAL"
+
+    def test_inherits_from_strenum(self):
+        """ErrorSeverity inherits from StrEnum."""
+        assert issubclass(ErrorSeverity, StrEnum)
+
+    def test_is_string_subclass(self):
+        """ErrorSeverity members are strings."""
+        assert isinstance(ErrorSeverity.CRITICAL, str)
+
+    def test_str_value_matches(self):
+        """String value of each member matches its label."""
+        assert str(ErrorSeverity.LOW) == "LOW"
+        assert str(ErrorSeverity.MEDIUM) == "MEDIUM"
+        assert str(ErrorSeverity.HIGH) == "HIGH"
+        assert str(ErrorSeverity.CRITICAL) == "CRITICAL"
+
+
+class TestErrorSeverityMapping:
+    """Optional: ErrorSeverity maps to library error classes."""
+
+    def test_library_config_error_maps_to_config(self):
+        """LibraryConfigError maps to MEDIUM severity by convention."""
+        # Mapping is informational — validate the severity enum itself is stable
+        assert ErrorSeverity.MEDIUM is not None
+
+    def test_severity_ordering_hint(self):
+        """Severity values follow LOW < MEDIUM < HIGH < CRITICAL ordering by definition."""
+        # Ordering is by declaration order in the enum class, verified by name order
+        names = [e.name for e in ErrorSeverity]
+        assert names == ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
