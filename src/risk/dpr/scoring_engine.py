@@ -13,9 +13,11 @@ Per NFR-D1: All DPR score calculations logged before any system acknowledgment.
 """
 
 from datetime import datetime, timezone, timedelta
+import time
 from typing import Optional, List, Dict, Tuple, Any
 from dataclasses import dataclass
 import logging
+
 
 import redis
 
@@ -118,16 +120,88 @@ class DPRScoringEngine:
 
     @property
     def redis_client(self):
-        """Get or create async Redis client (lazy initialization)."""
+        """Get or create sync Redis client (lazy initialization)."""
         if self._redis_client is None:
-            self._redis_client = redis.asyncio.Redis(
+            self._redis_client = redis.Redis(
                 host=self._redis_host,
                 port=self._redis_port,
                 decode_responses=True,
             )
         return self._redis_client
 
-    async def _get_consecutive_negative_ev_counter(self, magic_number: int) -> int:
+    # ── Redis key constants ──────────────────────────────────────────────────
+    _DPR_SCORES_KEY = "dpr:scores"
+    _DPR_BOT_KEY_PREFIX = "dpr:bot:"
+    _DPR_TTL_SECONDS = 300
+
+    def _write_score_to_redis(self, dpr_score: DPRScore) -> bool:
+        """
+        Write a computed DPRScore to Redis.
+
+        Writes:
+          - ZADD dpr:scores with bot_id as member and score as value
+          - HSET dpr:bot:{bot_id} with all score fields
+          - EXPIRE on both keys (5-minute TTL)
+
+        Args:
+            dpr_score: The computed DPRScore to persist.
+
+        Returns:
+            True on success, False on failure or if Redis unavailable.
+        """
+        try:
+            client = self.redis_client
+            now_ms = int(time.time() * 1000)
+            pipe = client.pipeline(transaction=True)
+            pipe.zadd(
+                self._DPR_SCORES_KEY,
+                {dpr_score.bot_id: dpr_score.composite_score},
+            )
+            pipe.hset(
+                f"{self._DPR_BOT_KEY_PREFIX}{dpr_score.bot_id}",
+                mapping={
+                    "bot_id": str(dpr_score.bot_id),
+                    "session_id": str(dpr_score.session_id),
+                    "composite_score": str(dpr_score.composite_score),
+                    "win_rate": str(dpr_score.component_scores.win_rate),
+                    "pnl": str(dpr_score.component_scores.pnl),
+                    "consistency": str(dpr_score.component_scores.consistency),
+                    "ev_per_trade": str(dpr_score.component_scores.ev_per_trade),
+                    "trade_count": str(dpr_score.trade_count),
+                    "session_win_rate": str(dpr_score.session_win_rate),
+                    "max_drawdown": str(dpr_score.max_drawdown),
+                    "magic_number": str(dpr_score.magic_number),
+                    "specialist_boost_applied": str(dpr_score.specialist_boost_applied),
+                    "consecutive_negative_ev": str(dpr_score.consecutive_negative_ev),
+                    "tier": str(self._score_to_tier(dpr_score.composite_score)),
+                    "rank": "0",
+                    "computed_at_ms": str(now_ms),
+                },
+            )
+            pipe.expire(f"{self._DPR_BOT_KEY_PREFIX}{dpr_score.bot_id}", self._DPR_TTL_SECONDS)
+            pipe.expire(self._DPR_SCORES_KEY, self._DPR_TTL_SECONDS)
+            pipe.execute()
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to write DPR score for {dpr_score.bot_id} to Redis: {e}")
+            return False
+
+    def _score_to_tier(self, score: int) -> str:
+        """Map composite score (0-100) to DPR tier string."""
+        if score >= 85:
+            return "ELITE"
+        elif score >= 70:
+            return "PERFORMING"
+        elif score >= 50:
+            return "STANDARD"
+        elif score >= 30:
+            return "AT_RISK"
+        else:
+            return "CIRCUIT_BROKEN"
+
+    # ── Consecutive negative EV counters (sync) ──────────────────────────────
+
+    def _get_consecutive_negative_ev_counter(self, magic_number: int) -> int:
         """
         Get consecutive negative EV counter for a bot from Redis.
 
@@ -139,7 +213,7 @@ class DPRScoringEngine:
         """
         try:
             key = f"session_concern:{magic_number}"
-            value = await self.redis_client.get(key)
+            value = self.redis_client.get(key)
             if value is not None:
                 return int(value)
             return 0
@@ -147,7 +221,7 @@ class DPRScoringEngine:
             logger.warning(f"Failed to get consecutive negative EV counter for magic {magic_number}: {e}")
             return 0
 
-    async def _increment_consecutive_negative_ev(self, magic_number: int) -> int:
+    def _increment_consecutive_negative_ev(self, magic_number: int) -> int:
         """
         Atomically increment consecutive negative EV counter.
 
@@ -159,14 +233,14 @@ class DPRScoringEngine:
         """
         try:
             key = f"session_concern:{magic_number}"
-            new_count = await self.redis_client.incr(key)
-            await self.redis_client.expire(key, 604800)  # 7-day TTL
+            new_count = self.redis_client.incr(key)
+            self.redis_client.expire(key, 604800)  # 7-day TTL
             return new_count
         except Exception as e:
             logger.warning(f"Failed to increment consecutive negative EV counter for magic {magic_number}: {e}")
             return 0
 
-    async def _reset_consecutive_negative_ev(self, magic_number: int) -> int:
+    def _reset_consecutive_negative_ev(self, magic_number: int) -> int:
         """
         Atomically reset consecutive negative EV counter to 0.
 
@@ -178,7 +252,7 @@ class DPRScoringEngine:
         """
         try:
             key = f"session_concern:{magic_number}"
-            await self.redis_client.delete(key)
+            self.redis_client.delete(key)
             return 0
         except Exception as e:
             logger.warning(f"Failed to reset consecutive negative EV counter for magic {magic_number}: {e}")
@@ -239,9 +313,13 @@ class DPRScoringEngine:
 
         return composite
 
-    async def get_dpr_score(self, bot_id: str, session_id: str) -> Optional[DPRScore]:
+    def get_dpr_score(self, bot_id: str, session_id: str) -> Optional[DPRScore]:
         """
         Get full DPR score data for a bot.
+
+        This method is synchronous (NFR-M2: DPR is synchronous — no LLM calls
+        in the scoring path). Redis operations for concern counters and score
+        persistence are handled via synchronous redis.Redis calls.
 
         Args:
             bot_id: Bot identifier
@@ -280,13 +358,13 @@ class DPRScoringEngine:
             composite = min(100, composite + 5)
             specialist_boost_applied = True
 
-        # Track consecutive negative EV sessions (atomic operations)
+        # Track consecutive negative EV sessions (sync operations)
         ev_per_trade = trade_data["ev_per_trade"]
         magic_number = trade_data.get("magic_number", 0)
         if ev_per_trade < 0:
-            consecutive_negative_ev = await self._increment_consecutive_negative_ev(magic_number)
+            consecutive_negative_ev = self._increment_consecutive_negative_ev(magic_number)
         else:
-            await self._reset_consecutive_negative_ev(magic_number)
+            self._reset_consecutive_negative_ev(magic_number)
             consecutive_negative_ev = 0
 
         return DPRScore(
@@ -301,6 +379,11 @@ class DPRScoringEngine:
             specialist_boost_applied=specialist_boost_applied,
             consecutive_negative_ev=consecutive_negative_ev,
         )
+
+        # Persist score to Redis for DPRCircuitBreakerMonitor consumption
+        self._write_score_to_redis(dpr_score)
+
+        return dpr_score
 
     def tie_break_cascade(
         self,
