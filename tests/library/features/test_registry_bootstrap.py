@@ -188,6 +188,7 @@ class TestRegistryBootstrap:
             f"{len(mismatches)} Proxy features have incorrect quality_class. "
             "FeatureModule.model_post_init() must copy quality_class from config."
         )
+
         print(f"\nVerified {len(proxy_features)} proxy features have quality_class='proxy_inferred'")
 
 

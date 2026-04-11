@@ -200,32 +200,6 @@ class DPRCircuitBreakerMonitor:
             reason=f"{bot_id}: DPR concern {concern_level} — passed{warning_suffix}",
         )
 
-    def get_blocked_bots(self) -> Dict[str, str]:
-        """Return dict of bot_id -> block reason for all blocked bots."""
-        return dict(self._blocked_bots)
-
-    def unblock_bot(self, bot_id: str) -> bool:
-        """Remove a bot from the blocked list. Returns True if was blocked."""
-        if bot_id in self._blocked_bots:
-            del self._blocked_bots[bot_id]
-            self._at_risk_counts.pop(bot_id, None)
-            return True
-        return False
-
-    def get_bot_concern_state(self, bot_id: str) -> Optional[str]:
-        """Return concern state for a bot if tracked, else None."""
-        if bot_id in self._blocked_bots:
-            reason = self._blocked_bots[bot_id]
-            if "CIRCUIT_BROKEN" in reason:
-                return "CIRCUIT_BROKEN"
-            elif "AT_RISK" in reason or "AT_RISK" in self._blocked_bots.get(bot_id, ""):
-                return "AT_RISK"
-            elif "CRITICAL" in reason:
-                return "CRITICAL"
-            elif "HIGH" in reason:
-                return "HIGH"
-        return None
-
     def check_ssl_dpr_combined(
         self,
         bot_id: str,
@@ -299,6 +273,32 @@ class DPRCircuitBreakerMonitor:
     def ssl_monitor(self) -> SSLCircuitBreakerDPRMonitor:
         """Return the SSL DPR monitor instance."""
         return self._ssl_monitor
+
+    def get_blocked_bots(self) -> Dict[str, str]:
+        """Return dict of bot_id -> block reason for all blocked bots."""
+        return dict(self._blocked_bots)
+
+    def unblock_bot(self, bot_id: str) -> bool:
+        """Remove a bot from the blocked list. Returns True if was blocked."""
+        if bot_id in self._blocked_bots:
+            del self._blocked_bots[bot_id]
+            self._at_risk_counts.pop(bot_id, None)
+            return True
+        return False
+
+    def get_bot_concern_state(self, bot_id: str) -> Optional[str]:
+        """Return concern state for a bot if tracked, else None."""
+        if bot_id in self._blocked_bots:
+            reason = self._blocked_bots[bot_id]
+            if "CIRCUIT_BROKEN" in reason:
+                return "CIRCUIT_BROKEN"
+            elif "AT_RISK" in reason or "AT_RISK" in self._blocked_bots.get(bot_id, ""):
+                return "AT_RISK"
+            elif "CRITICAL" in reason:
+                return "CRITICAL"
+            elif "HIGH" in reason:
+                return "HIGH"
+        return None
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
