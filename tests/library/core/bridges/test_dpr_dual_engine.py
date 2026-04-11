@@ -51,11 +51,12 @@ def _make_mock_redis_publisher() -> MagicMock:
 
 class TestDualEngineInit:
     def test_init_default_components(self):
-        """Initializes with DPRBridge, DPRRedisPublisher (None), and RegistryBridge."""
+        """Initializes with DPRBridge, DPRRedisPublisher, and RegistryBridge."""
         router = DPRDualEngineRouter()
         assert router._dpr_bridge is not None
         assert isinstance(router._dpr_bridge, DPRBridge)
-        assert router._redis_publisher is None
+        assert router._redis_publisher is not None
+        assert isinstance(router._redis_publisher, DPRRedisPublisher)
         assert router._registry_bridge is not None
         assert isinstance(router._registry_bridge, RegistryBridge)
         assert router._router_cache == {}

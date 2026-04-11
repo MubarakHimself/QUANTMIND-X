@@ -48,7 +48,7 @@ class DPRDualEngineRouter:
         registry_bridge: Optional[RegistryBridge] = None,
     ) -> None:
         self._dpr_bridge = dpr_bridge or DPRBridge()
-        self._redis_publisher = redis_publisher
+        self._redis_publisher = redis_publisher or DPRRedisPublisher()
         self._registry_bridge = registry_bridge or RegistryBridge()
         # bot_id -> is_routing_eligible
         self._router_cache: Dict[str, bool] = {}
