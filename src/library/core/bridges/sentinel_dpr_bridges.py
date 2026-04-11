@@ -10,12 +10,20 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from src.library.core.errors import BridgeError
+from src.library.core.errors import BridgeError
 from src.library.core.types.enums import RegimeType
 
 from src.library.core.domain.market_context import MarketContext, RegimeReport
 from src.library.core.domain.sentinel_state import HMMState, SensorState, SentinelState
 from src.library.core.domain.bot_performance_snapshot import BotPerformanceSnapshot
 from src.library.core.domain.bot_spec import BotRuntimeProfile
+
+
+class SentinelBridgeUnavailableError(BridgeError):
+    """Raised when SentinelBridge cannot reach the sentinel/market intelligence system."""
+
+    pass
 
 
 class SentinelBridge(BaseModel):
@@ -179,4 +187,4 @@ class DPRBridge(BaseModel):
         return (now_ms - self.last_computed_ms) <= threshold_ms
 
 
-__all__ = ["SentinelBridge", "DPRScore", "DPRBridge"]
+__all__ = ["SentinelBridgeUnavailableError", "SentinelBridge", "DPRScore", "DPRBridge"]

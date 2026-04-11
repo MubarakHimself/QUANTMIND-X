@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field, PrivateAttr
 
+from src.library.core.errors import BridgeError
 from src.library.core.types.enums import (
     ActivationState,
     BotHealth,
@@ -19,6 +20,12 @@ from src.library.core.types.enums import (
 )
 from src.library.core.domain.registry_record import RegistryRecord
 from src.library.core.domain.bot_spec import BotRuntimeProfile
+
+
+class RegistryBridgeUnavailableError(BridgeError):
+    """Raised when RegistryBridge cannot reach the bot registry at decision time."""
+
+    pass
 
 
 class RegistryBridge(BaseModel):
@@ -245,4 +252,4 @@ class JournalBridge(BaseModel):
         return [e for e in self._by_bot.get(bot_id, []) if e.is_profitable()]
 
 
-__all__ = ["RegistryBridge", "JournalEntry", "JournalBridge"]
+__all__ = ["RegistryBridgeUnavailableError", "RegistryBridge", "JournalEntry", "JournalBridge"]

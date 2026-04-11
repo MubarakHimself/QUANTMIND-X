@@ -11,7 +11,7 @@ Verifies:
 from __future__ import annotations
 
 import sys
-from typing import Any
+from typing import Any, Dict
 
 # Ensure the worktree's src is on the path
 sys.path.insert(0, "/home/mubarkahimself/Desktop/QUANTMINDX/.claude/worktrees/elegant-turing")
@@ -19,7 +19,8 @@ sys.path.insert(0, "/home/mubarkahimself/Desktop/QUANTMINDX/.claude/worktrees/el
 import pytest
 
 from src.library.features._registry import get_default_registry
-from src.library.features.registry import FeatureRegistry
+from src.library.features.registry import DependencyMissingError, FeatureRegistry
+from src.library.features.indicators.rsi import RSIFeature
 from src.library.runtime.feature_evaluator import FeatureEvaluator
 
 
@@ -188,3 +189,50 @@ class TestRegistryBootstrap:
             "FeatureModule.model_post_init() must copy quality_class from config."
         )
         print(f"\nVerified {len(proxy_features)} proxy features have quality_class='proxy_inferred'")
+
+
+class TestDependencyMissingError:
+    """Tests for DependencyMissingError raised by FeatureRegistry.validate_composition."""
+
+    def test_raises_on_missing_feature(self):
+        """validate_composition raises DependencyMissingError when a feature is not registered."""
+        reg = FeatureRegistry()
+
+        with pytest.raises(DependencyMissingError) as exc_info:
+            reg.validate_composition(["indicators/rsi_14"])
+
+        assert "indicators/rsi_14" in str(exc_info.value)
+        assert "Required feature not registered" in str(exc_info.value)
+
+    def test_raises_on_first_missing_feature(self):
+        """validate_composition raises on the first missing feature (not all collected)."""
+        reg = FeatureRegistry()
+
+        with pytest.raises(DependencyMissingError) as exc_info:
+            # First id missing triggers immediately
+            reg.validate_composition(["nonexistent_feature", "also_missing"])
+
+        assert "nonexistent_feature" in str(exc_info.value)
+
+    def test_returns_empty_list_when_all_present(self):
+        """validate_composition returns [] when all feature_ids are registered."""
+        reg = FeatureRegistry()
+        # Register the real RSI feature
+        rsi = RSIFeature()
+        reg.register(rsi)
+
+        # Should return empty list, not raise
+        result = reg.validate_composition(["indicators/rsi_14"])
+        assert result == []
+
+    def test_error_includes_available_features(self):
+        """DependencyMissingError message lists available features."""
+        reg = FeatureRegistry()
+        # Register the real RSI feature
+        rsi = RSIFeature()
+        reg.register(rsi)
+
+        with pytest.raises(DependencyMissingError) as exc_info:
+            reg.validate_composition(["test/missing"])
+
+        assert "indicators/rsi_14" in str(exc_info.value)

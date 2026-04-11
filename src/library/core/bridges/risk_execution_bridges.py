@@ -7,12 +7,19 @@ from __future__ import annotations
 import time
 from typing import Optional
 
+from src.library.core.errors import BridgeError
 from src.library.core.domain.risk_envelope import RiskEnvelope
 from src.library.core.domain.trade_intent import TradeIntent
 from src.library.core.domain.feature_vector import FeatureVector
 from src.library.core.domain.market_context import MarketContext
 from src.library.core.domain.execution_directive import ExecutionDirective
 from src.library.core.types.enums import RiskMode, TradeDirection
+
+
+class RiskBridgeUnavailableError(BridgeError):
+    """Raised when RiskBridge cannot reach the risk/governor system."""
+
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +277,7 @@ class ExecutionBridge:
 
 
 __all__ = [
+    "RiskBridgeUnavailableError",
     "RiskBridge",
     "ExecutionBridge",
 ]

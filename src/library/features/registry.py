@@ -93,13 +93,16 @@ class FeatureRegistry(BaseModel):
         need to be registered — they come from market data feeds.
 
         Returns:
-            List of error messages (empty = valid composition)
+            Empty list if all features are registered.
+            Raises DependencyMissingError on first missing feature.
         """
-        errors = []
         for fid in feature_ids:
             if fid not in self._features:
-                errors.append(f"FeatureNotFound: {fid}")
-        return errors
+                raise DependencyMissingError(
+                    f"Required feature not registered: {fid}. "
+                    f"Available features: {sorted(self._features.keys())}"
+                )
+        return []
 
     def resolve_inputs(self, feature_id: str, available_inputs: Set[str]) -> Set[str]:
         """
